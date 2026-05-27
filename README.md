@@ -34,3 +34,17 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+## Instantly Scraper Receiver
+
+This app now includes a webhook receiver at `/api/instantly/scraper-webhook` that can:
+
+- validate scraper webhook auth
+- enforce idempotency per run/pipeline/batch
+- upsert Instantly campaigns from incoming campaign metadata
+- import deduped leads into the mapped campaign
+- optionally auto-start campaigns when warmup gate allows it
+
+Required environment variables are listed in `.env.example` under "Instantly automation".
+
+Before enabling in production, apply Supabase migrations so `public.instantly_sync_events` exists.
