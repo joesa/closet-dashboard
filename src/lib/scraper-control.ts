@@ -23,6 +23,8 @@ export type ScraperControlConfig = {
   webhookAuthHeader: string
   suppressionEmails: string[]
   suppressionDomains: string[]
+  enableOmniFallback: boolean
+  enableLumpyMailExport: boolean
 }
 
 const DEFAULT_CONFIG: ScraperControlConfig = {
@@ -50,6 +52,8 @@ const DEFAULT_CONFIG: ScraperControlConfig = {
   webhookAuthHeader: 'Authorization',
   suppressionEmails: [],
   suppressionDomains: [],
+  enableOmniFallback: true,
+  enableLumpyMailExport: true,
 }
 
 function asStringArray(value: unknown): string[] {
@@ -121,6 +125,8 @@ export function normalizeScraperControlConfig(input: unknown): ScraperControlCon
     webhookAuthHeader: asString(raw.webhookAuthHeader, DEFAULT_CONFIG.webhookAuthHeader),
     suppressionEmails: asStringArray(raw.suppressionEmails),
     suppressionDomains: asStringArray(raw.suppressionDomains),
+    enableOmniFallback: asBool(raw.enableOmniFallback, DEFAULT_CONFIG.enableOmniFallback),
+    enableLumpyMailExport: asBool(raw.enableLumpyMailExport, DEFAULT_CONFIG.enableLumpyMailExport),
   }
 }
 
