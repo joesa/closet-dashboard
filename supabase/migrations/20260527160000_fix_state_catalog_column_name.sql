@@ -1,0 +1,60 @@
+-- =============================================================================
+-- FIX: Re-populate scraper_us_state_catalog with full city lists.
+-- The prior migration (20260527150000) used "state_id" instead of "state_code",
+-- causing all inserts to fail after the TRUNCATE left the table empty.
+-- =============================================================================
+
+truncate table public.scraper_us_state_catalog;
+
+insert into public.scraper_us_state_catalog (state_code, state_name, cities) values ('AK', 'Alaska', '["Anchorage", "Nenana"]');
+insert into public.scraper_us_state_catalog (state_code, state_name, cities) values ('AL', 'Alabama', '["Birmingham", "Huntsville", "Mobile", "Montgomery", "Tuscaloosa"]');
+insert into public.scraper_us_state_catalog (state_code, state_name, cities) values ('AR', 'Arkansas', '["Fayetteville", "Fort Smith", "Little Rock"]');
+insert into public.scraper_us_state_catalog (state_code, state_name, cities) values ('AZ', 'Arizona', '["Chandler", "Gilbert", "Glendale", "Mesa", "Peoria", "Phoenix", "Scottsdale", "Surprise", "Tempe", "Tucson", "Yuma"]');
+insert into public.scraper_us_state_catalog (state_code, state_name, cities) values ('CA', 'California', '["Anaheim", "Antioch", "Bakersfield", "Berkeley", "Burbank", "Carlsbad", "Chula Vista", "Clovis", "Concord", "Corona", "Costa Mesa", "Daly City", "Downey", "El Cajon", "Elk Grove", "Escondido", "Fairfield", "Fontana", "Fremont", "Fresno", "Fullerton", "Garden Grove", "Glendale", "Hayward", "Hemet", "Huntington Beach", "Indio", "Irvine", "Lancaster", "Long Beach", "Los Angeles", "Merced", "Mission Viejo", "Modesto", "Moreno Valley", "Murrieta", "Oakland", "Oceanside", "Ontario", "Orange", "Oxnard", "Palmdale", "Pasadena", "Pomona", "Rancho Cucamonga", "Rialto", "Richmond", "Riverside", "Roseville", "Sacramento", "Salinas", "San Bernardino", "San Diego", "San Francisco", "San Jose", "San Mateo", "Santa Ana", "Santa Barbara", "Santa Clara", "Santa Clarita", "Santa Cruz", "Santa Maria", "Santa Rosa", "Simi Valley", "South Gate", "Stockton", "Sunnyvale", "Temecula", "Thousand Oaks", "Torrance", "Vallejo", "Ventura", "Victorville", "Visalia", "West Covina", "Yuba City"]');
+insert into public.scraper_us_state_catalog (state_code, state_name, cities) values ('CO', 'Colorado', '["Arvada", "Aurora", "Boulder", "Centennial", "Colorado Springs", "Denver", "Fort Collins", "Grand Junction", "Greeley", "Lakewood", "Longmont", "Pueblo", "Thornton"]');
+insert into public.scraper_us_state_catalog (state_code, state_name, cities) values ('CT', 'Connecticut', '["Bridgeport", "Danbury", "Hartford", "New Haven", "Norwalk", "Norwich", "Stamford", "Waterbury"]');
+insert into public.scraper_us_state_catalog (state_code, state_name, cities) values ('DC', 'District of Columbia', '["Washington"]');
+insert into public.scraper_us_state_catalog (state_code, state_name, cities) values ('DE', 'Delaware', '["Dover"]');
+insert into public.scraper_us_state_catalog (state_code, state_name, cities) values ('FL', 'Florida', '["Bonita Springs", "Cape Coral", "Coral Springs", "Deltona", "Fort Lauderdale", "Gainesville", "Hialeah", "Hollywood", "Jacksonville", "Kissimmee", "Lakeland", "Leesburg", "Lehigh Acres", "Miami", "Miramar", "Ocala", "Orlando", "Palm Bay", "Panama City", "Pembroke Pines", "Pensacola", "Port St. Lucie", "Spring Hill", "St. Petersburg", "Tallahassee", "Tampa", "West Palm Beach", "Winter Haven"]');
+insert into public.scraper_us_state_catalog (state_code, state_name, cities) values ('GA', 'Georgia', '["Athens", "Atlanta", "Augusta", "Columbus", "Gainesville", "Macon", "Savannah", "Warner Robins"]');
+insert into public.scraper_us_state_catalog (state_code, state_name, cities) values ('HI', 'Hawaii', '["Honolulu", "Kailua"]');
+insert into public.scraper_us_state_catalog (state_code, state_name, cities) values ('IA', 'Iowa', '["Cedar Rapids", "Davenport", "Des Moines", "Iowa City", "Sioux City"]');
+insert into public.scraper_us_state_catalog (state_code, state_name, cities) values ('ID', 'Idaho', '["Boise", "Coeur d''Alene", "Idaho Falls", "Meridian", "Nampa", "Pocatello"]');
+insert into public.scraper_us_state_catalog (state_code, state_name, cities) values ('IL', 'Illinois', '["Aurora", "Bloomington", "Champaign", "Chicago", "Elgin", "Joliet", "Naperville", "Peoria", "Rockford", "Round Lake Beach", "Springfield", "Waukegan"]');
+insert into public.scraper_us_state_catalog (state_code, state_name, cities) values ('IN', 'Indiana', '["Evansville", "Fort Wayne", "Indianapolis", "Lafayette", "South Bend"]');
+insert into public.scraper_us_state_catalog (state_code, state_name, cities) values ('KS', 'Kansas', '["Kansas City", "Olathe", "Overland Park", "Topeka", "Wichita"]');
+insert into public.scraper_us_state_catalog (state_code, state_name, cities) values ('KY', 'Kentucky', '["Lexington", "Louisville"]');
+insert into public.scraper_us_state_catalog (state_code, state_name, cities) values ('LA', 'Louisiana', '["Baton Rouge", "Lafayette", "Metairie", "Monroe", "New Orleans", "Shreveport"]');
+insert into public.scraper_us_state_catalog (state_code, state_name, cities) values ('MA', 'Massachusetts', '["Boston", "Cambridge", "Lowell", "New Bedford", "Quincy", "Springfield", "Worcester"]');
+insert into public.scraper_us_state_catalog (state_code, state_name, cities) values ('MD', 'Maryland', '["Baltimore", "Frederick", "Gaithersburg", "Hagerstown", "Rockville", "Waldorf"]');
+insert into public.scraper_us_state_catalog (state_code, state_name, cities) values ('ME', 'Maine', '["Portland"]');
+insert into public.scraper_us_state_catalog (state_code, state_name, cities) values ('MI', 'Michigan', '["Ann Arbor", "Detroit", "Flint", "Grand Rapids", "Kalamazoo", "Lansing", "Livonia", "Muskegon", "South Lyon", "Sterling Heights", "Warren"]');
+insert into public.scraper_us_state_catalog (state_code, state_name, cities) values ('MN', 'Minnesota', '["Minneapolis", "Rochester", "St. Paul"]');
+insert into public.scraper_us_state_catalog (state_code, state_name, cities) values ('MO', 'Missouri', '["Columbia", "Independence", "Kansas City", "Springfield", "St. Louis"]');
+insert into public.scraper_us_state_catalog (state_code, state_name, cities) values ('MS', 'Mississippi', '["Gulfport", "Jackson"]');
+insert into public.scraper_us_state_catalog (state_code, state_name, cities) values ('MT', 'Montana', '["Billings"]');
+insert into public.scraper_us_state_catalog (state_code, state_name, cities) values ('NC', 'North Carolina', '["Asheville", "Burlington", "Cary", "Charlotte", "Concord", "Durham", "Fayetteville", "Gastonia", "Greensboro", "Greenville", "High Point", "Raleigh", "Wilmington", "Winston-Salem"]');
+insert into public.scraper_us_state_catalog (state_code, state_name, cities) values ('ND', 'North Dakota', '["Fargo"]');
+insert into public.scraper_us_state_catalog (state_code, state_name, cities) values ('NE', 'Nebraska', '["Lincoln", "Omaha"]');
+insert into public.scraper_us_state_catalog (state_code, state_name, cities) values ('NH', 'New Hampshire', '["Manchester", "Nashua"]');
+insert into public.scraper_us_state_catalog (state_code, state_name, cities) values ('NJ', 'New Jersey', '["Elizabeth", "Jersey City", "Newark", "Paterson", "Trenton"]');
+insert into public.scraper_us_state_catalog (state_code, state_name, cities) values ('NM', 'New Mexico', '["Albuquerque", "Las Cruces"]');
+insert into public.scraper_us_state_catalog (state_code, state_name, cities) values ('NV', 'Nevada', '["Enterprise", "Henderson", "Las Vegas", "North Las Vegas", "Paradise", "Reno", "Spring Valley", "Sunrise Manor"]');
+insert into public.scraper_us_state_catalog (state_code, state_name, cities) values ('NY', 'New York', '["Albany", "Binghamton", "Bronx", "Brooklyn", "Buffalo", "Manhattan", "New York", "Poughkeepsie", "Queens", "Rochester", "Staten Island", "Syracuse", "Yonkers"]');
+insert into public.scraper_us_state_catalog (state_code, state_name, cities) values ('OH', 'Ohio', '["Akron", "Canton", "Cincinnati", "Cleveland", "Columbus", "Dayton", "Lorain", "Toledo", "Youngstown"]');
+insert into public.scraper_us_state_catalog (state_code, state_name, cities) values ('OK', 'Oklahoma', '["Norman", "Oklahoma City", "Tulsa"]');
+insert into public.scraper_us_state_catalog (state_code, state_name, cities) values ('OR', 'Oregon', '["Eugene", "Medford", "Portland", "Salem"]');
+insert into public.scraper_us_state_catalog (state_code, state_name, cities) values ('PA', 'Pennsylvania', '["Allentown", "Erie", "Harrisburg", "Lancaster", "Philadelphia", "Pittsburgh", "Reading", "Scranton", "York"]');
+insert into public.scraper_us_state_catalog (state_code, state_name, cities) values ('PR', 'Puerto Rico', '["Aguadilla", "Arecibo", "Bayamón", "Carolina", "Ponce", "San Juan"]');
+insert into public.scraper_us_state_catalog (state_code, state_name, cities) values ('RI', 'Rhode Island', '["Providence"]');
+insert into public.scraper_us_state_catalog (state_code, state_name, cities) values ('SC', 'South Carolina', '["Charleston", "Columbia", "Greenville", "Mauldin", "Myrtle Beach", "Rock Hill", "Spartanburg"]');
+insert into public.scraper_us_state_catalog (state_code, state_name, cities) values ('SD', 'South Dakota', '["Sioux Falls"]');
+insert into public.scraper_us_state_catalog (state_code, state_name, cities) values ('TN', 'Tennessee', '["Chattanooga", "Clarksville", "Johnson City", "Knoxville", "Memphis", "Murfreesboro", "Nashville"]');
+insert into public.scraper_us_state_catalog (state_code, state_name, cities) values ('TX', 'Texas', '["Abilene", "Amarillo", "Arlington", "Austin", "Beaumont", "Brownsville", "Carrollton", "College Station", "Corpus Christi", "Dallas", "Denton", "El Paso", "Fort Worth", "Frisco", "Galveston", "Garland", "Grand Prairie", "Houston", "Irving", "Killeen", "Laredo", "Lewisville", "Lubbock", "McAllen", "McKinney", "Mesquite", "Midland", "Mission", "Pasadena", "Pearland", "Plano", "Richardson", "Round Rock", "San Antonio", "The Woodlands", "Tyler", "Waco"]');
+insert into public.scraper_us_state_catalog (state_code, state_name, cities) values ('UT', 'Utah', '["Logan", "Ogden", "Provo", "Salt Lake City", "St. George", "West Valley City"]');
+insert into public.scraper_us_state_catalog (state_code, state_name, cities) values ('VA', 'Virginia', '["Alexandria", "Arlington", "Chesapeake", "Fredericksburg", "Hampton", "Lynchburg", "Newport News", "Norfolk", "Richmond", "Roanoke", "Virginia Beach"]');
+insert into public.scraper_us_state_catalog (state_code, state_name, cities) values ('VT', 'Vermont', '["Burlington"]');
+insert into public.scraper_us_state_catalog (state_code, state_name, cities) values ('WA', 'Washington', '["Bellevue", "Bellingham", "Bremerton", "Everett", "Kennewick", "Kent", "Marysville", "Olympia", "Seattle", "Spokane", "Tacoma", "Vancouver", "Yakima"]');
+insert into public.scraper_us_state_catalog (state_code, state_name, cities) values ('WI', 'Wisconsin', '["Appleton", "Green Bay", "Kenosha", "Madison", "Milwaukee", "Racine"]');
+insert into public.scraper_us_state_catalog (state_code, state_name, cities) values ('WV', 'West Virginia', '["Charleston", "Huntington"]');
+insert into public.scraper_us_state_catalog (state_code, state_name, cities) values ('WY', 'Wyoming', '[]');

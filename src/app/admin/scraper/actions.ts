@@ -11,6 +11,13 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin'
 
 function parseTextareaList(value: string): string[] {
   return value
+    .split(/\r?\n/g)
+    .map((v) => v.trim())
+    .filter(Boolean)
+}
+
+function parseDelimitedList(value: string): string[] {
+  return value
     .split(/[\n,]/g)
     .map((v) => v.trim())
     .filter(Boolean)
@@ -39,7 +46,7 @@ export async function updateScraperConfigAction(formData: FormData) {
     proxyHealthcheckMinHealthy: Number.parseInt(String(formData.get('proxyHealthcheckMinHealthy') || ''), 10),
     startUrls: parseTextareaList(String(formData.get('startUrls') || '')),
     disableWebhooks: formData.get('disableWebhooks') === 'on',
-    mapsKeywords: parseTextareaList(String(formData.get('mapsKeywords') || '')),
+    mapsKeywords: parseDelimitedList(String(formData.get('mapsKeywords') || '')),
     targetLocations: parseTextareaList(String(formData.get('targetLocations') || '')),
     cityPool: parseTextareaList(String(formData.get('cityPool') || '')),
     autoModeEnabled: formData.get('autoModeEnabled') === 'on',

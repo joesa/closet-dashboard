@@ -21,6 +21,12 @@ type RunStatusPayload = {
   payload?: Record<string, unknown>
 }
 
+function asObject(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {}
+}
+
 function assertControlPlaneToken(req: Request): NextResponse | null {
   const configured = process.env.SCRAPER_CONTROL_PLANE_TOKEN || ''
   if (!configured) {
@@ -70,6 +76,54 @@ export async function POST(req: Request) {
   }
 
   if (phase === 'completed') {
+    if (runId) {
+      const leads = Array.isArray(payload.leads) ? payload.leads : []
+      const stats = asObject(payload.stats)
+      const artifacts = asObject(payload.artifacts)
+      const webhooks = Array.isArray(payload.webhooks) ? payload.webhooks : []
+      const targetLocations = toStringArray(payload.targetLocations)
+      const selectedCities = toStringArray(payload.selectedCities)
+
+      const { error: runResultError } = await admin.from('scraper_run_results').upsert(
+        {
+          run_id: runId,
+          phase,
+          lead_count: leads.length,
+          stats,
+          leads,
+          webhooks,
+          artifacts,
+          target_locations: targetLocations,
+          selected_cities: selectedCities,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'run_id' }
+      )
+      if (runResultError) {
+        return NextResponse.json({ error: runResultError.message }, { status: 500 })
+      }
+
+      if (leads.length > 0) {
+        const leadsToInsert = leads.map((lead: any) => ({
+          run_id: runId,
+          business_name: lead.businessName,
+          email: lead.enrichment?.decisionMakerEmail || lead.enrichment?.primaryEmail,
+          phone: lead.phoneNumber,
+          website: lead.websiteUrl,
+          address: lead.address,
+          pipeline: lead.enrichment?.pipeline,
+          outreach_rank: lead.enrichment?.outreachRank,
+          source: 'scraper',
+        }))
+
+        // Insert leads without conflicting since run_id+email+phone duplicates might exist, but we just want to track them.
+        const { error: insertLeadsError } = await admin.from('leads').insert(leadsToInsert)
+        if (insertLeadsError) {
+          console.error("Failed to insert leads into relation", insertLeadsError)
+        }
+      }
+    }
+
     const cities = [
       ...toStringArray(payload.targetLocations),
       ...toStringArray(payload.selectedCities),

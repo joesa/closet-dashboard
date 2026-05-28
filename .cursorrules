@@ -1,0 +1,8 @@
+# Post-Task Deployment Instructions
+
+Whenever you successfully complete a task and finish writing the walkthrough artifact, you MUST automatically perform the following steps to deploy the code:
+
+1. **Verify Build**: Run `npm run build` or `npm run typecheck` to ensure there are no compilation or TypeScript errors.
+2. **Commit Changes**: Use `git add .` and `git commit -m "[Descriptive commit message]"` to save the changes.
+3. **Deploy**: Use `git push origin main` (or the respective branch) to push the code. This will automatically trigger the Vercel deployment pipeline.
+4. **Notify**: Inform the user that the code has been successfully pushed and is deploying.

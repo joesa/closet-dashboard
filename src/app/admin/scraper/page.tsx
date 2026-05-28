@@ -2,6 +2,8 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { listToTextarea, normalizeScraperControlConfig } from '@/lib/scraper-control'
 
 import AutoRefresh from './AutoRefresh'
+import ScraperGeoHelper from './ScraperGeoHelper'
+import ScraperInsightsPanels from './ScraperInsightsPanels'
 import { triggerScraperRunAction, updateScraperConfigAction } from './actions'
 
 export const dynamic = 'force-dynamic'
@@ -42,18 +44,25 @@ type LatestRunStatus = {
   createdAt: string
 }
 
-function payloadText(payload: Record<string, unknown> | null, key: string): string {
-  if (!payload) return '—'
-  const value = payload[key]
-  if (typeof value === 'string') return value.trim() || '—'
-  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
-  return '—'
+type RunResultRow = {
+  run_id: string
+  phase: string
+  lead_count: number
+  selected_cities: string[] | null
+  target_locations: string[] | null
+  created_at: string
+}
+
+type StateCatalogRow = {
+  state_code: string
+  state_name: string
+  cities: string[] | null
 }
 
 export default async function AdminScraperConfigPage() {
   const admin = getSupabaseAdmin()
 
-  const [{ data: configRow }, { data: historyRows }, { data: runRows }, { data: cityRows }, { data: statRows }] = await Promise.all([
+  const [{ data: configRow }, { data: historyRows }, { data: runRows }, { data: cityRows }, { data: statRows }, { data: resultRows }, { data: stateRows }] = await Promise.all([
     admin
       .from('scraper_config')
       .select('settings, updated_at, updated_by_email')
@@ -80,6 +89,15 @@ export default async function AdminScraperConfigPage() {
       .not('run_id', 'is', null)
       .order('created_at', { ascending: false })
       .limit(500),
+    admin
+      .from('scraper_run_results')
+      .select('run_id, phase, lead_count, selected_cities, target_locations, created_at')
+      .order('created_at', { ascending: false })
+      .limit(20),
+    admin
+      .from('scraper_us_state_catalog')
+      .select('state_code, state_name, cities')
+      .order('state_name', { ascending: true }),
   ])
 
   const cfg = normalizeScraperControlConfig(configRow?.settings ?? {})
@@ -90,6 +108,12 @@ export default async function AdminScraperConfigPage() {
   const runEvents = (runRows ?? []) as RunEventRow[]
   const cityLedger = (cityRows ?? []) as CityLedgerRow[]
   const statsEvents = (statRows ?? []) as Array<Pick<RunEventRow, 'run_id' | 'phase' | 'created_at'>>
+  const runResults = (resultRows ?? []) as RunResultRow[]
+  const stateCatalog = ((stateRows ?? []) as StateCatalogRow[]).map((row) => ({
+    state_code: row.state_code,
+    state_name: row.state_name,
+    cities: Array.isArray(row.cities) ? row.cities.map((v) => String(v || '').trim()).filter(Boolean) : [],
+  }))
 
   const latestByRun = new Map<string, { phase: string; created_at: string }>()
   for (const event of statsEvents) {
@@ -127,8 +151,8 @@ export default async function AdminScraperConfigPage() {
   const mostRecentEventAt = runEvents[0]?.created_at ? new Date(runEvents[0].created_at).toLocaleTimeString() : '—'
 
   return (
-    <div className="space-y-8">
-      <header>
+    <div className="space-y-6">
+      <header className="rounded-xl border border-sky-100 bg-gradient-to-r from-white via-sky-50 to-cyan-50 p-5 shadow-sm">
         <h1 className="text-2xl font-semibold text-gray-900">Scraper Control Plane</h1>
         <p className="mt-1 text-sm text-gray-500">
           Manage runtime scraper settings used by the secure config endpoint consumed at startup.
@@ -140,6 +164,26 @@ export default async function AdminScraperConfigPage() {
           <AutoRefresh intervalMs={5000} />
         </div>
       </header>
+
+      <section className="flex flex-wrap items-center gap-2 rounded-xl border border-gray-200 bg-white p-3 shadow-sm">
+        <a href="#scraper-config" className="rounded-full border border-gray-300 px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50">
+          Config
+        </a>
+        <a href="#scraper-trigger" className="rounded-full border border-gray-300 px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50">
+          Trigger
+        </a>
+        <a href="#scraper-events" className="rounded-full border border-gray-300 px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50">
+          Events
+        </a>
+        <a href="#scraper-results" className="rounded-full border border-gray-300 px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50">
+          Run Results
+        </a>
+        <a href="#scraper-cities" className="rounded-full border border-gray-300 px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50">
+          City Ledger
+        </a>
+      </section>
+
+      <ScraperGeoHelper states={stateCatalog} defaultKeywords={cfg.mapsKeywords} />
 
       <section className="grid gap-4 sm:grid-cols-3">
         <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4">
@@ -177,7 +221,7 @@ export default async function AdminScraperConfigPage() {
         )}
       </section>
 
-      <form action={updateScraperConfigAction} className="scraper-control-form space-y-4 rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+      <form id="scraper-config" action={updateScraperConfigAction} className="scraper-control-form space-y-4 rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
         <div className="grid gap-4 md:grid-cols-2">
           <label className="block text-sm md:col-span-2">
             <span className="font-medium text-gray-800">Proxy Gateway URL</span>
@@ -412,7 +456,7 @@ export default async function AdminScraperConfigPage() {
         </div>
       </form>
 
-      <form action={triggerScraperRunAction} className="scraper-control-form rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+      <form id="scraper-trigger" action={triggerScraperRunAction} className="scraper-control-form rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
         <div className="flex flex-wrap items-center gap-3">
           <input type="hidden" name="mode" value={cfg.autoModeEnabled ? 'auto' : 'manual'} />
           <button
@@ -428,86 +472,12 @@ export default async function AdminScraperConfigPage() {
         </div>
       </form>
 
-      <section className="grid gap-6 lg:grid-cols-2">
-        <div className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
-          <h2 className="text-sm font-semibold text-gray-900">Recent Config Changes</h2>
-          <ul className="mt-3 divide-y divide-gray-100 text-sm">
-            {history.length === 0 ? (
-              <li className="py-2 text-gray-500">No changes yet.</li>
-            ) : (
-              history.map((row) => (
-                <li key={row.id} className="py-2">
-                  <div className="text-gray-800">{row.changed_by_email ?? '—'}</div>
-                  <div className="text-xs text-gray-500">{new Date(row.created_at).toLocaleString()}</div>
-                  <div className="text-xs text-gray-600">{row.change_note || '—'}</div>
-                </li>
-              ))
-            )}
-          </ul>
-        </div>
-
-        <div className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
-          <h2 className="text-sm font-semibold text-gray-900">Recent Scraper Run Events</h2>
-          <ul className="mt-3 divide-y divide-gray-100 text-sm">
-            {runEvents.length === 0 ? (
-              <li className="py-2 text-gray-500">No run events yet.</li>
-            ) : (
-              runEvents.map((row) => (
-                <li key={row.id} className="py-2">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-mono text-xs text-gray-800">{row.phase}</span>
-                    {row.phase === 'trigger_requested' ? (
-                      <>
-                        <span className="rounded border border-blue-200 bg-blue-50 px-2 py-0.5 font-mono text-[11px] text-blue-700">
-                          via: {payloadText(row.payload, 'dispatcher')}
-                        </span>
-                        <span className="rounded border border-slate-200 bg-slate-50 px-2 py-0.5 font-mono text-[11px] text-slate-700">
-                          dispatch: {payloadText(row.payload, 'dispatch_status')}
-                        </span>
-                      </>
-                    ) : null}
-                    {row.phase === 'failed' ? (
-                      <>
-                        <span className="rounded border border-red-200 bg-red-50 px-2 py-0.5 font-mono text-[11px] text-red-700">
-                          class: {payloadText(row.payload, 'errorClass')}
-                        </span>
-                        <span className="rounded border border-amber-200 bg-amber-50 px-2 py-0.5 font-mono text-[11px] text-amber-700">
-                          code: {payloadText(row.payload, 'errorCode')}
-                        </span>
-                      </>
-                    ) : null}
-                  </div>
-                  <div className="text-xs text-gray-600">run_id: {row.run_id || '—'}</div>
-                  {row.phase === 'trigger_requested' ? (
-                    <>
-                      <div className="text-xs text-gray-600">trigger_request_id: {payloadText(row.payload, 'trigger_request_id')}</div>
-                      <div className="text-xs text-gray-600">dispatch_error: {payloadText(row.payload, 'dispatch_error')}</div>
-                    </>
-                  ) : null}
-                  <div className="text-xs text-gray-500">{new Date(row.created_at).toLocaleString()}</div>
-                </li>
-              ))
-            )}
-          </ul>
-        </div>
-
-        <div className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm lg:col-span-2">
-          <h2 className="text-sm font-semibold text-gray-900">Cities Already Scraped (Dedupe Ledger)</h2>
-          <ul className="mt-3 divide-y divide-gray-100 text-sm">
-            {cityLedger.length === 0 ? (
-              <li className="py-2 text-gray-500">No cities tracked yet.</li>
-            ) : (
-              cityLedger.map((row) => (
-                <li key={row.city_key} className="py-2">
-                  <div className="font-medium text-gray-800">{row.city_label}</div>
-                  <div className="text-xs text-gray-600">runs: {row.run_count} | last_run_id: {row.last_run_id || '—'}</div>
-                  <div className="text-xs text-gray-500">last scraped: {new Date(row.last_scraped_at).toLocaleString()}</div>
-                </li>
-              ))
-            )}
-          </ul>
-        </div>
-      </section>
+      <ScraperInsightsPanels
+        history={history}
+        runEvents={runEvents}
+        runResults={runResults}
+        cityLedger={cityLedger}
+      />
     </div>
   )
 }

@@ -78,6 +78,14 @@ export async function GET(req: Request) {
     targetLocations: selectedCities,
   }
 
+  const { data: suppressions } = await admin.from('global_suppressions').select('contact_value, type')
+  if (suppressions) {
+    const emails = suppressions.filter((s) => s.type === 'email').map((s) => s.contact_value)
+    const domains = suppressions.filter((s) => s.type === 'domain').map((s) => s.contact_value)
+    effectiveConfig.suppressionEmails = [...(effectiveConfig.suppressionEmails || []), ...emails]
+    effectiveConfig.suppressionDomains = [...(effectiveConfig.suppressionDomains || []), ...domains]
+  }
+
   return NextResponse.json(
     {
       ok: true,

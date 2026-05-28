@@ -21,6 +21,8 @@ export type ScraperControlConfig = {
   pipelineAWebhookUrl: string
   pipelineBWebhookUrl: string
   webhookAuthHeader: string
+  suppressionEmails: string[]
+  suppressionDomains: string[]
 }
 
 const DEFAULT_CONFIG: ScraperControlConfig = {
@@ -46,6 +48,8 @@ const DEFAULT_CONFIG: ScraperControlConfig = {
   pipelineAWebhookUrl: '',
   pipelineBWebhookUrl: '',
   webhookAuthHeader: 'Authorization',
+  suppressionEmails: [],
+  suppressionDomains: [],
 }
 
 function asStringArray(value: unknown): string[] {
@@ -57,7 +61,7 @@ function asStringArray(value: unknown): string[] {
   }
   if (typeof value === 'string') {
     return value
-      .split(/[\n,]/g)
+      .split(/\r?\n/g)
       .map((v) => v.trim())
       .filter(Boolean)
   }
@@ -115,6 +119,8 @@ export function normalizeScraperControlConfig(input: unknown): ScraperControlCon
     pipelineAWebhookUrl: asString(raw.pipelineAWebhookUrl, ''),
     pipelineBWebhookUrl: asString(raw.pipelineBWebhookUrl, ''),
     webhookAuthHeader: asString(raw.webhookAuthHeader, DEFAULT_CONFIG.webhookAuthHeader),
+    suppressionEmails: asStringArray(raw.suppressionEmails),
+    suppressionDomains: asStringArray(raw.suppressionDomains),
   }
 }
 
