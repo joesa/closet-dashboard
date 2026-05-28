@@ -658,6 +658,46 @@ function PricingSection() {
             </a>
           ))}
         </div>
+
+        <div className="mt-16 rounded-3xl border border-white/10 bg-white/[0.02] p-8 text-center backdrop-blur-sm sm:p-12">
+          <h4 className="mb-4 text-2xl font-bold tracking-tight text-white">
+            How the Agency Build Works
+          </h4>
+          <p className="mx-auto mb-8 max-w-2xl text-slate-400">
+            We build your premium digital storefront with zero risk. You pay <strong>no upfront fees</strong> until you are completely satisfied with the final design. Only then do you pay the one-time setup fee, and we hand over the keys.
+          </p>
+          
+          <div className="mx-auto max-w-3xl rounded-2xl border border-white/[0.06] bg-black/40 p-6 text-left text-sm sm:flex sm:items-center sm:justify-between sm:p-8">
+            <div className="mb-6 sm:mb-0 sm:flex-1">
+              <div className="mb-1 text-xs font-semibold uppercase tracking-widest text-emerald-400/90">
+                One-Time Setup
+              </div>
+              <div className="text-3xl font-bold text-white">$1,500</div>
+              <div className="mt-1 text-xs text-slate-500">Paid only when you love it.</div>
+            </div>
+            
+            <div className="hidden h-16 w-px bg-white/10 sm:block" />
+            
+            <div className="sm:flex-1 sm:pl-8">
+              <div className="mb-1 text-xs font-semibold uppercase tracking-widest text-emerald-400/90">
+                Ongoing Platform
+              </div>
+              <div className="flex items-baseline gap-1">
+                <span className="text-3xl font-bold text-white">$149</span>
+                <span className="text-sm text-slate-400">/mo</span>
+              </div>
+              <div className="mt-1 text-xs text-slate-500">
+                or $124/mo billed annually.
+              </div>
+            </div>
+          </div>
+          
+          <div className="mt-8 mx-auto max-w-2xl text-sm leading-relaxed text-slate-400">
+            <span className="font-semibold text-white">What is the monthly fee for?</span>
+            <br />
+            It includes your full <strong className="font-medium text-slate-300">ClosetQuote Pro subscription</strong> (a $99/mo value) natively integrated into the site. The remainder covers fully managed premium hosting, SSL certificates, security updates, and zero-maintenance peace of mind. We handle the tech so you can focus on building closets.
+          </div>
+        </div>
       </div>
     </section>
   )
