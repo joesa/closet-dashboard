@@ -74,15 +74,13 @@ export default function LandingPage() {
         <h1 className="text-5xl font-bold tracking-tighter leading-[1.05] sm:text-6xl md:text-7xl lg:text-[5.25rem]">
           Stop Losing High-End
           <br />
-          Leads to Boring
+          Leads to Ghost Town Websites
           <br />
-          <span className="text-slate-500">Contact Forms.</span>
+          <span className="text-slate-500">& Missing Portfolios.</span>
         </h1>
 
         <p className="mx-auto mt-8 max-w-xl text-lg leading-relaxed text-slate-400 sm:text-xl">
-          Embed an interactive pricing engine in 60 seconds. Lock&nbsp;in
-          prices, upsell finishes, and get qualified leads texted directly to
-          your phone.
+          Embed our interactive pricing calculator onto your existing site—or let us build you a premium, showcase storefront from scratch. Upsell finishes and get highly qualified design leads texted straight to your phone.
         </p>
 
         <div className="mt-10 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
@@ -96,10 +94,10 @@ export default function LandingPage() {
             </span>
           </Link>
           <a
-            href="#demo"
+            href="#portfolio"
             className="rounded-full border border-white/10 px-8 py-3.5 text-sm font-medium text-slate-400 transition hover:border-white/20 hover:text-white"
           >
-            See it live
+            See Premium Site Styles
           </a>
         </div>
       </section>
@@ -606,7 +604,7 @@ function PricingSection() {
       </div>
 
       {/* Demo Portfolio Showcase */}
-      <div className="mt-32 pt-16 border-t border-white/[0.06]">
+      <div id="portfolio" className="mt-32 pt-16 border-t border-white/[0.06]">
         <div className="mb-12 text-center">
           <h3 className="text-3xl font-bold tracking-tight text-white mb-4">
             Don&apos;t have a website? Choose your custom aesthetic.
