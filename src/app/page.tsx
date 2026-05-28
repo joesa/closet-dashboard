@@ -426,7 +426,7 @@ export default function LandingPage() {
 
 /* ─── Pricing section ─────────────────────────────────────────────── */
 
-const FEATURES = [
+const PRO_FEATURES = [
   'Interactive quote widget',
   'Unlimited lead capture via SMS & email',
   'Custom room & finish pricing',
@@ -434,13 +434,24 @@ const FEATURES = [
   'No limits on traffic or quotes',
 ]
 
+const AGENCY_FEATURES = [
+  'Everything in ClosetQuote Pro',
+  'Lightning-fast custom Next.js website',
+  'Premium interior architecture photography',
+  'Fully managed hosting & SSL (zero maintenance)',
+  'Mobile-first design optimized for homeowner conversions',
+]
+
 function PricingSection() {
   const [billing, setBilling] = useState<'monthly' | 'yearly'>('monthly')
   const monthlyPrice = 99
   const yearlyPrice = 990 // $82.50/mo billed annually — saves $198/yr
   const displayPrice = billing === 'monthly' ? monthlyPrice : Math.round(yearlyPrice / 12)
-  const subLabel =
-    billing === 'monthly' ? '/month' : '/month, billed yearly'
+  const subLabel = billing === 'monthly' ? '/month' : '/month, billed yearly'
+
+  const agencyMonthlyPrice = 149
+  const agencyYearlyPrice = 1490 // Saves $298/yr
+  const displayAgencyPrice = billing === 'monthly' ? agencyMonthlyPrice : Math.round(agencyYearlyPrice / 12)
 
   return (
     <section id="pricing" className="mx-auto max-w-5xl px-6 py-28">
@@ -494,49 +505,159 @@ function PricingSection() {
         </div>
       </div>
 
-      {/* Pricing card */}
-      <div className="relative mx-auto max-w-lg rounded-3xl border border-white/10 bg-white/[0.02] p-10 backdrop-blur-sm">
-        <div className="absolute right-6 top-6">
-          <span className="rounded-full border border-white/20 bg-white/10 px-3 py-1 text-[10px] font-medium uppercase tracking-widest text-white">
-            30-Day Free Trial
-          </span>
+      {/* Pricing cards */}
+      <div className="mx-auto grid max-w-5xl grid-cols-1 gap-8 lg:grid-cols-2">
+        {/* Widget Only Card */}
+        <div className="relative rounded-3xl border border-white/10 bg-white/[0.02] p-10 backdrop-blur-sm transition-all hover:bg-white/[0.03]">
+          <div className="absolute right-6 top-6">
+            <span className="rounded-full border border-white/20 bg-white/10 px-3 py-1 text-[10px] font-medium uppercase tracking-widest text-white">
+              30-Day Free Trial
+            </span>
+          </div>
+
+          <p className="mb-1 text-sm font-medium text-slate-400">
+            ClosetQuote Pro
+          </p>
+          <div className="mb-2 flex items-baseline gap-2">
+            <span className="text-6xl font-bold tracking-tighter text-white">
+              ${displayPrice}
+            </span>
+            <span className="text-sm text-slate-400">{subLabel}</span>
+          </div>
+          <p className="mb-8 text-xs text-slate-500 min-h-[32px]">
+            Add instant quoting to your existing website.
+            <br />
+            <span className="opacity-80">
+              {billing === 'yearly'
+                ? `$${yearlyPrice} billed once a year. Cancel anytime.`
+                : 'Billed monthly. Cancel anytime.'}
+            </span>
+          </p>
+
+          <ul className="mb-10 space-y-3">
+            {PRO_FEATURES.map((feature) => (
+              <li key={feature} className="flex items-center gap-3 text-sm text-slate-300">
+                <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.04]">
+                  <Check className="h-3 w-3 text-white" strokeWidth={3} />
+                </span>
+                {feature}
+              </li>
+            ))}
+          </ul>
+
+          <Link
+            href="/signup"
+            className="flex w-full items-center justify-center rounded-lg bg-white px-6 py-4 text-base font-medium text-black transition-colors hover:bg-gray-200 active:scale-[0.99]"
+          >
+            Start your free 30-day trial
+          </Link>
+          <p className="mt-4 text-center text-xs text-slate-500">
+            No credit card required.
+          </p>
         </div>
 
-        <p className="mb-1 text-sm font-medium text-slate-400">
-          ClosetQuote Pro
-        </p>
-        <div className="mb-2 flex items-baseline gap-2">
-          <span className="text-6xl font-bold tracking-tighter text-white">
-            ${displayPrice}
-          </span>
-          <span className="text-sm text-slate-400">{subLabel}</span>
-        </div>
-        <p className="mb-8 text-xs text-slate-500">
-          {billing === 'yearly'
-            ? `$${yearlyPrice} billed once a year. Cancel anytime.`
-            : 'Billed monthly. Cancel anytime.'}
-        </p>
+        {/* Agency Build Card */}
+        <div className="relative overflow-hidden rounded-3xl border border-emerald-500/30 bg-emerald-950/10 p-10 backdrop-blur-sm shadow-[0_0_40px_-15px_rgba(16,185,129,0.15)] transition-all hover:bg-emerald-950/20">
+          <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/5 via-transparent to-transparent pointer-events-none" />
+          <div className="absolute right-6 top-6">
+            <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-[10px] font-medium uppercase tracking-widest text-emerald-300">
+              Most Popular
+            </span>
+          </div>
 
-        <ul className="mb-10 space-y-3">
-          {FEATURES.map((feature) => (
-            <li key={feature} className="flex items-center gap-3 text-sm text-slate-300">
-              <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.04]">
-                <Check className="h-3 w-3 text-white" strokeWidth={3} />
-              </span>
-              {feature}
-            </li>
+          <p className="mb-1 text-sm font-medium text-emerald-400/90">
+            Complete Agency Build
+          </p>
+          <div className="mb-2 flex items-baseline gap-2">
+            <span className="text-6xl font-bold tracking-tighter text-white">
+              ${displayAgencyPrice}
+            </span>
+            <span className="text-sm text-slate-400">{subLabel}</span>
+          </div>
+          <p className="mb-8 text-xs text-slate-500 min-h-[32px]">
+            A premium, bespoke website with the lead engine built natively inside.
+            <br />
+            <span className="opacity-80">
+              $1,500 one-time setup fee. {billing === 'yearly' ? `$${agencyYearlyPrice} billed annually.` : 'Billed monthly.'}
+            </span>
+          </p>
+
+          <ul className="mb-10 space-y-3">
+            {AGENCY_FEATURES.map((feature) => (
+              <li key={feature} className="flex items-center gap-3 text-sm text-slate-300">
+                <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full border border-emerald-500/20 bg-emerald-500/10">
+                  <Check className="h-3 w-3 text-emerald-400" strokeWidth={3} />
+                </span>
+                {feature}
+              </li>
+            ))}
+          </ul>
+
+          <a
+            href="mailto:joe@closetquotes.com?subject=Inquiry: Complete Agency Build"
+            className="flex w-full relative z-10 items-center justify-center rounded-lg bg-emerald-500 px-6 py-4 text-base font-medium text-black shadow-[0_0_20px_-5px_rgba(16,185,129,0.4)] transition-all hover:bg-emerald-400 active:scale-[0.99]"
+          >
+            Book a Discovery Call
+          </a>
+          <p className="mt-4 text-center text-xs text-emerald-500/60">
+            Limited capacity per month.
+          </p>
+        </div>
+      </div>
+
+      {/* Demo Portfolio Showcase */}
+      <div className="mt-32 pt-16 border-t border-white/[0.06]">
+        <div className="mb-12 text-center">
+          <h3 className="text-3xl font-bold tracking-tight text-white mb-4">
+            Don&apos;t have a website? Choose your custom aesthetic.
+          </h3>
+          <p className="text-slate-400 max-w-2xl mx-auto">
+            Test drive a live, fully functional digital storefront right now. These aren&apos;t just templates—they are high-converting lead engines wired to your pricing.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+          {[
+            {
+              name: 'Lumina',
+              style: 'Minimalist / Luxury',
+              image: '/lumina_mockup.png',
+              link: '#',
+            },
+            {
+              name: 'Ironclad',
+              style: 'Brutalist / Garage',
+              image: '/ironclad_mockup.png',
+              link: '#',
+            },
+            {
+              name: 'Hearth & Home',
+              style: 'Suburban / Traditional',
+              image: '/hearth_home_mockup.png',
+              link: '#',
+            },
+          ].map((demo) => (
+            <a key={demo.name} href={demo.link} className="group block">
+              <div className="relative aspect-[4/3] w-full overflow-hidden rounded-2xl border border-white/10 bg-white/[0.02]">
+                {/* Image placeholder (since actual next/image requires width/height mapping) */}
+                <img 
+                  src={demo.image} 
+                  alt={`${demo.name} aesthetic`}
+                  className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+                />
+                <div className="absolute inset-0 bg-black/40 opacity-0 transition-opacity duration-300 group-hover:opacity-100 flex items-center justify-center">
+                  <span className="rounded-full bg-white/10 backdrop-blur-md border border-white/20 px-6 py-2 text-sm font-medium text-white shadow-xl">
+                    View Live Demo
+                  </span>
+                </div>
+              </div>
+              <div className="mt-4 flex items-center justify-between px-1">
+                <span className="font-semibold text-white">{demo.name}</span>
+                <span className="text-xs text-slate-500 uppercase tracking-widest">{demo.style}</span>
+              </div>
+            </a>
           ))}
-        </ul>
-
-        <Link
-          href="/signup"
-          className="flex w-full items-center justify-center rounded-lg bg-white px-6 py-4 text-base font-medium text-black transition-colors hover:bg-gray-200 active:scale-[0.99]"
-        >
-          Start your free 30-day trial
-        </Link>
-        <p className="mt-4 text-center text-xs text-slate-500">
-          No credit card required.
-        </p>
+        </div>
       </div>
     </section>
   )
