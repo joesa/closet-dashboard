@@ -4,6 +4,7 @@ import { listToTextarea, normalizeScraperControlConfig } from '@/lib/scraper-con
 import AutoRefresh from './AutoRefresh'
 import ScraperGeoHelper from './ScraperGeoHelper'
 import ScraperInsightsPanels from './ScraperInsightsPanels'
+import SubmitButton from './SubmitButton'
 import { triggerScraperRunAction, updateScraperConfigAction } from './actions'
 
 export const dynamic = 'force-dynamic'
@@ -394,12 +395,12 @@ export default async function AdminScraperConfigPage() {
         </div>
 
         <div className="flex items-center gap-3">
-          <button
-            type="submit"
+          <SubmitButton
+            idleText="Save Scraper Config"
+            pendingText="Saving..."
+            successText="Saved"
             className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800"
-          >
-            Save Scraper Config
-          </button>
+          />
           <span className="text-xs text-gray-500">
             Secrets stay in env vars when preferred: WEBHOOK_AUTH_TOKEN, SCRAPER_CONTROL_PLANE_TOKEN.
           </span>
@@ -409,12 +410,12 @@ export default async function AdminScraperConfigPage() {
       <form id="scraper-trigger" action={triggerScraperRunAction} className="scraper-control-form rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
         <div className="flex flex-wrap items-center gap-3">
           <input type="hidden" name="mode" value={cfg.autoModeEnabled ? 'auto' : 'manual'} />
-          <button
-            type="submit"
+          <SubmitButton
+            idleText="Trigger Scraper Run Now"
+            pendingText="Running..."
+            successText="Completed"
             className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500"
-          >
-            Trigger Scraper Run Now
-          </button>
+          />
           <p className="text-xs text-gray-600">
             Queues a manual trigger request. If SCRAPER_TRIGGER_WEBHOOK_URL is configured, dashboard dispatches to that
             webhook. If not configured, dashboard starts the local scraper process (testing mode).
