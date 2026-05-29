@@ -1,9 +1,4 @@
 export type ScraperControlConfig = {
-  proxyGatewayUrl: string
-  proxyUrls: string[]
-  proxyHealthcheckEnabled: boolean
-  proxyHealthcheckTimeoutMs: number
-  proxyHealthcheckMinHealthy: number
   startUrls: string[]
   disableWebhooks: boolean
   mapsKeywords: string[]
@@ -28,11 +23,6 @@ export type ScraperControlConfig = {
 }
 
 const DEFAULT_CONFIG: ScraperControlConfig = {
-  proxyGatewayUrl: '',
-  proxyUrls: [],
-  proxyHealthcheckEnabled: true,
-  proxyHealthcheckTimeoutMs: 2500,
-  proxyHealthcheckMinHealthy: 1,
   startUrls: [],
   disableWebhooks: true,
   mapsKeywords: ['custom closets', 'closet organizers', 'closet design'],
@@ -97,11 +87,6 @@ export function normalizeScraperControlConfig(input: unknown): ScraperControlCon
   const raw = (input && typeof input === 'object' ? input : {}) as Record<string, unknown>
 
   return {
-    proxyGatewayUrl: asString(raw.proxyGatewayUrl, ''),
-    proxyUrls: asStringArray(raw.proxyUrls),
-    proxyHealthcheckEnabled: asBool(raw.proxyHealthcheckEnabled, DEFAULT_CONFIG.proxyHealthcheckEnabled),
-    proxyHealthcheckTimeoutMs: asInt(raw.proxyHealthcheckTimeoutMs, DEFAULT_CONFIG.proxyHealthcheckTimeoutMs, 250, 20000),
-    proxyHealthcheckMinHealthy: asInt(raw.proxyHealthcheckMinHealthy, DEFAULT_CONFIG.proxyHealthcheckMinHealthy, 1, 1000),
     startUrls: asStringArray(raw.startUrls),
     disableWebhooks: asBool(raw.disableWebhooks, DEFAULT_CONFIG.disableWebhooks),
     mapsKeywords: asStringArray(raw.mapsKeywords).length

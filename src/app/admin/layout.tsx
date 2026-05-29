@@ -5,6 +5,8 @@ const NAV = [
   { href: '/admin',               label: 'Health' },
   { href: '/admin/contractors',   label: 'Contractors' },
   { href: '/admin/leads',         label: 'Leads' },
+  { href: '/admin/sites',         label: 'Platform Control Center' },
+  { href: '/admin/sandbox/onboarding', label: 'Sandbox Emulator' },
   { href: '/admin/scraper',       label: 'Scraper' },
   { href: '/admin/subscriptions', label: 'Subscriptions' },
   { href: '/admin/stripe-events', label: 'Stripe Events' },

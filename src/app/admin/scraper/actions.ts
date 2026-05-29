@@ -39,11 +39,7 @@ export async function updateScraperConfigAction(formData: FormData) {
   const me = await requireAdmin()
 
   const raw = {
-    proxyGatewayUrl: String(formData.get('proxyGatewayUrl') || '').trim(),
-    proxyUrls: parseTextareaList(String(formData.get('proxyUrls') || '')),
-    proxyHealthcheckEnabled: formData.get('proxyHealthcheckEnabled') === 'on',
-    proxyHealthcheckTimeoutMs: Number.parseInt(String(formData.get('proxyHealthcheckTimeoutMs') || ''), 10),
-    proxyHealthcheckMinHealthy: Number.parseInt(String(formData.get('proxyHealthcheckMinHealthy') || ''), 10),
+
     startUrls: parseTextareaList(String(formData.get('startUrls') || '')),
     disableWebhooks: formData.get('disableWebhooks') === 'on',
     mapsKeywords: parseDelimitedList(String(formData.get('mapsKeywords') || '')),

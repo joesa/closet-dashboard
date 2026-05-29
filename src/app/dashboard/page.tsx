@@ -118,6 +118,11 @@ export default function DashboardPage() {
         return
       }
 
+      if (session.user.user_metadata?.force_password_reset) {
+        router.replace('/force-password-reset')
+        return
+      }
+
       const uid = session.user.id
       setUserId(uid)
 

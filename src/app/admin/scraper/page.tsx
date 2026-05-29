@@ -223,29 +223,7 @@ export default async function AdminScraperConfigPage() {
 
       <form id="scraper-config" action={updateScraperConfigAction} className="scraper-control-form space-y-4 rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
         <div className="grid gap-4 md:grid-cols-2">
-          <label className="block text-sm md:col-span-2">
-            <span className="font-medium text-gray-800">Proxy Gateway URL</span>
-            <input
-              name="proxyGatewayUrl"
-              defaultValue={cfg.proxyGatewayUrl}
-              placeholder="http://user:pass@gateway.webshare.io:80"
-              className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-            />
-            <span className="mt-1 block text-xs text-gray-500">
-              If set, scraper uses this single stable gateway and ignores proxy URL list.
-            </span>
-          </label>
 
-          <label className="block text-sm md:col-span-2">
-            <span className="font-medium text-gray-800">Proxy URL List</span>
-            <textarea
-              name="proxyUrls"
-              defaultValue={listToTextarea(cfg.proxyUrls)}
-              rows={4}
-              placeholder="One proxy URL per line"
-              className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 font-mono text-xs"
-            />
-          </label>
 
           <label className="block text-sm">
             <span className="font-medium text-gray-800">Start URLs</span>
@@ -293,30 +271,7 @@ export default async function AdminScraperConfigPage() {
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <label className="block text-sm">
-            <span className="font-medium text-gray-800">Proxy Health Timeout (ms)</span>
-            <input
-              name="proxyHealthcheckTimeoutMs"
-              type="number"
-              min={250}
-              max={20000}
-              defaultValue={cfg.proxyHealthcheckTimeoutMs}
-              className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-            />
-          </label>
-
-          <label className="block text-sm">
-            <span className="font-medium text-gray-800">Min Healthy Proxies</span>
-            <input
-              name="proxyHealthcheckMinHealthy"
-              type="number"
-              min={1}
-              max={1000}
-              defaultValue={cfg.proxyHealthcheckMinHealthy}
-              className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-            />
-          </label>
-
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <label className="block text-sm">
             <span className="font-medium text-gray-800">Max Concurrency</span>
             <input
@@ -428,10 +383,6 @@ export default async function AdminScraperConfigPage() {
           <label className="inline-flex items-center gap-2">
             <input type="checkbox" name="autoAvoidDuplicates" defaultChecked={cfg.autoAvoidDuplicates} />
             Skip cities already scraped
-          </label>
-          <label className="inline-flex items-center gap-2">
-            <input type="checkbox" name="proxyHealthcheckEnabled" defaultChecked={cfg.proxyHealthcheckEnabled} />
-            Proxy health check at startup
           </label>
           <label className="inline-flex items-center gap-2">
             <input type="checkbox" name="disableWebhooks" defaultChecked={cfg.disableWebhooks} />
