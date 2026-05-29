@@ -219,7 +219,7 @@ export default function ScraperInsightsPanels({
             history.map((row) => (
               <li key={row.id} className="py-2">
                 <div className="text-gray-800">{row.changed_by_email ?? '—'}</div>
-                <div className="text-xs text-gray-500">{new Date(row.created_at).toLocaleString()}</div>
+                <div className="text-xs text-gray-500" suppressHydrationWarning>{new Date(row.created_at).toLocaleString()}</div>
                 <div className="text-xs text-gray-600">{row.change_note || '—'}</div>
               </li>
             ))
@@ -273,7 +273,7 @@ export default function ScraperInsightsPanels({
                     <div className="text-xs text-gray-600">dispatch_error: {payloadText(row.payload, 'dispatch_error')}</div>
                   </>
                 ) : null}
-                <div className="text-xs text-gray-500">{new Date(row.created_at).toLocaleString()}</div>
+                <div className="text-xs text-gray-500" suppressHydrationWarning>{new Date(row.created_at).toLocaleString()}</div>
               </li>
             ))
           )}
@@ -317,7 +317,7 @@ export default function ScraperInsightsPanels({
                       <td className="px-3 py-2 text-gray-700">{row.phase}</td>
                       <td className="px-3 py-2 text-gray-700">{row.lead_count}</td>
                       <td className="px-3 py-2 text-gray-700">{selectedCount}</td>
-                      <td className="px-3 py-2 text-gray-500">{new Date(row.created_at).toLocaleString()}</td>
+                      <td className="px-3 py-2 text-gray-500" suppressHydrationWarning>{new Date(row.created_at).toLocaleString()}</td>
                       <td className="px-3 py-2">
                         <div className="flex gap-2">
                           <a
@@ -361,7 +361,7 @@ export default function ScraperInsightsPanels({
                     <div className="mt-1 text-xs text-gray-600">
                       leads: {row.lead_count} | selected cities: {selectedCount}
                     </div>
-                    <div className="text-xs text-gray-500">saved: {new Date(row.created_at).toLocaleString()}</div>
+                    <div className="text-xs text-gray-500" suppressHydrationWarning>saved: {new Date(row.created_at).toLocaleString()}</div>
                     <div className="mt-2 flex flex-wrap gap-3 text-xs">
                       <a
                         href={`/admin/scraper/results/${encodeURIComponent(row.run_id)}?format=json`}
@@ -412,7 +412,7 @@ export default function ScraperInsightsPanels({
                     <td className="px-3 py-2 font-medium text-gray-800">{row.city_label}</td>
                     <td className="px-3 py-2 text-gray-700">{row.run_count}</td>
                     <td className="px-3 py-2 font-mono text-gray-700">{row.last_run_id || '—'}</td>
-                    <td className="px-3 py-2 text-gray-500">{new Date(row.last_scraped_at).toLocaleString()}</td>
+                    <td className="px-3 py-2 text-gray-500" suppressHydrationWarning>{new Date(row.last_scraped_at).toLocaleString()}</td>
                   </tr>
                 ))}
               </tbody>
@@ -427,7 +427,7 @@ export default function ScraperInsightsPanels({
                 <li key={row.city_key} className="py-2">
                   <div className="font-medium text-gray-800">{row.city_label}</div>
                   <div className="text-xs text-gray-600">runs: {row.run_count} | last_run_id: {row.last_run_id || '—'}</div>
-                  <div className="text-xs text-gray-500">last scraped: {new Date(row.last_scraped_at).toLocaleString()}</div>
+                  <div className="text-xs text-gray-500" suppressHydrationWarning>last scraped: {new Date(row.last_scraped_at).toLocaleString()}</div>
                 </li>
               ))
             )}

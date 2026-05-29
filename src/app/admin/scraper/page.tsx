@@ -157,7 +157,7 @@ export default async function AdminScraperConfigPage() {
         <p className="mt-1 text-sm text-gray-500">
           Manage runtime scraper settings used by the secure config endpoint consumed at startup.
         </p>
-        <p className="mt-2 text-xs text-gray-500">
+        <p className="mt-2 text-xs text-gray-500" suppressHydrationWarning>
           Last updated: {updatedAt} by {updatedBy}
         </p>
         <div className="mt-2">
@@ -197,7 +197,7 @@ export default async function AdminScraperConfigPage() {
         <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
           <div className="text-xs font-semibold uppercase tracking-wide text-blue-700">Running Now</div>
           <div className="mt-1 text-2xl font-semibold text-blue-900">{runStats.running}</div>
-          <div className="mt-1 text-xs text-blue-700">Last event: {mostRecentEventAt}</div>
+          <p className="mt-1 text-xs text-blue-700" suppressHydrationWarning>Most recent log ping: {mostRecentEventAt}</p>
         </div>
       </section>
 
