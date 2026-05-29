@@ -271,7 +271,6 @@ export default async function AdminScraperConfigPage() {
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <label className="block text-sm">
             <span className="font-medium text-gray-800">Max Concurrency</span>
             <input
