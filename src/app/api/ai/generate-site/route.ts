@@ -1,14 +1,12 @@
 import { NextResponse } from 'next/server'
 import * as cheerio from 'cheerio'
-import OpenAI from 'openai'
+import { GoogleGenerativeAI } from '@google/generative-ai'
 
 // Increase max duration for LLM inference (Vercel setting)
 export const maxDuration = 60
 export const runtime = 'nodejs'
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-})
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '')
 
 // Define the expected output structure for the LLM
 const JSON_SCHEMA = {
@@ -256,35 +254,33 @@ For example, if the sitemap is ["Home", "About Us", "Contact"], you must generat
 Make sure the content_blocks are engaging and robust.`;
     }
 
-    // Call OpenAI
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4o',
-      messages: [
-        {
-          role: 'system',
-          content: systemPrompt
-        },
-        {
-          role: 'user',
-          content: `Business Information:\n\n${scrapedText}`
-        }
-      ],
-      tools: [
-        {
-          type: 'function',
-          function: JSON_SCHEMA
-        }
-      ],
-      tool_choice: { type: 'function', function: { name: 'generate_site_config' } },
-      temperature: 0.7,
+    systemPrompt += `\n\nOUTPUT FORMAT:
+You MUST return ONLY valid JSON matching the following schema. Do not wrap in markdown blocks, just return the raw JSON object.
+
+${JSON.stringify(JSON_SCHEMA.parameters, null, 2)}`;
+
+    // Call Gemini
+    const model = genAI.getGenerativeModel({
+      model: 'gemini-2.5-flash',
+      generationConfig: {
+        responseMimeType: "application/json",
+        temperature: 0.7,
+      }
     })
 
-    const toolCall = completion.choices[0]?.message?.tool_calls?.[0]
-    if (!toolCall) {
-      throw new Error('OpenAI did not return the expected structured data.')
-    }
+    const prompt = `System: ${systemPrompt}
 
-    const aiData = JSON.parse((toolCall as any).function.arguments)
+User: Business Information:
+
+${scrapedText}`
+
+    const result_ai = await model.generateContent(prompt)
+    let aiData;
+    try {
+      aiData = JSON.parse(result_ai.response.text())
+    } catch (e) {
+      throw new Error('Gemini did not return valid JSON data.')
+    }
 
     return NextResponse.json({
       success: true,

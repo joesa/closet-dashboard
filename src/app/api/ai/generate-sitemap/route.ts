@@ -1,13 +1,11 @@
 import { NextResponse } from 'next/server'
 import * as cheerio from 'cheerio'
-import OpenAI from 'openai'
+import { GoogleGenerativeAI } from '@google/generative-ai'
 
 export const maxDuration = 60
 export const runtime = 'nodejs'
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-})
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '')
 
 function extractTextFromHtml(html: string): string {
   const $ = cheerio.load(html)
@@ -56,25 +54,24 @@ export async function POST(req: Request) {
       }
     }
 
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4o',
-      messages: [
-        {
-          role: 'system',
-          content: `You are an expert web strategist. Based on the business description provided, suggest a sitemap of exactly ${requestedPages} pages. 
-The first page MUST always be "Home". 
-Return a JSON object with a single property 'pages' which is an array of strings representing the page titles.`
-        },
-        {
-          role: 'user',
-          content: `Business Information:\n\n${scrapedText}`
-        }
-      ],
-      response_format: { type: "json_object" },
-      temperature: 0.5,
+    const model = genAI.getGenerativeModel({
+      model: 'gemini-2.5-flash',
+      generationConfig: {
+        responseMimeType: "application/json",
+        temperature: 0.5,
+      }
     })
 
-    const result = JSON.parse(completion.choices[0]?.message?.content || '{"pages": ["Home"]}')
+    const prompt = `System: You are an expert web strategist. Based on the business description provided, suggest a sitemap of exactly ${requestedPages} pages. 
+The first page MUST always be "Home". 
+Return a JSON object with a single property 'pages' which is an array of strings representing the page titles.
+
+User: Business Information:
+
+${scrapedText}`
+
+    const result_ai = await model.generateContent(prompt)
+    const result = JSON.parse(result_ai.response.text() || '{"pages": ["Home"]}')
 
     // Enforce constraints just in case
     let pages = Array.isArray(result.pages) ? result.pages : ["Home"]
