@@ -4,7 +4,8 @@ import { requireAdmin } from '@/lib/admin'
 const NAV = [
   { href: '/admin',               label: 'Health' },
   { href: '/admin/contractors',   label: 'Contractors' },
-  { href: '/admin/leads',         label: 'Leads' },
+  { href: '/admin/leads',         label: 'Widget leads' },
+  { href: '/admin/scraper-leads', label: 'Scraper leads' },
   { href: '/admin/sites',         label: 'Platform Control Center' },
   { href: '/admin/sandbox/onboarding', label: 'Sandbox Emulator' },
   { href: '/admin/scraper',       label: 'Scraper' },

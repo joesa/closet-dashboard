@@ -65,7 +65,7 @@ function applyPathTemplate(template: string, campaignId: string): string {
   return template.replace('{campaignId}', campaignId)
 }
 
-async function instantlyRequest(path: string, options?: InstantlyRequestOptions): Promise<any> {
+async function instantlyRequest(path: string, options?: InstantlyRequestOptions): Promise<unknown> {
   const cfg = getApiConfig()
   const method = options?.method || 'GET'
 
@@ -91,7 +91,7 @@ async function instantlyRequest(path: string, options?: InstantlyRequestOptions)
   return payload
 }
 
-function safeJson(text: string): any {
+function safeJson(text: string): unknown {
   try {
     return JSON.parse(text)
   } catch {
@@ -99,19 +99,21 @@ function safeJson(text: string): any {
   }
 }
 
-function asArray(value: any): any[] {
+function asArray(value: unknown): unknown[] {
   if (Array.isArray(value)) return value
-  if (Array.isArray(value?.items)) return value.items
-  if (Array.isArray(value?.data)) return value.data
-  if (Array.isArray(value?.campaigns)) return value.campaigns
+  const obj = value as Record<string, unknown> | null | undefined
+  if (Array.isArray(obj?.items)) return obj.items
+  if (Array.isArray(obj?.data)) return obj.data
+  if (Array.isArray(obj?.campaigns)) return obj.campaigns
   return []
 }
 
-function campaignIdFromAny(item: any): string | null {
-  return String(item?.id || item?._id || item?.campaign_id || '').trim() || null
+function campaignIdFromAny(item: unknown): string | null {
+  const obj = item as Record<string, unknown> | null | undefined
+  return String(obj?.id || obj?._id || obj?.campaign_id || '').trim() || null
 }
 
-export async function findCampaignByName(name: string): Promise<{ id: string; raw: any } | null> {
+export async function findCampaignByName(name: string): Promise<{ id: string; raw: unknown } | null> {
   const campaignsPath = process.env.INSTANTLY_CAMPAIGNS_PATH || '/campaigns'
   const searchParam = process.env.INSTANTLY_CAMPAIGN_SEARCH_QUERY_PARAM || 'search'
   const query = `${campaignsPath}?${encodeURIComponent(searchParam)}=${encodeURIComponent(name)}`
@@ -120,7 +122,8 @@ export async function findCampaignByName(name: string): Promise<{ id: string; ra
   const items = asArray(payload)
 
   const match = items.find((item) => {
-    const candidate = String(item?.name || item?.campaign_name || '').trim().toLowerCase()
+    const obj = item as Record<string, unknown> | null | undefined
+    const candidate = String(obj?.name || obj?.campaign_name || '').trim().toLowerCase()
     return candidate === name.trim().toLowerCase()
   })
   if (!match) return null
@@ -204,7 +207,7 @@ export async function upsertCampaignByName(blueprint: CampaignBlueprint): Promis
       method: 'POST',
       body: payload,
     })
-    const campaignId = campaignIdFromAny(created?.data || created)
+    const campaignId = campaignIdFromAny((created as { data?: unknown })?.data || created)
     if (!campaignId) throw new Error('Instantly create campaign succeeded but returned no campaign id')
     return { campaignId, created: true }
   }

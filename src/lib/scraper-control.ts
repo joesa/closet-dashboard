@@ -1,3 +1,5 @@
+import { extractBearerOrHeaderToken as extractToken } from '@/lib/webhook-auth'
+
 export type ScraperControlConfig = {
   startUrls: string[]
   disableWebhooks: boolean
@@ -120,15 +122,5 @@ export function listToTextarea(value: string[]): string {
 }
 
 export function extractBearerOrHeaderToken(req: Request): string {
-  const auth = req.headers.get('authorization') || ''
-  if (/^bearer\s+/i.test(auth)) {
-    return auth.replace(/^bearer\s+/i, '').trim()
-  }
-  if (auth.trim()) return auth.trim()
-
-  return (
-    req.headers.get('x-scraper-token') ||
-    req.headers.get('x-api-key') ||
-    ''
-  ).trim()
+  return extractToken(req, ['x-scraper-token', 'x-api-key'])
 }

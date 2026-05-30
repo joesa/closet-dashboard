@@ -123,7 +123,7 @@ export async function GET(req: Request) {
       status: 200,
       headers: corsHeaders,
     })
-  } catch (err: any) {
+  } catch (err) {
     console.error('Error in settings route:', err)
     return NextResponse.json(
       { error: 'Internal server error' },

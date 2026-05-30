@@ -1,10 +1,19 @@
 import React from 'react';
 import Link from 'next/link';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
+import { buildTenantPreviewUrl, getTenantPublicUrl } from '@/lib/admin-preview';
 import { notFound } from 'next/navigation';
 import DeleteTenantDialog from '@/components/DeleteTenantDialog';
 
 export const dynamic = 'force-dynamic';
+
+type SiteConfigShape = {
+  theme?: string;
+  default_room?: string;
+  hero_config?: { headline?: string; backgroundImage?: string } & Record<string, unknown>;
+  about_config?: { description?: string } & Record<string, unknown>;
+  products_config?: { image?: string; title?: string; description?: string }[];
+};
 
 export default async function TenantDetailsPage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = await params;
@@ -38,13 +47,14 @@ export default async function TenantDetailsPage({ params }: { params: Promise<{ 
 
   const domain = Array.isArray(tenant.domains) && tenant.domains.length > 0 
     ? tenant.domains[0].hostname 
-    : (tenant.domains as any)?.hostname;
+    : (tenant.domains as unknown as { hostname?: string } | null)?.hostname;
     
-  const siteUrl = domain ? `http://${domain}:3000` : '#';
+  const siteUrl = domain ? getTenantPublicUrl(domain) : '#';
+  const previewUrl = buildTenantPreviewUrl(siteUrl);
 
-  const config = Array.isArray(tenant.site_configs) && tenant.site_configs.length > 0 
+  const config = (Array.isArray(tenant.site_configs) && tenant.site_configs.length > 0 
     ? tenant.site_configs[0]
-    : (tenant.site_configs as any);
+    : tenant.site_configs) as unknown as SiteConfigShape | null;
 
   return (
     <div className="min-h-screen bg-neutral-950 text-white p-8">
@@ -82,17 +92,23 @@ export default async function TenantDetailsPage({ params }: { params: Promise<{ 
 
         {/* Action Bar */}
         <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-6 flex flex-wrap gap-4 items-center">
-          <a 
-            href={`${siteUrl}?admin_bypass=supersecret`}
-            target="_blank"
-            rel="noreferrer"
-            className="px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white font-medium rounded-lg transition-colors flex items-center gap-2 shadow-lg shadow-blue-500/20"
-          >
-            Review Staging View
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-            </svg>
-          </a>
+          {previewUrl ? (
+            <a
+              href={previewUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white font-medium rounded-lg transition-colors flex items-center gap-2 shadow-lg shadow-blue-500/20"
+            >
+              Review Staging View
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+              </svg>
+            </a>
+          ) : (
+            <span className="text-sm text-neutral-500">
+              Set ADMIN_BYPASS_SECRET to enable staging preview
+            </span>
+          )}
           
           {tenant.site_status === 'pending_approval' && (
             <form action={`/api/admin/sites/approve`} method="POST">
@@ -141,7 +157,7 @@ export default async function TenantDetailsPage({ params }: { params: Promise<{ 
                   <div>
                     <span className="text-neutral-400 text-sm block mb-1">Hero Headline</span>
                     <div className="text-white text-lg font-medium leading-snug">
-                      "{config.hero_config?.headline}"
+                      &ldquo;{config.hero_config?.headline}&rdquo;
                     </div>
                   </div>
                   <div>
@@ -161,9 +177,10 @@ export default async function TenantDetailsPage({ params }: { params: Promise<{ 
                   Mapped Services ({config.products_config?.length || 0})
                 </h3>
                 <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2">
-                  {config.products_config?.map((product: any, i: number) => (
+                  {config.products_config?.map((product: { image?: string; title?: string; description?: string }, i: number) => (
                     <div key={i} className="flex gap-4 p-4 rounded-lg bg-black/40 border border-neutral-800">
                       <div className="w-20 h-20 rounded bg-neutral-800 shrink-0 overflow-hidden relative">
+                        {/* eslint-disable-next-line @next/next/no-img-element -- external/admin-preview image of arbitrary origin; next/image remotePatterns can't cover unknown tenant domains */}
                         <img src={product.image} alt={product.title} className="w-full h-full object-cover" />
                       </div>
                       <div>

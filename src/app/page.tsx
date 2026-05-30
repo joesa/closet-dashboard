@@ -2,15 +2,17 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
+import Image from 'next/image'
 import Script from 'next/script'
 import { Check } from 'lucide-react'
 import { DEMO_CONTRACTOR_ID, DEMO_LOGIN, DEMO_RESET_NOTICE } from '@/lib/demo'
+import { WIDGET_CDN_URL } from '@/lib/urls'
 
 export default function LandingPage() {
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-white selection:bg-white/20 selection:text-white">
       <Script
-        src="https://closet-widget.vercel.app/widget.js"
+        src={WIDGET_CDN_URL}
         strategy="lazyOnload"
       />
 
@@ -637,11 +639,12 @@ function PricingSection() {
           ].map((demo) => (
             <a key={demo.name} href={demo.link} className="group block">
               <div className="relative aspect-[4/3] w-full overflow-hidden rounded-2xl border border-white/10 bg-white/[0.02]">
-                {/* Image placeholder (since actual next/image requires width/height mapping) */}
-                <img 
-                  src={demo.image} 
+                <Image
+                  src={demo.image}
                   alt={`${demo.name} aesthetic`}
-                  className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+                  fill
+                  sizes="(max-width: 768px) 100vw, 33vw"
+                  className="object-cover transition-transform duration-700 group-hover:scale-105"
                 />
                 <div className="absolute inset-0 bg-black/40 opacity-0 transition-opacity duration-300 group-hover:opacity-100 flex items-center justify-center">
                   <span className="rounded-full bg-white/10 backdrop-blur-md border border-white/20 px-6 py-2 text-sm font-medium text-white shadow-xl">

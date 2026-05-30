@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
+import { buildTenantPreviewUrl, getTenantPublicUrl } from '@/lib/admin-preview';
 import DeleteTenantDialog from '@/components/DeleteTenantDialog';
 
 export const dynamic = 'force-dynamic';
@@ -45,9 +46,10 @@ export default async function AdminSitesPage() {
               {tenants?.map((tenant) => {
                 const domain = Array.isArray(tenant.domains) && tenant.domains.length > 0 
                   ? tenant.domains[0].hostname 
-                  : (tenant.domains as any)?.hostname;
+                  : (tenant.domains as { hostname?: string } | null)?.hostname;
                   
-                const siteUrl = domain ? `http://${domain}:3000` : '#';
+                const siteUrl = domain ? getTenantPublicUrl(domain) : '#';
+                const previewUrl = buildTenantPreviewUrl(siteUrl);
 
                 return (
                   <tr key={tenant.id} className="hover:bg-neutral-800/50 transition-colors group">
@@ -87,14 +89,23 @@ export default async function AdminSitesPage() {
                         Details
                       </Link>
 
-                      <a 
-                        href={`${siteUrl}?admin_bypass=supersecret`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-xs font-medium text-blue-400 hover:text-blue-300 transition-colors uppercase tracking-wider"
-                      >
-                        Review
-                      </a>
+                      {previewUrl ? (
+                        <a
+                          href={previewUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-xs font-medium text-blue-400 hover:text-blue-300 transition-colors uppercase tracking-wider"
+                        >
+                          Review
+                        </a>
+                      ) : (
+                        <span
+                          className="text-xs text-neutral-500 uppercase tracking-wider"
+                          title="Set ADMIN_BYPASS_SECRET to enable preview"
+                        >
+                          Preview N/A
+                        </span>
+                      )}
                       
                       {tenant.site_status === 'pending_approval' && (
                         <form className="inline-block" action={`/api/admin/sites/approve`} method="POST">

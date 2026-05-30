@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, Suspense } from 'react'
+import { useState, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { supabaseBrowser } from '@/lib/supabase-browser'
@@ -21,22 +21,16 @@ export default function LoginPage() {
 
 function LoginForm() {
   const searchParams = useSearchParams()
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
+  // Pre-fill from URL query (used by the landing-page "try our demo" link to
+  // drop the demo creds straight into the form). The demo password is public
+  // on the marketing site, so prefilling via query string is intentional.
+  // Derived as lazy initial state so we never setState inside an effect.
+  const [email, setEmail] = useState(() => searchParams.get('email') ?? '')
+  const [password, setPassword] = useState(() => searchParams.get('password') ?? '')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [failedAttempts, setFailedAttempts] = useState(0)
   const [resetSent, setResetSent] = useState(false)
-
-  // Pre-fill from URL query (used by the landing-page "try our demo" link to
-  // drop the demo creds straight into the form). The demo password is public
-  // on the marketing site, so prefilling via query string is intentional.
-  useEffect(() => {
-    const qEmail = searchParams.get('email')
-    const qPassword = searchParams.get('password')
-    if (qEmail) setEmail(qEmail)
-    if (qPassword) setPassword(qPassword)
-  }, [searchParams])
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()

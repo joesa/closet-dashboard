@@ -3,6 +3,9 @@ import { createClient } from '@supabase/supabase-js'
 import { corsHeaders, handleOptions } from '@/lib/cors'
 import { assertEntitled } from '@/lib/gate'
 import { DEMO_CONTRACTOR_ID, isAllowedDemoOrigin } from '@/lib/demo'
+import { checkRateLimit, hashIpForRateLimit } from '@/lib/rate-limit'
+import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { sendSms } from '@/lib/twilio-sms'
 
 export const runtime = 'edge'
 
@@ -189,39 +192,7 @@ function splitName(full: string): { first: string | null; last: string | null } 
   return { first, last: rest.length > 0 ? rest.join(' ') : null }
 }
 
-// ── Twilio SMS (Edge-compatible via REST API) ──────────────────────
-
-async function sendSms(to: string, body: string): Promise<void> {
-  const accountSid = process.env.TWILIO_ACCOUNT_SID
-  const authToken = process.env.TWILIO_AUTH_TOKEN
-  const fromNumber = process.env.TWILIO_PHONE_NUMBER
-
-  if (!accountSid || !authToken || !fromNumber) {
-    console.warn('Twilio env vars not configured — skipping SMS.')
-    return
-  }
-
-  const url = `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`
-  const credentials = btoa(`${accountSid}:${authToken}`)
-
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Basic ${credentials}`,
-      'Content-Type': 'application/x-www-form-urlencoded',
-    },
-    body: new URLSearchParams({
-      To: to,
-      From: fromNumber,
-      Body: body,
-    }),
-  })
-
-  if (!res.ok) {
-    const err = await res.text()
-    console.error('Twilio SMS error:', res.status, err)
-  }
-}
+// SMS delivery is handled by the shared `sendSms` helper in @/lib/twilio-sms.
 
 // ── CORS preflight ─────────────────────────────────────────────────
 
@@ -291,6 +262,26 @@ export async function POST(request: Request) {
       const blocked = await assertEntitled(body.contractorId)
       if (blocked) return blocked
 
+      const ipForLimit =
+        request.headers.get('x-forwarded-for') ||
+        request.headers.get('cf-connecting-ip') ||
+        ''
+      const ipHashLimit = await hashIpForRateLimit(ipForLimit)
+      const rateLimit = await checkRateLimit(
+        `send-lead:${body.contractorId}:${ipHashLimit}`,
+        10,
+        60
+      )
+      if (!rateLimit.allowed) {
+        return json(
+          {
+            error: 'rate_limited',
+            retryAfterSeconds: rateLimit.retryAfterSeconds,
+          },
+          429
+        )
+      }
+
       const supabase = createClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
         process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -322,7 +313,7 @@ export async function POST(request: Request) {
             if (addonInfo) {
               addOnLines.push(`${addonInfo.name}: ${item.quantity}`)
             } else {
-              addOnLines.push(`${(item as any).name || 'Add-on'} (${item.id}): ${item.quantity}`)
+              addOnLines.push(`${(item as { name?: string }).name || 'Add-on'} (${item.id}): ${item.quantity}`)
             }
           }
         }
@@ -345,6 +336,55 @@ export async function POST(request: Request) {
 
     if (!toEmail) {
       return json({ error: 'Could not determine contractor email. Provide contractorId or contractorEmail.' }, 400)
+    }
+
+    // ── Persist widget lead before outbound email/SMS ──
+    if (body.contractorId) {
+      const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+      if (!serviceKey) {
+        console.error('send-lead: SUPABASE_SERVICE_ROLE_KEY missing; cannot persist lead')
+        return json({ error: 'Lead storage is not configured.' }, 500)
+      }
+
+      const adminSupa = getSupabaseAdmin()
+      const { first, last } = splitName(body.customerName)
+      const origin =
+        request.headers.get('origin') ||
+        request.headers.get('referer') ||
+        null
+      const ua = request.headers.get('user-agent') || null
+      const ipHash = await hashIp(
+        request.headers.get('x-forwarded-for') ||
+          request.headers.get('cf-connecting-ip') ||
+          ''
+      )
+
+      const { error: leadInsertError } = await adminSupa.from('leads').insert({
+        contractor_id: body.contractorId,
+        first_name: first,
+        last_name: last,
+        email: body.customerEmail,
+        phone: body.customerPhone ?? null,
+        message: spaceDetails,
+        room_type: body.roomType ?? null,
+        finish_type: body.finishType ?? null,
+        linear_feet: body.linearFeet ?? null,
+        estimated_total: body.estimatedTotal ?? null,
+        range_low: calculatedLow,
+        range_high: calculatedHigh,
+        add_ons: body.selectedAddOns ?? body.addOns ?? null,
+        source_origin: origin,
+        user_agent: ua,
+        ip_hash: ipHash,
+      })
+
+      if (leadInsertError) {
+        console.error('leads insert failed:', leadInsertError)
+        return json(
+          { error: 'Failed to save lead. Please try again.' },
+          500
+        )
+      }
     }
 
     // ── Send email via Resend ──
@@ -371,53 +411,6 @@ export async function POST(request: Request) {
     if (error) {
       console.error('Resend error:', error)
       return json({ error: 'Failed to send email.', details: error }, 500)
-    }
-
-    // ── Best-effort persistence of the lead row ──
-    // Stored in public.leads so admins can review the inbox.
-    // Uses service role to bypass RLS. Failures are swallowed.
-    if (body.contractorId) {
-      try {
-        const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-        if (serviceKey) {
-          const adminSupa = createClient(
-            process.env.NEXT_PUBLIC_SUPABASE_URL!,
-            serviceKey,
-            { auth: { persistSession: false } }
-          )
-          const { first, last } = splitName(body.customerName)
-          const origin =
-            request.headers.get('origin') ||
-            request.headers.get('referer') ||
-            null
-          const ua = request.headers.get('user-agent') || null
-          const ipHash = await hashIp(
-            request.headers.get('x-forwarded-for') ||
-              request.headers.get('cf-connecting-ip') ||
-              ''
-          )
-          await adminSupa.from('leads').insert({
-            contractor_id: body.contractorId,
-            first_name: first,
-            last_name: last,
-            email: body.customerEmail,
-            phone: body.customerPhone ?? null,
-            message: spaceDetails,
-            room_type: body.roomType ?? null,
-            finish_type: body.finishType ?? null,
-            linear_feet: body.linearFeet ?? null,
-            estimated_total: body.estimatedTotal ?? null,
-            range_low: calculatedLow,
-            range_high: calculatedHigh,
-            add_ons: body.selectedAddOns ?? body.addOns ?? null,
-            source_origin: origin,
-            user_agent: ua,
-            ip_hash: ipHash,
-          })
-        }
-      } catch (leadInsertErr) {
-        console.error('leads insert failed:', leadInsertErr)
-      }
     }
 
     // ── Send SMS LEAD ALERT to the contractor via Twilio (non-blocking) ──

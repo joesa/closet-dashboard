@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { findEmailsByPhone } from '@/lib/outreach-leads'
 import { sendSms } from '@/lib/twilio-sms'
 
 export const runtime = 'nodejs'
@@ -97,33 +98,24 @@ export async function POST(req: Request) {
         { onConflict: 'contact_value,type' }
       )
 
-      // Find associated email in leads table
-      const { data: leads } = await admin
-        .from('leads')
-        .select('email')
-        .eq('phone', from)
-        .not('email', 'is', null)
+      const relatedEmails = await findEmailsByPhone(admin, from)
 
-      if (leads && leads.length > 0) {
-        for (const lead of leads) {
-          if (lead.email) {
-            await admin.from('global_suppressions').upsert(
-              {
-                contact_value: lead.email,
-                type: 'email',
-                source: 'twilio',
-              },
-              { onConflict: 'contact_value,type' }
-            )
+      for (const leadEmail of relatedEmails) {
+        await admin.from('global_suppressions').upsert(
+          {
+            contact_value: leadEmail,
+            type: 'email',
+            source: 'twilio',
+          },
+          { onConflict: 'contact_value,type' }
+        )
 
-            const instantlyApiKey = process.env.INSTANTLY_API_KEY
-            if (instantlyApiKey) {
-              try {
-                console.log(`Syncing unsubscribe to Instantly for: ${lead.email}`)
-              } catch (e) {
-                console.error('Failed to sync to Instantly', e)
-              }
-            }
+        const instantlyApiKey = process.env.INSTANTLY_API_KEY
+        if (instantlyApiKey) {
+          try {
+            console.log(`Syncing unsubscribe to Instantly for: ${leadEmail}`)
+          } catch (e) {
+            console.error('Failed to sync to Instantly', e)
           }
         }
       }

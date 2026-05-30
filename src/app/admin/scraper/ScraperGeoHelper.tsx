@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
 type StateCatalogRow = {
   state_code: string
@@ -39,11 +39,14 @@ export default function ScraperGeoHelper({
   const [selectedCities, setSelectedCities] = useState<string[]>(selectedState?.cities ?? [])
   const [autoSync, setAutoSync] = useState(true)
 
-  useEffect(() => {
-    const st = states.find((s) => s.state_code === selectedStateCode)
-    setSelectedCities(st?.cities ?? [])
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedStateCode])
+  // When the chosen state changes, reset the selected cities to that state's
+  // full list. This uses React's "adjust state during render" pattern instead
+  // of an effect (see https://react.dev/learn/you-might-not-need-an-effect).
+  const [prevStateCode, setPrevStateCode] = useState(selectedStateCode)
+  if (prevStateCode !== selectedStateCode) {
+    setPrevStateCode(selectedStateCode)
+    setSelectedCities(selectedState?.cities ?? [])
+  }
 
   const locationList = useMemo(() => {
     if (!selectedState) return []
@@ -71,17 +74,17 @@ export default function ScraperGeoHelper({
     })
   }
 
-  function applyToForm() {
+  const applyToForm = useCallback(() => {
     setFormField('mapsKeywords', toKeywordList(keywordsInput).join(', '))
     setFormField('targetLocations', locationList.join('\n'))
     setFormField('cityPool', locationList.join('\n'))
     setFormField('startUrls', startUrls.join('\n'))
-  }
+  }, [keywordsInput, locationList, startUrls])
 
   useEffect(() => {
     if (!autoSync) return
     applyToForm()
-  }, [autoSync, keywordsInput, locationList.join('|'), startUrls.join('|')])
+  }, [autoSync, applyToForm])
 
   if (!states.length || !selectedState) return null
 

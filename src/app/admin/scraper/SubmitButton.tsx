@@ -1,7 +1,7 @@
 'use client'
 
 import { useFormStatus } from 'react-dom'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 interface SubmitButtonProps {
   idleText: string
@@ -20,21 +20,26 @@ export default function SubmitButton({
 }: SubmitButtonProps) {
   const { pending } = useFormStatus()
   const [showSuccess, setShowSuccess] = useState(false)
-  const [wasPending, setWasPending] = useState(false)
+  // Track the previous pending value in a ref so detecting the
+  // pending -> idle transition doesn't itself trigger re-renders.
+  const wasPendingRef = useRef(false)
 
   useEffect(() => {
-    // If it was pending, and now it's not pending, that means it just finished successfully
-    if (wasPending && !pending) {
+    if (pending) {
+      wasPendingRef.current = true
+      return
+    }
+    // Pending just flipped to false: the submission finished, so flash a
+    // transient success state. This synchronises a UI animation with the
+    // external form-submission lifecycle (useFormStatus), which is a valid
+    // effect use even though it sets state.
+    if (wasPendingRef.current) {
+      wasPendingRef.current = false
       setShowSuccess(true)
       const timer = setTimeout(() => setShowSuccess(false), successDurationMs)
       return () => clearTimeout(timer)
     }
-    
-    if (pending) {
-      setWasPending(true)
-      setShowSuccess(false)
-    }
-  }, [pending, wasPending, successDurationMs])
+  }, [pending, successDurationMs])
 
   // Determine button state and text
   const isButtonDisabled = pending || showSuccess

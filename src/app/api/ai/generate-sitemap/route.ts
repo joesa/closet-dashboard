@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import * as cheerio from 'cheerio'
-import { GoogleGenerativeAI } from '@google/generative-ai'
+import { GoogleGenerativeAI, type GenerationConfig } from '@google/generative-ai'
+import { getCurrentAdmin } from '@/lib/admin'
 
 export const maxDuration = 60
 export const runtime = 'nodejs'
@@ -17,6 +18,12 @@ function extractTextFromHtml(html: string): string {
 
 export async function POST(req: Request) {
   try {
+    // Admin-only: gating expensive Gemini inference behind the admin check.
+    const admin = await getCurrentAdmin()
+    if (!admin) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
     const { input, pageCount } = await req.json()
 
     if (!input || typeof input !== 'string') {
@@ -49,7 +56,7 @@ export async function POST(req: Request) {
           const html = await response.text()
           scrapedText = extractTextFromHtml(html)
         }
-      } catch (err: any) {
+      } catch (err) {
         console.error('Scraping error:', err)
       }
     }
@@ -59,7 +66,9 @@ export async function POST(req: Request) {
       generationConfig: {
         responseMimeType: "application/json",
         temperature: 0.5,
-      }
+        // Disable "thinking" to keep latency low and avoid 60s timeouts.
+        thinkingConfig: { thinkingBudget: 0 },
+      } as GenerationConfig
     })
 
     const prompt = `System: You are an expert web strategist. Based on the business description provided, suggest a sitemap of exactly ${requestedPages} pages. 
@@ -83,8 +92,9 @@ ${scrapedText}`
       data: { pages }
     })
 
-  } catch (error: any) {
+  } catch (error) {
     console.error('AI Sitemap Error:', error)
-    return NextResponse.json({ error: error.message || 'An error occurred during AI sitemap generation.' }, { status: 500 })
+    const message = error instanceof Error ? error.message : 'An error occurred during AI sitemap generation.'
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }

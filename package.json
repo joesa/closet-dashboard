@@ -6,22 +6,22 @@
     "dev": "next dev --webpack",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
+    "@closetquote/pricing": "file:./packages/pricing",
     "@google/generative-ai": "^0.24.1",
-    "@stripe/stripe-js": "^9.6.0",
     "@supabase/ssr": "^0.10.3",
     "@supabase/supabase-js": "^2.105.4",
     "cheerio": "^1.2.0",
     "lucide-react": "^1.16.0",
     "next": "16.2.6",
-    "openai": "^6.39.1",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "resend": "^6.12.3",
     "stripe": "^22.1.1",
-    "twilio": "^6.0.2",
     "uuid": "^14.0.0"
   },
   "devDependencies": {
@@ -33,6 +33,10 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.6",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^3.2.4"
+  },
+  "overrides": {
+    "postcss": "^8.5.10"
   }
 }

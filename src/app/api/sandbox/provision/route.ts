@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
+import { getCurrentAdmin } from '@/lib/admin';
 import { v4 as uuidv4 } from 'uuid';
 import { Resend } from 'resend';
 
@@ -15,6 +16,12 @@ function generateTempPassword() {
 
 export async function POST(req: Request) {
   try {
+    // Admin-only: this creates tenants, auth users, and sends email.
+    const admin = await getCurrentAdmin();
+    if (!admin) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const body = await req.json();
     const { 
       businessName, 
@@ -37,10 +44,24 @@ export async function POST(req: Request) {
 
     const supabase = getSupabaseAdmin();
 
-    // 1. Create Tenant
     const tenantId = uuidv4();
-    const widgetId = uuidv4(); // Mock widget ID for sandbox
-    
+    // The widget contractor id MUST equal an existing contractor_settings.id so
+    // that /api/calculate and /api/send-lead resolve a real row (and so the
+    // demo-origin gate never applies). We use the tenant id as the single
+    // canonical identity.
+    const widgetId = tenantId;
+
+    // 1. Create the canonical contractor_settings row FIRST (id == tenantId ==
+    // widgetId). tenants.widget_id has a foreign key to contractor_settings(id),
+    // so this row must exist before the tenants insert or it fails with
+    // tenants_widget_id_fkey. The AI-widget block below may later layer on
+    // disabled defaults and custom rooms/finishes/add-ons.
+    const { error: settingsError } = await supabase
+      .from('contractor_settings')
+      .upsert({ id: tenantId, company_name: businessName });
+    if (settingsError) throw settingsError;
+
+    // 2. Create Tenant (now that the referenced contractor_settings row exists)
     const { error: tenantError } = await supabase.from('tenants').insert({
       id: tenantId,
       business_name: businessName,
@@ -52,7 +73,7 @@ export async function POST(req: Request) {
 
     if (tenantError) throw tenantError;
 
-    // 2. Create Domain mapping
+    // 3. Create Domain mapping
     const { error: domainError } = await supabase.from('domains').insert({
       tenant_id: tenantId,
       hostname: `${subdomain}.localhost`,
@@ -63,7 +84,7 @@ export async function POST(req: Request) {
     if (domainError) throw domainError;
 
     // 3. Define the Master Services Catalog Mapping
-    const serviceCatalog: Record<string, any> = {
+    const serviceCatalog: Record<string, { image: string; description: string }> = {
       'Walk-In Closets': {
         image: 'https://images.unsplash.com/photo-1558211583-d26f610c1eb1',
         description: 'Luxurious walk-in spaces designed for your lifestyle.'
@@ -168,14 +189,14 @@ export async function POST(req: Request) {
       
       // If the AI generated multi-page configuration
       if (aiSiteConfig.pagesConfig && aiSiteConfig.pagesConfig.length > 0) {
-        (siteConfigData as any).pages_config = aiSiteConfig.pagesConfig;
+        (siteConfigData as Record<string, unknown>).pages_config = aiSiteConfig.pagesConfig;
         
         // Build the global navigation links automatically based on the AI's pages
         const navLinks = [{ label: 'Home', slug: '/' }];
-        aiSiteConfig.pagesConfig.forEach((page: any) => {
+        aiSiteConfig.pagesConfig.forEach((page: { title: string; slug: string }) => {
           navLinks.push({ label: page.title, slug: page.slug });
         });
-        (siteConfigData as any).nav_links = navLinks;
+        (siteConfigData as Record<string, unknown>).nav_links = navLinks;
       }
       
       // Merge images back in if the AI left them out or used the placeholders
@@ -194,7 +215,7 @@ export async function POST(req: Request) {
       
       // 1. Insert Custom Rooms
       if (customRooms && customRooms.length > 0) {
-        const roomsToInsert = customRooms.map((r: any) => ({
+        const roomsToInsert = customRooms.map((r: { name: string; basic?: number; standard?: number; premium?: number }) => ({
           contractor_id: tenantId, // using tenantId since contractor settings ID is the same
           name: r.name,
           price_basic: r.basic || 0,
@@ -206,7 +227,7 @@ export async function POST(req: Request) {
 
       // 2. Insert Custom Addons
       if (customAddOns && customAddOns.length > 0) {
-        const addonsToInsert = customAddOns.map((a: any) => ({
+        const addonsToInsert = customAddOns.map((a: { name: string; roomType?: string; price?: number }) => ({
           contractor_id: tenantId,
           name: a.name,
           room_type: a.roomType,
@@ -217,7 +238,7 @@ export async function POST(req: Request) {
 
       // 3. Insert Custom Finishes
       if (customFinishes && customFinishes.length > 0) {
-        const finishesToInsert = customFinishes.map((f: any, i: number) => ({
+        const finishesToInsert = customFinishes.map((f: { label: string; description?: string; swatchHex?: string; tier?: string }, i: number) => ({
           contractor_id: tenantId,
           label: f.label,
           description: f.description,
@@ -237,14 +258,13 @@ export async function POST(req: Request) {
       ];
       const defaultFinishesToDisable = ['basic', 'standard', 'premium'];
 
-      // We need to create a contractor_settings row since it doesn't get created automatically until onboarding is fully done in some flows, 
-      // but here we are in sandbox provision. Let's upsert it.
-      await supabase.from('contractor_settings').upsert({
-        id: tenantId, // contractor_settings primary key is the same as tenantId
-        company_name: businessName,
+      // The base contractor_settings row already exists (created above). Here we
+      // just disable the system defaults so the widget only shows the AI's
+      // custom rooms/finishes.
+      await supabase.from('contractor_settings').update({
         disabled_default_rooms: defaultRoomsToDisable,
         disabled_default_finishes: defaultFinishesToDisable
-      });
+      }).eq('id', tenantId);
     }
 
     if (configError) throw configError;
@@ -306,8 +326,17 @@ export async function POST(req: Request) {
       tempPassword 
     });
 
-  } catch (error: any) {
+  } catch (error) {
     console.error('Sandbox provision error:', error);
-    return NextResponse.json({ error: error.message || 'Internal error' }, { status: 500 });
+    // Supabase/Postgres errors are plain objects (not Error instances); surface
+    // their message + details so failures aren't masked as a generic "Internal error".
+    let message = 'Internal error';
+    if (error instanceof Error) {
+      message = error.message;
+    } else if (error && typeof error === 'object') {
+      const e = error as { message?: string; details?: string; code?: string };
+      message = [e.message, e.details, e.code && `(${e.code})`].filter(Boolean).join(' ') || 'Internal error';
+    }
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

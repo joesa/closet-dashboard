@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { corsHeaders, handleOptions } from '@/lib/cors'
+import { assertEntitled } from '@/lib/gate'
 
 export const runtime = 'edge'
 
@@ -18,6 +19,9 @@ export async function GET(
       return Response.json({ error: 'Contractor ID is required' }, { status: 400, headers: corsHeaders })
     }
 
+    const blocked = await assertEntitled(id)
+    if (blocked) return blocked
+
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -34,7 +38,7 @@ export async function GET(
     }
 
     return Response.json(settings, { status: 200, headers: corsHeaders })
-  } catch (err) {
+  } catch {
     return Response.json({ error: 'Internal Server Error' }, { status: 500, headers: corsHeaders })
   }
 }

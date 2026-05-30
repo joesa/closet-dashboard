@@ -1,50 +1,89 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Closet Dashboard
 
-## Getting Started
+The control plane for ClosetQuote. A Next.js 16 (App Router) + Supabase app that
+serves the widget backend APIs, contractor/admin dashboards, Stripe billing, AI
+site generation, and the outbound (Instantly + Twilio) automation surface.
 
-First, run the development server:
+## What lives here
+
+- **Widget backend APIs** — the embeddable [closet-widget](../closet-widget)
+  calls these:
+  - `POST /api/settings` — pricing + branding for a `contractorId` (a.k.a.
+    `widget_id`).
+  - `POST /api/calculate` — tiered price estimate (rooms, linear feet, finish,
+    add-ons).
+  - `POST /api/send-lead` — captures a lead, emails the contractor (Resend), and
+    optionally SMS-notifies them (Twilio).
+- **Billing** — Stripe Checkout, customer portal, and webhook-driven
+  entitlement gating.
+- **Admin** — contractor management, subscriptions, Stripe event inspection,
+  site approve/delete, and a "run scraper" trigger.
+- **AI site generation** — `/api/ai/generate-site` and
+  `/api/ai/generate-sitemap` (Google Gemini) used to bootstrap tenant marketing
+  sites for [custom-closets-websites](../custom-closets-websites).
+- **Sandbox provisioning** — `/api/sandbox/provision` creates a tenant +
+  `contractor_settings` row in one step.
+- **Outbound automation** — `/api/instantly/scraper-webhook` ingests qualified
+  leads from [closet-scraper](../closet-scraper); `/api/scraper/config` and
+  `/api/scraper/run-status` form the scraper control plane.
+
+## Data model
+
+`contractor_settings` is the pricing/billing identity (the widget's
+`contractorId`). `tenants` / `domains` / `site_configs` are the site/branding
+identity. `tenants.widget_id` is the bridge between them and is guaranteed to
+equal `tenants.id` and reference a `contractor_settings` row. See
+[`docs/DATA_MODEL.md`](docs/DATA_MODEL.md) for the full reconciliation.
+
+## Getting started
+
+1. Copy the env template and fill it in:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+cp .env.example .env.local
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+2. Apply Supabase migrations (so tables like `contractor_settings`, `tenants`,
+   and `instantly_sync_events` exist):
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+supabase db push
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+3. Run the dev server:
 
-## Learn More
+```bash
+npm install
+npm run dev
+```
 
-To learn more about Next.js, take a look at the following resources:
+Open [http://localhost:3000](http://localhost:3000).
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Scripts
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- `npm run dev` — Next dev server (webpack).
+- `npm run build` — production build.
+- `npm run start` — serve the production build.
+- `npm run lint` — ESLint.
 
-## Deploy on Vercel
+## Environment
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+All variables are documented in [`.env.example`](.env.example), grouped by
+concern: Supabase, Resend/Twilio, Stripe, demo anti-abuse, Gemini, the cron
+secret, Instantly automation, and the scraper control plane. The Stripe webhook
+and entitlement gate require the server-only `SUPABASE_SERVICE_ROLE_KEY`.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Instantly scraper receiver
 
-## Instantly Scraper Receiver
+`/api/instantly/scraper-webhook` validates scraper webhook auth, enforces
+idempotency per run/pipeline/batch, upserts Instantly campaigns from incoming
+campaign metadata, imports deduped leads into the mapped campaign, and
+optionally auto-starts campaigns when the warmup gate allows it. Apply Supabase
+migrations so `public.instantly_sync_events` exists before enabling it in
+production.
 
-This app now includes a webhook receiver at `/api/instantly/scraper-webhook` that can:
+## Deploy
 
-- validate scraper webhook auth
-- enforce idempotency per run/pipeline/batch
-- upsert Instantly campaigns from incoming campaign metadata
-- import deduped leads into the mapped campaign
-- optionally auto-start campaigns when warmup gate allows it
-
-Required environment variables are listed in `.env.example` under "Instantly automation".
-
-Before enabling in production, apply Supabase migrations so `public.instantly_sync_events` exists.
+Deploys to Vercel. Set every variable from `.env.example` in the project's
+environment, point Stripe + Twilio webhooks at the deployed routes, and add the
+`CRON_SECRET`-protected demo-reset cron.

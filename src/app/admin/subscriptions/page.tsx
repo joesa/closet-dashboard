@@ -52,7 +52,9 @@ export default async function SubscriptionsPage() {
   const pastDue: Row[] = []
   const recentCanceled: Row[] = []
 
-  const soonCutoff = Date.now() + 7 * 24 * 3600 * 1000
+  // eslint-disable-next-line react-hooks/purity -- async Server Component renders once per request; request time is intentional here
+  const nowMs = Date.now()
+  const soonCutoff = nowMs + 7 * 24 * 3600 * 1000
 
   for (const r of rows) {
     const s = r.subscription_status ?? 'unknown'
@@ -66,7 +68,7 @@ export default async function SubscriptionsPage() {
     }
     if (s === 'trialing' && r.current_period_end) {
       const t = new Date(r.current_period_end).getTime()
-      if (t < soonCutoff && t > Date.now()) trialingSoon.push(r)
+      if (t < soonCutoff && t > nowMs) trialingSoon.push(r)
     }
     if (s === 'past_due') pastDue.push(r)
     if (s === 'canceled') recentCanceled.push(r)

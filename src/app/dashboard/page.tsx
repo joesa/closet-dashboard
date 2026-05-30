@@ -6,6 +6,7 @@ import Link from 'next/link'
 import Script from 'next/script'
 import { supabaseBrowser } from '@/lib/supabase-browser'
 import { DEMO_CONTRACTOR_ID, DEMO_RESET_NOTICE } from '@/lib/demo'
+import { WIDGET_CDN_URL } from '@/lib/urls'
 import {
   ROOM_TYPES,
   PRICING_TIERS,
@@ -127,7 +128,7 @@ export default function DashboardPage() {
       setUserId(uid)
 
       // Try to load existing settings for this user
-      const { data: existing, error } = await supabaseBrowser
+      const { data: existing } = await supabaseBrowser
         .from('contractor_settings')
         .select('*')
         .eq('user_id', uid)
@@ -436,7 +437,7 @@ export default function DashboardPage() {
 
   const embedCode =
     form && authChecked
-      ? `<closet-quote-widget data-contractor-id="${form.id}" data-api-url="${window.location.origin}"></closet-quote-widget>\n<script src="https://closet-widget.vercel.app/widget.js"></script>`
+      ? `<closet-quote-widget data-contractor-id="${form.id}" data-api-url="${window.location.origin}"></closet-quote-widget>\n<script src="${WIDGET_CDN_URL}"></script>`
       : ''
 
   const handleCopy = async () => {
@@ -502,7 +503,7 @@ export default function DashboardPage() {
       </header>
 
       <main className="mx-auto max-w-7xl px-6 py-10">
-        <Script src="https://closet-widget.vercel.app/widget.js" />
+        <Script src={WIDGET_CDN_URL} />
 
         {form.id === DEMO_CONTRACTOR_ID && (
           <div className="mb-6 flex items-start gap-3 rounded-2xl border border-amber-400/20 bg-amber-400/[0.06] px-4 py-3 text-xs text-amber-100/90">
@@ -1283,6 +1284,9 @@ function SubscriptionBadge({
   let textClass: string
   let ringClass: string
 
+  // Capture "now" once at mount so the render stays pure across re-renders.
+  const nowMs = useState(() => Date.now())[0]
+
   if (isDemo) {
     label = 'Demo · Unlimited'
     dotClass = 'bg-emerald-400'
@@ -1296,8 +1300,8 @@ function SubscriptionBadge({
     ringClass = 'border-emerald-400/20 bg-emerald-400/5'
   } else if (status === 'trialing') {
     const endsMs = trialEndsAt ? new Date(trialEndsAt).getTime() : 0
-    const daysLeft = endsMs > Date.now()
-      ? Math.max(0, Math.ceil((endsMs - Date.now()) / (1000 * 60 * 60 * 24)))
+    const daysLeft = endsMs > nowMs
+      ? Math.max(0, Math.ceil((endsMs - nowMs) / (1000 * 60 * 60 * 24)))
       : 0
     const urgent = daysLeft <= 7
     label = `Trial · ${daysLeft}d left`
@@ -1344,10 +1348,11 @@ function TrialBanner({
   trialEndsAt?: string | null
   isDemo?: boolean
 }) {
+  // Capture "now" once at mount so the render stays pure across re-renders.
+  const now = useState(() => Date.now())[0]
   if (isDemo) return null
   if (status === 'active') return null
   const endsMs = trialEndsAt ? new Date(trialEndsAt).getTime() : 0
-  const now = Date.now()
   const daysLeft = endsMs > now
     ? Math.max(0, Math.ceil((endsMs - now) / (1000 * 60 * 60 * 24)))
     : 0

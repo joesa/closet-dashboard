@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import * as cheerio from 'cheerio'
-import { GoogleGenerativeAI } from '@google/generative-ai'
+import { GoogleGenerativeAI, type GenerationConfig } from '@google/generative-ai'
+import { getCurrentAdmin } from '@/lib/admin'
 
 // Increase max duration for LLM inference (Vercel setting)
 export const maxDuration = 60
@@ -196,8 +197,44 @@ function extractTextFromHtml(html: string): string {
   return text.substring(0, 15000) // Keep it within context limits
 }
 
+// Gemini sometimes wraps JSON in ```json fences or adds prose despite the
+// responseMimeType hint. Pull out the outermost JSON object/array.
+function extractJson(text: string): string {
+  let t = text.trim()
+  // Strip markdown code fences if present.
+  const fence = t.match(/```(?:json)?\s*([\s\S]*?)```/i)
+  if (fence) t = fence[1].trim()
+  // Otherwise slice from the first { to the last } (or [ ... ]).
+  const firstObj = t.indexOf('{')
+  const lastObj = t.lastIndexOf('}')
+  if (firstObj !== -1 && lastObj > firstObj) {
+    return t.slice(firstObj, lastObj + 1)
+  }
+  return t
+}
+
+// When a site can't be scraped (403/bot-walls/timeouts), derive a usable seed
+// from the URL so generation still proceeds instead of hard-failing.
+function describeFromUrl(rawUrl: string): string {
+  let hint = rawUrl
+  try {
+    const host = new URL(rawUrl).hostname.replace(/^www\./, '')
+    const words = host.split('.')[0].replace(/[-_]+/g, ' ').trim()
+    hint = `${words} (${host})`
+  } catch {
+    // keep raw url
+  }
+  return `Business website: ${rawUrl}. The site could not be read automatically (it blocked the request). Infer a plausible custom closets / home storage & organization business from the brand name "${hint}" and generate a tailored website and quote calculator. Use sensible, professional placeholder copy the operator can refine.`
+}
+
 export async function POST(req: Request) {
   try {
+    // Admin-only: gating expensive Gemini inference behind the admin check.
+    const admin = await getCurrentAdmin()
+    if (!admin) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
     const { input, sitemap } = await req.json()
 
     if (!input || typeof input !== 'string') {
@@ -217,6 +254,7 @@ export async function POST(req: Request) {
       // Not a URL, treat as raw text
     }
 
+    let scrapeOk = false
     if (isUrl) {
       try {
         const response = await fetch(input, {
@@ -224,14 +262,22 @@ export async function POST(req: Request) {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
           }
         })
-        if (!response.ok) {
-          throw new Error(`Failed to fetch URL: ${response.status}`)
+        if (response.ok) {
+          const text = extractTextFromHtml(await response.text())
+          if (text.trim().length > 0) {
+            scrapedText = text
+            scrapeOk = true
+          }
+        } else {
+          console.warn(`Scrape returned ${response.status} for ${input}; using domain hint`)
         }
-        const html = await response.text()
-        scrapedText = extractTextFromHtml(html)
-      } catch (err: any) {
-        console.error('Scraping error:', err)
-        return NextResponse.json({ error: `Failed to scrape URL: ${err.message}` }, { status: 500 })
+      } catch (err) {
+        console.warn('Scrape failed; using domain hint:', err)
+      }
+
+      // Non-fatal fallback: a blocked/empty scrape should not abort onboarding.
+      if (!scrapeOk) {
+        scrapedText = describeFromUrl(input)
       }
     }
 
@@ -259,13 +305,20 @@ You MUST return ONLY valid JSON matching the following schema. Do not wrap in ma
 
 ${JSON.stringify(JSON_SCHEMA.parameters, null, 2)}`;
 
-    // Call Gemini
+    // Call Gemini. Multi-page generation produces large JSON, so give it room;
+    // default output token limits truncate the response and break JSON.parse.
     const model = genAI.getGenerativeModel({
       model: 'gemini-2.5-flash',
       generationConfig: {
         responseMimeType: "application/json",
         temperature: 0.7,
-      }
+        maxOutputTokens: 32768,
+        // Disable "thinking": on this large structured-JSON prompt the default
+        // thinking budget adds minutes of latency (blowing the 60s maxDuration)
+        // and eats the output-token budget, truncating the JSON. The field is
+        // honored by the v1beta API but not yet in this SDK's types.
+        thinkingConfig: { thinkingBudget: 0 },
+      } as GenerationConfig
     })
 
     const prompt = `System: ${systemPrompt}
@@ -275,21 +328,51 @@ User: Business Information:
 ${scrapedText}`
 
     const result_ai = await model.generateContent(prompt)
-    let aiData;
+
+    // Read the raw text defensively: a blocked/empty candidate makes .text() throw.
+    const candidate = result_ai.response?.candidates?.[0]
+    const finishReason = candidate?.finishReason
+    let rawText = ''
     try {
-      aiData = JSON.parse(result_ai.response.text())
-    } catch (e) {
-      throw new Error('Gemini did not return valid JSON data.')
+      rawText = result_ai.response.text()
+    } catch {
+      rawText = candidate?.content?.parts?.map((p) => ('text' in p ? p.text : '')).join('') ?? ''
+    }
+
+    if (!rawText.trim()) {
+      console.error('Gemini empty response. finishReason:', finishReason)
+      throw new Error(
+        `AI returned no content${finishReason ? ` (finishReason: ${finishReason})` : ''}. Try fewer pages or a shorter description.`
+      )
+    }
+
+    let aiData
+    try {
+      aiData = JSON.parse(extractJson(rawText))
+    } catch {
+      console.error(
+        'Gemini JSON parse failed. finishReason:',
+        finishReason,
+        'rawText head:',
+        rawText.slice(0, 300)
+      )
+      const hint =
+        finishReason === 'MAX_TOKENS'
+          ? ' The response was cut off (too long) — try fewer pages.'
+          : ''
+      throw new Error(`Gemini did not return valid JSON data.${hint}`)
     }
 
     return NextResponse.json({
       success: true,
-      source: isUrl ? 'url' : 'text',
+      source: isUrl ? (scrapeOk ? 'url' : 'url-fallback') : 'text',
+      scraped: scrapeOk,
       data: aiData
     })
 
-  } catch (error: any) {
+  } catch (error) {
     console.error('AI Generation Error:', error)
-    return NextResponse.json({ error: error.message || 'An error occurred during AI generation.' }, { status: 500 })
+    const message = error instanceof Error ? error.message : 'An error occurred during AI generation.'
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }

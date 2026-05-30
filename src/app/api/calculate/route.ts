@@ -11,6 +11,8 @@ import {
 } from '@/lib/rooms'
 import { assertEntitled } from '@/lib/gate'
 import { DEMO_CONTRACTOR_ID, isAllowedDemoOrigin } from '@/lib/demo'
+import { computeQuote } from '@/lib/pricing'
+import { checkRateLimit, hashIpForRateLimit } from '@/lib/rate-limit'
 
 export const runtime = 'edge'
 
@@ -23,7 +25,10 @@ interface CalculateRequest {
   // roomType is either a system room name (RoomType) or a contractor-defined
   // custom room name (any string that matches a row in contractor_rooms).
   roomType?: string
-  selectedAddOns: Array<{ id: string, quantity: number }>
+  selectedAddOns?: Array<{ id: string, quantity: number }>
+  // Legacy field name still sent by older deployed widget bundles. Accepted as
+  // a fallback so previously-embedded widgets keep pricing add-ons correctly.
+  addOns?: Array<{ id: string, quantity: number }>
 }
 
 interface ContractorSettingsRow {
@@ -122,6 +127,26 @@ export async function POST(request: Request) {
     const blocked = await assertEntitled(body.contractorId)
     if (blocked) return blocked
 
+    const ipForLimit =
+      request.headers.get('x-forwarded-for') ||
+      request.headers.get('cf-connecting-ip') ||
+      ''
+    const ipHashLimit = await hashIpForRateLimit(ipForLimit)
+    const rateLimit = await checkRateLimit(
+      `calculate:${body.contractorId}:${ipHashLimit}`,
+      60,
+      60
+    )
+    if (!rateLimit.allowed) {
+      return json(
+        {
+          error: 'rate_limited',
+          retryAfterSeconds: rateLimit.retryAfterSeconds,
+        },
+        429
+      )
+    }
+
     // ── Fetch contractor settings from Supabase ──
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -165,35 +190,24 @@ export async function POST(request: Request) {
       perFoot = Number((customRoom as Record<string, unknown>)[col]) || 0
     }
 
-    // ── Calculate price ──
-    const baseCost = perFoot * body.linearFeet
-
     // ── Fetch contractor addons to calculate total addon cost ──
     const { data: addonsData } = await supabase
       .from('contractor_addons')
       .select('id, price, name')
       .eq('contractor_id', body.contractorId)
 
-    let addOnCost = 0;
-    const expandedAddOns = [];
-    if (addonsData && body.selectedAddOns && Array.isArray(body.selectedAddOns)) {
-      for (const item of body.selectedAddOns) {
-        const addonInfo = addonsData.find(a => a.id === item.id)
-        if (addonInfo) {
-          addOnCost += Number(addonInfo.price) * item.quantity
-          expandedAddOns.push({
-            id: addonInfo.id,
-            name: addonInfo.name,
-            quantity: item.quantity,
-            price: Number(addonInfo.price)
-          })
-        }
-      }
-    }
-
-    const total = baseCost + addOnCost
-    const low = Math.round(total * 0.85 * 100) / 100
-    const high = Math.round(total * 1.15 * 100) / 100
+    // ── Calculate price ──
+    // Accept either `selectedAddOns` (current widget) or `addOns` (older
+    // embedded bundles) so add-on pricing works regardless of widget version.
+    const requestedAddOns = body.selectedAddOns ?? body.addOns
+    const quote = computeQuote({
+      perFoot,
+      linearFeet: body.linearFeet,
+      requestedAddOns,
+      addOnCatalog: addonsData,
+    })
+    const { baseCost, addOnCost, expandedAddOns, estimatedTotal: total } = quote
+    const { low, high } = quote.range
 
     // ── Best-effort telemetry insert ──
     // Records every successful quote calc so admins can see funnel volume.

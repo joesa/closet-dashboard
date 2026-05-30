@@ -58,6 +58,7 @@ export default async function LeadsInboxPage({
   const selectedRange = RANGE_OPTIONS.find((r) => r.key === range) ?? RANGE_OPTIONS[2]
   const sinceIso =
     selectedRange.hours > 0
+      // eslint-disable-next-line react-hooks/purity -- async Server Component renders once per request; request time is intentional here
       ? new Date(Date.now() - selectedRange.hours * 3600 * 1000).toISOString()
       : null
 

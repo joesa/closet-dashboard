@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { findPhonesByEmail } from '@/lib/outreach-leads'
 
 export const runtime = 'nodejs'
 
@@ -26,29 +27,17 @@ export async function POST(req: Request) {
         { onConflict: 'contact_value,type' }
       )
 
-      // 2. Find associated phone in leads table
-      const { data: leads } = await admin
-        .from('leads')
-        .select('phone')
-        .eq('email', email)
-        .not('phone', 'is', null)
+      const relatedPhones = await findPhonesByEmail(admin, email)
 
-      if (leads && leads.length > 0) {
-        for (const lead of leads) {
-          if (lead.phone) {
-            // Add associated phone to suppressions
-            await admin.from('global_suppressions').upsert(
-              {
-                contact_value: lead.phone,
-                type: 'phone',
-                source: 'instantly',
-              },
-              { onConflict: 'contact_value,type' }
-            )
-            // Twilio automatically checks global_suppressions before we send future SMS,
-            // or the scraper simply filters out this lead so they are never exported.
-          }
-        }
+      for (const phone of relatedPhones) {
+        await admin.from('global_suppressions').upsert(
+          {
+            contact_value: phone,
+            type: 'phone',
+            source: 'instantly',
+          },
+          { onConflict: 'contact_value,type' }
+        )
       }
     }
 

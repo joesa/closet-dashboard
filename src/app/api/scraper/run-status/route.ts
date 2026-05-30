@@ -104,7 +104,18 @@ export async function POST(req: Request) {
       }
 
       if (leads.length > 0) {
-        const leadsToInsert = leads.map((lead: any) => ({
+        const leadsToInsert = leads.map((lead: {
+          businessName?: string
+          phoneNumber?: string
+          websiteUrl?: string
+          address?: string
+          enrichment?: {
+            decisionMakerEmail?: string
+            primaryEmail?: string
+            pipeline?: string
+            outreachRank?: number
+          }
+        }) => ({
           run_id: runId,
           business_name: lead.businessName,
           email: lead.enrichment?.decisionMakerEmail || lead.enrichment?.primaryEmail,
@@ -117,9 +128,19 @@ export async function POST(req: Request) {
         }))
 
         // Insert leads without conflicting since run_id+email+phone duplicates might exist, but we just want to track them.
-        const { error: insertLeadsError } = await admin.from('leads').insert(leadsToInsert)
+        const { error: insertLeadsError } = await admin
+          .from('scraper_leads')
+          .insert(leadsToInsert)
         if (insertLeadsError) {
-          console.error("Failed to insert leads into relation", insertLeadsError)
+          console.error('Failed to insert scraper_leads', insertLeadsError)
+          return NextResponse.json(
+            {
+              ok: true,
+              warnings: ['scraper_leads_insert_failed'],
+              detail: insertLeadsError.message,
+            },
+            { status: 207 }
+          )
         }
       }
     }

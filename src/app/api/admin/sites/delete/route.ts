@@ -1,8 +1,12 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
+import { requireAdmin, logAdminAction } from '@/lib/admin';
 
 export async function POST(req: Request) {
   try {
+    // Admin-only. requireAdmin() throws a redirect to /login for non-admins.
+    const admin = await requireAdmin();
+
     const formData = await req.formData();
     const tenantId = formData.get('tenantId') as string;
 
@@ -25,6 +29,13 @@ export async function POST(req: Request) {
       .eq('id', tenantId);
 
     if (error) throw error;
+
+    await logAdminAction({
+      actor: admin,
+      action: 'site.delete',
+      targetType: 'tenant',
+      targetId: tenantId,
+    });
 
     // Redirect back to admin dashboard
     return NextResponse.redirect(new URL('/admin/sites', req.url), 303);

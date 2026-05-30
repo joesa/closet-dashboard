@@ -19,7 +19,8 @@
       }
     ],
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@closetquote/pricing": ["./packages/pricing/src/index.ts"]
     }
   },
   "include": [

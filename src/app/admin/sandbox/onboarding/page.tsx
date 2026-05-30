@@ -1,7 +1,21 @@
 'use client';
 
 import React, { useState } from 'react';
-import { v4 as uuidv4 } from 'uuid';
+
+type AiSiteConfig = {
+  theme?: string;
+  hero?: { headline?: string };
+  about?: { description?: string };
+  pagesConfig?: unknown[];
+  [key: string]: unknown;
+};
+
+type AiWidgetConfig = {
+  customRooms?: { name?: string }[];
+  customAddOns?: { name?: string }[];
+  customFinishes?: unknown[];
+  [key: string]: unknown;
+};
 
 export default function SandboxOnboarding() {
   const [loading, setLoading] = useState(false);
@@ -14,10 +28,12 @@ export default function SandboxOnboarding() {
   const [sitemap, setSitemap] = useState<string[]>([]);
   const [isSitemapGenerated, setIsSitemapGenerated] = useState(false);
   const [aiUpsellPitch, setAiUpsellPitch] = useState('');
-  const [aiWidgetConfig, setAiWidgetConfig] = useState<any>(null);
-  const [aiSiteConfig, setAiSiteConfig] = useState<any>(null);
+  const [aiWidgetConfig, setAiWidgetConfig] = useState<AiWidgetConfig | null>(null);
+  const [aiSiteConfig, setAiSiteConfig] = useState<AiSiteConfig | null>(null);
 
-  const [formData, setFormData] = useState({
+  // Lazy initializer so the random sandbox email is generated once on mount
+  // rather than on every render (keeps the component render pure).
+  const [formData, setFormData] = useState(() => ({
     businessName: 'Apex Garage Builds',
     theme: 'brutalist',
     layoutStyle: 'standard',
@@ -28,7 +44,7 @@ export default function SandboxOnboarding() {
     heroImage: 'https://images.unsplash.com/photo-1558211583-d26f610c1eb1',
     beforeImage: 'https://images.unsplash.com/photo-1595428774223-ef52624120d2',
     services: ['Walk-In Closets', 'Garages', 'Home Offices'] // Default selection
-  });
+  }));
 
   const availableServices = [
     'Walk-In Closets',
@@ -75,8 +91,8 @@ export default function SandboxOnboarding() {
       
       setResultUrl(data.url);
       setTempPassword(data.tempPassword || '');
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to provision');
     } finally {
       setLoading(false);
     }
@@ -108,8 +124,8 @@ export default function SandboxOnboarding() {
       
       setSitemap(json.data.pages);
       setIsSitemapGenerated(true);
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Sitemap Generation failed');
     } finally {
       setAiLoading(false);
     }
@@ -146,8 +162,8 @@ export default function SandboxOnboarding() {
         services: [] 
       }));
       
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'AI Generation failed');
     } finally {
       setAiLoading(false);
     }
@@ -255,7 +271,7 @@ export default function SandboxOnboarding() {
                 <h3 className="text-sm font-bold text-green-400 mb-2">✅ AI Generation Successful</h3>
                 <p className="text-xs text-neutral-400 mb-2">The AI has generated <strong>{aiWidgetConfig.customRooms?.length || 0} custom services</strong> and <strong>{aiWidgetConfig.customAddOns?.length || 0} add-ons</strong> for the quote widget. The site content has been pre-filled below.</p>
                 <div className="flex flex-wrap gap-2 mt-3">
-                  {aiWidgetConfig.customRooms?.map((r: any, i: number) => (
+                  {aiWidgetConfig.customRooms?.map((r: { name?: string }, i: number) => (
                     <span key={i} className="text-[10px] bg-neutral-800 border border-neutral-700 px-2 py-1 rounded">{r.name}</span>
                   ))}
                 </div>
@@ -362,7 +378,7 @@ export default function SandboxOnboarding() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-1 text-neutral-300">Main 'After' Image URL (Hero & Slider)</label>
+                <label className="block text-sm font-medium mb-1 text-neutral-300">Main &apos;After&apos; Image URL (Hero & Slider)</label>
                 <input 
                   type="text" 
                   value={formData.heroImage}
@@ -373,7 +389,7 @@ export default function SandboxOnboarding() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-1 text-neutral-300">Messy 'Before' Image URL (Slider)</label>
+                <label className="block text-sm font-medium mb-1 text-neutral-300">Messy &apos;Before&apos; Image URL (Slider)</label>
                 <input 
                   type="text" 
                   value={formData.beforeImage}

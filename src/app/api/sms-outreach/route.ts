@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { assertWebhookToken } from '@/lib/webhook-auth'
 import {
   normalizePhone,
   isPhoneSuppressed,
@@ -37,24 +38,11 @@ type IncomingPayload = {
 
 // ── Helpers ────────────────────────────────────────────────────────
 
-function extractWebhookToken(req: Request): string {
-  const auth = req.headers.get('authorization') || ''
-  if (/^bearer\s+/i.test(auth)) {
-    return auth.replace(/^bearer\s+/i, '').trim()
-  }
-  if (auth.trim()) return auth.trim()
-
-  return (
-    req.headers.get('x-webhook-token') ||
-    req.headers.get('x-api-key') ||
-    ''
-  ).trim()
-}
-
-function isValidPayload(payload: any): payload is IncomingPayload {
+function isValidPayload(payload: unknown): payload is IncomingPayload {
   if (!payload || typeof payload !== 'object') return false
-  if (typeof payload.runId !== 'string' || !payload.runId.trim()) return false
-  if (!Array.isArray(payload.leads)) return false
+  const p = payload as Record<string, unknown>
+  if (typeof p.runId !== 'string' || !p.runId.trim()) return false
+  if (!Array.isArray(p.leads)) return false
   return true
 }
 
@@ -83,18 +71,10 @@ function delay(ms: number): Promise<void> {
 export async function POST(req: Request) {
   try {
     // ── Auth ──
-    const receiverToken = process.env.INSTANTLY_RECEIVER_AUTH_TOKEN
-    if (!receiverToken) {
-      return NextResponse.json(
-        { error: 'INSTANTLY_RECEIVER_AUTH_TOKEN is not configured' },
-        { status: 500 }
-      )
-    }
-
-    const incomingToken = extractWebhookToken(req)
-    if (!incomingToken || incomingToken !== receiverToken) {
-      return NextResponse.json({ error: 'Unauthorized webhook token' }, { status: 401 })
-    }
+    const authError = assertWebhookToken(req, process.env.INSTANTLY_RECEIVER_AUTH_TOKEN, {
+      missingEnvMessage: 'INSTANTLY_RECEIVER_AUTH_TOKEN is not configured',
+    })
+    if (authError) return authError
 
     // ── Parse ──
     const payload = await req.json()
