@@ -191,7 +191,7 @@ export default function SandboxOnboarding() {
                   type="text" 
                   value={aiInput}
                   onChange={(e) => setAiInput(e.target.value)}
-                  placeholder="https://getorganizedyall.com OR 'We are a local builder...'"
+                  placeholder="https://example.com OR 'We are a local builder...'"
                   className="flex-1 bg-neutral-900 border border-neutral-700 rounded-md p-3 text-white"
                   disabled={aiLoading || isSitemapGenerated}
                 />
