@@ -46,7 +46,8 @@ export async function POST(req: Request) {
       business_name: businessName,
       owner_email: ownerEmail,
       widget_id: widgetId,
-      subscription_status: 'active'
+      subscription_status: 'active',
+      site_status: 'active'
     });
 
     if (tenantError) throw tenantError;
