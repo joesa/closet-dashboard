@@ -119,6 +119,37 @@ export async function POST(req: Request) {
       }
     };
 
+    // The AI never returns real images, and the onboarding form pre-fills a
+    // single generic hero URL. To avoid every site looking identical, give each
+    // theme a distinct default hero, and keep a pool of distinct product photos
+    // for AI-generated products (which carry no image of their own).
+    const GENERIC_HERO = 'https://images.unsplash.com/photo-1558211583-d26f610c1eb1';
+    const THEME_HERO_IMAGES: Record<string, string> = {
+      'luxury-minimal': 'https://images.unsplash.com/photo-1558211583-d26f610c1eb1',
+      'brutalist': 'https://images.unsplash.com/photo-1605810230434-7631ac76ec81',
+      'classic-warm': 'https://images.unsplash.com/photo-1556910103-1c02745a872f',
+      'modern-office': 'https://images.unsplash.com/photo-1524758631624-e2822e304c36',
+      'playful-kids': 'https://images.unsplash.com/photo-1505693314120-0d443867891c',
+      'rustic-pantry': 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a',
+      'sleek-entertainment': 'https://images.unsplash.com/photo-1593640408182-31c70c8268f5',
+      'elegant-dressing': 'https://images.unsplash.com/photo-1595428774223-ef52624120d2',
+      'functional-utility': 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a',
+      'creative-craft': 'https://images.unsplash.com/photo-1556910103-1c02745a872f',
+      'sophisticated-wine': 'https://images.unsplash.com/photo-1556910103-1c02745a872f',
+      'cozy-library': 'https://images.unsplash.com/photo-1524758631624-e2822e304c36',
+      'minimalist-zen': 'https://images.unsplash.com/photo-1558211583-d26f610c1eb1',
+    };
+    const PRODUCT_IMAGE_POOL = [
+      'https://images.unsplash.com/photo-1558211583-d26f610c1eb1',
+      'https://images.unsplash.com/photo-1595428774223-ef52624120d2',
+      'https://images.unsplash.com/photo-1605810230434-7631ac76ec81',
+      'https://images.unsplash.com/photo-1556910103-1c02745a872f',
+      'https://images.unsplash.com/photo-1524758631624-e2822e304c36',
+      'https://images.unsplash.com/photo-1584622650111-993a426fbf0a',
+      'https://images.unsplash.com/photo-1505693314120-0d443867891c',
+      'https://images.unsplash.com/photo-1593640408182-31c70c8268f5',
+    ];
+
     const selectedServices = (services && services.length > 0) ? services : ['Walk-In Closets'];
 
     // 4. Create Site Config with dynamic portfolio mapping (or AI overrides)
@@ -130,7 +161,7 @@ export async function POST(req: Request) {
       default_room: 'Custom Space',
       hero_config: {
         headline: heroHeadline || `Welcome to ${businessName}`,
-        backgroundImage: heroImage || "/brands/lumina/hero.png"
+        backgroundImage: (heroImage && heroImage !== GENERIC_HERO ? heroImage : (THEME_HERO_IMAGES[theme] || GENERIC_HERO))
       },
       about_config: {
         description: aboutDescription || `${businessName} provides premium custom storage solutions tailored to your life.`
@@ -178,15 +209,49 @@ export async function POST(req: Request) {
     };
 
     if (aiSiteConfig) {
+      // The operator's explicit theme dropdown is authoritative. The AI's theme
+      // only pre-fills that dropdown on the client, so honoring `theme` here is
+      // what lets a changed selection actually take effect.
+      const finalTheme = theme || aiSiteConfig.theme;
+
+      // The AI never returns a real hero image (only the schema placeholder), so
+      // use the operator's URL, and when that's still the generic default, fall
+      // back to a per-theme image so different themes don't all look the same.
+      const operatorHero =
+        heroImage && heroImage !== GENERIC_HERO ? heroImage : null;
+      const backgroundImage =
+        operatorHero || THEME_HERO_IMAGES[finalTheme] || GENERIC_HERO;
+
+      // AI products carry no image; give each a distinct one (match the service
+      // catalog by title, else rotate through the pool) so the grid isn't all
+      // the same photo.
+      const aiProducts = Array.isArray(aiSiteConfig.products) ? aiSiteConfig.products : null;
+      const productsWithImages = (aiProducts ?? siteConfigData.products_config).map(
+        (p: { title?: string; image?: string; [k: string]: unknown }, i: number) => ({
+          ...p,
+          image: p.image || (p.title && serviceCatalog[p.title]?.image) || PRODUCT_IMAGE_POOL[i % PRODUCT_IMAGE_POOL.length],
+        })
+      );
+
       siteConfigData = {
         ...siteConfigData,
-        theme: aiSiteConfig.theme || siteConfigData.theme,
-        hero_config: aiSiteConfig.hero || siteConfigData.hero_config,
+        theme: finalTheme,
+        hero_config: {
+          headline: aiSiteConfig.hero?.headline || siteConfigData.hero_config.headline,
+          backgroundImage,
+        },
         about_config: aiSiteConfig.about || siteConfigData.about_config,
         process_config: aiSiteConfig.process || siteConfigData.process_config,
-        products_config: aiSiteConfig.products || siteConfigData.products_config,
+        products_config: productsWithImages,
       };
-      
+
+      // Keep the before/after slider consistent with the chosen hero.
+      siteConfigData.before_after_config = {
+        ...siteConfigData.before_after_config,
+        afterImage: backgroundImage,
+        beforeImage: beforeImage || siteConfigData.before_after_config.beforeImage,
+      };
+
       // If the AI generated multi-page configuration
       if (aiSiteConfig.pagesConfig && aiSiteConfig.pagesConfig.length > 0) {
         (siteConfigData as Record<string, unknown>).pages_config = aiSiteConfig.pagesConfig;
@@ -197,11 +262,6 @@ export async function POST(req: Request) {
           navLinks.push({ label: page.title, slug: page.slug });
         });
         (siteConfigData as Record<string, unknown>).nav_links = navLinks;
-      }
-      
-      // Merge images back in if the AI left them out or used the placeholders
-      if (!siteConfigData.hero_config.backgroundImage) {
-         siteConfigData.hero_config.backgroundImage = heroImage || "/brands/lumina/hero.png";
       }
     }
 
