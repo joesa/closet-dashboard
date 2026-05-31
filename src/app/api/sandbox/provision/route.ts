@@ -4,6 +4,7 @@ import { getCurrentAdmin } from '@/lib/admin';
 import { v4 as uuidv4 } from 'uuid';
 import { Resend } from 'resend';
 import { widgetEmbedSnippet } from '@/lib/urls';
+import { normalizeDomain, attachVercelDomain, type VercelDomainResult } from '@/lib/vercel-domains';
 
 // Temporary password generator
 function generateTempPassword() {
@@ -116,18 +117,72 @@ export async function POST(req: Request) {
 
     if (tenantError) throw tenantError;
 
+    // Hosted-site URL + custom-domain status, surfaced in the response so the
+    // operator knows whether DNS/verification is still needed. Null for
+    // widget-only builds (no hosted site).
+    let siteUrl: string | null = null;
+    let domainResult: {
+      platformHost: string;
+      customHost: string | null;
+      vercel: VercelDomainResult | null;
+    } | null = null;
+
     // 3. Create Domain mapping + hosted Site Config — full-site (Pipeline B) only.
     // Widget-only (Pipeline A) embeds on the prospect's existing site, so it has
     // no domain/site_config; it only needs contractor_settings + widget config.
     if (!isWidgetOnly) {
+    // Platform subdomain. In production set TENANT_BASE_DOMAIN to the wildcard
+    // apex pointed at the websites project (e.g. "closetquotes.com") so this
+    // resolves to a real, wildcard-SSL host. Locally it stays "<sub>.localhost".
+    const baseDomain = (process.env.TENANT_BASE_DOMAIN || 'localhost').replace(/^\.+|\.+$/g, '');
+    const isLocalBase = baseDomain === 'localhost' || baseDomain.endsWith('.localhost');
+    const platformHost = `${subdomain}.${baseDomain}`;
+    // The prospect's own custom domain (from the intake) becomes the primary host.
+    const customHost = normalizeDomain(setup.desiredDomain);
+
     const { error: domainError } = await supabase.from('domains').insert({
       tenant_id: tenantId,
-      hostname: `${subdomain}.localhost`,
-      is_primary: true,
+      hostname: platformHost,
+      // When a custom domain is supplied it is primary; otherwise the subdomain is.
+      is_primary: !customHost,
+      // Wildcard/managed cert covers the platform host; localhost needs none.
       ssl_status: 'active'
     });
 
     if (domainError) throw domainError;
+
+    domainResult = { platformHost, customHost: null, vercel: null };
+
+    if (customHost) {
+      const { error: customDomainError } = await supabase.from('domains').insert({
+        tenant_id: tenantId,
+        hostname: customHost,
+        is_primary: true,
+        // Vercel issues the cert once DNS verifies; until then SSL is pending.
+        ssl_status: 'pending'
+      });
+      if (customDomainError) {
+        // A duplicate/invalid custom domain must not kill the whole build: keep
+        // the platform host as primary and report the problem to the operator.
+        console.error('Custom domain insert failed:', customDomainError);
+        await supabase
+          .from('domains')
+          .update({ is_primary: true })
+          .eq('tenant_id', tenantId)
+          .eq('hostname', platformHost);
+      } else {
+        domainResult.customHost = customHost;
+        // Best-effort: attach the domain to the websites Vercel project so it
+        // routes + provisions SSL. Skipped for local bases; never blocks.
+        if (!isLocalBase) {
+          domainResult.vercel = await attachVercelDomain(customHost);
+        }
+      }
+    }
+
+    // Canonical hosted URL = custom domain if present, else the platform subdomain.
+    const primaryHost = domainResult.customHost || domainResult.platformHost;
+    siteUrl = isLocalBase ? `http://${primaryHost}:3000` : `https://${primaryHost}`;
 
     // 3. Define the Master Services Catalog Mapping
     const serviceCatalog: Record<string, { image: string; description: string }> = {
@@ -205,6 +260,12 @@ export async function POST(req: Request) {
       theme: theme,
       layout_style: layoutStyle || 'standard',
       default_room: 'Custom Space',
+      // Real branding/pricing from the prospect intake (when present) so the
+      // generated site reflects the prospect, not generic placeholders. The
+      // logo replaces the text brand name in the header; pricing_notes is shown
+      // near the quote CTA.
+      logo_url: setup.logoUrl || null,
+      pricing_notes: setup.pricingNotes || null,
       hero_config: {
         headline: heroHeadline || `Welcome to ${businessName}`,
         backgroundImage: (heroImage && heroImage !== GENERIC_HERO ? heroImage : (THEME_HERO_IMAGES[theme] || GENERIC_HERO))
@@ -447,7 +508,6 @@ export async function POST(req: Request) {
     // Login lives on the dashboard origin (this API's own host), so derive it
     // from the request instead of hardcoding localhost.
     const loginUrl = `${new URL(req.url).origin}/login`;
-    const siteUrl = `http://${subdomain}.localhost:3000`;
     const embedSnippet = widgetEmbedSnippet(widgetId);
     if (process.env.RESEND_API_KEY) {
       const resend = new Resend(process.env.RESEND_API_KEY);
@@ -494,6 +554,9 @@ export async function POST(req: Request) {
       mode,
       // Hosted site URL for full builds; null for widget-only.
       url: isWidgetOnly ? null : siteUrl,
+      // Domain provisioning status (platform subdomain, optional custom domain,
+      // and the Vercel attach result incl. any DNS verification records).
+      domain: domainResult,
       // Widget identity + ready-to-paste embed snippet (used by Pipeline A).
       widgetId,
       embedSnippet,
