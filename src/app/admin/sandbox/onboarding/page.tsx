@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import GuidedBuilder, { type GuidedResult } from './GuidedBuilder';
 
 // Sandbox/testing helper: fabricate a fake but usable login email. We only ever
 // surface these on non-production hosts so the production onboarding page never
@@ -38,6 +39,19 @@ export default function SandboxOnboarding() {
   // 'full' = Pipeline B (website + calculator). 'widget' = Pipeline A (calculator
   // widget only, for an existing site — this is where we upsell the full build).
   const [siteMode, setSiteMode] = useState<'full' | 'widget'>('full');
+  const [showGuide, setShowGuide] = useState(false);
+
+  // Guided builder finished: turn the answers into an AI brief and pre-fill the
+  // theme/services the operator can still tweak before generating.
+  const handleGuideComplete = (result: GuidedResult) => {
+    setAiInput(result.description);
+    setFormData((prev) => ({
+      ...prev,
+      theme: result.theme || prev.theme,
+      services: result.services && result.services.length > 0 ? result.services : prev.services,
+    }));
+    setShowGuide(false);
+  };
   const [error, setError] = useState('');
   const [aiInput, setAiInput] = useState('');
   const [pageCount, setPageCount] = useState(1);
@@ -222,6 +236,9 @@ export default function SandboxOnboarding() {
 
   return (
     <div className="min-h-screen bg-neutral-900 text-white flex flex-col items-center p-6 py-12">
+      {showGuide && (
+        <GuidedBuilder onComplete={handleGuideComplete} onClose={() => setShowGuide(false)} />
+      )}
       <div className="max-w-3xl w-full">
         <div className="bg-neutral-800 p-8 rounded-xl shadow-2xl border border-neutral-700 mb-8">
           <h1 className="text-2xl font-bold mb-2">Onboarding Simulator</h1>
@@ -266,18 +283,42 @@ export default function SandboxOnboarding() {
             <p className="text-sm text-indigo-200/70 mb-4">
               {siteMode === 'widget'
                 ? 'Paste their website URL or a description of their services. The AI will generate a tailored Quote Calculator (custom rooms, add-ons, and finishes) to embed on their existing site.'
-                : 'Paste their website URL to scrape it, or paste a description of their services. The AI will generate a highly tailored site and Quote Calculator.'}
+                : 'A full build is for prospects with no website yet. Describe the business and what you want on the site — or use the guided builder to answer a few quick questions and we\u2019ll write the brief for you.'}
             </p>
             <div className="flex flex-col gap-4">
-              <div className="flex gap-4">
+              {siteMode === 'full' ? (
+                <>
+                  <div className="flex items-center justify-between gap-3">
+                    <label className="text-sm font-medium text-indigo-200">Describe the business &amp; what to build</label>
+                    <button
+                      type="button"
+                      onClick={() => setShowGuide(true)}
+                      disabled={aiLoading || isSitemapGenerated}
+                      className="shrink-0 text-xs font-bold bg-neutral-800 hover:bg-neutral-700 border border-indigo-500/40 text-indigo-200 px-3 py-2 rounded-md transition-colors disabled:opacity-50"
+                    >
+                      Not sure? Use the guided builder
+                    </button>
+                  </div>
+                  <textarea
+                    value={aiInput}
+                    onChange={(e) => setAiInput(e.target.value)}
+                    placeholder="e.g. Family-owned custom closet company serving Nashville. Services: walk-in closets, garages, pantries. Luxury, modern feel. 15 years in business, lifetime warranty, free in-home consultation. Goal: book consultations."
+                    rows={4}
+                    className="w-full bg-neutral-900 border border-neutral-700 rounded-md p-3 text-white"
+                    disabled={aiLoading || isSitemapGenerated}
+                  />
+                </>
+              ) : (
                 <input 
                   type="text" 
                   value={aiInput}
                   onChange={(e) => setAiInput(e.target.value)}
-                  placeholder="https://example.com OR 'We are a local builder...'"
-                  className="flex-1 bg-neutral-900 border border-neutral-700 rounded-md p-3 text-white"
+                  placeholder="https://their-existing-site.com OR 'We are a local builder...'"
+                  className="w-full bg-neutral-900 border border-neutral-700 rounded-md p-3 text-white"
                   disabled={aiLoading || isSitemapGenerated}
                 />
+              )}
+              <div className="flex gap-4">
                 {siteMode === 'full' && (
                 <select
                   value={pageCount}
@@ -297,7 +338,7 @@ export default function SandboxOnboarding() {
                     type="button"
                     onClick={handleGenerateSitemap}
                     disabled={aiLoading || !aiInput}
-                    className="bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-3 rounded-md font-bold transition-colors disabled:opacity-50"
+                    className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-3 rounded-md font-bold transition-colors disabled:opacity-50"
                   >
                     {aiLoading ? 'Thinking...' : 'Next'}
                   </button>
