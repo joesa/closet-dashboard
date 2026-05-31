@@ -61,29 +61,40 @@ input[type="number"] {
   -moz-appearance: textfield;
 }
 
-/* Ensure readable form controls on light admin surfaces. */
-.scraper-control-form {
+/* Readable text + form controls on light admin surfaces (body uses dark-theme foreground). */
+.scraper-control-form,
+.admin-light-surface {
   color: #111827;
 }
 
 .scraper-control-form label,
 .scraper-control-form p,
-.scraper-control-form span {
+.scraper-control-form span,
+.admin-light-surface label,
+.admin-light-surface p,
+.admin-light-surface span {
   color: inherit;
 }
 
-.scraper-control-form input,
-.scraper-control-form textarea {
+.scraper-control-form input:not([type="checkbox"]):not([type="radio"]),
+.scraper-control-form textarea,
+.scraper-control-form select,
+.admin-light-surface input:not([type="checkbox"]):not([type="radio"]),
+.admin-light-surface textarea,
+.admin-light-surface select {
   color: #111827;
   background-color: #ffffff;
 }
 
 .scraper-control-form input::placeholder,
-.scraper-control-form textarea::placeholder {
+.scraper-control-form textarea::placeholder,
+.admin-light-surface input::placeholder,
+.admin-light-surface textarea::placeholder {
   color: #6b7280;
   opacity: 1;
 }
 
-.scraper-control-form .text-xs {
+.scraper-control-form .text-xs,
+.admin-light-surface .text-xs {
   color: #4b5563;
 }
