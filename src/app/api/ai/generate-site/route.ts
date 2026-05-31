@@ -25,6 +25,10 @@ const JSON_SCHEMA = {
             enum: ['luxury-minimal', 'brutalist', 'classic-warm', 'modern-office', 'playful-kids', 'rustic-pantry', 'sleek-entertainment', 'elegant-dressing', 'functional-utility', 'creative-craft', 'sophisticated-wine', 'cozy-library', 'minimalist-zen'],
             description: 'The visual theme that best fits this business.'
           },
+          defaultRoom: {
+            type: 'string',
+            description: 'The primary structural room/service type for this business, used in the quote calculator CTA (e.g. "Minimalist Kitchen", "Rustic Patio", "Auto Workshop", "Walk-In Closet").'
+          },
           hero: {
             type: 'object',
             properties: {
@@ -84,7 +88,7 @@ const JSON_SCHEMA = {
             }
           }
         },
-        required: ['theme', 'hero', 'about', 'process', 'products']
+        required: ['theme', 'defaultRoom', 'hero', 'about', 'process', 'products']
       },
       widgetConfig: {
         type: 'object',
@@ -290,6 +294,7 @@ Your job is to read the following business description or scraped website text a
 CRITICAL INSTRUCTIONS FOR QUOTE CALCULATOR:
 If the business is NOT a traditional closet/garage builder (e.g., they are a Professional Organizer or Consultant), you MUST completely replace the standard closet rooms (Walk-In, Reach-In) with their ACTUAL services (e.g., "Productivity Consulting", "Home Organizing").
 The "customFinishes" should represent their service tiers (e.g., "Virtual Consultation", "In-Person (Half Day)") instead of wood materials.
+The "defaultRoom" MUST be the primary structural room or service type for this specific business (e.g. "Minimalist Kitchen" for a kitchen remodeler, "Rustic Patio" for a hardscaper, "Auto Workshop" for a garage builder) — it appears in the quote calculator call-to-action.
 
 CRITICAL INSTRUCTIONS FOR IMAGE PROMPTS (Visual Art Director):
 Every "imagePrompt" you write is handed directly to gpt-image-1 to render a bespoke, photorealistic image — so make each one specific, contextual, and self-contained. Follow these rules:

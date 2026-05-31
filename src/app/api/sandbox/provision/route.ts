@@ -266,6 +266,9 @@ export async function POST(req: Request) {
       siteConfigData = {
         ...siteConfigData,
         theme: finalTheme,
+        // Use the AI's contextual room/service type (e.g. "Minimalist Kitchen")
+        // for the quote calculator CTA; fall back to the generic default.
+        default_room: aiSiteConfig.defaultRoom || siteConfigData.default_room,
         hero_config: {
           headline: aiSiteConfig.hero?.headline || siteConfigData.hero_config.headline,
           backgroundImage,
