@@ -45,7 +45,7 @@ export default async function IntakesPage() {
       <div className="mb-6">
         <h1 className="text-2xl font-semibold text-gray-900">Prospect intakes</h1>
         <p className="mt-1 text-sm text-gray-500">
-          Send a prospect an intake link; their submission has everything needed to build the site. Open a submitted intake to pre-fill onboarding.
+          Create an intake link with the prospect&apos;s email to send it automatically, or copy the link manually. Open a submitted intake to pre-fill onboarding.
         </p>
       </div>
 

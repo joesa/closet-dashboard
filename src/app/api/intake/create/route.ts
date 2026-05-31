@@ -41,16 +41,20 @@ export async function POST(req: Request) {
     const provisioningMode =
       body.provisioningMode === 'manual' ? 'manual' : 'auto'
 
+    const normalizedEmail = recipientEmail?.trim().toLowerCase() || null
+    const emailedProspect = sendEmail && !!normalizedEmail
+
     const result = await createDraftIntake({
       source: scraperLeadId ? 'scraper' : 'admin',
       businessName: businessName || null,
       scraperLeadId: scraperLeadId || null,
       requestedProduct: requestedProduct ?? 'full',
       provisioningMode,
-      verificationEmail: recipientEmail || null,
-      emailVerifiedAt: scraperLeadId ? new Date().toISOString() : null,
-      sendEmail,
-      recipientEmail: recipientEmail || null,
+      verificationEmail: normalizedEmail,
+      // Admin/scraper emailed links skip public verify — prospect can submit on open.
+      emailVerifiedAt: emailedProspect ? new Date().toISOString() : null,
+      sendEmail: emailedProspect,
+      recipientEmail: normalizedEmail,
       siteOrigin: origin,
     })
 
@@ -59,6 +63,7 @@ export async function POST(req: Request) {
       id: result.id,
       token: result.token,
       url: result.url,
+      emailSent: emailedProspect,
     })
   } catch (error) {
     console.error('Intake create error:', error)
