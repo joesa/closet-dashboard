@@ -56,6 +56,9 @@ export default function SandboxOnboarding() {
       // Auto-derive the subdomain from the business name (operator can edit).
       subdomain: result.businessName ? slugify(result.businessName) : prev.subdomain,
       theme: result.theme || prev.theme,
+      layoutStyle: result.layoutStyle || prev.layoutStyle,
+      heroHeadline: result.heroHeadline || prev.heroHeadline,
+      aboutDescription: result.aboutDescription || prev.aboutDescription,
       services: result.services && result.services.length > 0 ? result.services : prev.services,
     }));
     setShowGuide(false);
@@ -235,10 +238,20 @@ export default function SandboxOnboarding() {
         return productTitles.some(t => t.includes(s) || s.includes(t));
       });
 
+      // Auto-detect the structural layout from the brief's stated goal/keywords.
+      const lower = aiInput.toLowerCase();
+      const inferredLayout =
+        /portfolio|gallery|showcase|browse/.test(lower) ? 'portfolio-first'
+        : /quote|estimate|calculator|consultation|pricing/.test(lower) ? 'conversion-focus'
+        : /\bcall\b|call now|phone/.test(lower) ? 'minimalist-lead'
+        : /story|family|journey|heritage|founded/.test(lower) ? 'storyteller'
+        : '';
+
       // Pre-fill the editable form so the operator reviews/tweaks the AI brief rather than typing it.
       setFormData(prev => ({
         ...prev,
         theme: siteConfig.theme || prev.theme,
+        layoutStyle: inferredLayout || prev.layoutStyle,
         heroHeadline: siteConfig.hero?.headline || prev.heroHeadline,
         aboutDescription: siteConfig.about?.description || prev.aboutDescription,
         services: matchedServices.length > 0 ? matchedServices : prev.services,

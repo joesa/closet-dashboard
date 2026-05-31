@@ -5,8 +5,11 @@ import React, { useState } from 'react';
 export type GuidedResult = {
   description: string;
   theme?: string;
+  layoutStyle?: string;
   services?: string[];
   businessName?: string;
+  heroHeadline?: string;
+  aboutDescription?: string;
 };
 
 // Maps the human "vibe" answer to a concrete site theme slug.
@@ -19,6 +22,23 @@ const VIBE_TO_THEME: Record<string, string> = {
   'Rustic & natural': 'rustic-pantry',
   'Elegant & refined': 'elegant-dressing',
   'Sleek & high-tech': 'sleek-entertainment',
+};
+
+// Maps the business type to a clean noun phrase used in headlines / copy.
+const TYPE_TO_NOUN: Record<string, string> = {
+  'Custom closets': 'Custom Closets',
+  'Garage storage systems': 'Garage Storage',
+  'Whole-home organization': 'Whole-Home Organization',
+  'Pantry & kitchen storage': 'Pantry & Kitchen Storage',
+  'Multi-service (several of the above)': 'Custom Storage',
+};
+
+// Maps the #1 desired action to the structural layout that best serves it.
+const CTA_TO_LAYOUT: Record<string, string> = {
+  'Book a free consultation': 'conversion-focus',
+  'Request a quote': 'conversion-focus',
+  'Call now': 'minimalist-lead',
+  'Browse the portfolio': 'portfolio-first',
 };
 
 type Step =
@@ -119,6 +139,48 @@ function buildDescription(answers: Record<string, string | string[]>): string {
   return parts.join(' ');
 }
 
+// Craft a punchy hero headline from the answers (operator can edit afterward).
+function buildHeroHeadline(answers: Record<string, string | string[]>): string {
+  const str = (id: string) => (typeof answers[id] === 'string' ? (answers[id] as string) : '');
+  const noun = TYPE_TO_NOUN[str('businessType')] || 'Custom Storage';
+  switch (str('tone')) {
+    case 'Bold & confident':
+      return `${noun} That Command Every Room`;
+    case 'Elegant & refined':
+      return `Bespoke ${noun} for the Discerning Home`;
+    case 'Friendly & approachable':
+      return `${noun} That Make Everyday Life Simpler`;
+    default:
+      return `Custom ${noun}, Crafted to Last`;
+  }
+}
+
+// Auto-craft a 2-3 sentence About Us story from the answers (operator can edit).
+function buildAboutDescription(answers: Record<string, string | string[]>): string {
+  const str = (id: string) => (typeof answers[id] === 'string' ? (answers[id] as string) : '');
+  const arr = (id: string) => (Array.isArray(answers[id]) ? (answers[id] as string[]) : []);
+
+  const name = str('businessName') || 'Our team';
+  const noun = (TYPE_TO_NOUN[str('businessType')] || 'custom storage').toLowerCase();
+  const services = arr('services');
+  const serviceText = services.length ? services.slice(0, 4).join(', ').toLowerCase() : noun;
+  const loc = str('location');
+
+  const expPhrase: Record<string, string> = {
+    'Just getting started': 'is a fresh, customer-obsessed team',
+    '1–5 years': 'has spent years perfecting its craft',
+    '5–15 years': 'brings over a decade of craftsmanship',
+    '15+ years / well established': 'has more than 15 years of trusted experience',
+  };
+  const phrase = expPhrase[str('experience')] || 'is dedicated to exceptional craftsmanship';
+
+  const s1 = `${name} ${phrase}${loc ? ` serving ${loc}` : ''}, specializing in ${serviceText}.`;
+  const s2 = str('customers') ? ` We design beautiful, functional spaces for ${str('customers').toLowerCase()}.` : '';
+  const diffs = arr('differentiators');
+  const s3 = diffs.length ? ` What sets us apart: ${diffs.slice(0, 3).join(', ').toLowerCase()}.` : '';
+  return (s1 + s2 + s3).trim();
+}
+
 export default function GuidedBuilder({
   onComplete,
   onClose,
@@ -148,8 +210,11 @@ export default function GuidedBuilder({
     onComplete({
       description: buildDescription(answers),
       theme: VIBE_TO_THEME[(answers['vibe'] as string) || ''],
+      layoutStyle: CTA_TO_LAYOUT[(answers['cta'] as string) || ''],
       services: Array.isArray(answers['services']) ? (answers['services'] as string[]) : [],
       businessName: typeof answers['businessName'] === 'string' ? (answers['businessName'] as string) : undefined,
+      heroHeadline: buildHeroHeadline(answers),
+      aboutDescription: buildAboutDescription(answers),
     });
   };
 
