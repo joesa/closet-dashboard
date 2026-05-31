@@ -270,11 +270,34 @@ export async function POST(req: Request) {
 
       // If the AI generated multi-page configuration
       if (aiSiteConfig.pagesConfig && aiSiteConfig.pagesConfig.length > 0) {
-        (siteConfigData as Record<string, unknown>).pages_config = aiSiteConfig.pagesConfig;
-        
+        // The AI hallucinates image URLs for sub-page heroes and content blocks,
+        // which 404 on the live site (broken image boxes). It never returns real
+        // images, so replace them with curated, known-good photos: per-page hero
+        // uses the themed hero, and image blocks rotate through the product pool.
+        type ContentBlock = { type?: string; image?: string; [k: string]: unknown };
+        type PageConfig = {
+          slug: string;
+          title: string;
+          hero?: { backgroundImage?: string; [k: string]: unknown };
+          content_blocks?: ContentBlock[];
+          [k: string]: unknown;
+        };
+        const sanitizedPages = (aiSiteConfig.pagesConfig as PageConfig[]).map((page, pIdx) => ({
+          ...page,
+          hero: { ...(page.hero || {}), backgroundImage },
+          content_blocks: Array.isArray(page.content_blocks)
+            ? page.content_blocks.map((block, bIdx) =>
+                block.type === 'image_left' || block.type === 'image_right'
+                  ? { ...block, image: PRODUCT_IMAGE_POOL[(pIdx + bIdx) % PRODUCT_IMAGE_POOL.length] }
+                  : block
+              )
+            : page.content_blocks,
+        }));
+        (siteConfigData as Record<string, unknown>).pages_config = sanitizedPages;
+
         // Build the global navigation links automatically based on the AI's pages
         const navLinks = [{ label: 'Home', slug: '/' }];
-        aiSiteConfig.pagesConfig.forEach((page: { title: string; slug: string }) => {
+        sanitizedPages.forEach((page) => {
           navLinks.push({ label: page.title, slug: page.slug });
         });
         (siteConfigData as Record<string, unknown>).nav_links = navLinks;
