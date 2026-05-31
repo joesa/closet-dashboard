@@ -17,6 +17,80 @@ function slugify(value: string) {
   return value.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
 }
 
+// Mirror of the guided builder's vibe -> theme mapping so a prospect intake can
+// preselect a theme.
+const VIBE_TO_THEME: Record<string, string> = {
+  'Luxury & minimal': 'luxury-minimal',
+  'Bold & industrial': 'brutalist',
+  'Warm & classic': 'classic-warm',
+  'Modern & clean': 'modern-office',
+  'Playful & friendly': 'playful-kids',
+  'Rustic & natural': 'rustic-pantry',
+  'Elegant & refined': 'elegant-dressing',
+  'Sleek & high-tech': 'sleek-entertainment',
+};
+
+// The setup/contact fields a prospect intake provides that aren't part of the
+// creative brief but are required to actually launch + route leads.
+type IntakeSetup = {
+  contactEmail?: string;
+  contactPhone?: string;
+  notificationEmail?: string;
+  notificationPhone?: string;
+  streetAddress?: string;
+  addressLocality?: string;
+  addressRegion?: string;
+  postalCode?: string;
+  serviceArea?: string;
+  primaryColorHex?: string;
+  logoUrl?: string;
+  desiredDomain?: string;
+  pricingNotes?: string;
+};
+
+type IntakeRow = IntakeSetup & {
+  id: string;
+  business_name?: string | null;
+  contact_email?: string | null;
+  contact_phone?: string | null;
+  notification_email?: string | null;
+  notification_phone?: string | null;
+  street_address?: string | null;
+  address_locality?: string | null;
+  address_region?: string | null;
+  postal_code?: string | null;
+  service_area?: string | null;
+  primary_color_hex?: string | null;
+  logo_url?: string | null;
+  desired_domain?: string | null;
+  pricing_notes?: string | null;
+  services?: string[] | null;
+  vibe?: string | null;
+  tone?: string | null;
+  customers?: string | null;
+  experience?: string | null;
+  differentiators?: string[] | null;
+  primary_cta?: string | null;
+  notes?: string | null;
+};
+
+// Build an AI brief from an intake row (same shape the guided builder produces).
+function intakeToDescription(it: IntakeRow): string {
+  const parts: string[] = [];
+  if (it.business_name) parts.push(`Business name: ${it.business_name}.`);
+  if (it.service_area) parts.push(`It serves ${it.service_area}.`);
+  if (it.services?.length) parts.push(`Services offered: ${it.services.join(', ')}.`);
+  if (it.customers) parts.push(`Ideal customers: ${it.customers}.`);
+  if (it.vibe) parts.push(`Desired look and feel: ${it.vibe}.`);
+  if (it.experience) parts.push(`Experience level: ${it.experience}.`);
+  if (it.differentiators?.length) parts.push(`Key selling points: ${it.differentiators.join(', ')}.`);
+  if (it.tone) parts.push(`Preferred tone of voice: ${it.tone}.`);
+  if (it.primary_cta) parts.push(`Primary call to action: ${it.primary_cta}.`);
+  if (it.pricing_notes) parts.push(`Pricing guidance: ${it.pricing_notes}.`);
+  if (it.notes) parts.push(`Additional notes: ${it.notes}.`);
+  return parts.join(' ');
+}
+
 type AiProduct = {
   title?: string;
   imagePrompt?: string;
@@ -86,6 +160,10 @@ export default function SandboxOnboarding() {
   const [aiSiteConfig, setAiSiteConfig] = useState<AiSiteConfig | null>(null);
   const [imageLoading, setImageLoading] = useState(false);
   const [generatedImages, setGeneratedImages] = useState<GeneratedImages | null>(null);
+  // Setup/contact details sourced from a prospect intake (threaded into provision).
+  const [intakeSetup, setIntakeSetup] = useState<IntakeSetup | null>(null);
+  const [intakeId, setIntakeId] = useState<string | null>(null);
+  const [intakeBanner, setIntakeBanner] = useState('');
 
   // True only on localhost / non-production hosts. Used to expose test-only
   // helpers (fake login emails) that must never appear on production.
@@ -128,6 +206,50 @@ export default function SandboxOnboarding() {
     } else if (pipeline === 'B') {
       setSiteMode('full');
     }
+
+    // If launched from a prospect intake (admin "Build site"), load the
+    // submitted details and pre-fill the brief + setup fields.
+    const intakeId = params.get('intake');
+    if (intakeId) {
+      (async () => {
+        try {
+          const res = await fetch(`/api/intake/admin?id=${encodeURIComponent(intakeId)}`);
+          const json = await res.json();
+          if (!res.ok) throw new Error(json.error || 'Failed to load intake');
+          const it = json.intake as IntakeRow;
+
+          setIntakeId(it.id);
+          setSiteMode('full');
+          setAiInput(intakeToDescription(it));
+          setIntakeSetup({
+            contactEmail: it.contact_email ?? undefined,
+            contactPhone: it.contact_phone ?? undefined,
+            notificationEmail: it.notification_email ?? undefined,
+            notificationPhone: it.notification_phone ?? undefined,
+            streetAddress: it.street_address ?? undefined,
+            addressLocality: it.address_locality ?? undefined,
+            addressRegion: it.address_region ?? undefined,
+            postalCode: it.postal_code ?? undefined,
+            serviceArea: it.service_area ?? undefined,
+            primaryColorHex: it.primary_color_hex ?? undefined,
+            logoUrl: it.logo_url ?? undefined,
+            desiredDomain: it.desired_domain ?? undefined,
+            pricingNotes: it.pricing_notes ?? undefined,
+          });
+          setFormData((prev) => ({
+            ...prev,
+            businessName: it.business_name || prev.businessName,
+            subdomain: it.business_name ? slugify(it.business_name) : prev.subdomain,
+            ownerEmail: it.contact_email || prev.ownerEmail,
+            theme: (it.vibe && VIBE_TO_THEME[it.vibe]) || prev.theme,
+            services: it.services && it.services.length > 0 ? it.services : prev.services,
+          }));
+          setIntakeBanner(`Loaded intake for ${it.business_name || 'prospect'}. Review the brief below, generate, then deploy.`);
+        } catch {
+          setIntakeBanner('Could not load the linked intake. You can still build manually.');
+        }
+      })();
+    }
   }, []);
 
   const availableServices = [
@@ -169,7 +291,11 @@ export default function SandboxOnboarding() {
           mode: siteMode,
           // Widget-only builds don't use the AI site content, only widget config.
           aiSiteConfig: siteMode === 'widget' ? null : aiSiteConfig,
-          aiWidgetConfig
+          aiWidgetConfig,
+          // Real setup/contact details from a prospect intake (when present) so
+          // provision can persist genuine SEO/contact/lead-routing data.
+          intakeSetup,
+          intakeId,
         })
       });
       const data = await res.json();
@@ -343,6 +469,12 @@ export default function SandboxOnboarding() {
         <div className="bg-neutral-800 p-8 rounded-xl shadow-2xl border border-neutral-700 mb-8">
           <h1 className="text-2xl font-bold mb-2">Onboarding Simulator</h1>
           <p className="text-neutral-400 mb-6 text-sm">Simulate a new contractor signing up. Generate custom sites using AI.</p>
+
+          {intakeBanner && (
+            <div className="mb-6 rounded-lg border border-emerald-500/40 bg-emerald-900/20 px-4 py-3 text-sm text-emerald-200">
+              {intakeBanner}
+            </div>
+          )}
 
           {/* Build mode: full website (Pipeline B) vs widget-only (Pipeline A) */}
           <div className="mb-8">

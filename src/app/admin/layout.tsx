@@ -7,6 +7,7 @@ const NAV = [
   { href: '/admin/leads',         label: 'Widget leads' },
   { href: '/admin/scraper-leads', label: 'Scraper leads' },
   { href: '/admin/sites',         label: 'Platform Control Center' },
+  { href: '/admin/intakes',       label: 'Prospect Intakes' },
   { href: '/admin/sandbox/onboarding', label: 'Sandbox Emulator' },
   { href: '/admin/scraper',       label: 'Scraper' },
   { href: '/admin/subscriptions', label: 'Subscriptions' },

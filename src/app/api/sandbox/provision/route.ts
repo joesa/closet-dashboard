@@ -36,8 +36,29 @@ export async function POST(req: Request) {
       beforeImage,
       services,
       aiSiteConfig,
-      aiWidgetConfig
+      aiWidgetConfig,
+      // Real setup/contact details from a prospect intake (optional). Used to
+      // persist genuine SEO/contact/lead-routing data instead of placeholders.
+      intakeSetup,
+      // Id of the originating prospect intake (optional) so we can mark it built.
+      intakeId,
     } = body;
+
+    const setup = (intakeSetup || {}) as {
+      contactEmail?: string;
+      contactPhone?: string;
+      notificationEmail?: string;
+      notificationPhone?: string;
+      streetAddress?: string;
+      addressLocality?: string;
+      addressRegion?: string;
+      postalCode?: string;
+      serviceArea?: string;
+      primaryColorHex?: string;
+      logoUrl?: string;
+      desiredDomain?: string;
+      pricingNotes?: string;
+    };
 
     // 'full'  = Pipeline B: hosted website + embedded quote calculator.
     // 'widget' = Pipeline A: only the quote calculator widget for the prospect's
@@ -67,9 +88,18 @@ export async function POST(req: Request) {
     // so this row must exist before the tenants insert or it fails with
     // tenants_widget_id_fkey. The AI-widget block below may later layer on
     // disabled defaults and custom rooms/finishes/add-ons.
+    // Lead-routing + branding from the intake: contact_email/contact_phone drive
+    // the widget's email/SMS lead alerts; primary_color_hex themes the widget.
+    const settingsRow: Record<string, unknown> = { id: tenantId, company_name: businessName };
+    const leadEmail = setup.notificationEmail || setup.contactEmail;
+    const leadPhone = setup.notificationPhone || setup.contactPhone;
+    if (leadEmail) settingsRow.contact_email = leadEmail;
+    if (leadPhone) settingsRow.contact_phone = leadPhone;
+    if (setup.primaryColorHex) settingsRow.primary_color_hex = setup.primaryColorHex;
+
     const { error: settingsError } = await supabase
       .from('contractor_settings')
-      .upsert({ id: tenantId, company_name: businessName });
+      .upsert(settingsRow);
     if (settingsError) throw settingsError;
 
     // 2. Create Tenant (now that the referenced contractor_settings row exists)
@@ -207,13 +237,15 @@ export async function POST(req: Request) {
           }
         };
       }),
+      // Real NAP from the prospect intake powers the LocalBusiness schema +
+      // footer. Falls back to neutral placeholders only when not provided.
       seo_config: {
         legalName: businessName,
-        phone: "555-0199",
-        streetAddress: "123 Main St",
-        addressLocality: "Anytown",
-        addressRegion: "NY",
-        postalCode: "10001",
+        phone: setup.contactPhone || "555-0199",
+        streetAddress: setup.streetAddress || "123 Main St",
+        addressLocality: setup.addressLocality || setup.serviceArea || "Anytown",
+        addressRegion: setup.addressRegion || "NY",
+        postalCode: setup.postalCode || "10001",
         geo: { latitude: "40.7128", longitude: "-74.0060" }
       },
       before_after_config: {
@@ -443,6 +475,18 @@ export async function POST(req: Request) {
           <p><em>Note: You will be required to change this password upon your first login.</em></p>
         `
       });
+    }
+
+    // Mark the originating prospect intake as built (best-effort; never blocks).
+    if (intakeId) {
+      try {
+        await supabase
+          .from('prospect_intakes')
+          .update({ status: 'built', updated_at: new Date().toISOString() })
+          .eq('id', intakeId);
+      } catch (err) {
+        console.error('Failed to mark intake built:', err);
+      }
     }
 
     return NextResponse.json({ 
