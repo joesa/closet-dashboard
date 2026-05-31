@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import * as cheerio from 'cheerio'
 import { GoogleGenerativeAI, type GenerationConfig } from '@google/generative-ai'
 import { getCurrentAdmin } from '@/lib/admin'
+import { checkAndIncrementAiUsage } from '@/lib/aiUsage'
 
 // Increase max duration for LLM inference (Vercel setting)
 export const maxDuration = 60
@@ -239,6 +240,11 @@ export async function POST(req: Request) {
     const admin = await getCurrentAdmin()
     if (!admin) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const usage = await checkAndIncrementAiUsage('generate_site')
+    if (!usage.allowed) {
+      return NextResponse.json({ error: usage.reason || 'AI limit reached' }, { status: 429 })
     }
 
     const { input, sitemap } = await req.json()

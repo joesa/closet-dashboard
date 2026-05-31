@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getCurrentAdmin } from '@/lib/admin'
+import { checkAndIncrementAiUsage } from '@/lib/aiUsage'
 import { generateAndUpload } from '@/lib/openai-images'
 
 // gpt-image-1 renders take a while; give the function room. On a Vercel Hobby
@@ -28,6 +29,11 @@ export async function POST(req: Request) {
     const admin = await getCurrentAdmin()
     if (!admin) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const usage = await checkAndIncrementAiUsage('generate_images')
+    if (!usage.allowed) {
+      return NextResponse.json({ error: usage.reason || 'AI limit reached' }, { status: 429 })
     }
 
     if (!process.env.OPENAI_API_KEY) {

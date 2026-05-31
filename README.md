@@ -22,7 +22,11 @@ site generation, and the outbound (Instantly + Twilio) automation surface.
   `/api/ai/generate-sitemap` (Google Gemini) used to bootstrap tenant marketing
   sites for [custom-closets-websites](../custom-closets-websites).
 - **Sandbox provisioning** — `/api/sandbox/provision` creates a tenant +
-  `contractor_settings` row in one step.
+  `contractor_settings` row in one step (admin manual builds).
+- **Self-serve intake** — `/get-started` → email verify → `/intake/[token]` →
+  async `provision_jobs` processed by `/api/cron/process-provision-jobs` (Vercel
+  Cron). Full sites default to `pending_approval`; widget-only uses Pipeline A.
+- **Provision ops** — `/admin/provision-jobs` for failed/needs-review retries.
 - **Outbound automation** — `/api/instantly/scraper-webhook` ingests qualified
   leads from [closet-scraper](../closet-scraper); `/api/scraper/config` and
   `/api/scraper/run-status` form the scraper control plane.

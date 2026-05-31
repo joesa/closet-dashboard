@@ -61,6 +61,7 @@ export default function IntakeForm({ params }: { params: Promise<{ token: string
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState('');
   const [notFound, setNotFound] = useState(false);
+  const [needsEmailVerify, setNeedsEmailVerify] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -72,6 +73,9 @@ export default function IntakeForm({ params }: { params: Promise<{ token: string
         } else {
           setForm((f) => ({ ...f, businessName: json.businessName || '' }));
           if (json.alreadySubmitted) setSubmitted(true);
+          if (json.source === 'public' && !json.emailVerified) {
+            setNeedsEmailVerify(true);
+          }
         }
       } catch {
         setNotFound(true);
@@ -135,7 +139,10 @@ export default function IntakeForm({ params }: { params: Promise<{ token: string
         <div className="max-w-md">
           <div className="mx-auto mb-4 grid h-12 w-12 place-items-center rounded-full bg-green-100 text-green-600">✓</div>
           <h1 className="text-xl font-semibold text-gray-900">Thank you!</h1>
-          <p className="mt-2 text-sm text-gray-600">Your details have been received. Our team will use them to build your website and quote calculator, and will be in touch shortly.</p>
+          <p className="mt-2 text-sm text-gray-600">
+            Your details have been received. We are building your site and quote calculator in the background.
+            Check your email for login credentials when provisioning completes.
+          </p>
         </div>
       </div>
     );
@@ -147,6 +154,11 @@ export default function IntakeForm({ params }: { params: Promise<{ token: string
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-gray-900">Tell us about your business</h1>
           <p className="mt-1 text-sm text-gray-500">A few details so we can build your custom website and quote calculator. The more you share, the better the result.</p>
+          {needsEmailVerify && (
+            <p className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              Please verify your email using the link we sent before submitting this form.
+            </p>
+          )}
         </div>
 
         <form onSubmit={submit} className="space-y-8">

@@ -127,48 +127,65 @@ export default function DashboardPage() {
       const uid = session.user.id
       setUserId(uid)
 
-      // Try to load existing settings for this user
+      // Provisioned tenants: link contractor_settings via tenant_id metadata.
+      try {
+        await fetch('/api/contractor/claim', { method: 'POST' })
+      } catch {
+        /* non-fatal */
+      }
+
+      // Try to load existing settings for this user (or provisioned tenant id).
       const { data: existing } = await supabaseBrowser
         .from('contractor_settings')
         .select('*')
         .eq('user_id', uid)
         .maybeSingle()
 
-      if (existing) {
+      let settingsRow = existing
+      if (!settingsRow && session.user.user_metadata?.tenant_id) {
+        const tenantId = session.user.user_metadata.tenant_id as string
+        const { data: byTenant } = await supabaseBrowser
+          .from('contractor_settings')
+          .select('*')
+          .eq('id', tenantId)
+          .maybeSingle()
+        settingsRow = byTenant
+      }
+
+      if (settingsRow) {
         setForm({
-          ...(existing as ContractorSettings),
-          room_pricing: normalizeRoomPricing((existing as { room_pricing?: unknown }).room_pricing),
+          ...(settingsRow as ContractorSettings),
+          room_pricing: normalizeRoomPricing((settingsRow as { room_pricing?: unknown }).room_pricing),
         })
         setSaved(true)
         setEmbedRevealed(true)
 
-        // Fetch addons
+        const contractorId = settingsRow.id
+
         const { data: addonsData } = await supabaseBrowser
           .from('contractor_addons')
           .select('*')
-          .eq('contractor_id', existing.id)
+          .eq('contractor_id', contractorId)
           .order('created_at', { ascending: true })
         
         if (addonsData) {
           setAddons(addonsData as ContractorAddon[])
         }
 
-        // Fetch custom rooms
         const { data: roomsData } = await supabaseBrowser
           .from('contractor_rooms')
           .select('*')
-          .eq('contractor_id', existing.id)
+          .eq('contractor_id', contractorId)
           .order('created_at', { ascending: true })
 
         if (roomsData) {
           setCustomRooms(roomsData as CustomRoom[])
         }
 
-        // Fetch custom finishes
         const { data: finishesData } = await supabaseBrowser
           .from('contractor_finishes')
           .select('*')
-          .eq('contractor_id', existing.id)
+          .eq('contractor_id', contractorId)
           .order('sort_order', { ascending: true })
 
         if (finishesData) {

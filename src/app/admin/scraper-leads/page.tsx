@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import SendIntakeButton from './SendIntakeButton'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -105,12 +106,13 @@ export default async function ScraperLeadsPage({
               <th className="px-4 py-3">Pipeline</th>
               <th className="px-4 py-3">Run</th>
               <th className="px-4 py-3">Created</th>
+              <th className="px-4 py-3">Intake</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-gray-500">
+                <td colSpan={6} className="px-4 py-8 text-center text-gray-500">
                   No scraper leads yet. Complete a scraper run to populate this table.
                 </td>
               </tr>
@@ -145,6 +147,14 @@ export default async function ScraperLeadsPage({
                     )}
                   </td>
                   <td className="px-4 py-3 text-gray-500">{fmt(lead.created_at)}</td>
+                  <td className="px-4 py-3">
+                    <SendIntakeButton
+                      leadId={lead.id}
+                      businessName={lead.business_name}
+                      email={lead.email}
+                      pipeline={lead.pipeline}
+                    />
+                  </td>
                 </tr>
               ))
             )}

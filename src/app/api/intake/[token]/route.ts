@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { checkRateLimit, hashRateKey } from '@/lib/rateLimit'
+import { enqueueProvisionJob } from '@/lib/provision/enqueueProvisionJob'
 
 export const runtime = 'nodejs'
 
-// Public: minimal prefill for the intake form (no auth). Only exposes the
-// business name + status so the prospect sees who the form is for.
 export async function GET(
   _req: Request,
   { params }: { params: Promise<{ token: string }> }
@@ -13,7 +13,7 @@ export async function GET(
   const supabase = getSupabaseAdmin()
   const { data, error } = await supabase
     .from('prospect_intakes')
-    .select('business_name, status')
+    .select('business_name, status, source, email_verified_at, requested_product')
     .eq('token', token)
     .maybeSingle()
 
@@ -28,10 +28,12 @@ export async function GET(
     businessName: data.business_name,
     status: data.status,
     alreadySubmitted: data.status !== 'draft',
+    source: data.source,
+    emailVerified: !!data.email_verified_at,
+    requestedProduct: data.requested_product,
   })
 }
 
-// data:image/png;base64,xxxx  ->  { mime, buffer }
 function decodeDataUrl(dataUrl: string): { ext: string; mime: string; buffer: Buffer } | null {
   const match = /^data:(image\/(png|jpeg|jpg|webp|svg\+xml));base64,(.+)$/i.exec(dataUrl)
   if (!match) return null
@@ -46,7 +48,6 @@ function decodeDataUrl(dataUrl: string): { ext: string; mime: string; buffer: Bu
   return { ext: extMap[mime] || 'png', mime, buffer: Buffer.from(match[3], 'base64') }
 }
 
-// Public: submit the intake (no auth). Writes through the service-role client.
 export async function POST(
   req: Request,
   { params }: { params: Promise<{ token: string }> }
@@ -56,9 +57,18 @@ export async function POST(
     const body = await req.json()
     const supabase = getSupabaseAdmin()
 
+    const submitLimit = await checkRateLimit(
+      hashRateKey('intake_submit', token),
+      3,
+      60 * 60 * 1000
+    )
+    if (!submitLimit.allowed) {
+      return NextResponse.json({ error: 'Too many submit attempts.' }, { status: 429 })
+    }
+
     const { data: existing, error: findErr } = await supabase
       .from('prospect_intakes')
-      .select('id, status')
+      .select('id, status, source, email_verified_at, requested_product')
       .eq('token', token)
       .maybeSingle()
 
@@ -69,7 +79,16 @@ export async function POST(
       return NextResponse.json({ error: 'This intake link is no longer active' }, { status: 410 })
     }
 
-    // Optional logo upload (base64 data URL), capped to keep payloads sane.
+    if (existing.source === 'public' && !existing.email_verified_at) {
+      return NextResponse.json(
+        {
+          error:
+            'Please verify your email using the link we sent before submitting this form.',
+        },
+        { status: 403 }
+      )
+    }
+
     let logoUrl: string | null = null
     if (typeof body.logoDataUrl === 'string' && body.logoDataUrl.startsWith('data:')) {
       const decoded = decodeDataUrl(body.logoDataUrl)
@@ -89,6 +108,11 @@ export async function POST(
 
     const toStr = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : null)
     const toArr = (v: unknown) => (Array.isArray(v) ? v.filter((x) => typeof x === 'string') : [])
+
+    const requestedProduct =
+      body.requestedProduct === 'widget' || body.requestedProduct === 'full'
+        ? body.requestedProduct
+        : existing.requested_product
 
     const update: Record<string, unknown> = {
       status: 'submitted',
@@ -116,6 +140,7 @@ export async function POST(
       primary_cta: toStr(body.primaryCta),
       desired_domain: toStr(body.desiredDomain),
       notes: toStr(body.notes),
+      requested_product: requestedProduct,
     }
     if (logoUrl) update.logo_url = logoUrl
 
@@ -126,7 +151,10 @@ export async function POST(
 
     if (updateErr) throw updateErr
 
-    return NextResponse.json({ success: true })
+    const mode = requestedProduct === 'widget' ? 'widget' : 'full'
+    await enqueueProvisionJob(existing.id, mode)
+
+    return NextResponse.json({ success: true, provisionQueued: true })
   } catch (error) {
     console.error('Intake submit error:', error)
     const message = error instanceof Error ? error.message : 'Failed to submit intake'
