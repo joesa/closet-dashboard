@@ -243,11 +243,25 @@ export async function POST(req: Request) {
       // the same photo.
       const aiProducts = Array.isArray(aiSiteConfig.products) ? aiSiteConfig.products : null;
       const productsWithImages = (aiProducts ?? siteConfigData.products_config).map(
-        (p: { title?: string; image?: string; [k: string]: unknown }, i: number) => ({
-          ...p,
-          image: p.image || (p.title && serviceCatalog[p.title]?.image) || PRODUCT_IMAGE_POOL[i % PRODUCT_IMAGE_POOL.length],
-        })
+        (p: { title?: string; image?: string; imagePrompt?: string; [k: string]: unknown }, i: number) => {
+          // Drop the transient art-direction prompt; it's only used client-side
+          // to drive image generation and shouldn't be persisted on the product.
+          const { imagePrompt: _imagePrompt, ...rest } = p;
+          void _imagePrompt;
+          return {
+            ...rest,
+            image: p.image || (p.title && serviceCatalog[p.title]?.image) || PRODUCT_IMAGE_POOL[i % PRODUCT_IMAGE_POOL.length],
+          };
+        }
       );
+
+      // Prefer the build's own (bespoke or curated) product images for sub-page
+      // image blocks so multi-page sites stay visually consistent with the home
+      // page; fall back to the generic stock pool only if none are present.
+      const sitePool: string[] = productsWithImages
+        .map((p: { image?: string }) => p.image)
+        .filter((url: string | undefined): url is string => Boolean(url));
+      const pageImagePool = sitePool.length > 0 ? sitePool : PRODUCT_IMAGE_POOL;
 
       siteConfigData = {
         ...siteConfigData,
@@ -288,7 +302,7 @@ export async function POST(req: Request) {
           content_blocks: Array.isArray(page.content_blocks)
             ? page.content_blocks.map((block, bIdx) =>
                 block.type === 'image_left' || block.type === 'image_right'
-                  ? { ...block, image: PRODUCT_IMAGE_POOL[(pIdx + bIdx) % PRODUCT_IMAGE_POOL.length] }
+                  ? { ...block, image: pageImagePool[(pIdx + bIdx) % pageImagePool.length] }
                   : block
               )
             : page.content_blocks,

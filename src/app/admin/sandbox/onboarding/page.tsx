@@ -17,12 +17,25 @@ function slugify(value: string) {
   return value.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
 }
 
+type AiProduct = {
+  title?: string;
+  imagePrompt?: string;
+  image?: string;
+  [key: string]: unknown;
+};
+
 type AiSiteConfig = {
   theme?: string;
-  hero?: { headline?: string };
+  hero?: { headline?: string; imagePrompt?: string };
   about?: { description?: string };
+  products?: AiProduct[];
   pagesConfig?: unknown[];
   [key: string]: unknown;
+};
+
+type GeneratedImages = {
+  hero?: string;
+  products: { index: number; title?: string; image: string }[];
 };
 
 type AiWidgetConfig = {
@@ -71,6 +84,8 @@ export default function SandboxOnboarding() {
   const [aiUpsellPitch, setAiUpsellPitch] = useState('');
   const [aiWidgetConfig, setAiWidgetConfig] = useState<AiWidgetConfig | null>(null);
   const [aiSiteConfig, setAiSiteConfig] = useState<AiSiteConfig | null>(null);
+  const [imageLoading, setImageLoading] = useState(false);
+  const [generatedImages, setGeneratedImages] = useState<GeneratedImages | null>(null);
 
   // True only on localhost / non-production hosts. Used to expose test-only
   // helpers (fake login emails) that must never appear on production.
@@ -265,6 +280,60 @@ export default function SandboxOnboarding() {
     }
   };
 
+  // Opt-in bespoke image generation: render the hero + product images from the
+  // AI's art-direction prompts (gpt-image-1), upload them to Supabase Storage,
+  // and patch the permanent URLs back onto the form + aiSiteConfig so provision
+  // persists them instead of the shared Unsplash placeholders.
+  const handleGenerateImages = async () => {
+    if (!aiSiteConfig) return;
+    setImageLoading(true);
+    setError('');
+    try {
+      const products = Array.isArray(aiSiteConfig.products)
+        ? aiSiteConfig.products.map((p) => ({ title: p?.title, imagePrompt: p?.imagePrompt }))
+        : [];
+
+      const res = await fetch('/api/ai/generate-images', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          slug: formData.subdomain || slugify(formData.businessName),
+          heroImagePrompt: aiSiteConfig.hero?.imagePrompt,
+          products,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Image generation failed');
+
+      const generatedProducts: { index: number; title?: string; image: string }[] =
+        Array.isArray(json.products) ? json.products : [];
+
+      // Patch product image URLs back onto aiSiteConfig by index so provision
+      // keeps them (it preserves any product that already carries an `image`).
+      setAiSiteConfig((prev) => {
+        if (!prev) return prev;
+        const nextProducts: AiProduct[] = Array.isArray(prev.products) ? [...prev.products] : [];
+        generatedProducts.forEach((r) => {
+          if (nextProducts[r.index]) {
+            nextProducts[r.index] = { ...nextProducts[r.index], image: r.image };
+          }
+        });
+        return { ...prev, products: nextProducts };
+      });
+
+      // A non-default hero URL is honored by provision as the operator's choice.
+      if (json.heroImage) {
+        setFormData((prev) => ({ ...prev, heroImage: json.heroImage }));
+      }
+
+      setGeneratedImages({ hero: json.heroImage || undefined, products: generatedProducts });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Image generation failed');
+    } finally {
+      setImageLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-neutral-900 text-white flex flex-col items-center p-6 py-12">
       {showGuide && (
@@ -434,6 +503,51 @@ export default function SandboxOnboarding() {
                     <span key={i} className="text-[10px] bg-neutral-800 border border-neutral-700 px-2 py-1 rounded">{r.name}</span>
                   ))}
                 </div>
+              </div>
+            )}
+
+            {/* Bespoke image generation (full builds only). Optional: deploy
+                works without it, falling back to the curated stock photos. */}
+            {siteMode === 'full' && aiSiteConfig && (
+              <div className="mt-6 p-4 bg-black/20 rounded border border-purple-500/20">
+                <div className="flex items-center justify-between gap-3 mb-2">
+                  <h3 className="text-sm font-bold text-purple-300 flex items-center gap-2">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                    Bespoke Images
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={handleGenerateImages}
+                    disabled={imageLoading}
+                    className="shrink-0 text-xs font-bold bg-purple-600 hover:bg-purple-500 text-white px-3 py-2 rounded-md transition-colors disabled:opacity-50"
+                  >
+                    {imageLoading ? 'Rendering images…' : (generatedImages ? 'Regenerate Images' : 'Generate Bespoke Images')}
+                  </button>
+                </div>
+                <p className="text-xs text-neutral-400 mb-3">
+                  Render a unique hero + product images from the AI&apos;s art-direction prompts (gpt-image-1, 16:9). Takes ~30-60s and costs a few cents. The permanent URLs replace the stock placeholders on deploy.
+                </p>
+                {imageLoading && (
+                  <p className="text-xs text-purple-300 animate-pulse">Generating bespoke imagery… keep this tab open.</p>
+                )}
+                {generatedImages && !imageLoading && (
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2">
+                    {generatedImages.hero && (
+                      <div className="col-span-2 md:col-span-1">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={generatedImages.hero} alt="Generated hero" className="w-full h-20 object-cover rounded border border-neutral-700" />
+                        <p className="text-[10px] text-neutral-500 mt-1 text-center">Hero</p>
+                      </div>
+                    )}
+                    {generatedImages.products.map((p) => (
+                      <div key={p.index}>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={p.image} alt={p.title || `Product ${p.index + 1}`} className="w-full h-20 object-cover rounded border border-neutral-700" />
+                        <p className="text-[10px] text-neutral-500 mt-1 text-center truncate">{p.title || `Product ${p.index + 1}`}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>

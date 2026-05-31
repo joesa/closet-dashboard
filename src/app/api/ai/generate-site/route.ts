@@ -29,9 +29,10 @@ const JSON_SCHEMA = {
             type: 'object',
             properties: {
               headline: { type: 'string', description: 'A highly converting, punchy H1 headline.' },
-              backgroundImage: { type: 'string', description: 'Placeholder image URL (leave empty or use default Unsplash).', default: 'https://images.unsplash.com/photo-1558211583-d26f610c1eb1' }
+              backgroundImage: { type: 'string', description: 'Placeholder image URL (leave empty or use default Unsplash).', default: 'https://images.unsplash.com/photo-1558211583-d26f610c1eb1' },
+              imagePrompt: { type: 'string', description: 'A complete, bespoke gpt-image-1 art-direction prompt for a wide-angle cinematic ARCHITECTURAL hero photograph of a completed, immaculate project in this exact niche. Capture grand scale and premium materials. Editorial magazine style, cinematic lighting, photorealistic, 8k, 16:9, crisp focus, clutter-free, no text, no people.' }
             },
-            required: ['headline']
+            required: ['headline', 'imagePrompt']
           },
           about: {
             type: 'object',
@@ -68,6 +69,7 @@ const JSON_SCHEMA = {
               properties: {
                 title: { type: 'string' },
                 description: { type: 'string' },
+                imagePrompt: { type: 'string', description: 'A complete, bespoke gpt-image-1 art-direction prompt for a TIGHT MACRO close-up that proves craftsmanship for this specific product/service. Do NOT repeat the wide hero angle — focus on premium materials, hardware, precision joints, lighting integration, or a specialized auxiliary detail. Macro interior design photography, crisp textures, premium editorial look, photorealistic, 8k, 16:9, no text, no people.' },
                 details: {
                   type: 'object',
                   properties: {
@@ -78,7 +80,7 @@ const JSON_SCHEMA = {
                   required: ['subtitle', 'longDescription', 'specifications']
                 }
               },
-              required: ['title', 'description', 'details']
+              required: ['title', 'description', 'imagePrompt', 'details']
             }
           }
         },
@@ -282,12 +284,18 @@ export async function POST(req: Request) {
     }
 
     // Build system prompt based on whether this is a multi-page request
-    let systemPrompt = `You are an expert web designer, copywriter, and business analyst. 
-Your job is to read the following business description or scraped website text and generate a complete, tailored configuration for a website and an interactive Quote Calculator.
+    let systemPrompt = `You are an elite Luxury Brand Copywriter, Visual Art Director, and Next.js Frontend Architect. 
+Your job is to read the following business description or scraped website text and generate a complete, tailored configuration for a website and an interactive Quote Calculator. The output must look like a $200,000 bespoke digital storefront, explicitly avoiding generic "AI-generated" tropes.
 
 CRITICAL INSTRUCTIONS FOR QUOTE CALCULATOR:
 If the business is NOT a traditional closet/garage builder (e.g., they are a Professional Organizer or Consultant), you MUST completely replace the standard closet rooms (Walk-In, Reach-In) with their ACTUAL services (e.g., "Productivity Consulting", "Home Organizing").
 The "customFinishes" should represent their service tiers (e.g., "Virtual Consultation", "In-Person (Half Day)") instead of wood materials.
+
+CRITICAL INSTRUCTIONS FOR IMAGE PROMPTS (Visual Art Director):
+Every "imagePrompt" you write is handed directly to gpt-image-1 to render a bespoke, photorealistic image — so make each one specific, contextual, and self-contained. Follow these rules:
+- hero.imagePrompt: ONE wide-angle, cinematic ARCHITECTURAL photograph of a completed, immaculate project in this exact niche, capturing grand scale and premium materials/finishes. Editorial magazine style, cinematic lighting, photorealistic, 8k, 16:9, crisp focus, clutter-free, no text, no people.
+- products[].imagePrompt: TIGHT MACRO close-ups that prove expertise. NEVER reuse the hero angle. Vary them across the products: (1) premium materials/hardware/precision joints, (2) lighting integration or high-tech functional luxury, (3) a highly organized specialized auxiliary detail. Macro interior design photography, crisp textures, premium editorial look, photorealistic, 8k, 16:9, no text, no people.
+- Tailor every prompt to the contractor's specific niche and the chosen theme's aesthetic. Do not use brand names, logos, or watermarks.
 
 Keep the upsell pitch professional, subtle, and focused on value.`;
 
