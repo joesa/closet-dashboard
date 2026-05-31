@@ -12,6 +12,11 @@ function generateTestEmail() {
   return `${name}${Math.floor(Math.random() * 10000)}@example.com`;
 }
 
+// Turn a business name into a URL-safe subdomain (e.g. "Apex Garage" -> "apex-garage").
+function slugify(value: string) {
+  return value.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+}
+
 type AiSiteConfig = {
   theme?: string;
   hero?: { headline?: string };
@@ -47,6 +52,9 @@ export default function SandboxOnboarding() {
     setAiInput(result.description);
     setFormData((prev) => ({
       ...prev,
+      businessName: result.businessName || prev.businessName,
+      // Auto-derive the subdomain from the business name (operator can edit).
+      subdomain: result.businessName ? slugify(result.businessName) : prev.subdomain,
       theme: result.theme || prev.theme,
       services: result.services && result.services.length > 0 ? result.services : prev.services,
     }));
@@ -218,13 +226,23 @@ export default function SandboxOnboarding() {
       setAiWidgetConfig(widgetConfig);
       setAiUpsellPitch(upsellPitch);
       
-      // Pre-fill form data with AI suggestions where applicable
+      // Map AI-generated products back onto our service checkboxes (fuzzy, plural-insensitive).
+      const products: Array<{ title?: string }> = Array.isArray(siteConfig.products) ? siteConfig.products : [];
+      const norm = (x: string) => x.toLowerCase().replace(/s\b/g, '').trim();
+      const productTitles = products.map(p => norm(p?.title || '')).filter(Boolean);
+      const matchedServices = availableServices.filter(svc => {
+        const s = norm(svc);
+        return productTitles.some(t => t.includes(s) || s.includes(t));
+      });
+
+      // Pre-fill the editable form so the operator reviews/tweaks the AI brief rather than typing it.
       setFormData(prev => ({
         ...prev,
         theme: siteConfig.theme || prev.theme,
         heroHeadline: siteConfig.hero?.headline || prev.heroHeadline,
         aboutDescription: siteConfig.about?.description || prev.aboutDescription,
-        services: [] 
+        services: matchedServices.length > 0 ? matchedServices : prev.services,
+        subdomain: prev.subdomain || slugify(prev.businessName),
       }));
       
     } catch (err) {
@@ -516,7 +534,8 @@ export default function SandboxOnboarding() {
           </div>
 
           <div className="border-t border-neutral-700 pt-4 mt-4">
-            <h3 className="text-sm font-bold text-neutral-400 uppercase tracking-widest mb-4">Content Customization</h3>
+            <h3 className="text-sm font-bold text-neutral-400 uppercase tracking-widest mb-1">Content Customization</h3>
+            <p className="text-xs text-neutral-500 mb-4">Auto-filled from your description / guided builder after generating. Edit anything below before deploying.</p>
             
             <div className="space-y-4">
               <div>

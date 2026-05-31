@@ -6,6 +6,7 @@ export type GuidedResult = {
   description: string;
   theme?: string;
   services?: string[];
+  businessName?: string;
 };
 
 // Maps the human "vibe" answer to a concrete site theme slug.
@@ -25,6 +26,12 @@ type Step =
   | { id: string; type: 'text'; question: string; help?: string; placeholder?: string; optional?: boolean };
 
 const STEPS: Step[] = [
+  {
+    id: 'businessName',
+    type: 'text',
+    question: 'What is the business name?',
+    placeholder: 'e.g. Apex Garage Builds',
+  },
   {
     id: 'businessType',
     type: 'single',
@@ -98,6 +105,7 @@ function buildDescription(answers: Record<string, string | string[]>): string {
   const str = (id: string) => (typeof get(id) === 'string' ? (get(id) as string) : '');
 
   const parts: string[] = [];
+  if (str('businessName')) parts.push(`Business name: ${str('businessName')}.`);
   parts.push(`This is a ${str('businessType') || 'home storage & organization'} business.`);
   if (str('location')) parts.push(`It serves ${str('location')}.`);
   if (arr('services').length) parts.push(`Services offered: ${arr('services').join(', ')}.`);
@@ -141,6 +149,7 @@ export default function GuidedBuilder({
       description: buildDescription(answers),
       theme: VIBE_TO_THEME[(answers['vibe'] as string) || ''],
       services: Array.isArray(answers['services']) ? (answers['services'] as string[]) : [],
+      businessName: typeof answers['businessName'] === 'string' ? (answers['businessName'] as string) : undefined,
     });
   };
 
