@@ -80,6 +80,11 @@ export default async function AdminSitesPage() {
                           Suspended
                         </span>
                       )}
+                      {tenant.site_status === 'widget_only' && (
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-sky-500/10 text-sky-400 border border-sky-500/20">
+                          Widget Only
+                        </span>
+                      )}
                     </td>
                     <td className="px-6 py-4 text-right space-x-3">
                       <Link 

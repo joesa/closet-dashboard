@@ -1,6 +1,15 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+
+// Sandbox/testing helper: fabricate a fake but usable login email. We only ever
+// surface these on non-production hosts so the production onboarding page never
+// shows a throwaway address. Convention: someName####@example.com.
+const TEST_NAMES = ['joe', 'yaw', 'sam', 'ada', 'kofi', 'lena', 'max', 'nia'];
+function generateTestEmail() {
+  const name = TEST_NAMES[Math.floor(Math.random() * TEST_NAMES.length)];
+  return `${name}${Math.floor(Math.random() * 10000)}@example.com`;
+}
 
 type AiSiteConfig = {
   theme?: string;
@@ -22,6 +31,13 @@ export default function SandboxOnboarding() {
   const [aiLoading, setAiLoading] = useState(false);
   const [resultUrl, setResultUrl] = useState('');
   const [tempPassword, setTempPassword] = useState('');
+  const [loginEmail, setLoginEmail] = useState('');
+  const [loginUrl, setLoginUrl] = useState('');
+  const [embedSnippet, setEmbedSnippet] = useState('');
+  const [resultMode, setResultMode] = useState<'full' | 'widget'>('full');
+  // 'full' = Pipeline B (website + calculator). 'widget' = Pipeline A (calculator
+  // widget only, for an existing site — this is where we upsell the full build).
+  const [siteMode, setSiteMode] = useState<'full' | 'widget'>('full');
   const [error, setError] = useState('');
   const [aiInput, setAiInput] = useState('');
   const [pageCount, setPageCount] = useState(1);
@@ -31,20 +47,48 @@ export default function SandboxOnboarding() {
   const [aiWidgetConfig, setAiWidgetConfig] = useState<AiWidgetConfig | null>(null);
   const [aiSiteConfig, setAiSiteConfig] = useState<AiSiteConfig | null>(null);
 
-  // Lazy initializer so the random sandbox email is generated once on mount
-  // rather than on every render (keeps the component render pure).
+  // True only on localhost / non-production hosts. Used to expose test-only
+  // helpers (fake login emails) that must never appear on production.
+  const [isSandbox, setIsSandbox] = useState(false);
+
   const [formData, setFormData] = useState(() => ({
     businessName: 'Apex Garage Builds',
     theme: 'brutalist',
     layoutStyle: 'standard',
     subdomain: 'apex',
-    ownerEmail: `sandbox-${Math.floor(Math.random() * 10000)}@test.com`,
+    ownerEmail: '',
     heroHeadline: 'Built For Garages That Dominate',
     aboutDescription: 'Apex Garage Builds engineers brutalist, high-performance garage environments for those who demand absolute durability.',
     heroImage: 'https://images.unsplash.com/photo-1558211583-d26f610c1eb1',
     beforeImage: 'https://images.unsplash.com/photo-1595428774223-ef52624120d2',
     services: ['Walk-In Closets', 'Garages', 'Home Offices'] // Default selection
   }));
+
+  // Detect sandbox/testing context on the client (avoids SSR hydration
+  // mismatch). On non-production hosts, pre-fill a fake @example.com login so
+  // testers have a working username without using a real inbox.
+  useEffect(() => {
+    const host = window.location.hostname;
+    const sandbox = host === 'localhost' || host === '127.0.0.1' || host.endsWith('.vercel.app');
+    setIsSandbox(sandbox);
+    if (sandbox) {
+      setFormData((prev) => (prev.ownerEmail ? prev : { ...prev, ownerEmail: generateTestEmail() }));
+    }
+
+    // Deep-link the mode from the originating pipeline:
+    // Pipeline A (has a site, needs the widget) => widget-only.
+    // Pipeline B (no site) => full build. Also accept ?mode=widget|full.
+    const params = new URLSearchParams(window.location.search);
+    const pipeline = params.get('pipeline')?.toUpperCase();
+    const modeParam = params.get('mode')?.toLowerCase();
+    if (modeParam === 'widget' || modeParam === 'full') {
+      setSiteMode(modeParam);
+    } else if (pipeline === 'A') {
+      setSiteMode('widget');
+    } else if (pipeline === 'B') {
+      setSiteMode('full');
+    }
+  }, []);
 
   const availableServices = [
     'Walk-In Closets',
@@ -74,6 +118,7 @@ export default function SandboxOnboarding() {
     setLoading(true);
     setError('');
     setResultUrl('');
+    setEmbedSnippet('');
 
     try {
       const res = await fetch('/api/sandbox/provision', {
@@ -81,7 +126,9 @@ export default function SandboxOnboarding() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...formData,
-          aiSiteConfig,
+          mode: siteMode,
+          // Widget-only builds don't use the AI site content, only widget config.
+          aiSiteConfig: siteMode === 'widget' ? null : aiSiteConfig,
           aiWidgetConfig
         })
       });
@@ -89,8 +136,12 @@ export default function SandboxOnboarding() {
 
       if (!res.ok) throw new Error(data.error || 'Failed to provision');
       
-      setResultUrl(data.url);
+      setResultUrl(data.url || '');
       setTempPassword(data.tempPassword || '');
+      setLoginEmail(data.ownerEmail || formData.ownerEmail);
+      setLoginUrl(data.loginUrl || '');
+      setEmbedSnippet(data.embedSnippet || '');
+      setResultMode(data.mode === 'widget' ? 'widget' : 'full');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to provision');
     } finally {
@@ -104,8 +155,8 @@ export default function SandboxOnboarding() {
       return;
     }
     
-    if (pageCount === 1) {
-      // Skip sitemap generation for 1-page sites
+    if (pageCount === 1 || siteMode === 'widget') {
+      // Single-page sites (and all widget-only builds) skip sitemap generation.
       setSitemap(['Home']);
       setIsSitemapGenerated(true);
       return;
@@ -174,7 +225,37 @@ export default function SandboxOnboarding() {
       <div className="max-w-3xl w-full">
         <div className="bg-neutral-800 p-8 rounded-xl shadow-2xl border border-neutral-700 mb-8">
           <h1 className="text-2xl font-bold mb-2">Onboarding Simulator</h1>
-          <p className="text-neutral-400 mb-8 text-sm">Simulate a new contractor signing up. Generate custom sites using AI.</p>
+          <p className="text-neutral-400 mb-6 text-sm">Simulate a new contractor signing up. Generate custom sites using AI.</p>
+
+          {/* Build mode: full website (Pipeline B) vs widget-only (Pipeline A) */}
+          <div className="mb-8">
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => setSiteMode('full')}
+                className={`text-left p-4 rounded-lg border transition-colors ${
+                  siteMode === 'full'
+                    ? 'border-blue-500 bg-blue-900/30'
+                    : 'border-neutral-700 bg-neutral-900 hover:border-neutral-500'
+                }`}
+              >
+                <div className="font-bold text-sm">Full Website + Calculator</div>
+                <div className="text-xs text-neutral-400 mt-1">Pipeline B — prospect has no site. Build a hosted site with the embedded quote calculator.</div>
+              </button>
+              <button
+                type="button"
+                onClick={() => setSiteMode('widget')}
+                className={`text-left p-4 rounded-lg border transition-colors ${
+                  siteMode === 'widget'
+                    ? 'border-blue-500 bg-blue-900/30'
+                    : 'border-neutral-700 bg-neutral-900 hover:border-neutral-500'
+                }`}
+              >
+                <div className="font-bold text-sm">Quote Calculator Widget Only</div>
+                <div className="text-xs text-neutral-400 mt-1">Pipeline A — prospect already has a site. Generate the embeddable widget (and upsell the full build).</div>
+              </button>
+            </div>
+          </div>
 
           {/* AI Generation Section */}
           <div className="bg-indigo-900/30 border border-indigo-500/30 rounded-lg p-6 mb-8">
@@ -183,7 +264,9 @@ export default function SandboxOnboarding() {
               AI Smart Configuration
             </h2>
             <p className="text-sm text-indigo-200/70 mb-4">
-              Paste their website URL to scrape it, or paste a description of their services. The AI will generate a highly tailored site and Quote Calculator.
+              {siteMode === 'widget'
+                ? 'Paste their website URL or a description of their services. The AI will generate a tailored Quote Calculator (custom rooms, add-ons, and finishes) to embed on their existing site.'
+                : 'Paste their website URL to scrape it, or paste a description of their services. The AI will generate a highly tailored site and Quote Calculator.'}
             </p>
             <div className="flex flex-col gap-4">
               <div className="flex gap-4">
@@ -195,6 +278,7 @@ export default function SandboxOnboarding() {
                   className="flex-1 bg-neutral-900 border border-neutral-700 rounded-md p-3 text-white"
                   disabled={aiLoading || isSitemapGenerated}
                 />
+                {siteMode === 'full' && (
                 <select
                   value={pageCount}
                   onChange={(e) => setPageCount(Number(e.target.value))}
@@ -207,6 +291,7 @@ export default function SandboxOnboarding() {
                   <option value={4}>4 Pages</option>
                   <option value={5}>5 Pages</option>
                 </select>
+                )}
                 {!isSitemapGenerated && (
                   <button 
                     type="button"
@@ -259,7 +344,9 @@ export default function SandboxOnboarding() {
                       disabled={aiLoading}
                       className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-2 rounded-md font-bold transition-colors disabled:opacity-50"
                     >
-                      {aiLoading ? 'Generating Full Site...' : 'Generate Site & Calculator'}
+                      {aiLoading
+                        ? (siteMode === 'widget' ? 'Generating Calculator...' : 'Generating Full Site...')
+                        : (siteMode === 'widget' ? 'Generate Quote Calculator' : 'Generate Site & Calculator')}
                     </button>
                   </div>
                 </div>
@@ -269,7 +356,7 @@ export default function SandboxOnboarding() {
             {aiWidgetConfig && (
               <div className="mt-6 p-4 bg-black/20 rounded border border-indigo-500/20">
                 <h3 className="text-sm font-bold text-green-400 mb-2">✅ AI Generation Successful</h3>
-                <p className="text-xs text-neutral-400 mb-2">The AI has generated <strong>{aiWidgetConfig.customRooms?.length || 0} custom services</strong> and <strong>{aiWidgetConfig.customAddOns?.length || 0} add-ons</strong> for the quote widget. The site content has been pre-filled below.</p>
+                <p className="text-xs text-neutral-400 mb-2">The AI has generated <strong>{aiWidgetConfig.customRooms?.length || 0} custom services</strong> and <strong>{aiWidgetConfig.customAddOns?.length || 0} add-ons</strong> for the quote widget.{siteMode === 'full' ? ' The site content has been pre-filled below.' : ''}</p>
                 <div className="flex flex-wrap gap-2 mt-3">
                   {aiWidgetConfig.customRooms?.map((r: { name?: string }, i: number) => (
                     <span key={i} className="text-[10px] bg-neutral-800 border border-neutral-700 px-2 py-1 rounded">{r.name}</span>
@@ -292,6 +379,7 @@ export default function SandboxOnboarding() {
               />
             </div>
 
+            {siteMode === 'full' && (
             <div>
               <label className="block text-sm font-medium mb-1 text-neutral-300">Subdomain</label>
               <div className="flex">
@@ -307,8 +395,40 @@ export default function SandboxOnboarding() {
                 </span>
               </div>
             </div>
+            )}
           </div>
 
+          <div>
+            <label className="block text-sm font-medium mb-1 text-neutral-300">Owner Login Email</label>
+            <div className="flex gap-2">
+              <input
+                type="email"
+                value={formData.ownerEmail}
+                onChange={(e) => setFormData({ ...formData, ownerEmail: e.target.value })}
+                className="w-full bg-neutral-900 border border-neutral-700 rounded-md p-2 text-white"
+                placeholder="owner@business.com"
+                required
+              />
+              {isSandbox && (
+                <button
+                  type="button"
+                  onClick={() => setFormData((prev) => ({ ...prev, ownerEmail: generateTestEmail() }))}
+                  className="shrink-0 bg-neutral-700 hover:bg-neutral-600 text-white px-3 py-2 rounded-md text-xs font-bold transition-colors"
+                  title="Generate a fake @example.com email for testing"
+                >
+                  Generate test email
+                </button>
+              )}
+            </div>
+            <p className="text-xs text-neutral-500 mt-1">
+              {isSandbox
+                ? 'Testing mode: a fake @example.com address is pre-filled — use it as the login username. (Hidden on production.)'
+                : 'This email is the username the owner uses to log in to their dashboard.'}
+            </p>
+          </div>
+
+          {siteMode === 'full' && (
+          <>
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium mb-1 text-neutral-300">Aesthetic Theme</label>
@@ -417,13 +537,23 @@ export default function SandboxOnboarding() {
               </div>
             </div>
           </div>
+          </>
+          )}
+
+          {siteMode === 'widget' && (
+            <div className="border-t border-neutral-700 pt-4 mt-4 text-sm text-neutral-400">
+              <p>Widget-only build (Pipeline A): no website is generated. Use the AI section above to build the Quote Calculator, then deploy to get an embeddable snippet for the prospect&apos;s existing site.</p>
+            </div>
+          )}
 
           <button 
             type="submit" 
             disabled={loading}
             className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-md mt-6 transition-colors disabled:opacity-50"
           >
-            {loading ? 'Provisioning Edge Architecture...' : 'Deploy Simulated Site'}
+            {loading
+              ? 'Provisioning Edge Architecture...'
+              : (siteMode === 'widget' ? 'Deploy Quote Calculator' : 'Deploy Simulated Site')}
           </button>
         </form>
 
@@ -433,29 +563,66 @@ export default function SandboxOnboarding() {
           </div>
         )}
 
-        {resultUrl && (
+        {(resultUrl || embedSnippet) && (
           <div className="bg-green-900/30 border border-green-500/50 text-green-200 p-6 rounded-xl shadow-lg w-full max-w-3xl mt-8 flex flex-col items-center text-center">
             <svg className="w-12 h-12 text-green-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
             <h3 className="text-xl font-bold text-green-400 mb-2">Provisioning Complete!</h3>
-            <p className="mb-6 text-sm opacity-90">The environment is live on the Edge. The database, site configs, and custom widget settings are fully deployed.</p>
-            
-            <a 
-              href={resultUrl} 
-              target="_blank" 
-              rel="noopener noreferrer"
-              className="inline-block bg-green-500 text-neutral-900 font-bold px-6 py-3 rounded-lg hover:bg-green-400 transition-colors mb-4"
-            >
-              Open Sandbox Environment
-            </a>
-            <p className="font-mono text-sm bg-black/20 p-2 rounded w-full">Temp Admin Password: {tempPassword}</p>
+            <p className="mb-6 text-sm opacity-90">
+              {resultMode === 'widget'
+                ? 'The Quote Calculator is live. Paste the embed snippet below on the prospect\u2019s existing website.'
+                : 'The environment is live on the Edge. The database, site configs, and custom widget settings are fully deployed.'}
+            </p>
 
-            {aiUpsellPitch && (
+            {resultMode === 'full' && resultUrl && (
+              <a 
+                href={resultUrl} 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="inline-block bg-green-500 text-neutral-900 font-bold px-6 py-3 rounded-lg hover:bg-green-400 transition-colors mb-4"
+              >
+                Open Sandbox Environment
+              </a>
+            )}
+
+            {resultMode === 'widget' && embedSnippet && (
+              <div className="w-full text-left bg-black/20 rounded-lg p-4 mb-4">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs text-green-400 uppercase tracking-wider font-bold">Embed Snippet</p>
+                  <button
+                    type="button"
+                    onClick={() => navigator.clipboard.writeText(embedSnippet)}
+                    className="bg-neutral-800 hover:bg-neutral-700 text-neutral-300 px-3 py-1 rounded text-xs border border-neutral-600"
+                  >
+                    Copy
+                  </button>
+                </div>
+                <pre className="whitespace-pre-wrap break-all bg-neutral-900 border border-neutral-700 rounded-md p-3 text-xs text-white font-mono">{embedSnippet}</pre>
+                <p className="text-xs text-neutral-400 mt-2">Paste this where the calculator should appear on their site.</p>
+              </div>
+            )}
+
+            <div className="w-full text-left bg-black/20 rounded-lg p-4 space-y-2 font-mono text-sm">
+              <p className="text-xs text-green-400 uppercase tracking-wider font-bold mb-2">Owner Login Credentials</p>
+              {loginUrl && (
+                <p className="break-all">
+                  <span className="text-neutral-400">Login URL:</span>{' '}
+                  <a href={loginUrl} target="_blank" rel="noopener noreferrer" className="text-green-300 underline">{loginUrl}</a>
+                </p>
+              )}
+              <p className="break-all"><span className="text-neutral-400">Email (username):</span> {loginEmail}</p>
+              <p className="break-all"><span className="text-neutral-400">Temp Password:</span> {tempPassword}</p>
+            </div>
+            <p className="text-xs text-neutral-400 mt-2">The owner signs in with this email + temp password and is prompted to reset it on first login.</p>
+
+            {/* Upsell only for widget-only (Pipeline A) builds — a full-website
+                customer is already getting the site, so no upsell is shown. */}
+            {resultMode === 'widget' && aiUpsellPitch && (
               <div className="mt-8 text-left bg-black/30 p-5 rounded-lg border border-green-500/30 w-full">
                 <h4 className="text-sm font-bold text-green-400 uppercase tracking-wider mb-3 flex items-center gap-2">
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>
-                  AI Generated Upsell Pitch
+                  Full-Website Upsell Pitch
                 </h4>
-                <p className="text-sm text-neutral-300 italic mb-4">Use this text in Instantly or your email follow-up:</p>
+                <p className="text-sm text-neutral-300 italic mb-4">Send this to pitch the prospect a full website to go with their new calculator:</p>
                 <div className="relative group">
                   <textarea 
                     readOnly
