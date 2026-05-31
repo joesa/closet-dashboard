@@ -14,6 +14,7 @@ export default function SendIntakeButton({ leadId, businessName, email, pipeline
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [url, setUrl] = useState('');
+  const [manualBuild, setManualBuild] = useState(false);
 
   const send = async () => {
     if (!email) {
@@ -31,6 +32,7 @@ export default function SendIntakeButton({ leadId, businessName, email, pipeline
           businessName: businessName || undefined,
           recipientEmail: email,
           sendEmail: true,
+          provisioningMode: manualBuild ? 'manual' : 'auto',
         }),
       });
       const json = await res.json();
@@ -46,6 +48,14 @@ export default function SendIntakeButton({ leadId, businessName, email, pipeline
 
   return (
     <div className="flex flex-col items-start gap-1">
+      <label className="flex items-center gap-1 text-[10px] text-gray-500 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={manualBuild}
+          onChange={(e) => setManualBuild(e.target.checked)}
+        />
+        Manual AI
+      </label>
       <button
         type="button"
         onClick={send}

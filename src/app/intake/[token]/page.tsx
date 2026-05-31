@@ -62,6 +62,7 @@ export default function IntakeForm({ params }: { params: Promise<{ token: string
   const [error, setError] = useState('');
   const [notFound, setNotFound] = useState(false);
   const [needsEmailVerify, setNeedsEmailVerify] = useState(false);
+  const [manualBuild, setManualBuild] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -112,6 +113,7 @@ export default function IntakeForm({ params }: { params: Promise<{ token: string
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Failed to submit');
+      setManualBuild(!!json.manualBuild);
       setSubmitted(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to submit');
@@ -140,8 +142,9 @@ export default function IntakeForm({ params }: { params: Promise<{ token: string
           <div className="mx-auto mb-4 grid h-12 w-12 place-items-center rounded-full bg-green-100 text-green-600">✓</div>
           <h1 className="text-xl font-semibold text-gray-900">Thank you!</h1>
           <p className="mt-2 text-sm text-gray-600">
-            Your details have been received. We are building your site and quote calculator in the background.
-            Check your email for login credentials when provisioning completes.
+            {manualBuild
+              ? 'Your details have been received. Our team will build your custom site and quote calculator and email you when it is ready.'
+              : 'Your details have been received. We are building your site and quote calculator in the background. Check your email for login credentials when provisioning completes.'}
           </p>
         </div>
       </div>

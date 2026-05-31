@@ -38,11 +38,15 @@ export async function POST(req: Request) {
       }
     }
 
+    const provisioningMode =
+      body.provisioningMode === 'manual' ? 'manual' : 'auto'
+
     const result = await createDraftIntake({
       source: scraperLeadId ? 'scraper' : 'admin',
       businessName: businessName || null,
       scraperLeadId: scraperLeadId || null,
       requestedProduct: requestedProduct ?? 'full',
+      provisioningMode,
       verificationEmail: recipientEmail || null,
       emailVerifiedAt: scraperLeadId ? new Date().toISOString() : null,
       sendEmail,

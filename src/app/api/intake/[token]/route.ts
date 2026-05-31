@@ -13,7 +13,7 @@ export async function GET(
   const supabase = getSupabaseAdmin()
   const { data, error } = await supabase
     .from('prospect_intakes')
-    .select('business_name, status, source, email_verified_at, requested_product')
+    .select('business_name, status, source, email_verified_at, requested_product, provisioning_mode')
     .eq('token', token)
     .maybeSingle()
 
@@ -31,6 +31,7 @@ export async function GET(
     source: data.source,
     emailVerified: !!data.email_verified_at,
     requestedProduct: data.requested_product,
+    provisioningMode: data.provisioning_mode,
   })
 }
 
@@ -68,7 +69,7 @@ export async function POST(
 
     const { data: existing, error: findErr } = await supabase
       .from('prospect_intakes')
-      .select('id, status, source, email_verified_at, requested_product')
+      .select('id, status, source, email_verified_at, requested_product, provisioning_mode')
       .eq('token', token)
       .maybeSingle()
 
@@ -151,10 +152,20 @@ export async function POST(
 
     if (updateErr) throw updateErr
 
-    const mode = requestedProduct === 'widget' ? 'widget' : 'full'
-    await enqueueProvisionJob(existing.id, mode)
+    const provisionMode = existing.provisioning_mode === 'manual' ? 'manual' : 'auto'
+    let provisionQueued = false
 
-    return NextResponse.json({ success: true, provisionQueued: true })
+    if (provisionMode === 'auto') {
+      const jobMode = requestedProduct === 'widget' ? 'widget' : 'full'
+      await enqueueProvisionJob(existing.id, jobMode)
+      provisionQueued = true
+    }
+
+    return NextResponse.json({
+      success: true,
+      provisionQueued,
+      manualBuild: provisionMode === 'manual',
+    })
   } catch (error) {
     console.error('Intake submit error:', error)
     const message = error instanceof Error ? error.message : 'Failed to submit intake'

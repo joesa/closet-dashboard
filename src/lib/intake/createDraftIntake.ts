@@ -4,12 +4,15 @@ import { sendIntakeLinkEmail } from '@/lib/intake/sendIntakeLinkEmail'
 
 export type IntakeSource = 'admin' | 'public' | 'scraper'
 export type RequestedProduct = 'full' | 'widget'
+export type ProvisioningMode = 'auto' | 'manual'
 
 export type CreateDraftIntakeInput = {
   source: IntakeSource
   businessName?: string | null
   scraperLeadId?: string | null
   requestedProduct?: RequestedProduct
+  /** auto = template cron after submit; manual = admin AI build only */
+  provisioningMode?: ProvisioningMode
   verificationEmail?: string | null
   emailVerifiedAt?: string | null
   sendEmail?: boolean
@@ -38,6 +41,7 @@ export async function createDraftIntake(
       business_name: input.businessName?.trim() || null,
       scraper_lead_id: input.scraperLeadId || null,
       requested_product: input.requestedProduct ?? 'full',
+      provisioning_mode: input.provisioningMode ?? 'auto',
       verification_email: input.verificationEmail?.trim() || null,
       email_verified_at: input.emailVerifiedAt || null,
     })

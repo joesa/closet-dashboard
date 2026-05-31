@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import NewIntakeButton from './NewIntakeButton'
+import IntakeProvisioningMode from './IntakeProvisioningMode'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -15,6 +16,7 @@ type Intake = {
   service_area: string | null
   created_at: string
   submitted_at: string | null
+  provisioning_mode: string
 }
 
 function fmt(d: string | null) {
@@ -32,7 +34,7 @@ export default async function IntakesPage() {
   const admin = getSupabaseAdmin()
   const { data, error } = await admin
     .from('prospect_intakes')
-    .select('id, token, status, business_name, contact_email, contact_phone, service_area, created_at, submitted_at')
+    .select('id, token, status, business_name, contact_email, contact_phone, service_area, created_at, submitted_at, provisioning_mode')
     .order('created_at', { ascending: false })
     .limit(500)
 
@@ -60,6 +62,7 @@ export default async function IntakesPage() {
               <th className="px-4 py-3">Business</th>
               <th className="px-4 py-3">Contact</th>
               <th className="px-4 py-3">Status</th>
+              <th className="px-4 py-3">Provision</th>
               <th className="px-4 py-3">Submitted</th>
               <th className="px-4 py-3">Action</th>
             </tr>
@@ -67,7 +70,7 @@ export default async function IntakesPage() {
           <tbody className="divide-y divide-gray-100">
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-gray-500">
+                <td colSpan={6} className="px-4 py-8 text-center text-gray-500">
                   No intakes yet. Generate a link above and send it to a prospect.
                 </td>
               </tr>
@@ -87,6 +90,13 @@ export default async function IntakesPage() {
                       {it.status}
                     </span>
                   </td>
+                  <td className="px-4 py-3">
+                    <IntakeProvisioningMode
+                      intakeId={it.id}
+                      initialMode={it.provisioning_mode === 'manual' ? 'manual' : 'auto'}
+                      status={it.status}
+                    />
+                  </td>
                   <td className="px-4 py-3 text-gray-500">{fmt(it.submitted_at)}</td>
                   <td className="px-4 py-3">
                     {it.status === 'draft' ? (
@@ -96,7 +106,7 @@ export default async function IntakesPage() {
                         href={`/admin/sandbox/onboarding?intake=${it.id}`}
                         className="text-sm font-medium text-blue-600 hover:underline"
                       >
-                        Build site →
+                        {it.provisioning_mode === 'manual' ? 'AI build →' : 'Build site →'}
                       </Link>
                     )}
                   </td>

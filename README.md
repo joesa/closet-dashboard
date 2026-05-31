@@ -27,6 +27,7 @@ site generation, and the outbound (Instantly + Twilio) automation surface.
   async `provision_jobs` processed by `/api/cron/process-provision-jobs` (Vercel
   Cron). Full sites default to `pending_approval`; widget-only uses Pipeline A.
 - **Provision ops** — `/admin/provision-jobs` for failed/needs-review retries.
+- **Manual AI intercept** — set `provisioning_mode: manual` when creating an intake (or toggle on the intakes table) to skip auto template cron; use **AI build →** in onboarding after submit.
 - **Outbound automation** — `/api/instantly/scraper-webhook` ingests qualified
   leads from [closet-scraper](../closet-scraper); `/api/scraper/config` and
   `/api/scraper/run-status` form the scraper control plane.
