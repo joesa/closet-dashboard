@@ -16,6 +16,13 @@ export type ProspectIntakeRow = {
   deposit_paid_cents: number
   deposit_status: string
   stripe_checkout_session_id: string | null
+  build_paid_at: string | null
+  balance_paid_at: string | null
+  maintenance_plan: string | null
+  preview_approved_at: string | null
+  site_live_at: string | null
+  provisioned_contractor_id: string | null
+  maintenance_started_at: string | null
   ai_site_config: Record<string, unknown> | null
   image_selections: unknown
   services: string[]
@@ -45,7 +52,10 @@ const INTAKE_SELECT = `
   id, token, status, source, business_name, contact_email, email_verified_at,
   requested_product, provisioning_mode,
   intake_tier, tier_total_cents, deposit_required_cents, deposit_paid_cents,
-  deposit_status, stripe_checkout_session_id, ai_site_config, image_selections,
+  deposit_status, stripe_checkout_session_id,
+  build_paid_at, balance_paid_at, maintenance_plan, preview_approved_at,
+  site_live_at, provisioned_contractor_id, maintenance_started_at,
+  ai_site_config, image_selections,
   services, vibe, tone, customers, experience, differentiators, primary_cta, notes,
   pricing_notes, primary_color_hex, logo_url, contact_name, contact_phone,
   street_address, address_locality, address_region, postal_code, service_area,

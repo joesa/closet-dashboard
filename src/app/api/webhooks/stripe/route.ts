@@ -62,9 +62,20 @@ export async function POST(req: Request) {
         const meta = session.metadata ?? {}
         const kind = meta.kind
 
-        if (kind === 'intake_deposit' && meta.intake_id) {
-          const intakeId = meta.intake_id
+        if (
+          (kind === 'intake_deposit' ||
+            kind === 'intake_balance' ||
+            kind === 'intake_standard_build') &&
+          meta.intake_id
+        ) {
+          const intakeId = meta.intake_id as string
           const amountCents = session.amount_total ?? 0
+          const paymentKind =
+            kind === 'intake_balance'
+              ? 'balance'
+              : kind === 'intake_standard_build'
+                ? 'standard_build'
+                : 'deposit'
 
           const { data: existingPayment } = await admin
             .from('intake_payments')
@@ -77,17 +88,60 @@ export async function POST(req: Request) {
               intake_id: intakeId,
               stripe_session_id: session.id,
               amount_cents: amountCents,
-              kind: 'deposit',
+              kind: paymentKind,
               status: 'paid',
             })
+          }
+
+          const now = new Date().toISOString()
+          const intakePatch: Record<string, unknown> = {
+            stripe_checkout_session_id: session.id,
+            updated_at: now,
+          }
+
+          if (paymentKind === 'deposit') {
+            intakePatch.deposit_paid_cents = amountCents
+            intakePatch.deposit_status = 'paid'
+          } else if (paymentKind === 'balance') {
+            intakePatch.balance_paid_at = now
+          } else {
+            intakePatch.build_paid_at = now
+          }
+
+          await admin.from('prospect_intakes').update(intakePatch).eq('id', intakeId)
+        } else if (kind === 'intake_maintenance' && meta.intake_id) {
+          const intakeId = meta.intake_id as string
+          const contractorId = meta.contractor_id as string | undefined
+          const customerId =
+            typeof session.customer === 'string' ? session.customer : session.customer?.id
+          const subscriptionId =
+            typeof session.subscription === 'string'
+              ? session.subscription
+              : session.subscription?.id ?? null
+          const plan: 'monthly' | 'yearly' | null =
+            meta.maintenance_plan === 'yearly'
+              ? 'yearly'
+              : meta.maintenance_plan === 'monthly'
+                ? 'monthly'
+                : null
+
+          if (contractorId && customerId) {
+            await admin
+              .from('contractor_settings')
+              .update({
+                stripe_customer_id: customerId,
+                stripe_subscription_id: subscriptionId,
+                subscription_status: 'active',
+                subscription_plan: plan,
+                trial_ends_at: new Date().toISOString(),
+              })
+              .eq('id', contractorId)
           }
 
           await admin
             .from('prospect_intakes')
             .update({
-              deposit_paid_cents: amountCents,
-              deposit_status: 'paid',
-              stripe_checkout_session_id: session.id,
+              maintenance_started_at: new Date().toISOString(),
               updated_at: new Date().toISOString(),
             })
             .eq('id', intakeId)

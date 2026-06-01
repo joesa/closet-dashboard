@@ -7,6 +7,7 @@ import {
   getSiteMaintenancePricing,
   formatUsd,
 } from '@/lib/intake/tiers'
+import { getIntakePaymentSummary } from '@/lib/intake/intakePaymentStage'
 
 export function buildIntakePublicJson(row: ProspectIntakeRow) {
   const tierEntry = getTierEntry(
@@ -15,6 +16,7 @@ export function buildIntakePublicJson(row: ProspectIntakeRow) {
   const selections = parseImageSelections(row.image_selections)
   const aiRaw = row.ai_site_config as Record<string, unknown> | null
   const siteConfig = aiRaw?.siteConfig ?? aiRaw
+  const payment = getIntakePaymentSummary(row)
 
   return {
     businessName: row.business_name,
@@ -32,6 +34,7 @@ export function buildIntakePublicJson(row: ProspectIntakeRow) {
     tierLabel: tierEntry?.label,
     depositDisplay: formatUsd(row.deposit_required_cents),
     totalDisplay: formatUsd(row.tier_total_cents),
+    remainderCents: Math.max(0, row.tier_total_cents - row.deposit_required_cents),
     remainderDisplay: formatUsd(
       Math.max(0, row.tier_total_cents - row.deposit_required_cents)
     ),
@@ -40,5 +43,15 @@ export function buildIntakePublicJson(row: ProspectIntakeRow) {
     siteMaintenance: getSiteMaintenancePricing(),
     aiSiteConfig: siteConfig ?? null,
     imageSelections: selections,
+    maintenancePlan: row.maintenance_plan,
+    previewApprovedAt: row.preview_approved_at,
+    siteLiveAt: row.site_live_at,
+    buildPaidAt: row.build_paid_at,
+    balancePaidAt: row.balance_paid_at,
+    maintenanceStartedAt: row.maintenance_started_at,
+    paymentStage: payment.stage,
+    paymentDueLabel: payment.label,
+    paymentCheckoutKind: payment.checkoutKind,
+    canPayToLaunch: payment.canCheckout,
   }
 }

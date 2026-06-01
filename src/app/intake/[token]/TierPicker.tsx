@@ -7,7 +7,7 @@ import {
   getSiteMaintenancePricing,
   maintenanceDisplay,
 } from '@/lib/intake/tiers';
-import { startIntakeDepositCheckout } from '@/lib/intake/startDepositCheckout';
+import { startIntakeCheckout } from '@/lib/intake/startIntakeCheckout';
 
 type Props = {
   token: string;
@@ -30,6 +30,18 @@ export default function TierPicker({
   const maintenance = getSiteMaintenancePricing();
   const maintDisplay = maintenanceDisplay(maintenanceBilling, maintenance);
 
+  const saveMaintenance = async (plan: 'monthly' | 'yearly') => {
+    try {
+      await fetch(`/api/intake/${token}/tier`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tier: currentTier, maintenancePlan: plan }),
+      });
+    } catch {
+      /* non-blocking */
+    }
+  };
+
   const selectTier = async (slug: string) => {
     if (slug === currentTier) return;
     setLoading(slug);
@@ -38,7 +50,7 @@ export default function TierPicker({
       const res = await fetch(`/api/intake/${token}/tier`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tier: slug }),
+        body: JSON.stringify({ tier: slug, maintenancePlan: maintenanceBilling }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Failed to set tier');
@@ -49,7 +61,7 @@ export default function TierPicker({
         json.depositStatus !== 'paid' &&
         (json.depositRequiredCents ?? 0) > 0
       ) {
-        await startIntakeDepositCheckout(token);
+        await startIntakeCheckout(token, 'deposit');
         return;
       }
     } catch (e) {
@@ -73,7 +85,10 @@ export default function TierPicker({
         <div className="inline-flex rounded-full border border-indigo-200 bg-white p-0.5">
           <button
             type="button"
-            onClick={() => setMaintenanceBilling('monthly')}
+            onClick={() => {
+              setMaintenanceBilling('monthly');
+              void saveMaintenance('monthly');
+            }}
             className={`rounded-full px-3 py-1 text-xs font-medium ${
               maintenanceBilling === 'monthly'
                 ? 'bg-indigo-600 text-white'
@@ -84,7 +99,10 @@ export default function TierPicker({
           </button>
           <button
             type="button"
-            onClick={() => setMaintenanceBilling('yearly')}
+            onClick={() => {
+              setMaintenanceBilling('yearly');
+              void saveMaintenance('yearly');
+            }}
             className={`rounded-full px-3 py-1 text-xs font-medium ${
               maintenanceBilling === 'yearly'
                 ? 'bg-indigo-600 text-white'

@@ -45,16 +45,21 @@ export async function PATCH(
     )
 
     const admin = getSupabaseAdmin()
-    const { error } = await admin
-      .from('prospect_intakes')
-      .update({
-        intake_tier: tier,
-        tier_total_cents: entry.totalCents,
-        deposit_required_cents: entry.depositCents,
-        deposit_status: depositStatus,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', row.id)
+    const maintenancePlan =
+      body.maintenancePlan === 'yearly' || body.maintenancePlan === 'monthly'
+        ? body.maintenancePlan
+        : undefined
+
+    const patch: Record<string, unknown> = {
+      intake_tier: tier,
+      tier_total_cents: entry.totalCents,
+      deposit_required_cents: entry.depositCents,
+      deposit_status: depositStatus,
+      updated_at: new Date().toISOString(),
+    }
+    if (maintenancePlan) patch.maintenance_plan = maintenancePlan
+
+    const { error } = await admin.from('prospect_intakes').update(patch).eq('id', row.id)
 
     if (error) throw error
 

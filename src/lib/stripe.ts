@@ -29,5 +29,7 @@ export function priceIdToPlan(priceId: string | null | undefined): 'monthly' | '
   if (!priceId) return null
   if (priceId === process.env.STRIPE_PRICE_MONTHLY) return 'monthly'
   if (priceId === process.env.STRIPE_PRICE_YEARLY) return 'yearly'
+  if (priceId === process.env.STRIPE_PRICE_SITE_MAINTENANCE_MONTHLY) return 'monthly'
+  if (priceId === process.env.STRIPE_PRICE_SITE_MAINTENANCE_YEARLY) return 'yearly'
   return null
 }

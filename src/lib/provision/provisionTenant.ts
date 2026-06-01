@@ -504,7 +504,11 @@ export async function provisionTenant(
     try {
       await supabase
         .from('prospect_intakes')
-        .update({ status: 'built', updated_at: new Date().toISOString() })
+        .update({
+          status: 'built',
+          provisioned_contractor_id: tenantId,
+          updated_at: new Date().toISOString(),
+        })
         .eq('id', intakeId)
     } catch (err) {
       console.error('Failed to mark intake built:', err)

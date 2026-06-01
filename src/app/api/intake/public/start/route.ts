@@ -19,6 +19,19 @@ export async function POST(req: Request) {
     const businessName =
       typeof body.businessName === 'string' ? body.businessName.trim() : ''
     const hasWebsite = body.hasWebsite === true
+    const tier =
+      body.tier === 'ai_premium' || body.tier === 'standard' ? body.tier : undefined
+
+    if (hasWebsite) {
+      return NextResponse.json(
+        {
+          error:
+            'Widget-only setup is self-serve. Go to /signup for a free trial or subscribe now.',
+          redirect: '/signup?from=get-started',
+        },
+        { status: 400 }
+      )
+    }
     const turnstileToken =
       typeof body.turnstileToken === 'string' ? body.turnstileToken : ''
 
@@ -57,11 +70,12 @@ export async function POST(req: Request) {
     const result = await createDraftIntake({
       source: 'public',
       businessName: businessName || null,
-      requestedProduct: hasWebsite ? 'widget' : 'full',
+      requestedProduct: 'full',
       verificationEmail: email,
       sendEmail: true,
       recipientEmail: email,
       siteOrigin: origin,
+      initialTier: tier,
     })
 
     return NextResponse.json({

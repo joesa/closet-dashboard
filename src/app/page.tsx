@@ -104,10 +104,10 @@ export default function LandingPage() {
             </span>
           </Link>
           <a
-            href="#portfolio"
+            href="#pricing"
             className="rounded-full border border-white/10 px-8 py-3.5 text-sm font-medium text-slate-400 transition hover:border-white/20 hover:text-white"
           >
-            See Premium Site Styles
+            Need a full site? From $999
           </a>
         </div>
       </section>
@@ -643,7 +643,7 @@ function PricingSection() {
       </div>
 
       <p className="mb-4 text-center text-xs font-medium uppercase tracking-wider text-slate-500">
-        Monthly or yearly billing — applies to all tiers below
+        Monthly or yearly — applies to Pro subscription and site maintenance. Build fees are one-time.
       </p>
       <div className="mb-10 flex flex-col items-center gap-2">
         <PlanBillingToggle
@@ -716,13 +716,16 @@ function PricingSection() {
             + {formatUsd(siteMaint.perMonthCents)}/mo after launch
             <span className="block text-xs text-slate-500 mt-0.5">{siteMaint.billedLabel}</span>
           </p>
+          <p className="mb-2 text-xs text-slate-400">
+            Maintenance includes ClosetQuote Pro — no separate {formatUsd(widgetSub.monthlyCents)}/mo widget fee.
+          </p>
           <p className="mb-4 text-xs font-medium text-slate-200 bg-white/[0.04] border border-white/10 rounded-lg px-3 py-2">
             No upfront deposit. Pay {formatUsd(standard.totalCents)} when satisfied — then launch and
             full dashboard access.
           </p>
           <PricingFeatureList features={STANDARD_FEATURES} />
           <Link
-            href="/get-started"
+            href="/get-started?tier=standard"
             className="mt-auto flex w-full items-center justify-center rounded-lg bg-white px-5 py-3.5 text-sm font-semibold text-black transition-colors hover:bg-gray-200 active:scale-[0.99]"
           >
             Get started — Standard
@@ -749,6 +752,9 @@ function PricingSection() {
             + {formatUsd(siteMaint.perMonthCents)}/mo after launch
             <span className="block text-xs text-emerald-200/60 mt-0.5">{siteMaint.billedLabel}</span>
           </p>
+          <p className="mb-2 text-xs text-emerald-200/70">
+            Maintenance includes ClosetQuote Pro — no separate widget subscription.
+          </p>
           <p className="mb-2 text-xs font-medium text-amber-200/90 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
             30% today: {formatUsd(premium.depositCents)} · Balance{' '}
             {formatUsd(premium.remainderCents)} if satisfied before launch.
@@ -756,7 +762,7 @@ function PricingSection() {
           <p className="mb-4 text-xs text-emerald-200/80">Not satisfied? Deposit returned.</p>
           <PricingFeatureList features={PREMIUM_FEATURES} accent="emerald" />
           <Link
-            href="/get-started"
+            href="/get-started?tier=ai_premium"
             className="relative z-10 mt-auto flex w-full items-center justify-center rounded-lg bg-emerald-500 px-5 py-3.5 text-sm font-semibold text-black shadow-[0_0_20px_-5px_rgba(16,185,129,0.4)] transition-all hover:bg-emerald-400 active:scale-[0.99]"
           >
             Get started — AI Premium

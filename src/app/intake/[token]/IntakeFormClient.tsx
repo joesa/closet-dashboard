@@ -1,13 +1,16 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import type { IntakeTierCatalogEntry } from '@/lib/intake/tiers';
+import type { IntakeCheckoutKind } from '@/lib/intake/intakePaymentStage';
+import { startIntakeCheckout } from '@/lib/intake/startIntakeCheckout';
 import {
   imageSelectionsComplete,
   type IntakeImageSelections,
 } from '@/lib/intake/imageSelections';
 import TierPicker from './TierPicker';
 import DepositCTA from './DepositCTA';
+import PayToLaunchBlock from './PayToLaunchBlock';
 import IntakeImageStudio from './IntakeImageStudio';
 
 const SERVICE_OPTIONS = [
@@ -67,6 +70,12 @@ export type IntakeFormClientProps = {
   tierCatalog?: IntakeTierCatalogEntry[];
   aiSiteConfig?: Record<string, unknown> | null;
   imageSelections?: IntakeImageSelections;
+  initialTierFromQuery?: string;
+  payKindFromQuery?: IntakeCheckoutKind;
+  paymentDueLabel?: string;
+  paymentCheckoutKind?: IntakeCheckoutKind | null;
+  canPayToLaunch?: boolean;
+  paymentAmountCents?: number;
 };
 
 function emptyForm(businessName: string): Form {
@@ -111,7 +120,15 @@ export default function IntakeFormClient({
   tierCatalog = [],
   aiSiteConfig: initialAiSite = null,
   imageSelections: initialSelections,
+  initialTierFromQuery,
+  payKindFromQuery,
+  paymentDueLabel = '',
+  paymentCheckoutKind = null,
+  canPayToLaunch = false,
+  paymentAmountCents = 0,
 }: IntakeFormClientProps) {
+  const tierPreselectDone = useRef(false);
+  const payAutoDone = useRef(false);
   const [form, setForm] = useState<Form>(() => emptyForm(businessName));
   const [logoDataUrl, setLogoDataUrl] = useState<string>('');
   const [submitting, setSubmitting] = useState(false);
@@ -140,6 +157,32 @@ export default function IntakeFormClient({
       })
       .catch(() => {});
   }, [token]);
+
+  useEffect(() => {
+    if (tierPreselectDone.current || !initialTierFromQuery || submitted) return;
+    if (initialTierFromQuery === intakeTier) return;
+    tierPreselectDone.current = true;
+    fetch(`/api/intake/${token}/tier`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tier: initialTierFromQuery }),
+    })
+      .then((r) => r.json())
+      .then((json) => {
+        if (json.tier) {
+          setIntakeTier(json.tier);
+          setDepositStatus(json.depositStatus);
+          setCanUseImageStudio(!!json.canUseImageStudio);
+        }
+      })
+      .catch(() => {});
+  }, [initialTierFromQuery, intakeTier, submitted, token]);
+
+  useEffect(() => {
+    if (payAutoDone.current || !payKindFromQuery || !canPayToLaunch) return;
+    payAutoDone.current = true;
+    void startIntakeCheckout(token, payKindFromQuery);
+  }, [payKindFromQuery, canPayToLaunch, token]);
 
   const set = <K extends keyof Form>(key: K, value: Form[K]) => setForm((f) => ({ ...f, [key]: value }));
   const toggle = (key: 'services' | 'differentiators', value: string) =>
@@ -201,8 +244,8 @@ export default function IntakeFormClient({
   }
   if (submitted) {
     return (
-      <div className="min-h-screen grid place-items-center bg-gray-50 px-6 text-center">
-        <div className="max-w-md">
+      <div className="min-h-screen bg-gray-50 py-10 px-4">
+        <div className="mx-auto max-w-md text-center">
           <div className="mx-auto mb-4 grid h-12 w-12 place-items-center rounded-full bg-green-100 text-green-600">✓</div>
           <h1 className="text-xl font-semibold text-gray-900">Thank you!</h1>
           <p className="mt-2 text-sm text-gray-600">
@@ -210,6 +253,15 @@ export default function IntakeFormClient({
               ? 'Your details have been received. Our team will build your custom site and quote calculator and email you when it is ready.'
               : 'Your details have been received. We are building your site and quote calculator in the background. Check your email for login credentials when provisioning completes.'}
           </p>
+          <div className="mt-8 text-left">
+            <PayToLaunchBlock
+              token={token}
+              paymentDueLabel={paymentDueLabel}
+              checkoutKind={paymentCheckoutKind}
+              canPay={canPayToLaunch}
+              amountCents={paymentAmountCents}
+            />
+          </div>
         </div>
       </div>
     );

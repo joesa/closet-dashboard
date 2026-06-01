@@ -8,10 +8,13 @@ export const dynamic = 'force-dynamic'
 
 export default async function IntakePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ token: string }>
+  searchParams: Promise<{ tier?: string; pay?: string }>
 }) {
   const { token } = await params
+  const sp = await searchParams
   const row = await getIntakeByToken(token)
 
   if (!row || row.status === 'archived') {
@@ -36,6 +39,29 @@ export default async function IntakePage({
       tierCatalog={getTierCatalog()}
       aiSiteConfig={(aiRaw?.siteConfig ?? aiRaw) as Record<string, unknown> | null}
       imageSelections={parseImageSelections(row.image_selections)}
+      initialTierFromQuery={
+        sp.tier === 'ai_premium' || sp.tier === 'standard' ? sp.tier : undefined
+      }
+      payKindFromQuery={
+        sp.pay === 'balance' ||
+        sp.pay === 'standard_build' ||
+        sp.pay === 'maintenance' ||
+        sp.pay === 'deposit'
+          ? sp.pay
+          : undefined
+      }
+      paymentDueLabel={pub.paymentDueLabel}
+      paymentCheckoutKind={pub.paymentCheckoutKind}
+      canPayToLaunch={pub.canPayToLaunch}
+      paymentAmountCents={
+        pub.paymentCheckoutKind === 'balance'
+          ? pub.remainderCents
+          : pub.paymentCheckoutKind === 'standard_build'
+            ? row.tier_total_cents
+            : pub.paymentCheckoutKind === 'deposit'
+              ? row.deposit_required_cents
+              : 0
+      }
     />
   )
 }
