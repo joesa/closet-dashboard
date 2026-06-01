@@ -31,7 +31,12 @@ export type IntakeRowForProvision = IntakeSetup & {
   desired_domain?: string | null
   pricing_notes?: string | null
   services?: string[] | null
+  other_services?: string | null
   vibe?: string | null
+  tone?: string | null
+  customers?: string | null
+  experience?: string | null
+  primary_cta?: string | null
   notes?: string | null
   requested_product?: string | null
 }

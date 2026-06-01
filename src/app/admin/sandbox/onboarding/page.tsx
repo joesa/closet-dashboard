@@ -255,12 +255,20 @@ export default function SandboxOnboarding() {
   const availableServices = [
     'Walk-In Closets',
     'Reach-In Closets',
-    'Garages',
-    'Pantries & Wine',
-    'Home Offices',
-    'Mudrooms',
-    'Wall Beds',
-    'Entertainment Centers'
+    'Kids & Youth Closets',
+    'Dressing Rooms & Boutique Storage',
+    'Garages & Garage Storage',
+    'Garage Flooring & Slatwall Systems',
+    'Pantries & Wine Storage',
+    'Mudrooms & Entryway Lockers',
+    'Home Offices & Built-In Desks',
+    'Wall Beds & Murphy Beds',
+    'Entertainment & Media Centers',
+    'Laundry & Utility Rooms',
+    'Craft, Hobby & Sewing Rooms',
+    'Home Libraries & Built-In Storage',
+    'Whole-Home Organization',
+    'Commercial & Office Storage',
   ];
 
   const handleServiceToggle = (service: string) => {
@@ -379,20 +387,14 @@ export default function SandboxOnboarding() {
         return productTitles.some(t => t.includes(s) || s.includes(t));
       });
 
-      // Auto-detect the structural layout from the brief's stated goal/keywords.
-      const lower = aiInput.toLowerCase();
-      const inferredLayout =
-        /portfolio|gallery|showcase|browse/.test(lower) ? 'portfolio-first'
-        : /quote|estimate|calculator|consultation|pricing/.test(lower) ? 'conversion-focus'
-        : /\bcall\b|call now|phone/.test(lower) ? 'minimalist-lead'
-        : /story|family|journey|heritage|founded/.test(lower) ? 'storyteller'
-        : '';
+      const layoutFromAi =
+        typeof siteConfig.layoutStyle === 'string' ? siteConfig.layoutStyle : '';
 
       // Pre-fill the editable form so the operator reviews/tweaks the AI brief rather than typing it.
       setFormData(prev => ({
         ...prev,
         theme: siteConfig.theme || prev.theme,
-        layoutStyle: inferredLayout || prev.layoutStyle,
+        layoutStyle: layoutFromAi || prev.layoutStyle,
         heroHeadline: siteConfig.hero?.headline || prev.heroHeadline,
         aboutDescription: siteConfig.about?.description || prev.aboutDescription,
         services: matchedServices.length > 0 ? matchedServices : prev.services,

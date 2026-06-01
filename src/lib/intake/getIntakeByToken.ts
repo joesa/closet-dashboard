@@ -46,6 +46,7 @@ export type ProspectIntakeRow = {
   notification_email: string | null
   notification_phone: string | null
   desired_domain: string | null
+  other_services: string | null
 }
 
 const INTAKE_SELECT = `
@@ -59,7 +60,7 @@ const INTAKE_SELECT = `
   services, vibe, tone, customers, experience, differentiators, primary_cta, notes,
   pricing_notes, primary_color_hex, logo_url, contact_name, contact_phone,
   street_address, address_locality, address_region, postal_code, service_area,
-  notification_email, notification_phone, desired_domain
+  notification_email, notification_phone, desired_domain, other_services
 `
 
 export async function getIntakeByToken(token: string): Promise<ProspectIntakeRow | null> {

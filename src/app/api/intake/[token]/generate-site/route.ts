@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { generateSiteConfigFromInput } from '@/lib/ai/generateSiteConfig'
+import { mergeAiSiteConfigWithPresentation } from '@/lib/ai/mergeAiSitePresentation'
 import { buildIntakeBrief } from '@/lib/intake/buildIntakeBrief'
 import { getIntakeByToken } from '@/lib/intake/getIntakeByToken'
 import { assertDraftIntake, assertDepositPaid } from '@/lib/intake/intakeTierGates'
@@ -44,11 +45,12 @@ export async function POST(
     }
 
     const result = await generateSiteConfigFromInput(brief)
+    const merged = await mergeAiSiteConfigWithPresentation(row, result.data)
     const admin = getSupabaseAdmin()
     await admin
       .from('prospect_intakes')
       .update({
-        ai_site_config: result.data,
+        ai_site_config: merged,
         updated_at: new Date().toISOString(),
       })
       .eq('id', row.id)
@@ -56,7 +58,7 @@ export async function POST(
     return NextResponse.json({
       success: true,
       source: result.source,
-      data: result.data,
+      data: merged,
     })
   } catch (error) {
     console.error('intake generate-site error:', error)

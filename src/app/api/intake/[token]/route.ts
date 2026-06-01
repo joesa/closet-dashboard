@@ -5,6 +5,7 @@ import { enqueueProvisionJob } from '@/lib/provision/enqueueProvisionJob'
 import { getIntakeByToken } from '@/lib/intake/getIntakeByToken'
 import { buildIntakePublicJson } from '@/lib/intake/intakePublicResponse'
 import { validateAiPremiumReady } from '@/lib/intake/buildAiProvisionPayload'
+import { OTHER_SERVICE_LABEL } from '@/lib/catalog/contractorServices'
 
 export const runtime = 'nodejs'
 
@@ -102,6 +103,32 @@ export async function POST(
     const toStr = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : null)
     const toArr = (v: unknown) => (Array.isArray(v) ? v.filter((x) => typeof x === 'string') : [])
 
+    const services = toArr(body.services)
+    const otherServices = toStr(body.otherServices)
+    const hasOther = services.includes(OTHER_SERVICE_LABEL)
+
+    if (hasOther) {
+      if (!otherServices || otherServices.length < 1 || otherServices.length > 120) {
+        return NextResponse.json(
+          { error: 'Describe your other service (1–120 characters).' },
+          { status: 400 }
+        )
+      }
+    } else if (otherServices) {
+      return NextResponse.json(
+        { error: 'Select "Other" to add a custom service description.' },
+        { status: 400 }
+      )
+    }
+
+    const catalogServices = services.filter((s) => s !== OTHER_SERVICE_LABEL)
+    if (catalogServices.length === 0 && !hasOther) {
+      return NextResponse.json(
+        { error: 'Select at least one service you offer.' },
+        { status: 400 }
+      )
+    }
+
     const requestedProduct =
       body.requestedProduct === 'widget' || body.requestedProduct === 'full'
         ? body.requestedProduct
@@ -122,7 +149,8 @@ export async function POST(
       service_area: toStr(body.serviceArea),
       notification_email: toStr(body.notificationEmail) || toStr(body.contactEmail),
       notification_phone: toStr(body.notificationPhone) || toStr(body.contactPhone),
-      services: toArr(body.services),
+      services,
+      other_services: hasOther ? otherServices : null,
       pricing_notes: toStr(body.pricingNotes),
       primary_color_hex: toStr(body.primaryColorHex),
       vibe: toStr(body.vibe),

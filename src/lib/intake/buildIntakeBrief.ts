@@ -20,6 +20,9 @@ export function buildIntakeBrief(row: ProspectIntakeRow): string {
   if (row.services?.length) {
     lines.push(`Services offered: ${row.services.join(', ')}`)
   }
+  if (row.other_services?.trim()) {
+    lines.push(`Other / custom services: ${row.other_services.trim()}`)
+  }
   if (row.differentiators?.length) {
     lines.push(`Differentiators: ${row.differentiators.join(', ')}`)
   }

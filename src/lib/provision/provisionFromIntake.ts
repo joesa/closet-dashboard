@@ -65,7 +65,7 @@ export async function provisionFromIntakeJob(
     }
 
     const subdomain = await resolveSubdomain(businessName)
-    const payload = buildAiProvisionPayload(row, loginOrigin, subdomain)
+    const payload = await buildAiProvisionPayload(row, loginOrigin, subdomain)
 
     const qa = runAutoQaChecks({
       businessName,
@@ -89,7 +89,7 @@ export async function provisionFromIntakeJob(
   }
 
   const legacyRow = row as unknown as IntakeRowForProvision
-  const payload = buildTemplateProvisionPayload(legacyRow)
+  const payload = await buildTemplateProvisionPayload(legacyRow)
   const subdomain = mode === 'full' ? await resolveSubdomain(businessName) : undefined
 
   if (mode === 'full') {

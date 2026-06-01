@@ -1,5 +1,6 @@
 import * as cheerio from 'cheerio'
 import { GoogleGenerativeAI, type GenerationConfig } from '@google/generative-ai'
+import { LAYOUT_SLUGS, THEME_SLUGS } from '@/lib/catalog/sitePresentationCatalog'
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '')
 
@@ -15,21 +16,11 @@ export const GENERATE_SITE_JSON_SCHEMA = {
         properties: {
           theme: {
             type: 'string',
-            enum: [
-              'luxury-minimal',
-              'brutalist',
-              'classic-warm',
-              'modern-office',
-              'playful-kids',
-              'rustic-pantry',
-              'sleek-entertainment',
-              'elegant-dressing',
-              'functional-utility',
-              'creative-craft',
-              'sophisticated-wine',
-              'cozy-library',
-              'minimalist-zen',
-            ],
+            enum: [...THEME_SLUGS],
+          },
+          layoutStyle: {
+            type: 'string',
+            enum: [...LAYOUT_SLUGS],
           },
           defaultRoom: { type: 'string' },
           hero: {
@@ -88,7 +79,7 @@ export const GENERATE_SITE_JSON_SCHEMA = {
             },
           },
         },
-        required: ['theme', 'defaultRoom', 'hero', 'about', 'process', 'products'],
+        required: ['theme', 'layoutStyle', 'defaultRoom', 'hero', 'about', 'process', 'products'],
       },
       widgetConfig: {
         type: 'object',

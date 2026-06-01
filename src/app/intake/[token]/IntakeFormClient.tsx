@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { provisionServiceLabelsFromForm } from '@/lib/intake/provisionServiceLabels';
 import type { IntakeTierCatalogEntry } from '@/lib/intake/tiers';
 import type { IntakeCheckoutKind } from '@/lib/intake/intakePaymentStage';
 import { startIntakeCheckout } from '@/lib/intake/startIntakeCheckout';
@@ -12,11 +13,13 @@ import TierPicker from './TierPicker';
 import DepositCTA from './DepositCTA';
 import PayToLaunchBlock from './PayToLaunchBlock';
 import IntakeImageStudio from './IntakeImageStudio';
+import {
+  OTHER_SERVICE_LABEL,
+  SERVICE_GROUPS_ORDER,
+  servicesByGroup,
+} from '@/lib/catalog/contractorServices';
 
-const SERVICE_OPTIONS = [
-  'Walk-In Closets', 'Reach-In Closets', 'Garages', 'Pantries & Wine',
-  'Home Offices', 'Mudrooms', 'Wall Beds', 'Entertainment Centers',
-];
+const SERVICE_GROUPS = servicesByGroup();
 const VIBE_OPTIONS = [
   'Luxury & minimal', 'Bold & industrial', 'Warm & classic', 'Modern & clean',
   'Playful & friendly', 'Rustic & natural', 'Elegant & refined', 'Sleek & high-tech',
@@ -40,6 +43,7 @@ type Form = {
   notificationEmail: string;
   notificationPhone: string;
   services: string[];
+  otherServices: string;
   pricingNotes: string;
   primaryColorHex: string;
   vibe: string;
@@ -92,6 +96,7 @@ function emptyForm(businessName: string): Form {
     notificationEmail: '',
     notificationPhone: '',
     services: [],
+    otherServices: '',
     pricingNotes: '',
     primaryColorHex: '#6C47FF',
     vibe: '',
@@ -200,9 +205,14 @@ export default function IntakeFormClient({
   };
 
   /** Use button onClick + fetch — not form submit (sandboxed iframes block allow-forms). */
+  const studioServices = useMemo(
+    () => provisionServiceLabelsFromForm(form.services, form.otherServices),
+    [form.services, form.otherServices]
+  );
+
   const premiumImagesReady =
     intakeTier !== 'ai_premium' ||
-    imageSelectionsComplete(imageSelections, form.services);
+    imageSelectionsComplete(imageSelections, studioServices);
 
   const submitForm = async () => {
     if (intakeTier === 'ai_premium' && depositRequiredCents > 0 && depositStatus !== 'paid') {
@@ -213,13 +223,32 @@ export default function IntakeFormClient({
       setError('Select hero and product images in the AI studio before submitting.');
       return;
     }
+    const hasOther = form.services.includes(OTHER_SERVICE_LABEL);
+    if (hasOther) {
+      const t = form.otherServices.trim();
+      if (t.length < 1 || t.length > 120) {
+        setError('Describe your other service (1–120 characters).');
+        return;
+      }
+    }
+    if (
+      form.services.filter((s) => s !== OTHER_SERVICE_LABEL).length === 0 &&
+      !hasOther
+    ) {
+      setError('Select at least one service you offer.');
+      return;
+    }
     setSubmitting(true);
     setError('');
     try {
       const res = await fetch(`/api/intake/${token}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...form, logoDataUrl: logoDataUrl || undefined }),
+        body: JSON.stringify({
+          ...form,
+          otherServices: form.otherServices.trim() || undefined,
+          logoDataUrl: logoDataUrl || undefined,
+        }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Failed to submit');
@@ -384,13 +413,54 @@ export default function IntakeFormClient({
           <section className="rounded-xl border border-gray-200 bg-white p-6">
             <h2 className="text-sm font-bold uppercase tracking-wide text-gray-500 mb-4">Services &amp; pricing</h2>
             <label className={label}>Which services do you offer?</label>
-            <div className="grid grid-cols-2 gap-2 mb-4">
-              {SERVICE_OPTIONS.map((s) => (
-                <label key={s} className={`flex items-center gap-2 rounded-md border px-3 py-2 text-sm cursor-pointer ${form.services.includes(s) ? 'border-indigo-500 bg-indigo-50 text-gray-900' : 'border-gray-300 text-gray-600'}`}>
-                  <input type="checkbox" checked={form.services.includes(s)} onChange={() => toggle('services', s)} />
-                  {s}
+            <div className="space-y-4 mb-4">
+              {SERVICE_GROUPS_ORDER.map((group) => {
+                const items = SERVICE_GROUPS.get(group) ?? [];
+                if (items.length === 0) return null;
+                return (
+                  <div key={group}>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">{group}</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {items.map((def) => (
+                        <label
+                          key={def.label}
+                          className={`flex items-center gap-2 rounded-md border px-3 py-2 text-sm cursor-pointer ${form.services.includes(def.label) ? 'border-indigo-500 bg-indigo-50 text-gray-900' : 'border-gray-300 text-gray-600'}`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={form.services.includes(def.label)}
+                            onChange={() => toggle('services', def.label)}
+                          />
+                          {def.label}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">Custom</p>
+                <label
+                  className={`flex items-center gap-2 rounded-md border px-3 py-2 text-sm cursor-pointer ${form.services.includes(OTHER_SERVICE_LABEL) ? 'border-indigo-500 bg-indigo-50 text-gray-900' : 'border-gray-300 text-gray-600'}`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={form.services.includes(OTHER_SERVICE_LABEL)}
+                    onChange={() => toggle('services', OTHER_SERVICE_LABEL)}
+                  />
+                  Other (describe below)
                 </label>
-              ))}
+                {form.services.includes(OTHER_SERVICE_LABEL) && (
+                  <input
+                    className={`${input} mt-2`}
+                    value={form.otherServices}
+                    onChange={(e) => set('otherServices', e.target.value)}
+                    placeholder="e.g. Wine cellars, closet accessories"
+                    maxLength={120}
+                    required
+                  />
+                )}
+              </div>
             </div>
             <label className={label}>Pricing details (optional)</label>
             <textarea className={`${input} min-h-[80px]`} value={form.pricingNotes} onChange={(e) => set('pricingNotes', e.target.value)} placeholder="e.g. Walk-in closets start around $3,500. Garage systems $2,000–$8,000. If unsure, leave blank and we'll estimate." />
@@ -474,10 +544,10 @@ export default function IntakeFormClient({
             </div>
           </section>
 
-          {canUseImageStudio && form.services.length > 0 && (
+          {canUseImageStudio && studioServices.length > 0 && (
             <IntakeImageStudio
               token={token}
-              services={form.services}
+              services={studioServices}
               aiSiteConfig={aiSiteConfig as { hero?: { imagePrompt?: string }; products?: Array<{ title?: string; imagePrompt?: string }> } | null}
               imageSelections={imageSelections}
               onUpdate={(sel, site) => {

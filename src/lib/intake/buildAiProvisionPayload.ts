@@ -1,9 +1,18 @@
+import {
+  presentationFromIntakeRow,
+  resolveSitePresentation,
+} from '@/lib/ai/resolveSitePresentation'
+import {
+  coerceLayoutSlug,
+  coerceThemeSlug,
+} from '@/lib/catalog/sitePresentationCatalog'
 import type { ProspectIntakeRow } from '@/lib/intake/getIntakeByToken'
 import {
   imageSelectionsComplete,
   parseImageSelections,
   syncProductSlots,
 } from '@/lib/intake/imageSelections'
+import { provisionServiceLabels } from '@/lib/intake/provisionServiceLabels'
 import type { ProvisionTenantInput } from '@/lib/provision/types'
 
 type AiSiteBundle = {
@@ -46,7 +55,7 @@ export function validateAiPremiumReady(row: ProspectIntakeRow): string | null {
   }
   const bundle = parseAiSiteBundle(row.ai_site_config)
   if (!bundle?.siteConfig) return 'AI site config missing — run Generate brief first'
-  const services = row.services?.length ? row.services : ['Walk-In Closets']
+  const services = provisionServiceLabels(row)
   const selections = syncProductSlots(parseImageSelections(row.image_selections), services)
   if (!imageSelectionsComplete(selections, services)) {
     return 'Select hero and product images before submitting'
@@ -54,14 +63,32 @@ export function validateAiPremiumReady(row: ProspectIntakeRow): string | null {
   return null
 }
 
-export function buildAiProvisionPayload(
+export async function buildAiProvisionPayload(
   row: ProspectIntakeRow,
   loginOrigin: string,
   subdomain: string
-): ProvisionTenantInput {
+): Promise<ProvisionTenantInput> {
   const bundle = parseAiSiteBundle(row.ai_site_config)!
   const site = bundle.siteConfig!
-  const services = row.services?.length ? row.services : ['Walk-In Closets']
+  const rawConfig = row.ai_site_config as Record<string, unknown> | null
+  const storedPres = rawConfig?.presentation as
+    | { theme?: string; layoutStyle?: string; resolvedAt?: string }
+    | undefined
+
+  let theme = coerceThemeSlug(site.theme || storedPres?.theme)
+  let layoutStyle = coerceLayoutSlug(
+    (site as { layoutStyle?: string }).layoutStyle || storedPres?.layoutStyle
+  )
+
+  if (!storedPres?.layoutStyle || !site.theme) {
+    const resolved = await resolveSitePresentation(presentationFromIntakeRow(row), {
+      useGemini: false,
+    })
+    if (!site.theme) theme = resolved.theme
+    if (!(site as { layoutStyle?: string }).layoutStyle) layoutStyle = resolved.layoutStyle
+  }
+
+  const services = provisionServiceLabels(row)
   const selections = syncProductSlots(parseImageSelections(row.image_selections), services)
 
   const products = (site.products ?? []).map((p, i) => {
@@ -76,13 +103,20 @@ export function buildAiProvisionPayload(
 
   const aiSiteConfig = {
     ...site,
+    theme,
+    layoutStyle,
     products,
+    presentation: storedPres ?? {
+      theme,
+      layoutStyle,
+      resolvedAt: new Date().toISOString(),
+    },
   }
 
   return {
     businessName: row.business_name?.trim() || 'Your Business',
-    theme: site.theme || 'luxury-minimal',
-    layoutStyle: 'standard',
+    theme,
+    layoutStyle,
     subdomain,
     ownerEmail: (row.notification_email || row.contact_email || '').trim(),
     heroHeadline: site.hero?.headline,

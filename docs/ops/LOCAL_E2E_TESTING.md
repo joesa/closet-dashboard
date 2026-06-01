@@ -243,7 +243,20 @@ On `/admin/intakes/[id]` with paid deposit → **Refund AI Premium deposit** →
 
 ---
 
-## Scenario 7 — Admin visibility
+## Scenario 7 — Multi-service intake + Other + presentation
+
+1. Open a draft intake URL (Standard or AI Premium).
+2. Under **Services & pricing**, select multiple groups (e.g. **Garages & Garage Storage** + **Pantries & Wine Storage**).
+3. Check **Other**, enter `Wine cellars` (1–120 chars), submit (or generate AI brief on Premium after deposit).
+4. **Pass (submit):** `prospect_intakes.other_services` set; `services` includes `Other (describe below)`.
+5. **Pass (auto template provision):** Site theme skews garage/pantry/wine pool (e.g. `garage-industrial`, `wine-cellar`); `site_configs.layout_style` is not always `standard`.
+6. **Pass (AI Premium):** Generate brief → `ai_site_config.presentation` present with `theme` + `layoutStyle`.
+
+Requires migration `20260606120000_intake_other_services.sql` (`bash scripts/db-migrate.sh`).
+
+---
+
+## Scenario 8 — Admin visibility
 
 1. http://localhost:3000/admin/intakes
 2. Columns: **Tier**, **Deposit**, **Payment due** (e.g. “Deposit due”, “Build payment due”, “Awaiting preview approval”).
@@ -253,7 +266,7 @@ On `/admin/intakes/[id]` with paid deposit → **Refund AI Premium deposit** →
 
 ---
 
-## Scenario 8 — Stripe verify + catalog drift
+## Scenario 9 — Stripe verify + catalog drift
 
 ```bash
 npm run stripe:verify

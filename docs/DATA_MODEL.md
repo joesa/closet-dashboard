@@ -78,3 +78,17 @@ This is a **lightweight reconciliation**: the two tables remain separate but are
 now guaranteed consistent. A future full unification (collapsing `tenants` and
 `contractor_settings` into one canonical row, or making one strictly own the
 other) can build on this invariant without a data-cleanup phase.
+
+## Prospect intake: services and site presentation
+
+`prospect_intakes` stores what the contractor offers and how auto-provision should look:
+
+| Column | Role |
+|--------|------|
+| `services` | Text array of catalog labels from `contractorServices.ts` (16 grouped checkboxes). May include sentinel `Other (describe below)` when the custom line is used. |
+| `other_services` | Optional free text (1–120 chars) when **Other** is checked; used in AI briefs and as an extra product line. |
+| `ai_site_config` | JSON from AI generate-site; may include `presentation: { theme, layoutStyle, resolvedAt, rationale, source }` for audit. |
+
+**Presentation resolution** (`resolveSitePresentation`): unions per-service theme/layout pools from the catalog, applies vibe/CTA hints, optional Gemini pick, and sets `defaultRoom` for the widget. Used on template auto-provision, AI Premium provision (layout no longer hardcoded to `standard`), and intake generate-site (merged after Gemini).
+
+Theme/layout slugs are defined in `src/lib/catalog/sitePresentationCatalog.ts` and must stay in sync with `custom-closets-websites` `ThemeType` and `ClientPage` layout switch.
