@@ -1,4 +1,5 @@
 import { getStripe } from '@/lib/stripe'
+import { stripePriceEnv } from '@/lib/stripeCatalog'
 
 export type StripeSetupCheck = {
   name: string
@@ -19,13 +20,42 @@ function stripeMode(secretKey: string | undefined): StripeSetupReport['mode'] {
   return 'unknown'
 }
 
+async function checkPrice(
+  stripe: ReturnType<typeof getStripe>,
+  checks: StripeSetupCheck[],
+  name: string,
+  priceId: string | undefined,
+  expect: 'recurring' | 'one_time'
+) {
+  if (!priceId) {
+    checks.push({ name, ok: false, detail: 'Missing env' })
+    return
+  }
+  try {
+    const price = await stripe.prices.retrieve(priceId)
+    const typeOk = expect === 'recurring' ? price.type === 'recurring' : price.type === 'one_time'
+    checks.push({
+      name,
+      ok: price.active === true && typeOk,
+      detail: price.active
+        ? `${price.unit_amount}c ${price.type}${price.recurring ? `/${price.recurring.interval}` : ''}`
+        : 'inactive',
+    })
+  } catch (e) {
+    checks.push({
+      name,
+      ok: false,
+      detail: e instanceof Error ? e.message : 'retrieve failed',
+    })
+  }
+}
+
 export async function verifyStripeSetup(): Promise<StripeSetupReport> {
   const checks: StripeSetupCheck[] = []
   const secret = process.env.STRIPE_SECRET_KEY
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET
   const pub = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
-  const monthlyId = process.env.STRIPE_PRICE_MONTHLY
-  const yearlyId = process.env.STRIPE_PRICE_YEARLY
+  const prices = stripePriceEnv()
 
   checks.push({
     name: 'STRIPE_SECRET_KEY',
@@ -42,16 +72,6 @@ export async function verifyStripeSetup(): Promise<StripeSetupReport> {
     ok: !!pub,
     detail: pub ? 'Set' : 'Missing — client Stripe.js unavailable',
   })
-  checks.push({
-    name: 'STRIPE_PRICE_MONTHLY',
-    ok: !!monthlyId,
-    detail: monthlyId || 'Missing',
-  })
-  checks.push({
-    name: 'STRIPE_PRICE_YEARLY',
-    ok: !!yearlyId,
-    detail: yearlyId || 'Missing',
-  })
 
   if (!secret) {
     return { ok: false, mode: 'unknown', checks }
@@ -59,39 +79,49 @@ export async function verifyStripeSetup(): Promise<StripeSetupReport> {
 
   const stripe = getStripe()
 
-  for (const [label, priceId] of [
-    ['monthly', monthlyId],
-    ['yearly', yearlyId],
-  ] as const) {
-    if (!priceId) continue
-    try {
-      const price = await stripe.prices.retrieve(priceId)
-      const active = price.active === true
-      const recurring = price.type === 'recurring'
-      const interval = price.recurring?.interval
-      checks.push({
-        name: `price_${label}`,
-        ok: active && recurring,
-        detail: active
-          ? `active ${recurring ? `recurring/${interval}` : price.type}`
-          : 'inactive or wrong type',
-      })
-    } catch (e) {
-      checks.push({
-        name: `price_${label}`,
-        ok: false,
-        detail: e instanceof Error ? e.message : 'retrieve failed',
-      })
-    }
-  }
+  await checkPrice(stripe, checks, 'STRIPE_PRICE_MONTHLY', prices.proMonthly, 'recurring')
+  await checkPrice(stripe, checks, 'STRIPE_PRICE_YEARLY', prices.proYearly, 'recurring')
+  await checkPrice(
+    stripe,
+    checks,
+    'STRIPE_PRICE_STANDARD_BUILD',
+    prices.standardBuild,
+    'one_time'
+  )
+  await checkPrice(stripe, checks, 'STRIPE_PRICE_AI_PREMIUM_FULL', prices.aiPremiumFull, 'one_time')
+  await checkPrice(
+    stripe,
+    checks,
+    'STRIPE_PRICE_AI_PREMIUM_DEPOSIT',
+    prices.aiPremiumDeposit,
+    'one_time'
+  )
+  await checkPrice(
+    stripe,
+    checks,
+    'STRIPE_PRICE_AI_PREMIUM_BALANCE',
+    prices.aiPremiumBalance,
+    'one_time'
+  )
+  await checkPrice(
+    stripe,
+    checks,
+    'STRIPE_PRICE_SITE_MAINTENANCE_MONTHLY',
+    prices.siteMaintenanceMonthly,
+    'recurring'
+  )
+  await checkPrice(
+    stripe,
+    checks,
+    'STRIPE_PRICE_SITE_MAINTENANCE_YEARLY',
+    prices.siteMaintenanceYearly,
+    'recurring'
+  )
 
   try {
     const endpoints = await stripe.webhookEndpoints.list({ limit: 20 })
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, '')
     const expectedPath = '/api/webhooks/stripe'
-    const matching = endpoints.data.filter((ep) =>
-      ep.url.includes(expectedPath) || (siteUrl && ep.url.startsWith(siteUrl))
-    )
+    const matching = endpoints.data.filter((ep) => ep.url.includes(expectedPath))
     checks.push({
       name: 'webhook_endpoints',
       ok: matching.length > 0,

@@ -3,7 +3,8 @@ import { getStripe } from '@/lib/stripe'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { getIntakeByToken } from '@/lib/intake/getIntakeByToken'
 import { assertDraftIntake } from '@/lib/intake/intakeTierGates'
-import { formatUsd } from '@/lib/intake/tiers'
+import { depositForTier, formatUsd } from '@/lib/intake/tiers'
+import { resolveOneTimePriceId, stripePriceEnv } from '@/lib/stripeCatalog'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -42,22 +43,33 @@ export async function POST(
     const returnUrl = `${origin}/intake/${token}`
 
     const stripe = getStripe()
+    const catalogDepositCents = depositForTier(row.tier_total_cents)
+    const depositPriceId = resolveOneTimePriceId(
+      stripePriceEnv().aiPremiumDeposit,
+      depositCents,
+      catalogDepositCents
+    )
+
+    const lineItems = depositPriceId
+      ? [{ price: depositPriceId, quantity: 1 }]
+      : [
+          {
+            price_data: {
+              currency: 'usd',
+              unit_amount: depositCents,
+              product_data: {
+                name: 'ClosetQuote AI Premium — 30% deposit',
+                description: `30% upfront (${formatUsd(depositCents)}) of ${formatUsd(row.tier_total_cents)} total. Balance only if satisfied before launch; deposit refunded if not.`,
+              },
+            },
+            quantity: 1,
+          },
+        ]
+
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
       customer_email: row.contact_email || row.notification_email || undefined,
-      line_items: [
-        {
-          price_data: {
-            currency: 'usd',
-            unit_amount: depositCents,
-            product_data: {
-              name: 'ClosetQuote AI Premium — 30% deposit',
-              description: `30% upfront (${formatUsd(depositCents)}) of ${formatUsd(row.tier_total_cents)} total. Balance only if satisfied before launch; deposit refunded if not.`,
-            },
-          },
-          quantity: 1,
-        },
-      ],
+      line_items: lineItems,
       metadata: {
         kind: 'intake_deposit',
         intake_id: row.id,

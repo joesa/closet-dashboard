@@ -38,23 +38,31 @@ function add(name, ok, detail) {
 
 add('STRIPE_SECRET_KEY', true, key.startsWith('sk_live_') ? 'live' : 'test')
 add('STRIPE_WEBHOOK_SECRET', !!process.env.STRIPE_WEBHOOK_SECRET, process.env.STRIPE_WEBHOOK_SECRET ? 'set' : 'missing')
-add('STRIPE_PRICE_MONTHLY', !!process.env.STRIPE_PRICE_MONTHLY, process.env.STRIPE_PRICE_MONTHLY || 'missing')
-add('STRIPE_PRICE_YEARLY', !!process.env.STRIPE_PRICE_YEARLY, process.env.STRIPE_PRICE_YEARLY || 'missing')
+const priceEnvs = [
+  ['STRIPE_PRICE_MONTHLY', 'recurring'],
+  ['STRIPE_PRICE_YEARLY', 'recurring'],
+  ['STRIPE_PRICE_STANDARD_BUILD', 'one_time'],
+  ['STRIPE_PRICE_AI_PREMIUM_FULL', 'one_time'],
+  ['STRIPE_PRICE_AI_PREMIUM_DEPOSIT', 'one_time'],
+  ['STRIPE_PRICE_AI_PREMIUM_BALANCE', 'one_time'],
+  ['STRIPE_PRICE_SITE_MAINTENANCE_MONTHLY', 'recurring'],
+  ['STRIPE_PRICE_SITE_MAINTENANCE_YEARLY', 'recurring'],
+]
 
-for (const [label, id] of [
-  ['monthly', process.env.STRIPE_PRICE_MONTHLY],
-  ['yearly', process.env.STRIPE_PRICE_YEARLY],
-]) {
+for (const [envKey, expectType] of priceEnvs) {
+  const id = process.env[envKey]
+  add(envKey, !!id, id || 'missing — run npm run stripe:catalog')
   if (!id) continue
   try {
     const price = await stripe.prices.retrieve(id)
+    const typeOk = expectType === 'recurring' ? price.type === 'recurring' : price.type === 'one_time'
     add(
-      `price_${label}`,
-      price.active && price.type === 'recurring',
-      `${price.unit_amount}c ${price.recurring?.interval || 'n/a'} active=${price.active}`
+      envKey + '_api',
+      price.active && typeOk,
+      `${price.unit_amount}c ${price.type} active=${price.active}`
     )
   } catch (e) {
-    add(`price_${label}`, false, e.message)
+    add(envKey + '_api', false, e.message)
   }
 }
 
