@@ -26,11 +26,21 @@ export default async function BillingPage({
     data: { user },
   } = await supabase.auth.getUser()
 
+  const params = await searchParams
+  const checkoutPlanEarly = params.plan === 'yearly' ? 'yearly' : 'monthly'
+  const billingNext = new URLSearchParams()
+  if (params.checkout === '1') {
+    billingNext.set('checkout', '1')
+    billingNext.set('plan', checkoutPlanEarly)
+  }
+  if (params.canceled === 'true') billingNext.set('canceled', 'true')
+  const billingPath =
+    billingNext.size > 0 ? `/billing?${billingNext.toString()}` : '/billing'
+
   // Middleware should have caught this, but defense-in-depth.
-  if (!user) redirect('/login?next=/billing')
+  if (!user) redirect(`/login?next=${encodeURIComponent(billingPath)}`)
 
   const ent = await getEntitlementForUser(user.id)
-  const params = await searchParams
   const justCanceled = params.canceled === 'true'
   const autoCheckout = params.checkout === '1'
   const checkoutPlan = params.plan === 'yearly' ? 'yearly' : 'monthly'
