@@ -113,14 +113,22 @@ export default function TierPicker({
               <p className="mt-1 text-xs text-gray-600">
                 Then {formatUsd(maintDisplay.perMonthCents)}/mo — {maintDisplay.billedLabel}
               </p>
-              {t.slug === 'ai_premium' && t.depositCents > 0 && (
-                <p className="mt-2 text-xs font-medium text-amber-800 bg-amber-50 rounded px-2 py-1">
-                  30% due today: {formatUsd(t.depositCents)} of {formatUsd(t.totalCents)} total.
-                  Remainder {formatUsd(t.remainderCents)} due before launch.
+              {t.slug === 'standard' && (
+                <p className="mt-2 text-xs font-medium text-slate-700 bg-slate-50 rounded px-2 py-1.5">
+                  No upfront deposit. Pay {formatUsd(t.totalCents)} when satisfied with the preview,
+                  then we launch and give you full dashboard access.
                 </p>
               )}
-              {t.slug === 'standard' && (
-                <p className="mt-2 text-xs text-gray-500">Stock hero &amp; product images. Fastest path.</p>
+              {t.slug === 'ai_premium' && t.depositCents > 0 && (
+                <>
+                  <p className="mt-2 text-xs font-medium text-amber-800 bg-amber-50 rounded px-2 py-1">
+                    30% due today: {formatUsd(t.depositCents)} — unlocks AI studio. Balance{' '}
+                    {formatUsd(t.remainderCents)} only if satisfied before launch.
+                  </p>
+                  <p className="mt-1 text-xs text-emerald-800">
+                    Not satisfied? No balance — deposit returned.
+                  </p>
+                </>
               )}
               {loading === t.slug && (
                 <p className="mt-2 text-xs text-gray-500">Saving…</p>

@@ -52,7 +52,7 @@ export async function POST(
             unit_amount: depositCents,
             product_data: {
               name: 'ClosetQuote AI Premium — 30% deposit',
-              description: `30% upfront (${formatUsd(depositCents)}) of ${formatUsd(row.tier_total_cents)} total. Remainder due before launch.`,
+              description: `30% upfront (${formatUsd(depositCents)}) of ${formatUsd(row.tier_total_cents)} total. Balance only if satisfied before launch; deposit refunded if not.`,
             },
           },
           quantity: 1,

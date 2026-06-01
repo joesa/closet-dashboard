@@ -46,8 +46,10 @@ export default function DepositCTA({
     <div className="rounded-xl border border-amber-300 bg-amber-50 p-5">
       <h3 className="font-semibold text-amber-900">Pay 30% deposit to continue</h3>
       <p className="mt-1 text-sm text-amber-800">
-        AI Premium requires {formatUsd(depositRequiredCents)} today (30% of {formatUsd(totalCents)}).
-        The remaining {formatUsd(totalCents - depositRequiredCents)} is due before your site goes live.
+        AI Premium requires {formatUsd(depositRequiredCents)} today (30% of {formatUsd(totalCents)}) to
+        unlock the image studio. The remaining {formatUsd(totalCents - depositRequiredCents)} is only
+        due if you&apos;re satisfied before launch. Not satisfied? You don&apos;t pay the balance — your
+        deposit is returned.
       </p>
       <button
         type="button"

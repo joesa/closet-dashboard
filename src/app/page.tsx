@@ -448,36 +448,74 @@ const PREMIUM_FEATURES = [
   'Same intake flow — build + maintenance match what you see',
 ]
 
-function AgencyBuildExplainer() {
+function HowSiteBuildPaymentWorks() {
+  const standard = getTierCatalog().find((t) => t.slug === 'standard')!
   const premium = getTierCatalog().find((t) => t.slug === 'ai_premium')!
   const maintenance = getSiteMaintenancePricing()
 
   return (
-    <div className="mt-16 rounded-3xl border border-white/10 bg-white/[0.02] p-8 text-center backdrop-blur-sm sm:p-12">
-      <h4 className="mb-4 text-2xl font-bold tracking-tight text-white">
-        How AI Premium setup works
-      </h4>
-      <p className="mx-auto mb-8 max-w-2xl text-slate-400">
-        Start at <Link href="/get-started" className="text-emerald-300 underline underline-offset-2">/get-started</Link>.
-        You will see the same one-time build and maintenance options on intake. For AI Premium, pay the 30% deposit to unlock the image studio, pick your hero and product shots, then submit — we build with those exact assets. After launch, site maintenance is {formatUsd(maintenance.monthlyCents)}/mo or {formatUsd(maintenance.yearlyCents)}/yr (save {formatUsd(maintenance.yearlySavingsCents)}).
-      </p>
-      <div className="mx-auto max-w-3xl rounded-2xl border border-white/[0.06] bg-black/40 p-6 text-left text-sm sm:flex sm:items-center sm:justify-between sm:p-8">
-        <div className="mb-6 sm:mb-0 sm:flex-1">
-          <div className="mb-1 text-xs font-semibold uppercase tracking-widest text-emerald-400/90">
-            Due today (30%)
+    <div className="mt-16 rounded-3xl border border-white/10 bg-white/[0.02] p-8 backdrop-blur-sm sm:p-12">
+      <div className="mb-10 text-center">
+        <h4 className="mb-4 text-2xl font-bold tracking-tight text-white">
+          Pay when you&apos;re satisfied — not before
+        </h4>
+        <p className="mx-auto max-w-2xl text-slate-400">
+          Start at{' '}
+          <Link href="/get-started" className="text-emerald-300 underline underline-offset-2">
+            /get-started
+          </Link>
+          . Intake shows the same options. After launch, site maintenance is{' '}
+          {formatUsd(maintenance.monthlyCents)}/mo or {formatUsd(maintenance.yearlyCents)}/yr (save{' '}
+          {formatUsd(maintenance.yearlySavingsCents)}).
+        </p>
+      </div>
+
+      <div className="mx-auto grid max-w-4xl gap-6 md:grid-cols-2">
+        <div className="rounded-2xl border border-white/[0.08] bg-black/40 p-6 text-left">
+          <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">
+            Standard · {formatUsd(standard.totalCents)}
+          </p>
+          <p className="mt-3 text-lg font-semibold text-white">No upfront deposit</p>
+          <p className="mt-3 text-sm leading-relaxed text-slate-400">
+            We build your site with stock imagery. You pay the full{' '}
+            {formatUsd(standard.totalCents)} only when you&apos;re happy with the preview — nothing due
+            until then. Once paid, we launch the site and hand you the keys (full access to your
+            dashboard, leads, and settings).
+          </p>
+          <div className="mt-5 rounded-lg border border-white/10 bg-white/[0.03] px-4 py-3">
+            <p className="text-xs font-medium text-slate-300">Due today</p>
+            <p className="text-2xl font-bold text-white">$0</p>
+            <p className="mt-1 text-xs text-slate-500">
+              {formatUsd(standard.totalCents)} when satisfied, then launch.
+            </p>
           </div>
-          <div className="text-3xl font-bold text-white">{formatUsd(premium.depositCents)}</div>
-          <div className="mt-1 text-xs text-slate-500">Unlocks AI image generation on intake.</div>
         </div>
-        <div className="hidden h-16 w-px bg-white/10 sm:block" />
-        <div className="sm:flex-1 sm:pl-8">
-          <div className="mb-1 text-xs font-semibold uppercase tracking-widest text-emerald-400/90">
-            Before launch
+
+        <div className="rounded-2xl border border-emerald-500/25 bg-emerald-950/20 p-6 text-left">
+          <p className="text-xs font-semibold uppercase tracking-widest text-emerald-400/90">
+            AI Premium · {formatUsd(premium.totalCents)}
+          </p>
+          <p className="mt-3 text-lg font-semibold text-white">Deposit unlocks AI studio</p>
+          <p className="mt-3 text-sm leading-relaxed text-slate-300">
+            Pay {formatUsd(premium.depositCents)} (30%) on intake to generate custom hero and product
+            images. We build with the shots you choose. The remaining{' '}
+            {formatUsd(premium.remainderCents)} is only due if you&apos;re satisfied before launch.
+          </p>
+          <div className="mt-5 grid gap-3 sm:grid-cols-2">
+            <div className="rounded-lg border border-emerald-500/20 bg-black/30 px-4 py-3">
+              <p className="text-xs font-medium text-emerald-300/90">Due today (30%)</p>
+              <p className="text-2xl font-bold text-white">{formatUsd(premium.depositCents)}</p>
+              <p className="mt-1 text-xs text-slate-500">Unlocks AI image studio on intake.</p>
+            </div>
+            <div className="rounded-lg border border-emerald-500/20 bg-black/30 px-4 py-3">
+              <p className="text-xs font-medium text-emerald-300/90">If you love it</p>
+              <p className="text-2xl font-bold text-white">{formatUsd(premium.remainderCents)}</p>
+              <p className="mt-1 text-xs text-slate-500">Before launch, then keys to the kingdom.</p>
+            </div>
           </div>
-          <div className="text-3xl font-bold text-white">{formatUsd(premium.remainderCents)}</div>
-          <div className="mt-1 text-xs text-slate-500">
-            Remainder of {formatUsd(premium.totalCents)} total package.
-          </div>
+          <p className="mt-4 text-xs font-medium text-emerald-200/90 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-2">
+            Not satisfied? You don&apos;t pay the balance — your deposit is returned.
+          </p>
         </div>
       </div>
     </div>
@@ -579,9 +617,12 @@ function PricingSection() {
             + {formatUsd(siteMaint.perMonthCents)}/mo after launch
             <span className="text-slate-500"> · {siteMaint.billedLabel}</span>
           </p>
-          <p className="mb-8 text-xs text-slate-500 min-h-[40px]">
+          <p className="mb-4 text-xs font-medium text-slate-200 bg-white/[0.04] border border-white/10 rounded-lg px-3 py-2">
+            No upfront deposit. Pay {formatUsd(standard.totalCents)} when you&apos;re satisfied with
+            the preview — then we launch and hand you the keys.
+          </p>
+          <p className="mb-8 text-xs text-slate-500 min-h-[24px]">
             Premium site + quote engine with curated stock photography.
-            Fastest path to launch.
           </p>
           <ul className="mb-10 space-y-3">
             {STANDARD_FEATURES.map((feature) => (
@@ -619,12 +660,12 @@ function PricingSection() {
             + {formatUsd(siteMaint.perMonthCents)}/mo after launch
             <span className="text-emerald-200/60"> · {siteMaint.billedLabel}</span>
           </p>
-          <p className="mb-4 text-xs font-medium text-amber-200/90 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
-            30% due today: {formatUsd(premium.depositCents)} of {formatUsd(premium.totalCents)}.
-            Remainder {formatUsd(premium.remainderCents)} due before launch.
+          <p className="mb-3 text-xs font-medium text-amber-200/90 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
+            30% due today: {formatUsd(premium.depositCents)} — unlocks AI image studio on intake.
+            Balance {formatUsd(premium.remainderCents)} only if you&apos;re satisfied before launch.
           </p>
-          <p className="mb-8 text-xs text-slate-500 min-h-[24px]">
-            Bespoke AI imagery for hero + each service. Pay deposit to unlock the image studio on intake.
+          <p className="mb-8 text-xs text-emerald-200/80">
+            Not satisfied? No balance due — your deposit is returned.
           </p>
           <ul className="mb-10 space-y-3">
             {PREMIUM_FEATURES.map((feature) => (
@@ -743,7 +784,7 @@ function PricingSection() {
           ))}
         </div>
 
-        <AgencyBuildExplainer />
+        <HowSiteBuildPaymentWorks />
       </div>
     </section>
   )
