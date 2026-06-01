@@ -619,11 +619,13 @@ function PricingSection() {
   const maintenance = getSiteMaintenancePricing()
   const widgetSub = getWidgetSubscriptionPricing()
 
-  const [siteBilling, setSiteBilling] = useState<'monthly' | 'yearly'>('monthly')
-  const siteMaint = maintenanceDisplay(siteBilling, maintenance)
-
-  const [widgetBilling, setWidgetBilling] = useState<'monthly' | 'yearly'>('monthly')
-  const widgetDisplay = subscriptionBillingDisplay(widgetBilling, widgetSub)
+  const [billing, setBilling] = useState<'monthly' | 'yearly'>('monthly')
+  const siteMaint = maintenanceDisplay(billing, maintenance)
+  const widgetDisplay = subscriptionBillingDisplay(billing, widgetSub)
+  const maxYearlySavingsCents = Math.max(
+    widgetSub.yearlySavingsCents,
+    maintenance.yearlySavingsCents
+  )
 
   return (
     <section id="pricing" className="mx-auto max-w-7xl px-6 py-28">
@@ -641,16 +643,22 @@ function PricingSection() {
       </div>
 
       <p className="mb-4 text-center text-xs font-medium uppercase tracking-wider text-slate-500">
-        Standard &amp; AI Premium — maintenance after launch
+        Monthly or yearly billing — applies to all tiers below
       </p>
-      <div className="mb-10 flex justify-center">
+      <div className="mb-10 flex flex-col items-center gap-2">
         <PlanBillingToggle
-          billing={siteBilling}
-          onBillingChange={setSiteBilling}
-          savingsCents={maintenance.yearlySavingsCents}
+          billing={billing}
+          onBillingChange={setBilling}
+          savingsCents={maxYearlySavingsCents}
           monthlyLabel="Monthly"
           yearlyLabel="Yearly"
         />
+        {billing === 'yearly' && (
+          <p className="text-center text-[11px] text-slate-500">
+            Pro widget saves {formatUsd(widgetSub.yearlySavingsCents)}/yr · Site maintenance saves{' '}
+            {formatUsd(maintenance.yearlySavingsCents)}/yr vs paying monthly
+          </p>
+        )}
       </div>
 
       <div className="mx-auto grid max-w-7xl grid-cols-1 gap-8 lg:grid-cols-3">
@@ -663,15 +671,6 @@ function PricingSection() {
           </div>
           <p className="mb-0.5 text-sm font-medium text-slate-400">Already have a website?</p>
           <p className="mb-4 text-lg font-semibold text-white">ClosetQuote Pro</p>
-          <div className="mb-3">
-            <PlanBillingToggle
-              billing={widgetBilling}
-              onBillingChange={setWidgetBilling}
-              savingsCents={widgetSub.yearlySavingsCents}
-              monthlyLabel="Monthly"
-              yearlyLabel="Yearly"
-            />
-          </div>
           <div className="mb-1 flex items-baseline gap-2">
             <span className="text-5xl font-bold tracking-tighter text-white lg:text-6xl">
               {formatUsd(widgetDisplay.perMonthCents)}
