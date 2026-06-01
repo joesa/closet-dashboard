@@ -694,7 +694,7 @@ function PricingSection() {
               Start 30-day free trial
             </Link>
             <Link
-              href="/signup"
+              href={`/signup?subscribe=1&plan=${billing}`}
               className="flex w-full items-center justify-center rounded-lg border border-white/15 px-5 py-3 text-sm font-medium text-white hover:bg-white/5"
             >
               Subscribe now — skip trial

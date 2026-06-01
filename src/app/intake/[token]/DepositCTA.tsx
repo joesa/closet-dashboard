@@ -45,6 +45,9 @@ export default function DepositCTA({
   return (
     <div className="rounded-xl border border-amber-300 bg-amber-50 p-5">
       <h3 className="font-semibold text-amber-900">Pay 30% deposit to continue</h3>
+      <p className="mt-1 text-xs text-amber-700/90">
+        Selecting AI Premium also opens checkout automatically. Use this button if you need to pay again.
+      </p>
       <p className="mt-1 text-sm text-amber-800">
         AI Premium requires {formatUsd(depositRequiredCents)} today (30% of {formatUsd(totalCents)}) to
         unlock the image studio. The remaining {formatUsd(totalCents - depositRequiredCents)} is only

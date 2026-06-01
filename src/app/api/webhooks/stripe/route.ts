@@ -91,7 +91,10 @@ export async function POST(req: Request) {
               updated_at: new Date().toISOString(),
             })
             .eq('id', intakeId)
-        } else {
+        } else if (
+          kind === 'widget_subscription' ||
+          session.mode === 'subscription'
+        ) {
           const userId = session.client_reference_id
           const customerId =
             typeof session.customer === 'string' ? session.customer : session.customer?.id
@@ -100,14 +103,18 @@ export async function POST(req: Request) {
               ? session.subscription
               : session.subscription?.id ?? null
 
+          const skipDbTrial = meta.skip_db_trial === 'true'
+
           if (userId && customerId) {
-            await admin
-              .from('contractor_settings')
-              .update({
-                stripe_customer_id: customerId,
-                stripe_subscription_id: subscriptionId,
-              })
-              .eq('user_id', userId)
+            const patch: Record<string, unknown> = {
+              stripe_customer_id: customerId,
+              stripe_subscription_id: subscriptionId,
+            }
+            if (skipDbTrial) {
+              patch.subscription_status = 'active'
+              patch.trial_ends_at = new Date().toISOString()
+            }
+            await admin.from('contractor_settings').update(patch).eq('user_id', userId)
           }
         }
         break

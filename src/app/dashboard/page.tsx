@@ -4,7 +4,7 @@ import { useState, useCallback, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import Script from 'next/script'
-import { supabaseBrowser } from '@/lib/supabase-browser'
+import { supabaseBrowser, getBrowserUser } from '@/lib/supabase-browser'
 import { DEMO_CONTRACTOR_ID, DEMO_RESET_NOTICE } from '@/lib/demo'
 import { WIDGET_CDN_URL } from '@/lib/urls'
 import {
@@ -110,21 +110,19 @@ export default function DashboardPage() {
   // ── Auth gate: check session, fetch settings ──
   useEffect(() => {
     async function init() {
-      const {
-        data: { session },
-      } = await supabaseBrowser.auth.getSession()
+      const user = await getBrowserUser()
 
-      if (!session?.user) {
+      if (!user) {
         router.replace('/login')
         return
       }
 
-      if (session.user.user_metadata?.force_password_reset) {
+      if (user.user_metadata?.force_password_reset) {
         router.replace('/force-password-reset')
         return
       }
 
-      const uid = session.user.id
+      const uid = user.id
       setUserId(uid)
 
       // Provisioned tenants: link contractor_settings via tenant_id metadata.
@@ -142,8 +140,8 @@ export default function DashboardPage() {
         .maybeSingle()
 
       let settingsRow = existing
-      if (!settingsRow && session.user.user_metadata?.tenant_id) {
-        const tenantId = session.user.user_metadata.tenant_id as string
+      if (!settingsRow && user.user_metadata?.tenant_id) {
+        const tenantId = user.user_metadata.tenant_id as string
         const { data: byTenant } = await supabaseBrowser
           .from('contractor_settings')
           .select('*')

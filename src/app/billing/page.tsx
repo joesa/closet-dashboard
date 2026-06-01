@@ -5,6 +5,7 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { getEntitlementForUser } from '@/lib/entitlement'
 import { DEMO_CONTRACTOR_ID } from '@/lib/demo'
 import BillingActions from './BillingActions'
+import BillingAutoCheckout from './BillingAutoCheckout'
 
 export const dynamic = 'force-dynamic'
 
@@ -18,7 +19,7 @@ export const dynamic = 'force-dynamic'
 export default async function BillingPage({
   searchParams,
 }: {
-  searchParams: Promise<{ canceled?: string }>
+  searchParams: Promise<{ canceled?: string; checkout?: string; plan?: string }>
 }) {
   const supabase = await getSupabaseServer()
   const {
@@ -31,6 +32,8 @@ export default async function BillingPage({
   const ent = await getEntitlementForUser(user.id)
   const params = await searchParams
   const justCanceled = params.canceled === 'true'
+  const autoCheckout = params.checkout === '1'
+  const checkoutPlan = params.plan === 'yearly' ? 'yearly' : 'monthly'
 
   const isActive = ent.status === 'active'
 
@@ -116,6 +119,10 @@ export default async function BillingPage({
               </div>
 
               <div className="rounded-3xl border border-white/10 bg-white/[0.02] p-8 backdrop-blur-sm">
+                <BillingAutoCheckout
+                  enabled={autoCheckout && !isActive}
+                  plan={checkoutPlan}
+                />
                 <BillingActions
                   isActive={isActive}
                   currentPlan={ent.plan}

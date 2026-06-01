@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { supabaseBrowser } from '@/lib/supabase-browser'
+import { supabaseBrowser, getBrowserUser } from '@/lib/supabase-browser'
 import { DEMO_LOGIN } from '@/lib/demo'
 
 export default function UpdatePasswordPage() {
@@ -20,11 +20,11 @@ export default function UpdatePasswordPage() {
   const [checkingSession, setCheckingSession] = useState(true)
 
   useEffect(() => {
-    supabaseBrowser.auth.getSession().then(({ data: { session } }) => {
-      if (!session) {
+    getBrowserUser().then((user) => {
+      if (!user) {
         setError('Your password reset link is invalid or has expired.')
       } else if (
-        session.user?.email?.toLowerCase() === DEMO_LOGIN.email.toLowerCase()
+        user.email?.toLowerCase() === DEMO_LOGIN.email.toLowerCase()
       ) {
         // Demo account is shared. Block password changes from the UI so
         // a curious prospect can't lock out the next visitor. The nightly

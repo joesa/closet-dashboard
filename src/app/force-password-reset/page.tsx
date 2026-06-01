@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { supabaseBrowser } from '@/lib/supabase-browser'
+import { supabaseBrowser, getBrowserUser } from '@/lib/supabase-browser'
 
 export default function ForcePasswordResetPage() {
   const router = useRouter()
@@ -14,10 +14,10 @@ export default function ForcePasswordResetPage() {
   const [checkingSession, setCheckingSession] = useState(true)
 
   useEffect(() => {
-    supabaseBrowser.auth.getSession().then(({ data: { session } }) => {
-      if (!session) {
+    getBrowserUser().then((user) => {
+      if (!user) {
         router.replace('/login')
-      } else if (!session.user?.user_metadata?.force_password_reset) {
+      } else if (!user.user_metadata?.force_password_reset) {
         // If they don't need a reset, send them to dashboard
         router.replace('/dashboard')
       }

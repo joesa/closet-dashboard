@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "stripe:verify": "node scripts/stripe-verify.mjs"
   },
   "dependencies": {
     "@closetquote/pricing": "file:./packages/pricing",

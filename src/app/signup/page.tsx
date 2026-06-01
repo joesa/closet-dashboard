@@ -74,7 +74,16 @@ function SignUpForm() {
       return
     }
 
-    // Full reload so the server proxy sees the freshly-set auth cookies.
+    const subscribe = searchParams.get('subscribe') === '1'
+    const plan = searchParams.get('plan') === 'yearly' ? 'yearly' : 'monthly'
+
+    // Skip-trial: Stripe checkout immediately after account creation.
+    if (subscribe) {
+      window.location.href = `/billing?checkout=1&plan=${plan}`
+      return
+    }
+
+    // Free trial: dashboard access; Stripe only after trial ends or manual upgrade.
     window.location.href = '/dashboard'
   }
 

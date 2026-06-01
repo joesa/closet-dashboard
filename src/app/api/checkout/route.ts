@@ -13,7 +13,10 @@ export const dynamic = 'force-dynamic'
  * POST /api/checkout — create a Stripe Checkout Session for the signed-in
  * contractor and return its URL.
  *
- * Body: { plan: 'monthly' | 'yearly' }
+ * Body: { plan: 'monthly' | 'yearly', skipTrial?: boolean }
+ *
+ * Immediate checkout (no DB trial) when skipTrial is true — used for
+ * "Subscribe now — skip trial" on the landing page.
  *
  * Notes:
  *   - The user is identified from the Supabase session cookie, NOT from the
@@ -33,13 +36,14 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
   }
 
-  let body: { plan?: string } = {}
+  let body: { plan?: string; skipTrial?: boolean } = {}
   try {
     body = await req.json()
   } catch {
     // empty body is fine; default to monthly
   }
   const plan = body.plan === 'yearly' ? 'yearly' : 'monthly'
+  const skipTrial = body.skipTrial === true
 
   const priceId =
     plan === 'yearly'
@@ -90,11 +94,18 @@ export async function POST(req: Request) {
     line_items: [{ price: priceId, quantity: 1 }],
     client_reference_id: user.id,
     allow_promotion_codes: true,
+    metadata: {
+      kind: 'widget_subscription',
+      skip_db_trial: skipTrial ? 'true' : 'false',
+    },
     subscription_data: {
-      metadata: { supabase_user_id: user.id },
+      metadata: {
+        supabase_user_id: user.id,
+        skip_db_trial: skipTrial ? 'true' : 'false',
+      },
     },
     success_url: `${siteUrl}/dashboard?upgraded=true`,
-    cancel_url: `${siteUrl}/billing?canceled=true`,
+    cancel_url: `${siteUrl}/billing?canceled=true${skipTrial ? '&checkout=1&plan=' + plan : ''}`,
   })
 
   return NextResponse.json({ url: session.url })

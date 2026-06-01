@@ -7,6 +7,7 @@ import {
   getSiteMaintenancePricing,
   maintenanceDisplay,
 } from '@/lib/intake/tiers';
+import { startIntakeDepositCheckout } from '@/lib/intake/startDepositCheckout';
 
 type Props = {
   token: string;
@@ -42,6 +43,15 @@ export default function TierPicker({
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Failed to set tier');
       onTierChange(json.tier, json.depositStatus, !!json.canUseImageStudio);
+
+      if (
+        slug === 'ai_premium' &&
+        json.depositStatus !== 'paid' &&
+        (json.depositRequiredCents ?? 0) > 0
+      ) {
+        await startIntakeDepositCheckout(token);
+        return;
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to set tier');
     } finally {

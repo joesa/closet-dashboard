@@ -35,12 +35,21 @@ export async function proxy(req: NextRequest) {
 
   // IMPORTANT: per @supabase/ssr docs, this must be the first auth call so
   // the cookie refresh runs reliably. A stale/missing refresh token throws
-  // an AuthApiError here; treat that as "no user" instead of crashing.
+  // an AuthApiError here; sign out locally so bad cookies don't linger.
   let user: { id: string } | null = null
   try {
     const { data, error } = await supabase.auth.getUser()
-    if (!error) user = data.user
+    if (error) {
+      await supabase.auth.signOut()
+    } else {
+      user = data.user
+    }
   } catch {
+    try {
+      await supabase.auth.signOut()
+    } catch {
+      /* ignore */
+    }
     user = null
   }
 
