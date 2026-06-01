@@ -1,6 +1,9 @@
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 
-export async function enqueueProvisionJob(intakeId: string, mode: 'full' | 'widget') {
+export async function enqueueProvisionJob(
+  intakeId: string,
+  mode: 'full' | 'widget' | 'ai_full'
+) {
   const admin = getSupabaseAdmin()
   const { data: existing } = await admin
     .from('provision_jobs')

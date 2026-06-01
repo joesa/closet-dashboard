@@ -59,22 +59,56 @@ export async function POST(req: Request) {
     switch (event.type) {
       case 'checkout.session.completed': {
         const session = event.data.object as Stripe.Checkout.Session
-        const userId = session.client_reference_id
-        const customerId =
-          typeof session.customer === 'string' ? session.customer : session.customer?.id
-        const subscriptionId =
-          typeof session.subscription === 'string'
-            ? session.subscription
-            : session.subscription?.id ?? null
+        const meta = session.metadata ?? {}
+        const kind = meta.kind
 
-        if (userId && customerId) {
-          await admin
-            .from('contractor_settings')
-            .update({
-              stripe_customer_id: customerId,
-              stripe_subscription_id: subscriptionId,
+        if (kind === 'intake_deposit' && meta.intake_id) {
+          const intakeId = meta.intake_id
+          const amountCents = session.amount_total ?? 0
+
+          const { data: existingPayment } = await admin
+            .from('intake_payments')
+            .select('id')
+            .eq('stripe_session_id', session.id)
+            .maybeSingle()
+
+          if (!existingPayment) {
+            await admin.from('intake_payments').insert({
+              intake_id: intakeId,
+              stripe_session_id: session.id,
+              amount_cents: amountCents,
+              kind: 'deposit',
+              status: 'paid',
             })
-            .eq('user_id', userId)
+          }
+
+          await admin
+            .from('prospect_intakes')
+            .update({
+              deposit_paid_cents: amountCents,
+              deposit_status: 'paid',
+              stripe_checkout_session_id: session.id,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', intakeId)
+        } else {
+          const userId = session.client_reference_id
+          const customerId =
+            typeof session.customer === 'string' ? session.customer : session.customer?.id
+          const subscriptionId =
+            typeof session.subscription === 'string'
+              ? session.subscription
+              : session.subscription?.id ?? null
+
+          if (userId && customerId) {
+            await admin
+              .from('contractor_settings')
+              .update({
+                stripe_customer_id: customerId,
+                stripe_subscription_id: subscriptionId,
+              })
+              .eq('user_id', userId)
+          }
         }
         break
       }

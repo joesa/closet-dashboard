@@ -17,6 +17,9 @@ type Intake = {
   created_at: string
   submitted_at: string | null
   provisioning_mode: string
+  intake_tier: string
+  deposit_status: string
+  deposit_paid_cents: number
 }
 
 function fmt(d: string | null) {
@@ -34,7 +37,7 @@ export default async function IntakesPage() {
   const admin = getSupabaseAdmin()
   const { data, error } = await admin
     .from('prospect_intakes')
-    .select('id, token, status, business_name, contact_email, contact_phone, service_area, created_at, submitted_at, provisioning_mode')
+    .select('id, token, status, business_name, contact_email, contact_phone, service_area, created_at, submitted_at, provisioning_mode, intake_tier, deposit_status, deposit_paid_cents')
     .order('created_at', { ascending: false })
     .limit(500)
 
@@ -62,6 +65,8 @@ export default async function IntakesPage() {
               <th className="px-4 py-3">Business</th>
               <th className="px-4 py-3">Contact</th>
               <th className="px-4 py-3">Status</th>
+              <th className="px-4 py-3">Tier</th>
+              <th className="px-4 py-3">Deposit</th>
               <th className="px-4 py-3">Provision</th>
               <th className="px-4 py-3">Submitted</th>
               <th className="px-4 py-3">Action</th>
@@ -70,7 +75,7 @@ export default async function IntakesPage() {
           <tbody className="divide-y divide-gray-100">
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-gray-500">
+                <td colSpan={8} className="px-4 py-8 text-center text-gray-500">
                   No intakes yet. Generate a link above and send it to a prospect.
                 </td>
               </tr>
@@ -89,6 +94,14 @@ export default async function IntakesPage() {
                     <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_STYLE[it.status] ?? 'bg-gray-100 text-gray-600'}`}>
                       {it.status}
                     </span>
+                  </td>
+                  <td className="px-4 py-3 text-gray-600 capitalize">{it.intake_tier?.replace('_', ' ') ?? '—'}</td>
+                  <td className="px-4 py-3 text-gray-600">
+                    {it.intake_tier === 'ai_premium' ? (
+                      <span>{it.deposit_status}{it.deposit_paid_cents ? ` ($${(it.deposit_paid_cents / 100).toFixed(0)})` : ''}</span>
+                    ) : (
+                      '—'
+                    )}
                   </td>
                   <td className="px-4 py-3">
                     <IntakeProvisioningMode

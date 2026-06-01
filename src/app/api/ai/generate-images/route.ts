@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { getCurrentAdmin } from '@/lib/admin'
 import { checkAndIncrementAiUsage } from '@/lib/aiUsage'
 import { generateAndUpload } from '@/lib/openai-images'
+import { describeImageError } from '@/lib/ai/generateImagesBatch'
 
 // gpt-image-1 renders take a while; give the function room. On a Vercel Hobby
 // plan (60s hard cap) the client should fall back to one image per request.
@@ -98,40 +99,3 @@ export async function POST(req: Request) {
   }
 }
 
-// Map common OpenAI image-generation failures to clear, actionable messages so
-// the operator knows whether it's an account/billing issue (fix in the OpenAI
-// dashboard) versus a transient or code problem.
-function describeImageError(error: unknown): { status: number; message: string } {
-  const err = error as { status?: number; code?: string; message?: string }
-  const code = err?.code
-  const raw = err?.message || 'An error occurred during image generation.'
-
-  if (code === 'billing_hard_limit_reached') {
-    return {
-      status: 402,
-      message:
-        'OpenAI billing hard limit reached. Raise the monthly usage limit (or add credit) for this OpenAI project before generating images.',
-    }
-  }
-  if (code === 'insufficient_quota') {
-    return {
-      status: 402,
-      message:
-        'OpenAI quota exhausted. Add billing/credit to the OpenAI account, then retry image generation.',
-    }
-  }
-  if (err?.status === 403) {
-    return {
-      status: 403,
-      message:
-        'OpenAI rejected gpt-image-1 (403). The organization likely needs verification to use gpt-image-1, or the API key lacks access.',
-    }
-  }
-  if (err?.status === 429) {
-    return {
-      status: 429,
-      message: 'OpenAI rate limit hit. Wait a moment and retry image generation.',
-    }
-  }
-  return { status: 500, message: raw }
-}

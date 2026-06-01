@@ -1,4 +1,7 @@
-import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { getIntakeByToken } from '@/lib/intake/getIntakeByToken'
+import { buildIntakePublicJson } from '@/lib/intake/intakePublicResponse'
+import { parseImageSelections } from '@/lib/intake/imageSelections'
+import { getTierCatalog } from '@/lib/intake/tiers'
 import IntakeFormClient from './IntakeFormClient'
 
 export const dynamic = 'force-dynamic'
@@ -9,29 +12,30 @@ export default async function IntakePage({
   params: Promise<{ token: string }>
 }) {
   const { token } = await params
-  const admin = getSupabaseAdmin()
+  const row = await getIntakeByToken(token)
 
-  const { data, error } = await admin
-    .from('prospect_intakes')
-    .select('business_name, status, source, email_verified_at, provisioning_mode')
-    .eq('token', token)
-    .maybeSingle()
-
-  if (error || !data || data.status === 'archived') {
+  if (!row || row.status === 'archived') {
     return <IntakeFormClient token={token} notFound />
   }
 
-  const alreadySubmitted = data.status !== 'draft'
-  const needsEmailVerify =
-    data.source === 'public' && !data.email_verified_at
+  const pub = buildIntakePublicJson(row)
+  const aiRaw = row.ai_site_config as Record<string, unknown> | null
 
   return (
     <IntakeFormClient
       token={token}
-      businessName={data.business_name ?? ''}
-      alreadySubmitted={alreadySubmitted}
-      needsEmailVerify={needsEmailVerify}
-      manualBuildOnSubmit={data.provisioning_mode === 'manual'}
+      businessName={row.business_name ?? ''}
+      alreadySubmitted={pub.alreadySubmitted}
+      needsEmailVerify={pub.source === 'public' && !pub.emailVerified}
+      manualBuildOnSubmit={row.provisioning_mode === 'manual'}
+      intakeTier={pub.intakeTier}
+      depositStatus={pub.depositStatus}
+      depositRequiredCents={pub.depositRequiredCents}
+      tierTotalCents={pub.tierTotalCents}
+      canUseImageStudio={pub.canUseImageStudio}
+      tierCatalog={getTierCatalog()}
+      aiSiteConfig={(aiRaw?.siteConfig ?? aiRaw) as Record<string, unknown> | null}
+      imageSelections={parseImageSelections(row.image_selections)}
     />
   )
 }

@@ -1,0 +1,66 @@
+import { NextResponse } from 'next/server'
+import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { generateSiteConfigFromInput } from '@/lib/ai/generateSiteConfig'
+import { buildIntakeBrief } from '@/lib/intake/buildIntakeBrief'
+import { getIntakeByToken } from '@/lib/intake/getIntakeByToken'
+import { assertDraftIntake, assertDepositPaid } from '@/lib/intake/intakeTierGates'
+import { checkRateLimit, hashRateKey } from '@/lib/rateLimit'
+
+export const maxDuration = 60
+export const runtime = 'nodejs'
+
+export async function POST(
+  _req: Request,
+  { params }: { params: Promise<{ token: string }> }
+) {
+  try {
+    const { token } = await params
+    const row = await getIntakeByToken(token)
+    if (!row) {
+      return NextResponse.json({ error: 'Intake not found' }, { status: 404 })
+    }
+
+    const draftErr = assertDraftIntake(row)
+    if (draftErr) {
+      return NextResponse.json({ error: draftErr }, { status: 410 })
+    }
+
+    const depositErr = assertDepositPaid(row)
+    if (depositErr) {
+      return NextResponse.json({ error: depositErr }, { status: 403 })
+    }
+
+    const limit = await checkRateLimit(hashRateKey('intake_ai_site', token), 3, 24 * 60 * 60 * 1000)
+    if (!limit.allowed) {
+      return NextResponse.json({ error: 'Too many AI brief generations today.' }, { status: 429 })
+    }
+
+    const brief = buildIntakeBrief(row)
+    if (!brief.trim()) {
+      return NextResponse.json(
+        { error: 'Fill in business details before generating the AI brief.' },
+        { status: 400 }
+      )
+    }
+
+    const result = await generateSiteConfigFromInput(brief)
+    const admin = getSupabaseAdmin()
+    await admin
+      .from('prospect_intakes')
+      .update({
+        ai_site_config: result.data,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', row.id)
+
+    return NextResponse.json({
+      success: true,
+      source: result.source,
+      data: result.data,
+    })
+  } catch (error) {
+    console.error('intake generate-site error:', error)
+    const message = error instanceof Error ? error.message : 'Generation failed'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}

@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { checkRateLimit, hashRateKey } from '@/lib/rateLimit'
 import { enqueueProvisionJob } from '@/lib/provision/enqueueProvisionJob'
+import { getIntakeByToken } from '@/lib/intake/getIntakeByToken'
+import { buildIntakePublicJson } from '@/lib/intake/intakePublicResponse'
+import { validateAiPremiumReady } from '@/lib/intake/buildAiProvisionPayload'
 
 export const runtime = 'nodejs'
 
@@ -10,29 +13,16 @@ export async function GET(
   { params }: { params: Promise<{ token: string }> }
 ) {
   const { token } = await params
-  const supabase = getSupabaseAdmin()
-  const { data, error } = await supabase
-    .from('prospect_intakes')
-    .select('business_name, status, source, email_verified_at, requested_product, provisioning_mode')
-    .eq('token', token)
-    .maybeSingle()
+  const row = await getIntakeByToken(token)
 
-  if (error || !data) {
+  if (!row) {
     return NextResponse.json({ error: 'Intake not found' }, { status: 404 })
   }
-  if (data.status === 'archived') {
+  if (row.status === 'archived') {
     return NextResponse.json({ error: 'This intake link is no longer active' }, { status: 410 })
   }
 
-  return NextResponse.json({
-    businessName: data.business_name,
-    status: data.status,
-    alreadySubmitted: data.status !== 'draft',
-    source: data.source,
-    emailVerified: !!data.email_verified_at,
-    requestedProduct: data.requested_product,
-    provisioningMode: data.provisioning_mode,
-  })
+  return NextResponse.json(buildIntakePublicJson(row))
 }
 
 function decodeDataUrl(dataUrl: string): { ext: string; mime: string; buffer: Buffer } | null {
@@ -67,13 +57,8 @@ export async function POST(
       return NextResponse.json({ error: 'Too many submit attempts.' }, { status: 429 })
     }
 
-    const { data: existing, error: findErr } = await supabase
-      .from('prospect_intakes')
-      .select('id, status, source, email_verified_at, requested_product, provisioning_mode')
-      .eq('token', token)
-      .maybeSingle()
-
-    if (findErr || !existing) {
+    const existing = await getIntakeByToken(token)
+    if (!existing) {
       return NextResponse.json({ error: 'Intake not found' }, { status: 404 })
     }
     if (existing.status === 'archived') {
@@ -88,6 +73,13 @@ export async function POST(
         },
         { status: 403 }
       )
+    }
+
+    if (existing.intake_tier === 'ai_premium') {
+      const aiErr = validateAiPremiumReady(existing)
+      if (aiErr) {
+        return NextResponse.json({ error: aiErr }, { status: 403 })
+      }
     }
 
     let logoUrl: string | null = null
@@ -156,7 +148,11 @@ export async function POST(
     let provisionQueued = false
 
     if (provisionMode === 'auto') {
-      const jobMode = requestedProduct === 'widget' ? 'widget' : 'full'
+      let jobMode: 'full' | 'widget' | 'ai_full' =
+        requestedProduct === 'widget' ? 'widget' : 'full'
+      if (existing.intake_tier === 'ai_premium' && requestedProduct !== 'widget') {
+        jobMode = 'ai_full'
+      }
       await enqueueProvisionJob(existing.id, jobMode)
       provisionQueued = true
     }

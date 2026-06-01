@@ -1,6 +1,14 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import type { IntakeTierCatalogEntry } from '@/lib/intake/tiers';
+import {
+  imageSelectionsComplete,
+  type IntakeImageSelections,
+} from '@/lib/intake/imageSelections';
+import TierPicker from './TierPicker';
+import DepositCTA from './DepositCTA';
+import IntakeImageStudio from './IntakeImageStudio';
 
 const SERVICE_OPTIONS = [
   'Walk-In Closets', 'Reach-In Closets', 'Garages', 'Pantries & Wine',
@@ -51,6 +59,14 @@ export type IntakeFormClientProps = {
   alreadySubmitted?: boolean;
   needsEmailVerify?: boolean;
   manualBuildOnSubmit?: boolean;
+  intakeTier?: string;
+  depositStatus?: string;
+  depositRequiredCents?: number;
+  tierTotalCents?: number;
+  canUseImageStudio?: boolean;
+  tierCatalog?: IntakeTierCatalogEntry[];
+  aiSiteConfig?: Record<string, unknown> | null;
+  imageSelections?: IntakeImageSelections;
 };
 
 function emptyForm(businessName: string): Form {
@@ -87,6 +103,14 @@ export default function IntakeFormClient({
   alreadySubmitted = false,
   needsEmailVerify = false,
   manualBuildOnSubmit = false,
+  intakeTier: initialTier = 'standard',
+  depositStatus: initialDepositStatus = 'not_required',
+  depositRequiredCents = 0,
+  tierTotalCents = 0,
+  canUseImageStudio: initialCanStudio = false,
+  tierCatalog = [],
+  aiSiteConfig: initialAiSite = null,
+  imageSelections: initialSelections,
 }: IntakeFormClientProps) {
   const [form, setForm] = useState<Form>(() => emptyForm(businessName));
   const [logoDataUrl, setLogoDataUrl] = useState<string>('');
@@ -96,6 +120,26 @@ export default function IntakeFormClient({
   const [manualBuild, setManualBuild] = useState(
     alreadySubmitted ? manualBuildOnSubmit : false
   );
+  const [intakeTier, setIntakeTier] = useState(initialTier);
+  const [depositStatus, setDepositStatus] = useState(initialDepositStatus);
+  const [canUseImageStudio, setCanUseImageStudio] = useState(initialCanStudio);
+  const [aiSiteConfig, setAiSiteConfig] = useState(initialAiSite);
+  const [imageSelections, setImageSelections] = useState(
+    initialSelections ?? { hero: { attemptsUsed: 0, history: [] }, products: [] }
+  );
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('payment') !== 'success') return;
+    fetch(`/api/intake/${token}`)
+      .then((r) => r.json())
+      .then((json) => {
+        if (json.depositStatus) setDepositStatus(json.depositStatus);
+        if (json.canUseImageStudio) setCanUseImageStudio(true);
+      })
+      .catch(() => {});
+  }, [token]);
 
   const set = <K extends keyof Form>(key: K, value: Form[K]) => setForm((f) => ({ ...f, [key]: value }));
   const toggle = (key: 'services' | 'differentiators', value: string) =>
@@ -113,7 +157,19 @@ export default function IntakeFormClient({
   };
 
   /** Use button onClick + fetch — not form submit (sandboxed iframes block allow-forms). */
+  const premiumImagesReady =
+    intakeTier !== 'ai_premium' ||
+    imageSelectionsComplete(imageSelections, form.services);
+
   const submitForm = async () => {
+    if (intakeTier === 'ai_premium' && depositRequiredCents > 0 && depositStatus !== 'paid') {
+      setError('Pay the 30% deposit before submitting.');
+      return;
+    }
+    if (intakeTier === 'ai_premium' && !premiumImagesReady) {
+      setError('Select hero and product images in the AI studio before submitting.');
+      return;
+    }
     setSubmitting(true);
     setError('');
     try {
@@ -162,6 +218,33 @@ export default function IntakeFormClient({
   return (
     <div className="min-h-screen bg-gray-50 py-10 px-4">
       <div className="mx-auto max-w-2xl">
+        {tierCatalog.length > 0 && (
+          <div className="mb-8">
+            <TierPicker
+              token={token}
+              catalog={tierCatalog}
+              currentTier={intakeTier}
+              depositStatus={depositStatus}
+              onTierChange={(tier, dep, studio) => {
+                setIntakeTier(tier);
+                setDepositStatus(dep);
+                setCanUseImageStudio(studio);
+              }}
+            />
+          </div>
+        )}
+
+        {intakeTier === 'ai_premium' && depositRequiredCents > 0 && (
+          <div className="mb-8">
+            <DepositCTA
+              token={token}
+              depositRequiredCents={depositRequiredCents}
+              depositStatus={depositStatus}
+              totalCents={tierTotalCents}
+            />
+          </div>
+        )}
+
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-gray-900">Tell us about your business</h1>
           <p className="mt-1 text-sm text-gray-500">A few details so we can build your custom website and quote calculator. The more you share, the better the result.</p>
@@ -339,11 +422,30 @@ export default function IntakeFormClient({
             </div>
           </section>
 
+          {canUseImageStudio && form.services.length > 0 && (
+            <IntakeImageStudio
+              token={token}
+              services={form.services}
+              aiSiteConfig={aiSiteConfig as { hero?: { imagePrompt?: string }; products?: Array<{ title?: string; imagePrompt?: string }> } | null}
+              imageSelections={imageSelections}
+              onUpdate={(sel, site) => {
+                setImageSelections(sel);
+                if (site) setAiSiteConfig(site as Record<string, unknown>);
+              }}
+            />
+          )}
+
+          {intakeTier === 'ai_premium' && canUseImageStudio && !premiumImagesReady && (
+            <p className="text-sm text-amber-800 rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
+              Complete the AI image studio (hero + each service) before submitting.
+            </p>
+          )}
+
           {error && <div className="rounded-md bg-red-50 border border-red-200 p-3 text-sm text-red-700">{error}</div>}
 
           <button
             type="button"
-            disabled={submitting}
+            disabled={submitting || (intakeTier === 'ai_premium' && !premiumImagesReady)}
             onClick={() => void submitForm()}
             className="w-full rounded-lg bg-indigo-600 px-6 py-3 font-bold text-white hover:bg-indigo-500 disabled:opacity-50"
           >
