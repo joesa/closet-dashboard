@@ -6,7 +6,12 @@ import Image from 'next/image'
 import Script from 'next/script'
 import { Check } from 'lucide-react'
 import { DEMO_CONTRACTOR_ID, DEMO_LOGIN, DEMO_RESET_NOTICE } from '@/lib/demo'
-import { getTierCatalog, formatUsd } from '@/lib/intake/tiers'
+import {
+  getTierCatalog,
+  getSiteMaintenancePricing,
+  maintenanceDisplay,
+  formatUsd,
+} from '@/lib/intake/tiers'
 import { WIDGET_CDN_URL } from '@/lib/urls'
 
 export default function LandingPage() {
@@ -432,7 +437,7 @@ const STANDARD_FEATURES = [
   'Professional stock hero & product imagery',
   'Unlimited lead capture via SMS & email',
   'Custom room & finish pricing',
-  'Fully managed hosting & SSL',
+  'Managed hosting, SSL & ClosetQuote Pro (ongoing)',
 ]
 
 const PREMIUM_FEATURES = [
@@ -440,11 +445,12 @@ const PREMIUM_FEATURES = [
   'Custom AI hero & product photos (you pick during setup)',
   'AI art-directed site copy & calculator config',
   'Up to 3 generations per image (3 options each)',
-  'Same intake flow — pricing matches what you pay',
+  'Same intake flow — build + maintenance match what you see',
 ]
 
 function AgencyBuildExplainer() {
   const premium = getTierCatalog().find((t) => t.slug === 'ai_premium')!
+  const maintenance = getSiteMaintenancePricing()
 
   return (
     <div className="mt-16 rounded-3xl border border-white/10 bg-white/[0.02] p-8 text-center backdrop-blur-sm sm:p-12">
@@ -453,7 +459,7 @@ function AgencyBuildExplainer() {
       </h4>
       <p className="mx-auto mb-8 max-w-2xl text-slate-400">
         Start at <Link href="/get-started" className="text-emerald-300 underline underline-offset-2">/get-started</Link>.
-        You will see the same Standard and AI Premium prices on intake. For AI Premium, pay the 30% deposit to unlock the image studio, pick your hero and product shots, then submit — we build with those exact assets.
+        You will see the same one-time build and maintenance options on intake. For AI Premium, pay the 30% deposit to unlock the image studio, pick your hero and product shots, then submit — we build with those exact assets. After launch, site maintenance is {formatUsd(maintenance.monthlyCents)}/mo or {formatUsd(maintenance.yearlyCents)}/yr (save {formatUsd(maintenance.yearlySavingsCents)}).
       </p>
       <div className="mx-auto max-w-3xl rounded-2xl border border-white/[0.06] bg-black/40 p-6 text-left text-sm sm:flex sm:items-center sm:justify-between sm:p-8">
         <div className="mb-6 sm:mb-0 sm:flex-1">
@@ -478,15 +484,65 @@ function AgencyBuildExplainer() {
   )
 }
 
+function SiteBuildMaintenanceToggle({
+  billing,
+  onBillingChange,
+  savingsCents,
+}: {
+  billing: 'monthly' | 'yearly'
+  onBillingChange: (b: 'monthly' | 'yearly') => void
+  savingsCents: number
+}) {
+  return (
+    <div className="mb-8 flex justify-center">
+      <div className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.03] p-1">
+        <button
+          type="button"
+          onClick={() => onBillingChange('monthly')}
+          className={`rounded-full px-4 py-1.5 text-xs font-medium transition ${
+            billing === 'monthly' ? 'bg-white text-black' : 'text-slate-400 hover:text-white'
+          }`}
+        >
+          Monthly maintenance
+        </button>
+        <button
+          type="button"
+          onClick={() => onBillingChange('yearly')}
+          className={`flex items-center gap-2 rounded-full px-4 py-1.5 text-xs font-medium transition ${
+            billing === 'yearly' ? 'bg-white text-black' : 'text-slate-400 hover:text-white'
+          }`}
+        >
+          Yearly maintenance
+          {savingsCents > 0 && (
+            <span
+              className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                billing === 'yearly'
+                  ? 'bg-black/10 text-black'
+                  : 'bg-emerald-400/10 text-emerald-300'
+              }`}
+            >
+              Save {formatUsd(savingsCents)}
+            </span>
+          )}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 function PricingSection() {
   const catalog = getTierCatalog()
   const standard = catalog.find((t) => t.slug === 'standard')!
   const premium = catalog.find((t) => t.slug === 'ai_premium')!
+  const maintenance = getSiteMaintenancePricing()
 
-  const [billing, setBilling] = useState<'monthly' | 'yearly'>('monthly')
+  const [siteBilling, setSiteBilling] = useState<'monthly' | 'yearly'>('monthly')
+  const siteMaint = maintenanceDisplay(siteBilling, maintenance)
+
+  const [widgetBilling, setWidgetBilling] = useState<'monthly' | 'yearly'>('monthly')
   const widgetMonthly = 99
   const widgetYearly = 990
-  const displayWidget = billing === 'monthly' ? widgetMonthly : Math.round(widgetYearly / 12)
+  const displayWidget = widgetBilling === 'monthly' ? widgetMonthly : Math.round(widgetYearly / 12)
 
   return (
     <section id="pricing" className="mx-auto max-w-5xl px-6 py-28">
@@ -498,23 +554,31 @@ function PricingSection() {
           Simple, transparent pricing.
         </h2>
         <p className="mx-auto mt-5 max-w-lg text-base text-slate-400">
-          New site packages below are the same options you choose on intake.
-          Already have a website? Add the widget with a separate subscription.
+          One-time build fees below match intake. Ongoing site maintenance includes hosting,
+          SSL, updates, and ClosetQuote Pro. Already have a site? Widget-only pricing is separate.
         </p>
       </div>
+
+      <SiteBuildMaintenanceToggle
+        billing={siteBilling}
+        onBillingChange={setSiteBilling}
+        savingsCents={maintenance.yearlySavingsCents}
+      />
 
       {/* Site build packages — mirrors /intake tier picker */}
       <div className="mx-auto grid max-w-5xl grid-cols-1 gap-8 lg:grid-cols-2">
         <div className="relative rounded-3xl border border-white/10 bg-white/[0.02] p-10 backdrop-blur-sm transition-all hover:bg-white/[0.03]">
           <p className="mb-1 text-sm font-medium text-slate-400">{standard.label}</p>
-          <div className="mb-2 flex items-baseline gap-2">
+          <div className="mb-1 flex items-baseline gap-2">
             <span className="text-6xl font-bold tracking-tighter text-white">
-              {standard.totalCents === 0 ? 'Included' : formatUsd(standard.totalCents)}
+              {formatUsd(standard.totalCents)}
             </span>
-            {standard.totalCents > 0 && (
-              <span className="text-sm text-slate-400">one-time</span>
-            )}
+            <span className="text-sm text-slate-400">one-time build</span>
           </div>
+          <p className="mb-4 text-sm text-slate-300">
+            + {formatUsd(siteMaint.perMonthCents)}/mo after launch
+            <span className="text-slate-500"> · {siteMaint.billedLabel}</span>
+          </p>
           <p className="mb-8 text-xs text-slate-500 min-h-[40px]">
             Premium site + quote engine with curated stock photography.
             Fastest path to launch.
@@ -545,12 +609,16 @@ function PricingSection() {
             </span>
           </div>
           <p className="mb-1 text-sm font-medium text-emerald-400/90">{premium.label}</p>
-          <div className="mb-2 flex items-baseline gap-2">
+          <div className="mb-1 flex items-baseline gap-2">
             <span className="text-6xl font-bold tracking-tighter text-white">
               {formatUsd(premium.totalCents)}
             </span>
-            <span className="text-sm text-slate-400">total</span>
+            <span className="text-sm text-slate-400">one-time build</span>
           </div>
+          <p className="mb-4 text-sm text-emerald-100/90">
+            + {formatUsd(siteMaint.perMonthCents)}/mo after launch
+            <span className="text-emerald-200/60"> · {siteMaint.billedLabel}</span>
+          </p>
           <p className="mb-4 text-xs font-medium text-amber-200/90 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
             30% due today: {formatUsd(premium.depositCents)} of {formatUsd(premium.totalCents)}.
             Remainder {formatUsd(premium.remainderCents)} due before launch.
@@ -589,18 +657,18 @@ function PricingSection() {
           <div className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.03] p-1 mb-2 sm:mb-0">
             <button
               type="button"
-              onClick={() => setBilling('monthly')}
+              onClick={() => setWidgetBilling('monthly')}
               className={`rounded-full px-4 py-1.5 text-xs font-medium transition ${
-                billing === 'monthly' ? 'bg-white text-black' : 'text-slate-400 hover:text-white'
+                widgetBilling === 'monthly' ? 'bg-white text-black' : 'text-slate-400 hover:text-white'
               }`}
             >
               Monthly
             </button>
             <button
               type="button"
-              onClick={() => setBilling('yearly')}
+              onClick={() => setWidgetBilling('yearly')}
               className={`rounded-full px-4 py-1.5 text-xs font-medium transition ${
-                billing === 'yearly' ? 'bg-white text-black' : 'text-slate-400 hover:text-white'
+                widgetBilling === 'yearly' ? 'bg-white text-black' : 'text-slate-400 hover:text-white'
               }`}
             >
               Yearly

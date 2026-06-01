@@ -2,7 +2,11 @@
 
 import React, { useState } from 'react';
 import type { IntakeTierCatalogEntry } from '@/lib/intake/tiers';
-import { formatUsd } from '@/lib/intake/tiers';
+import {
+  formatUsd,
+  getSiteMaintenancePricing,
+  maintenanceDisplay,
+} from '@/lib/intake/tiers';
 
 type Props = {
   token: string;
@@ -21,6 +25,9 @@ export default function TierPicker({
 }: Props) {
   const [loading, setLoading] = useState<string | null>(null);
   const [error, setError] = useState('');
+  const [maintenanceBilling, setMaintenanceBilling] = useState<'monthly' | 'yearly'>('monthly');
+  const maintenance = getSiteMaintenancePricing();
+  const maintDisplay = maintenanceDisplay(maintenanceBilling, maintenance);
 
   const selectTier = async (slug: string) => {
     if (slug === currentTier) return;
@@ -49,7 +56,40 @@ export default function TierPicker({
       </h2>
       <p className="text-xs text-indigo-800/80 mb-4">
         Standard uses professional stock imagery. AI Premium generates custom hero and product photos during this form.
+        Build fees are one-time; managed hosting + ClosetQuote Pro starts after launch.
       </p>
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <span className="text-xs font-medium text-indigo-900">Site maintenance:</span>
+        <div className="inline-flex rounded-full border border-indigo-200 bg-white p-0.5">
+          <button
+            type="button"
+            onClick={() => setMaintenanceBilling('monthly')}
+            className={`rounded-full px-3 py-1 text-xs font-medium ${
+              maintenanceBilling === 'monthly'
+                ? 'bg-indigo-600 text-white'
+                : 'text-indigo-700'
+            }`}
+          >
+            Monthly
+          </button>
+          <button
+            type="button"
+            onClick={() => setMaintenanceBilling('yearly')}
+            className={`rounded-full px-3 py-1 text-xs font-medium ${
+              maintenanceBilling === 'yearly'
+                ? 'bg-indigo-600 text-white'
+                : 'text-indigo-700'
+            }`}
+          >
+            Yearly
+          </button>
+        </div>
+        {maintenance.yearlySavingsCents > 0 && maintenanceBilling === 'yearly' && (
+          <span className="text-xs text-emerald-700 font-medium">
+            Save {formatUsd(maintenance.yearlySavingsCents)}/yr
+          </span>
+        )}
+      </div>
       <div className="grid gap-3 sm:grid-cols-2">
         {catalog.map((t) => {
           const selected = currentTier === t.slug;
@@ -68,8 +108,11 @@ export default function TierPicker({
               <div className="font-semibold text-gray-900">{t.label}</div>
               <div className="mt-1 text-lg font-bold text-indigo-700">
                 {formatUsd(t.totalCents)}
-                {t.totalCents === 0 ? ' included' : ''}
+                <span className="text-sm font-semibold text-indigo-600/90"> one-time build</span>
               </div>
+              <p className="mt-1 text-xs text-gray-600">
+                Then {formatUsd(maintDisplay.perMonthCents)}/mo — {maintDisplay.billedLabel}
+              </p>
               {t.slug === 'ai_premium' && t.depositCents > 0 && (
                 <p className="mt-2 text-xs font-medium text-amber-800 bg-amber-50 rounded px-2 py-1">
                   30% due today: {formatUsd(t.depositCents)} of {formatUsd(t.totalCents)} total.

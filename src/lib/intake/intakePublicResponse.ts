@@ -1,7 +1,12 @@
 import type { ProspectIntakeRow } from '@/lib/intake/getIntakeByToken'
 import { canUseImageStudio } from '@/lib/intake/intakeTierGates'
 import { parseImageSelections } from '@/lib/intake/imageSelections'
-import { getTierCatalog, getTierEntry, formatUsd } from '@/lib/intake/tiers'
+import {
+  getTierCatalog,
+  getTierEntry,
+  getSiteMaintenancePricing,
+  formatUsd,
+} from '@/lib/intake/tiers'
 
 export function buildIntakePublicJson(row: ProspectIntakeRow) {
   const tierEntry = getTierEntry(
@@ -32,6 +37,7 @@ export function buildIntakePublicJson(row: ProspectIntakeRow) {
     ),
     canUseImageStudio: canUseImageStudio(row),
     tierCatalog: getTierCatalog(),
+    siteMaintenance: getSiteMaintenancePricing(),
     aiSiteConfig: siteConfig ?? null,
     imageSelections: selections,
   }
