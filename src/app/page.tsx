@@ -9,7 +9,9 @@ import { DEMO_CONTRACTOR_ID, DEMO_LOGIN, DEMO_RESET_NOTICE } from '@/lib/demo'
 import {
   getTierCatalog,
   getSiteMaintenancePricing,
+  getWidgetSubscriptionPricing,
   maintenanceDisplay,
+  subscriptionBillingDisplay,
   formatUsd,
 } from '@/lib/intake/tiers'
 import { WIDGET_CDN_URL } from '@/lib/urls'
@@ -432,6 +434,16 @@ export default function LandingPage() {
 
 /* ─── Pricing section ─────────────────────────────────────────────── */
 
+const WIDGET_FEATURES = [
+  'Interactive 3D closet quote widget for your existing site',
+  'One-line embed — WordPress, Squarespace, Webflow, or custom HTML',
+  'Unlimited SMS & email lead capture (no per-lead fees)',
+  'Custom room types, finishes & price-per-square-foot rules',
+  'Dynamic add-on manager (lighting, islands, specialty storage)',
+  'Lead inbox, quote history & contractor dashboard',
+  'Works alongside your current brand and domain',
+]
+
 const STANDARD_FEATURES = [
   'Custom marketing site + embedded quote calculator',
   'Professional stock hero & product imagery',
@@ -522,49 +534,81 @@ function HowSiteBuildPaymentWorks() {
   )
 }
 
-function SiteBuildMaintenanceToggle({
+function PlanBillingToggle({
   billing,
   onBillingChange,
   savingsCents,
+  monthlyLabel,
+  yearlyLabel,
 }: {
   billing: 'monthly' | 'yearly'
   onBillingChange: (b: 'monthly' | 'yearly') => void
   savingsCents: number
+  monthlyLabel: string
+  yearlyLabel: string
 }) {
   return (
-    <div className="mb-8 flex justify-center">
-      <div className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.03] p-1">
-        <button
-          type="button"
-          onClick={() => onBillingChange('monthly')}
-          className={`rounded-full px-4 py-1.5 text-xs font-medium transition ${
-            billing === 'monthly' ? 'bg-white text-black' : 'text-slate-400 hover:text-white'
-          }`}
-        >
-          Monthly maintenance
-        </button>
-        <button
-          type="button"
-          onClick={() => onBillingChange('yearly')}
-          className={`flex items-center gap-2 rounded-full px-4 py-1.5 text-xs font-medium transition ${
-            billing === 'yearly' ? 'bg-white text-black' : 'text-slate-400 hover:text-white'
-          }`}
-        >
-          Yearly maintenance
-          {savingsCents > 0 && (
-            <span
-              className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                billing === 'yearly'
-                  ? 'bg-black/10 text-black'
-                  : 'bg-emerald-400/10 text-emerald-300'
-              }`}
-            >
-              Save {formatUsd(savingsCents)}
-            </span>
-          )}
-        </button>
-      </div>
+    <div className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.03] p-1">
+      <button
+        type="button"
+        onClick={() => onBillingChange('monthly')}
+        className={`rounded-full px-3 py-1 text-xs font-medium transition ${
+          billing === 'monthly' ? 'bg-white text-black' : 'text-slate-400 hover:text-white'
+        }`}
+      >
+        {monthlyLabel}
+      </button>
+      <button
+        type="button"
+        onClick={() => onBillingChange('yearly')}
+        className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition ${
+          billing === 'yearly' ? 'bg-white text-black' : 'text-slate-400 hover:text-white'
+        }`}
+      >
+        {yearlyLabel}
+        {savingsCents > 0 && (
+          <span
+            className={`rounded-full px-1.5 py-0.5 text-[9px] font-semibold ${
+              billing === 'yearly'
+                ? 'bg-black/10 text-black'
+                : 'bg-emerald-400/10 text-emerald-300'
+            }`}
+          >
+            −{formatUsd(savingsCents)}
+          </span>
+        )}
+      </button>
     </div>
+  )
+}
+
+function PricingFeatureList({
+  features,
+  accent = 'default',
+}: {
+  features: string[]
+  accent?: 'default' | 'emerald'
+}) {
+  return (
+    <ul className="mb-8 space-y-3">
+      {features.map((feature) => (
+        <li key={feature} className="flex items-start gap-3 text-sm text-slate-300">
+          <span
+            className={`mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full border ${
+              accent === 'emerald'
+                ? 'border-emerald-500/20 bg-emerald-500/10'
+                : 'border-white/10 bg-white/[0.04]'
+            }`}
+          >
+            <Check
+              className={`h-3 w-3 ${accent === 'emerald' ? 'text-emerald-400' : 'text-white'}`}
+              strokeWidth={3}
+            />
+          </span>
+          {feature}
+        </li>
+      ))}
+    </ul>
   )
 }
 
@@ -573,17 +617,16 @@ function PricingSection() {
   const standard = catalog.find((t) => t.slug === 'standard')!
   const premium = catalog.find((t) => t.slug === 'ai_premium')!
   const maintenance = getSiteMaintenancePricing()
+  const widgetSub = getWidgetSubscriptionPricing()
 
   const [siteBilling, setSiteBilling] = useState<'monthly' | 'yearly'>('monthly')
   const siteMaint = maintenanceDisplay(siteBilling, maintenance)
 
   const [widgetBilling, setWidgetBilling] = useState<'monthly' | 'yearly'>('monthly')
-  const widgetMonthly = 99
-  const widgetYearly = 990
-  const displayWidget = widgetBilling === 'monthly' ? widgetMonthly : Math.round(widgetYearly / 12)
+  const widgetDisplay = subscriptionBillingDisplay(widgetBilling, widgetSub)
 
   return (
-    <section id="pricing" className="mx-auto max-w-5xl px-6 py-28">
+    <section id="pricing" className="mx-auto max-w-7xl px-6 py-28">
       <div className="mb-12 text-center">
         <p className="mb-3 text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
           Pricing
@@ -591,140 +634,133 @@ function PricingSection() {
         <h2 className="text-4xl font-bold tracking-tighter sm:text-5xl">
           Simple, transparent pricing.
         </h2>
-        <p className="mx-auto mt-5 max-w-lg text-base text-slate-400">
-          One-time build fees below match intake. Ongoing site maintenance includes hosting,
-          SSL, updates, and ClosetQuote Pro. Already have a site? Widget-only pricing is separate.
+        <p className="mx-auto mt-5 max-w-2xl text-base text-slate-400">
+          Three ways to grow leads: embed the widget on your existing site, or let us build a
+          full marketing site. Site-build one-time fees match intake; maintenance applies after launch.
         </p>
       </div>
 
-      <SiteBuildMaintenanceToggle
-        billing={siteBilling}
-        onBillingChange={setSiteBilling}
-        savingsCents={maintenance.yearlySavingsCents}
-      />
+      <p className="mb-4 text-center text-xs font-medium uppercase tracking-wider text-slate-500">
+        Standard &amp; AI Premium — maintenance after launch
+      </p>
+      <div className="mb-10 flex justify-center">
+        <PlanBillingToggle
+          billing={siteBilling}
+          onBillingChange={setSiteBilling}
+          savingsCents={maintenance.yearlySavingsCents}
+          monthlyLabel="Monthly"
+          yearlyLabel="Yearly"
+        />
+      </div>
 
-      {/* Site build packages — mirrors /intake tier picker */}
-      <div className="mx-auto grid max-w-5xl grid-cols-1 gap-8 lg:grid-cols-2">
-        <div className="relative rounded-3xl border border-white/10 bg-white/[0.02] p-10 backdrop-blur-sm transition-all hover:bg-white/[0.03]">
-          <p className="mb-1 text-sm font-medium text-slate-400">{standard.label}</p>
+      <div className="mx-auto grid max-w-7xl grid-cols-1 gap-8 lg:grid-cols-3">
+        {/* Widget only — first tier */}
+        <div className="relative flex flex-col rounded-3xl border border-white/10 bg-white/[0.02] p-8 backdrop-blur-sm transition-all hover:bg-white/[0.03] lg:p-9">
+          <div className="absolute right-5 top-5">
+            <span className="rounded-full border border-white/20 bg-white/10 px-2.5 py-1 text-[10px] font-medium uppercase tracking-widest text-white">
+              30-Day Free Trial
+            </span>
+          </div>
+          <p className="mb-0.5 text-sm font-medium text-slate-400">Already have a website?</p>
+          <p className="mb-4 text-lg font-semibold text-white">ClosetQuote Pro</p>
+          <div className="mb-3">
+            <PlanBillingToggle
+              billing={widgetBilling}
+              onBillingChange={setWidgetBilling}
+              savingsCents={widgetSub.yearlySavingsCents}
+              monthlyLabel="Monthly"
+              yearlyLabel="Yearly"
+            />
+          </div>
           <div className="mb-1 flex items-baseline gap-2">
-            <span className="text-6xl font-bold tracking-tighter text-white">
+            <span className="text-5xl font-bold tracking-tighter text-white lg:text-6xl">
+              {formatUsd(widgetDisplay.perMonthCents)}
+            </span>
+            <span className="text-sm text-slate-400">/mo</span>
+          </div>
+          <p className="mb-4 text-xs text-slate-500">{widgetDisplay.billedLabel}</p>
+          <p className="mb-4 text-xs font-medium text-slate-200 bg-white/[0.04] border border-white/10 rounded-lg px-3 py-2">
+            <span className="text-white font-semibold">$0 for 30 days</span> — full widget access, no
+            card required to start. After day 30,{' '}
+            {formatUsd(widgetSub.monthlyCents)}/mo (or{' '}
+            {formatUsd(widgetSub.yearlyCents)}/yr) unless you cancel. Prefer to skip the trial? Subscribe
+            immediately when you create your account.
+          </p>
+          <PricingFeatureList features={WIDGET_FEATURES} />
+          <div className="mt-auto flex flex-col gap-2">
+            <Link
+              href="/signup"
+              className="flex w-full items-center justify-center rounded-lg bg-white px-5 py-3.5 text-sm font-semibold text-black transition-colors hover:bg-gray-200 active:scale-[0.99]"
+            >
+              Start 30-day free trial
+            </Link>
+            <Link
+              href="/signup"
+              className="flex w-full items-center justify-center rounded-lg border border-white/15 px-5 py-3 text-sm font-medium text-white hover:bg-white/5"
+            >
+              Subscribe now — skip trial
+            </Link>
+          </div>
+        </div>
+
+        {/* Standard site build */}
+        <div className="relative flex flex-col rounded-3xl border border-white/10 bg-white/[0.02] p-8 backdrop-blur-sm transition-all hover:bg-white/[0.03] lg:p-9">
+          <p className="mb-1 text-sm font-medium text-slate-400">{standard.label}</p>
+          <p className="mb-4 text-lg font-semibold text-white">Full site build</p>
+          <div className="mb-1 flex items-baseline gap-2">
+            <span className="text-5xl font-bold tracking-tighter text-white lg:text-6xl">
               {formatUsd(standard.totalCents)}
             </span>
-            <span className="text-sm text-slate-400">one-time build</span>
+            <span className="text-sm text-slate-400">one-time</span>
           </div>
           <p className="mb-4 text-sm text-slate-300">
             + {formatUsd(siteMaint.perMonthCents)}/mo after launch
-            <span className="text-slate-500"> · {siteMaint.billedLabel}</span>
+            <span className="block text-xs text-slate-500 mt-0.5">{siteMaint.billedLabel}</span>
           </p>
           <p className="mb-4 text-xs font-medium text-slate-200 bg-white/[0.04] border border-white/10 rounded-lg px-3 py-2">
-            No upfront deposit. Pay {formatUsd(standard.totalCents)} when you&apos;re satisfied with
-            the preview — then we launch and hand you the keys.
+            No upfront deposit. Pay {formatUsd(standard.totalCents)} when satisfied — then launch and
+            full dashboard access.
           </p>
-          <p className="mb-8 text-xs text-slate-500 min-h-[24px]">
-            Premium site + quote engine with curated stock photography.
-          </p>
-          <ul className="mb-10 space-y-3">
-            {STANDARD_FEATURES.map((feature) => (
-              <li key={feature} className="flex items-center gap-3 text-sm text-slate-300">
-                <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.04]">
-                  <Check className="h-3 w-3 text-white" strokeWidth={3} />
-                </span>
-                {feature}
-              </li>
-            ))}
-          </ul>
+          <PricingFeatureList features={STANDARD_FEATURES} />
           <Link
             href="/get-started"
-            className="flex w-full items-center justify-center rounded-lg bg-white px-6 py-4 text-base font-medium text-black transition-colors hover:bg-gray-200 active:scale-[0.99]"
+            className="mt-auto flex w-full items-center justify-center rounded-lg bg-white px-5 py-3.5 text-sm font-semibold text-black transition-colors hover:bg-gray-200 active:scale-[0.99]"
           >
             Get started — Standard
           </Link>
         </div>
 
-        <div className="relative overflow-hidden rounded-3xl border border-emerald-500/30 bg-emerald-950/10 p-10 backdrop-blur-sm shadow-[0_0_40px_-15px_rgba(16,185,129,0.15)] transition-all hover:bg-emerald-950/20">
+        {/* AI Premium */}
+        <div className="relative flex flex-col overflow-hidden rounded-3xl border border-emerald-500/30 bg-emerald-950/10 p-8 backdrop-blur-sm shadow-[0_0_40px_-15px_rgba(16,185,129,0.15)] transition-all hover:bg-emerald-950/20 lg:p-9">
           <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/5 via-transparent to-transparent pointer-events-none" />
-          <div className="absolute right-6 top-6">
-            <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-[10px] font-medium uppercase tracking-widest text-emerald-300">
+          <div className="absolute right-5 top-5">
+            <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-medium uppercase tracking-widest text-emerald-300">
               Most Popular
             </span>
           </div>
           <p className="mb-1 text-sm font-medium text-emerald-400/90">{premium.label}</p>
+          <p className="mb-4 text-lg font-semibold text-white">Full site + AI imagery</p>
           <div className="mb-1 flex items-baseline gap-2">
-            <span className="text-6xl font-bold tracking-tighter text-white">
+            <span className="text-5xl font-bold tracking-tighter text-white lg:text-6xl">
               {formatUsd(premium.totalCents)}
             </span>
-            <span className="text-sm text-slate-400">one-time build</span>
+            <span className="text-sm text-slate-400">one-time</span>
           </div>
           <p className="mb-4 text-sm text-emerald-100/90">
             + {formatUsd(siteMaint.perMonthCents)}/mo after launch
-            <span className="text-emerald-200/60"> · {siteMaint.billedLabel}</span>
+            <span className="block text-xs text-emerald-200/60 mt-0.5">{siteMaint.billedLabel}</span>
           </p>
-          <p className="mb-3 text-xs font-medium text-amber-200/90 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
-            30% due today: {formatUsd(premium.depositCents)} — unlocks AI image studio on intake.
-            Balance {formatUsd(premium.remainderCents)} only if you&apos;re satisfied before launch.
+          <p className="mb-2 text-xs font-medium text-amber-200/90 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
+            30% today: {formatUsd(premium.depositCents)} · Balance{' '}
+            {formatUsd(premium.remainderCents)} if satisfied before launch.
           </p>
-          <p className="mb-8 text-xs text-emerald-200/80">
-            Not satisfied? No balance due — your deposit is returned.
-          </p>
-          <ul className="mb-10 space-y-3">
-            {PREMIUM_FEATURES.map((feature) => (
-              <li key={feature} className="flex items-center gap-3 text-sm text-slate-300">
-                <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full border border-emerald-500/20 bg-emerald-500/10">
-                  <Check className="h-3 w-3 text-emerald-400" strokeWidth={3} />
-                </span>
-                {feature}
-              </li>
-            ))}
-          </ul>
+          <p className="mb-4 text-xs text-emerald-200/80">Not satisfied? Deposit returned.</p>
+          <PricingFeatureList features={PREMIUM_FEATURES} accent="emerald" />
           <Link
             href="/get-started"
-            className="flex w-full relative z-10 items-center justify-center rounded-lg bg-emerald-500 px-6 py-4 text-base font-medium text-black shadow-[0_0_20px_-5px_rgba(16,185,129,0.4)] transition-all hover:bg-emerald-400 active:scale-[0.99]"
+            className="relative z-10 mt-auto flex w-full items-center justify-center rounded-lg bg-emerald-500 px-5 py-3.5 text-sm font-semibold text-black shadow-[0_0_20px_-5px_rgba(16,185,129,0.4)] transition-all hover:bg-emerald-400 active:scale-[0.99]"
           >
             Get started — AI Premium
-          </Link>
-        </div>
-      </div>
-
-      {/* Widget-only subscription (existing site) */}
-      <div className="mt-12 mx-auto max-w-2xl rounded-2xl border border-white/[0.06] bg-white/[0.02] p-8">
-        <p className="text-center text-sm font-medium text-slate-300 mb-1">
-          Already have a website?
-        </p>
-        <p className="text-center text-xs text-slate-500 mb-6">
-          Embed the quote widget only — separate from site-build packages above.
-        </p>
-        <div className="flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
-          <div className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.03] p-1 mb-2 sm:mb-0">
-            <button
-              type="button"
-              onClick={() => setWidgetBilling('monthly')}
-              className={`rounded-full px-4 py-1.5 text-xs font-medium transition ${
-                widgetBilling === 'monthly' ? 'bg-white text-black' : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              Monthly
-            </button>
-            <button
-              type="button"
-              onClick={() => setWidgetBilling('yearly')}
-              className={`rounded-full px-4 py-1.5 text-xs font-medium transition ${
-                widgetBilling === 'yearly' ? 'bg-white text-black' : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              Yearly
-            </button>
-          </div>
-          <div className="text-center sm:text-left">
-            <span className="text-3xl font-bold text-white">${displayWidget}</span>
-            <span className="text-sm text-slate-400">/mo</span>
-            <span className="ml-2 text-xs text-slate-500">ClosetQuote Pro · 30-day free trial</span>
-          </div>
-          <Link
-            href="/signup"
-            className="rounded-lg border border-white/15 px-5 py-2.5 text-sm font-medium text-white hover:bg-white/5"
-          >
-            Start free trial
           </Link>
         </div>
       </div>

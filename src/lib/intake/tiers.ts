@@ -47,6 +47,19 @@ export function formatUsd(cents: number): string {
  * Ongoing site maintenance (both build tiers). Defaults: $149/mo or $1,490/yr
  * (two months free vs monthly — same structure as ClosetQuote Pro widget yearly).
  */
+/** ClosetQuote Pro widget-only subscription (existing website). */
+export function getWidgetSubscriptionPricing(): SiteMaintenancePricing {
+  const monthlyCents = parseCents('WIDGET_SUBSCRIPTION_MONTHLY_CENTS', 9900)
+  const yearlyCents = parseCents('WIDGET_SUBSCRIPTION_YEARLY_CENTS', 99000)
+  const yearlySavingsCents = Math.max(0, monthlyCents * 12 - yearlyCents)
+  return {
+    monthlyCents,
+    yearlyCents,
+    yearlySavingsCents,
+    effectiveMonthlyFromYearlyCents: Math.round(yearlyCents / 12),
+  }
+}
+
 export function getSiteMaintenancePricing(): SiteMaintenancePricing {
   const monthlyCents = parseCents('SITE_MAINTENANCE_MONTHLY_CENTS', 14900)
   const yearlyCents = parseCents('SITE_MAINTENANCE_YEARLY_CENTS', 149000)
@@ -59,20 +72,31 @@ export function getSiteMaintenancePricing(): SiteMaintenancePricing {
   }
 }
 
+export function subscriptionBillingDisplay(
+  billing: 'monthly' | 'yearly',
+  pricing: SiteMaintenancePricing
+): { perMonthCents: number; billedLabel: string } {
+  if (billing === 'yearly') {
+    return {
+      perMonthCents: pricing.effectiveMonthlyFromYearlyCents,
+      billedLabel: `${formatUsd(pricing.yearlyCents)} billed yearly`,
+    }
+  }
+  return {
+    perMonthCents: pricing.monthlyCents,
+    billedLabel: 'Billed monthly',
+  }
+}
+
 export function maintenanceDisplay(
   billing: 'monthly' | 'yearly',
   maintenance: SiteMaintenancePricing = getSiteMaintenancePricing()
 ): { perMonthCents: number; billedLabel: string } {
-  if (billing === 'yearly') {
-    return {
-      perMonthCents: maintenance.effectiveMonthlyFromYearlyCents,
-      billedLabel: `${formatUsd(maintenance.yearlyCents)} billed yearly`,
-    }
+  const base = subscriptionBillingDisplay(billing, maintenance)
+  if (billing === 'monthly') {
+    return { ...base, billedLabel: 'Billed monthly after launch' }
   }
-  return {
-    perMonthCents: maintenance.monthlyCents,
-    billedLabel: 'Billed monthly after launch',
-  }
+  return base
 }
 
 export function getTierCatalog(): IntakeTierCatalogEntry[] {
