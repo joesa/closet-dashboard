@@ -51,7 +51,7 @@ export default function GetStartedPage() {
       {siteKey && (
         <Script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer />
       )}
-      <div className="w-full max-w-md rounded-xl border border-gray-200 bg-white p-8 shadow-sm">
+      <div className="admin-light-surface w-full max-w-md rounded-xl border border-gray-200 bg-white p-8 shadow-sm">
         <h1 className="text-2xl font-semibold text-gray-900">Get started with ClosetQuote</h1>
         <p className="mt-2 text-sm text-gray-500">
           Enter your email and we will send you a link to complete setup for your quote calculator
