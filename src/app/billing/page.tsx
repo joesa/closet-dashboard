@@ -40,16 +40,33 @@ export default async function BillingPage({
   // Middleware should have caught this, but defense-in-depth.
   if (!user) redirect(`/login?next=${encodeURIComponent(billingPath)}`)
 
-  const ent = await getEntitlementForUser(user.id)
+  const admin = getSupabaseAdmin()
+  let ent = await getEntitlementForUser(user.id)
+
+  // Self-heal: signup used to skip creating contractor_settings (missing DB trigger).
+  if (!ent.contractorId) {
+    const trialEnds = new Date()
+    trialEnds.setUTCDate(trialEnds.getUTCDate() + 30)
+    await admin.from('contractor_settings').insert({
+      user_id: user.id,
+      contact_email: user.email || '',
+      subscription_status: 'trialing',
+      trial_ends_at: trialEnds.toISOString(),
+    })
+    ent = await getEntitlementForUser(user.id)
+    if (ent.isEntitled) redirect('/dashboard')
+  }
+
   const justCanceled = params.canceled === 'true'
   const autoCheckout = params.checkout === '1'
   const checkoutPlan = params.plan === 'yearly' ? 'yearly' : 'monthly'
 
   const isActive = ent.status === 'active'
+  const inTrial = ent.isEntitled && ent.status === 'trialing'
+  const needsSetup = !ent.contractorId
 
   // Is this the shared demo contractor? The demo never expires and can't be
   // upgraded — show an explanatory notice instead of the Stripe checkout UI.
-  const admin = getSupabaseAdmin()
   const { data: contractorRow } = await admin
     .from('contractor_settings')
     .select('id')
@@ -114,12 +131,20 @@ export default async function BillingPage({
                 <h1 className="text-4xl font-bold tracking-tighter text-white sm:text-5xl">
                   {isActive
                     ? 'You’re on ClosetQuote Pro.'
-                    : 'Your 30-Day Free Trial has concluded.'}
+                    : inTrial
+                      ? 'Your free trial is active.'
+                      : needsSetup
+                        ? 'Finish setting up your account.'
+                        : 'Your 30-Day Free Trial has concluded.'}
                 </h1>
                 <p className="mx-auto mt-4 max-w-md text-base text-slate-400">
                   {isActive
                     ? 'Manage your subscription, update your card, or switch your billing cadence below.'
-                    : 'To keep generating interactive quotes and capturing SMS leads, upgrade to ClosetQuote Pro.'}
+                    : inTrial
+                      ? `You have ${ent.daysLeftInTrial} day${ent.daysLeftInTrial === 1 ? '' : 's'} left. Subscribe anytime, or continue to your dashboard.`
+                      : needsSetup
+                        ? 'We could not find your contractor profile. Return to signup or contact support.'
+                        : 'To keep generating interactive quotes and capturing SMS leads, upgrade to ClosetQuote Pro.'}
                 </p>
                 {justCanceled && !isActive && (
                   <p className="mt-3 text-sm text-amber-300">

@@ -3,7 +3,7 @@
 import { useState, useEffect, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { supabaseBrowser } from '@/lib/supabase-browser'
+import { supabaseBrowser, getBrowserUser } from '@/lib/supabase-browser'
 
 export default function SignUpPage() {
   return (
@@ -27,6 +27,8 @@ function SignUpForm() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
+  const [sessionEmail, setSessionEmail] = useState<string | null>(null)
+  const [checkingSession, setCheckingSession] = useState(true)
 
   // Capture affiliate referral from ?ref= query parameter
   useEffect(() => {
@@ -35,6 +37,17 @@ function SignUpForm() {
       localStorage.setItem('closetquote_ref', ref)
     }
   }, [searchParams])
+
+  useEffect(() => {
+    getBrowserUser()
+      .then((user) => setSessionEmail(user?.email ?? null))
+      .finally(() => setCheckingSession(false))
+  }, [])
+
+  const signOutAndContinue = async () => {
+    await supabaseBrowser.auth.signOut()
+    setSessionEmail(null)
+  }
 
   const handleGeneratePassword = () => {
     const charset = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()_+~`|}{[]:;?><,./-='
@@ -74,6 +87,14 @@ function SignUpForm() {
       return
     }
 
+    const bootstrap = await fetch('/api/contractor/bootstrap', { method: 'POST' })
+    if (!bootstrap.ok) {
+      const json = (await bootstrap.json().catch(() => ({}))) as { error?: string }
+      setError(json.error || 'Could not start your trial. Please try again.')
+      setLoading(false)
+      return
+    }
+
     const subscribe = searchParams.get('subscribe') === '1'
     const plan = searchParams.get('plan') === 'yearly' ? 'yearly' : 'monthly'
 
@@ -103,7 +124,39 @@ function SignUpForm() {
           </p>
         </div>
 
-        {/* Card */}
+        {checkingSession ? (
+          <p className="text-center text-sm text-slate-500">Loading…</p>
+        ) : sessionEmail ? (
+          <div className="w-full max-w-md rounded-3xl border border-amber-500/20 bg-amber-500/5 p-8 text-center">
+            <p className="text-sm text-amber-100">
+              You&apos;re already signed in as <strong>{sessionEmail}</strong>.
+            </p>
+            <p className="mt-2 text-xs text-slate-400">
+              To start a new 30-day trial, log out first. If your trial ended, upgrade from billing.
+            </p>
+            <div className="mt-6 flex flex-col gap-2">
+              <Link
+                href="/dashboard"
+                className="rounded-lg bg-white px-6 py-3 text-sm font-medium text-black hover:bg-gray-200"
+              >
+                Go to dashboard
+              </Link>
+              <Link
+                href="/billing"
+                className="rounded-lg border border-white/15 px-6 py-3 text-sm font-medium text-white hover:bg-white/5"
+              >
+                Billing &amp; upgrade
+              </Link>
+              <button
+                type="button"
+                onClick={() => void signOutAndContinue()}
+                className="text-xs text-slate-500 underline hover:text-white"
+              >
+                Log out and create a different account
+              </button>
+            </div>
+          </div>
+        ) : (
         <form
           onSubmit={handleSignUp}
           className="w-full max-w-md rounded-3xl border border-white/10 bg-white/[0.02] p-8 backdrop-blur-sm"
@@ -208,6 +261,7 @@ function SignUpForm() {
             )}
           </button>
         </form>
+        )}
 
         {/* Footer link */}
         <p className="mt-6 text-center text-sm text-slate-500">

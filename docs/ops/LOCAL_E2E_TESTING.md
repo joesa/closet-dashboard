@@ -107,6 +107,8 @@ When `stripe listen` starts, copy the **`whsec_...`** signing secret into `.env.
 
 **Pass:** No Stripe session; dashboard loads.
 
+**If you land on `/billing?reason=trial_expired` instead:** You were already logged in with an ended trial, or signup did not create `contractor_settings` (fixed by migration `20260605120000_signup_contractor_trial`). Log out on `/signup`, use a new email, or run `bash scripts/db-migrate.sh` and retry.
+
 ---
 
 ## Scenario 2 — Widget: skip trial (Pro subscription)
