@@ -11,7 +11,8 @@ export type IntakeTierCatalogEntry = {
 }
 
 function parseCents(envKey: string, fallback: number): number {
-  const raw = process.env[envKey]
+  const publicKey = `NEXT_PUBLIC_${envKey}`
+  const raw = process.env[envKey] ?? process.env[publicKey]
   if (!raw) return fallback
   const n = parseInt(raw, 10)
   return Number.isFinite(n) && n >= 0 ? n : fallback

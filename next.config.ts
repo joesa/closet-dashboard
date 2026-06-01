@@ -10,6 +10,11 @@ const nextConfig: NextConfig = {
     root: path.join(__dirname),
   },
   outputFileTracingRoot: path.join(__dirname),
+  // Mirror intake tier env to the client so landing pricing matches /intake.
+  env: {
+    NEXT_PUBLIC_INTAKE_TIER_STANDARD_CENTS: process.env.INTAKE_TIER_STANDARD_CENTS,
+    NEXT_PUBLIC_INTAKE_TIER_AI_PREMIUM_CENTS: process.env.INTAKE_TIER_AI_PREMIUM_CENTS,
+  },
 };
 
 export default nextConfig;

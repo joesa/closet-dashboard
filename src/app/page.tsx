@@ -6,6 +6,7 @@ import Image from 'next/image'
 import Script from 'next/script'
 import { Check } from 'lucide-react'
 import { DEMO_CONTRACTOR_ID, DEMO_LOGIN, DEMO_RESET_NOTICE } from '@/lib/demo'
+import { getTierCatalog, formatUsd } from '@/lib/intake/tiers'
 import { WIDGET_CDN_URL } from '@/lib/urls'
 
 export default function LandingPage() {
@@ -426,32 +427,66 @@ export default function LandingPage() {
 
 /* ─── Pricing section ─────────────────────────────────────────────── */
 
-const PRO_FEATURES = [
-  'Interactive quote widget',
+const STANDARD_FEATURES = [
+  'Custom marketing site + embedded quote calculator',
+  'Professional stock hero & product imagery',
   'Unlimited lead capture via SMS & email',
   'Custom room & finish pricing',
-  'Dynamic add-on manager',
-  'No limits on traffic or quotes',
+  'Fully managed hosting & SSL',
 ]
 
-const AGENCY_FEATURES = [
-  'Everything in ClosetQuote Pro',
-  'Lightning-fast custom Next.js website',
-  'Premium interior architecture photography',
-  'Fully managed hosting & SSL (zero maintenance)',
-  'Mobile-first design optimized for homeowner conversions',
+const PREMIUM_FEATURES = [
+  'Everything in Standard',
+  'Custom AI hero & product photos (you pick during setup)',
+  'AI art-directed site copy & calculator config',
+  'Up to 3 generations per image (3 options each)',
+  'Same intake flow — pricing matches what you pay',
 ]
+
+function AgencyBuildExplainer() {
+  const premium = getTierCatalog().find((t) => t.slug === 'ai_premium')!
+
+  return (
+    <div className="mt-16 rounded-3xl border border-white/10 bg-white/[0.02] p-8 text-center backdrop-blur-sm sm:p-12">
+      <h4 className="mb-4 text-2xl font-bold tracking-tight text-white">
+        How AI Premium setup works
+      </h4>
+      <p className="mx-auto mb-8 max-w-2xl text-slate-400">
+        Start at <Link href="/get-started" className="text-emerald-300 underline underline-offset-2">/get-started</Link>.
+        You will see the same Standard and AI Premium prices on intake. For AI Premium, pay the 30% deposit to unlock the image studio, pick your hero and product shots, then submit — we build with those exact assets.
+      </p>
+      <div className="mx-auto max-w-3xl rounded-2xl border border-white/[0.06] bg-black/40 p-6 text-left text-sm sm:flex sm:items-center sm:justify-between sm:p-8">
+        <div className="mb-6 sm:mb-0 sm:flex-1">
+          <div className="mb-1 text-xs font-semibold uppercase tracking-widest text-emerald-400/90">
+            Due today (30%)
+          </div>
+          <div className="text-3xl font-bold text-white">{formatUsd(premium.depositCents)}</div>
+          <div className="mt-1 text-xs text-slate-500">Unlocks AI image generation on intake.</div>
+        </div>
+        <div className="hidden h-16 w-px bg-white/10 sm:block" />
+        <div className="sm:flex-1 sm:pl-8">
+          <div className="mb-1 text-xs font-semibold uppercase tracking-widest text-emerald-400/90">
+            Before launch
+          </div>
+          <div className="text-3xl font-bold text-white">{formatUsd(premium.remainderCents)}</div>
+          <div className="mt-1 text-xs text-slate-500">
+            Remainder of {formatUsd(premium.totalCents)} total package.
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 function PricingSection() {
-  const [billing, setBilling] = useState<'monthly' | 'yearly'>('monthly')
-  const monthlyPrice = 99
-  const yearlyPrice = 990 // $82.50/mo billed annually — saves $198/yr
-  const displayPrice = billing === 'monthly' ? monthlyPrice : Math.round(yearlyPrice / 12)
-  const subLabel = billing === 'monthly' ? '/month' : '/month, billed yearly'
+  const catalog = getTierCatalog()
+  const standard = catalog.find((t) => t.slug === 'standard')!
+  const premium = catalog.find((t) => t.slug === 'ai_premium')!
 
-  const agencyMonthlyPrice = 149
-  const agencyYearlyPrice = 1490 // Saves $298/yr
-  const displayAgencyPrice = billing === 'monthly' ? agencyMonthlyPrice : Math.round(agencyYearlyPrice / 12)
+  const [billing, setBilling] = useState<'monthly' | 'yearly'>('monthly')
+  const widgetMonthly = 99
+  const widgetYearly = 990
+  const displayWidget = billing === 'monthly' ? widgetMonthly : Math.round(widgetYearly / 12)
 
   return (
     <section id="pricing" className="mx-auto max-w-5xl px-6 py-28">
@@ -462,80 +497,30 @@ function PricingSection() {
         <h2 className="text-4xl font-bold tracking-tighter sm:text-5xl">
           Simple, transparent pricing.
         </h2>
-        <p className="mx-auto mt-5 max-w-md text-base text-slate-400">
-          Everything you need to close more high-end jobs. No hidden fees,
-          no per-lead charges.
+        <p className="mx-auto mt-5 max-w-lg text-base text-slate-400">
+          New site packages below are the same options you choose on intake.
+          Already have a website? Add the widget with a separate subscription.
         </p>
       </div>
 
-      {/* Billing toggle */}
-      <div className="mb-10 flex justify-center">
-        <div className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.03] p-1">
-          <button
-            type="button"
-            onClick={() => setBilling('monthly')}
-            className={`rounded-full px-4 py-1.5 text-xs font-medium transition ${
-              billing === 'monthly'
-                ? 'bg-white text-black'
-                : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            Monthly
-          </button>
-          <button
-            type="button"
-            onClick={() => setBilling('yearly')}
-            className={`flex items-center gap-2 rounded-full px-4 py-1.5 text-xs font-medium transition ${
-              billing === 'yearly'
-                ? 'bg-white text-black'
-                : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            Yearly
-            <span
-              className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                billing === 'yearly'
-                  ? 'bg-black/10 text-black'
-                  : 'bg-emerald-400/10 text-emerald-300'
-              }`}
-            >
-              Save $198
-            </span>
-          </button>
-        </div>
-      </div>
-
-      {/* Pricing cards */}
+      {/* Site build packages — mirrors /intake tier picker */}
       <div className="mx-auto grid max-w-5xl grid-cols-1 gap-8 lg:grid-cols-2">
-        {/* Widget Only Card */}
         <div className="relative rounded-3xl border border-white/10 bg-white/[0.02] p-10 backdrop-blur-sm transition-all hover:bg-white/[0.03]">
-          <div className="absolute right-6 top-6">
-            <span className="rounded-full border border-white/20 bg-white/10 px-3 py-1 text-[10px] font-medium uppercase tracking-widest text-white">
-              30-Day Free Trial
-            </span>
-          </div>
-
-          <p className="mb-1 text-sm font-medium text-slate-400">
-            ClosetQuote Pro
-          </p>
+          <p className="mb-1 text-sm font-medium text-slate-400">{standard.label}</p>
           <div className="mb-2 flex items-baseline gap-2">
             <span className="text-6xl font-bold tracking-tighter text-white">
-              ${displayPrice}
+              {standard.totalCents === 0 ? 'Included' : formatUsd(standard.totalCents)}
             </span>
-            <span className="text-sm text-slate-400">{subLabel}</span>
+            {standard.totalCents > 0 && (
+              <span className="text-sm text-slate-400">one-time</span>
+            )}
           </div>
-          <p className="mb-8 text-xs text-slate-500 min-h-[32px]">
-            Add instant quoting to your existing website.
-            <br />
-            <span className="opacity-80">
-              {billing === 'yearly'
-                ? `$${yearlyPrice} billed once a year. Cancel anytime.`
-                : 'Billed monthly. Cancel anytime.'}
-            </span>
+          <p className="mb-8 text-xs text-slate-500 min-h-[40px]">
+            Premium site + quote engine with curated stock photography.
+            Fastest path to launch.
           </p>
-
           <ul className="mb-10 space-y-3">
-            {PRO_FEATURES.map((feature) => (
+            {STANDARD_FEATURES.map((feature) => (
               <li key={feature} className="flex items-center gap-3 text-sm text-slate-300">
                 <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.04]">
                   <Check className="h-3 w-3 text-white" strokeWidth={3} />
@@ -544,19 +529,14 @@ function PricingSection() {
               </li>
             ))}
           </ul>
-
           <Link
-            href="/signup"
+            href="/get-started"
             className="flex w-full items-center justify-center rounded-lg bg-white px-6 py-4 text-base font-medium text-black transition-colors hover:bg-gray-200 active:scale-[0.99]"
           >
-            Start your free 30-day trial
+            Get started — Standard
           </Link>
-          <p className="mt-4 text-center text-xs text-slate-500">
-            No credit card required.
-          </p>
         </div>
 
-        {/* Agency Build Card */}
         <div className="relative overflow-hidden rounded-3xl border border-emerald-500/30 bg-emerald-950/10 p-10 backdrop-blur-sm shadow-[0_0_40px_-15px_rgba(16,185,129,0.15)] transition-all hover:bg-emerald-950/20">
           <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/5 via-transparent to-transparent pointer-events-none" />
           <div className="absolute right-6 top-6">
@@ -564,26 +544,22 @@ function PricingSection() {
               Most Popular
             </span>
           </div>
-
-          <p className="mb-1 text-sm font-medium text-emerald-400/90">
-            Complete Agency Build
-          </p>
+          <p className="mb-1 text-sm font-medium text-emerald-400/90">{premium.label}</p>
           <div className="mb-2 flex items-baseline gap-2">
             <span className="text-6xl font-bold tracking-tighter text-white">
-              ${displayAgencyPrice}
+              {formatUsd(premium.totalCents)}
             </span>
-            <span className="text-sm text-slate-400">{subLabel}</span>
+            <span className="text-sm text-slate-400">total</span>
           </div>
-          <p className="mb-8 text-xs text-slate-500 min-h-[32px]">
-            A premium, bespoke website with the lead engine built natively inside.
-            <br />
-            <span className="opacity-80">
-              $1,500 one-time setup fee. {billing === 'yearly' ? `$${agencyYearlyPrice} billed annually.` : 'Billed monthly.'}
-            </span>
+          <p className="mb-4 text-xs font-medium text-amber-200/90 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
+            30% due today: {formatUsd(premium.depositCents)} of {formatUsd(premium.totalCents)}.
+            Remainder {formatUsd(premium.remainderCents)} due before launch.
           </p>
-
+          <p className="mb-8 text-xs text-slate-500 min-h-[24px]">
+            Bespoke AI imagery for hero + each service. Pay deposit to unlock the image studio on intake.
+          </p>
           <ul className="mb-10 space-y-3">
-            {AGENCY_FEATURES.map((feature) => (
+            {PREMIUM_FEATURES.map((feature) => (
               <li key={feature} className="flex items-center gap-3 text-sm text-slate-300">
                 <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full border border-emerald-500/20 bg-emerald-500/10">
                   <Check className="h-3 w-3 text-emerald-400" strokeWidth={3} />
@@ -592,16 +568,55 @@ function PricingSection() {
               </li>
             ))}
           </ul>
-
-          <a
-            href="mailto:joe@closetquotes.com?subject=Inquiry: Complete Agency Build"
+          <Link
+            href="/get-started"
             className="flex w-full relative z-10 items-center justify-center rounded-lg bg-emerald-500 px-6 py-4 text-base font-medium text-black shadow-[0_0_20px_-5px_rgba(16,185,129,0.4)] transition-all hover:bg-emerald-400 active:scale-[0.99]"
           >
-            Book a Discovery Call
-          </a>
-          <p className="mt-4 text-center text-xs text-emerald-500/60">
-            Limited capacity per month.
-          </p>
+            Get started — AI Premium
+          </Link>
+        </div>
+      </div>
+
+      {/* Widget-only subscription (existing site) */}
+      <div className="mt-12 mx-auto max-w-2xl rounded-2xl border border-white/[0.06] bg-white/[0.02] p-8">
+        <p className="text-center text-sm font-medium text-slate-300 mb-1">
+          Already have a website?
+        </p>
+        <p className="text-center text-xs text-slate-500 mb-6">
+          Embed the quote widget only — separate from site-build packages above.
+        </p>
+        <div className="flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
+          <div className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.03] p-1 mb-2 sm:mb-0">
+            <button
+              type="button"
+              onClick={() => setBilling('monthly')}
+              className={`rounded-full px-4 py-1.5 text-xs font-medium transition ${
+                billing === 'monthly' ? 'bg-white text-black' : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              Monthly
+            </button>
+            <button
+              type="button"
+              onClick={() => setBilling('yearly')}
+              className={`rounded-full px-4 py-1.5 text-xs font-medium transition ${
+                billing === 'yearly' ? 'bg-white text-black' : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              Yearly
+            </button>
+          </div>
+          <div className="text-center sm:text-left">
+            <span className="text-3xl font-bold text-white">${displayWidget}</span>
+            <span className="text-sm text-slate-400">/mo</span>
+            <span className="ml-2 text-xs text-slate-500">ClosetQuote Pro · 30-day free trial</span>
+          </div>
+          <Link
+            href="/signup"
+            className="rounded-lg border border-white/15 px-5 py-2.5 text-sm font-medium text-white hover:bg-white/5"
+          >
+            Start free trial
+          </Link>
         </div>
       </div>
 
@@ -660,45 +675,7 @@ function PricingSection() {
           ))}
         </div>
 
-        <div className="mt-16 rounded-3xl border border-white/10 bg-white/[0.02] p-8 text-center backdrop-blur-sm sm:p-12">
-          <h4 className="mb-4 text-2xl font-bold tracking-tight text-white">
-            How the Agency Build Works
-          </h4>
-          <p className="mx-auto mb-8 max-w-2xl text-slate-400">
-            We build your premium digital storefront with zero risk. You pay <strong>no upfront fees</strong> until you are completely satisfied with the final design. Only then do you pay the one-time setup fee, and we hand over the keys.
-          </p>
-          
-          <div className="mx-auto max-w-3xl rounded-2xl border border-white/[0.06] bg-black/40 p-6 text-left text-sm sm:flex sm:items-center sm:justify-between sm:p-8">
-            <div className="mb-6 sm:mb-0 sm:flex-1">
-              <div className="mb-1 text-xs font-semibold uppercase tracking-widest text-emerald-400/90">
-                One-Time Setup
-              </div>
-              <div className="text-3xl font-bold text-white">$1,500</div>
-              <div className="mt-1 text-xs text-slate-500">Paid only when you love it.</div>
-            </div>
-            
-            <div className="hidden h-16 w-px bg-white/10 sm:block" />
-            
-            <div className="sm:flex-1 sm:pl-8">
-              <div className="mb-1 text-xs font-semibold uppercase tracking-widest text-emerald-400/90">
-                Ongoing Platform
-              </div>
-              <div className="flex items-baseline gap-1">
-                <span className="text-3xl font-bold text-white">$149</span>
-                <span className="text-sm text-slate-400">/mo</span>
-              </div>
-              <div className="mt-1 text-xs text-slate-500">
-                or $124/mo billed annually.
-              </div>
-            </div>
-          </div>
-          
-          <div className="mt-8 mx-auto max-w-2xl text-sm leading-relaxed text-slate-400">
-            <span className="font-semibold text-white">What is the monthly fee for?</span>
-            <br />
-            It includes your full <strong className="font-medium text-slate-300">ClosetQuote Pro subscription</strong> (a $99/mo value) natively integrated into the site. The remainder covers fully managed premium hosting, SSL certificates, security updates, and zero-maintenance peace of mind. We handle the tech so you can focus on building closets.
-          </div>
-        </div>
+        <AgencyBuildExplainer />
       </div>
     </section>
   )
