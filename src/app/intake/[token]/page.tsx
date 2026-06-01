@@ -1,6 +1,7 @@
 'use client';
 
-import React, { use, useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { useParams } from 'next/navigation';
 
 const SERVICE_OPTIONS = [
   'Walk-In Closets', 'Reach-In Closets', 'Garages', 'Pantries & Wine',
@@ -52,8 +53,9 @@ const EMPTY: Form = {
 const label = 'block text-sm font-medium text-gray-700 mb-1';
 const input = 'w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none';
 
-export default function IntakeForm({ params }: { params: Promise<{ token: string }> }) {
-  const { token } = use(params);
+export default function IntakeForm() {
+  const params = useParams();
+  const token = typeof params.token === 'string' ? params.token : '';
   const [form, setForm] = useState<Form>(EMPTY);
   const [logoDataUrl, setLogoDataUrl] = useState<string>('');
   const [loading, setLoading] = useState(true);
@@ -65,6 +67,11 @@ export default function IntakeForm({ params }: { params: Promise<{ token: string
   const [manualBuild, setManualBuild] = useState(false);
 
   useEffect(() => {
+    if (!token) {
+      setNotFound(true);
+      setLoading(false);
+      return;
+    }
     (async () => {
       try {
         const res = await fetch(`/api/intake/${token}`);
