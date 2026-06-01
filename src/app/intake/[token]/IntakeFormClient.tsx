@@ -112,8 +112,8 @@ export default function IntakeFormClient({
     reader.readAsDataURL(file);
   };
 
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  /** Use button onClick + fetch — not form submit (sandboxed iframes block allow-forms). */
+  const submitForm = async () => {
     setSubmitting(true);
     setError('');
     try {
@@ -179,7 +179,14 @@ export default function IntakeFormClient({
           )}
         </div>
 
-        <form onSubmit={submit} className="space-y-8">
+        <div
+          className="space-y-8"
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && (e.target as HTMLElement).tagName !== 'TEXTAREA') {
+              e.preventDefault();
+            }
+          }}
+        >
           <section className="rounded-xl border border-gray-200 bg-white p-6">
             <h2 className="text-sm font-bold uppercase tracking-wide text-gray-500 mb-4">Business &amp; contact</h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -334,10 +341,15 @@ export default function IntakeFormClient({
 
           {error && <div className="rounded-md bg-red-50 border border-red-200 p-3 text-sm text-red-700">{error}</div>}
 
-          <button type="submit" disabled={submitting} className="w-full rounded-lg bg-indigo-600 px-6 py-3 font-bold text-white hover:bg-indigo-500 disabled:opacity-50">
+          <button
+            type="button"
+            disabled={submitting}
+            onClick={() => void submitForm()}
+            className="w-full rounded-lg bg-indigo-600 px-6 py-3 font-bold text-white hover:bg-indigo-500 disabled:opacity-50"
+          >
             {submitting ? 'Submitting…' : 'Submit my details'}
           </button>
-        </form>
+        </div>
       </div>
     </div>
   );
