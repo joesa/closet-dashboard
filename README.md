@@ -64,12 +64,18 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
+For full local testing of pricing, intake, and Stripe (trial, skip-trial, deposits,
+pay-to-launch, maintenance), see
+[`docs/ops/LOCAL_E2E_TESTING.md`](docs/ops/LOCAL_E2E_TESTING.md).
+
 ## Scripts
 
 - `npm run dev` — Next dev server (webpack).
 - `npm run build` — production build.
 - `npm run start` — serve the production build.
 - `npm run lint` — ESLint.
+- `npm run stripe:verify` — validate Stripe env + price IDs.
+- `npm run stripe:catalog` — create/update test catalog (idempotent).
 
 ## Environment
 

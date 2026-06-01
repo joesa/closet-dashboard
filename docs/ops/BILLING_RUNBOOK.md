@@ -2,6 +2,8 @@
 
 Ops reference for intake, site builds, and Stripe. Automated flows are in-app; use Dashboard fallbacks when needed.
 
+**Local testing:** step-by-step E2E guide → [LOCAL_E2E_TESTING.md](./LOCAL_E2E_TESTING.md).
+
 ## Stripe catalog
 
 - Run locally (test): `npm run stripe:catalog` with `STRIPE_SECRET_KEY` from `.env.local`
