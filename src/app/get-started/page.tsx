@@ -13,7 +13,6 @@ function GetStartedForm() {
   const [businessName, setBusinessName] = useState('');
   const [hasWebsite, setHasWebsite] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const siteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
 
@@ -38,7 +37,6 @@ function GetStartedForm() {
     }
     setLoading(true);
     setError('');
-    setMessage('');
 
     try {
       const turnstileToken =
@@ -60,7 +58,7 @@ function GetStartedForm() {
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Request failed');
-      setMessage(json.message || 'Check your email for a link to continue.');
+      router.push('/');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong');
     } finally {
@@ -140,7 +138,6 @@ function GetStartedForm() {
           </button>
         </form>
 
-        {message && <p className="mt-4 text-sm text-green-700">{message}</p>}
         {error && <p className="mt-4 text-sm text-red-600">{error}</p>}
 
         <p className="mt-6 text-center text-xs text-gray-400">

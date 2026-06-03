@@ -4,6 +4,18 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { widgetEmbedSnippet } from '@/lib/urls'
 import { normalizeDomain, attachVercelDomain } from '@/lib/vercel-domains'
 import {
+  parseImageSelections,
+  syncProductSlots,
+} from '@/lib/intake/imageSelections'
+import { provisionServiceLabels } from '@/lib/intake/provisionServiceLabels'
+import {
+  clampPagesForTier,
+  maxAdditionalPagesForTier,
+  buildBasicPagesConfig,
+  injectGalleryImagesIntoPages,
+  type BasicPageConfig,
+} from '@/lib/catalog/sitePages'
+import {
   type ProvisionTenantInput,
   type ProvisionTenantResult,
   ProvisionReviewError,
@@ -174,7 +186,7 @@ export async function provisionTenant(
       },
     }
 
-    const GENERIC_HERO = 'https://images.unsplash.com/photo-1558211583-d26f610c1eb1'
+    const GENERIC_HERO = 'https://images.unsplash.com/photo-1595428774223-ef52624120d2'
     const THEME_HERO_IMAGES: Record<string, string> = {
       'luxury-minimal': GENERIC_HERO,
       brutalist: 'https://images.unsplash.com/photo-1605810230434-7631ac76ec81',
@@ -191,7 +203,7 @@ export async function provisionTenant(
       'minimalist-zen': GENERIC_HERO,
     }
     const PRODUCT_IMAGE_POOL = [
-      'https://images.unsplash.com/photo-1558211583-d26f610c1eb1',
+      'https://images.unsplash.com/photo-1595428774223-ef52624120d2',
       'https://images.unsplash.com/photo-1595428774223-ef52624120d2',
       'https://images.unsplash.com/photo-1605810230434-7631ac76ec81',
       'https://images.unsplash.com/photo-1556910103-1c02745a872f',
@@ -204,6 +216,99 @@ export async function provisionTenant(
     const selectedServices =
       services && services.length > 0 ? services : ['Walk-In Closets']
 
+    // Authoritatively apply the prospect's generated + selected studio images.
+    // Selections are keyed by service label and always win over catalog/AI
+    // defaults, so an AI Premium build deploys exactly what the customer picked.
+    let heroSelectedUrl: string | null = null
+    const pickedImages: { name: string; url: string }[] = []
+    // Prospect-selected pages become the authoritative sitemap — admins never
+    // re-guess. Caps: AI Premium 10 total, Standard 5 total (Home included).
+    let requestedPageSlugs: string[] = []
+    let intakeTierForPages: 'standard' | 'ai_premium' = 'standard'
+    let galleryUrls: string[] = []
+    if (intakeId) {
+      const { data: intakeForImages } = await supabase
+        .from('prospect_intakes')
+        .select(
+          'services, other_services, image_selections, requested_pages, intake_tier, gallery_images'
+        )
+        .eq('id', intakeId)
+        .maybeSingle()
+      if (intakeForImages) {
+        const labels = provisionServiceLabels(intakeForImages)
+        const sel = syncProductSlots(
+          parseImageSelections(intakeForImages.image_selections),
+          labels
+        )
+        heroSelectedUrl = sel.hero.selectedUrl || null
+        for (const p of sel.products) {
+          if (p.selectedUrl) pickedImages.push({ name: p.serviceName, url: p.selectedUrl })
+        }
+        intakeTierForPages =
+          intakeForImages.intake_tier === 'ai_premium' ? 'ai_premium' : 'standard'
+        requestedPageSlugs = clampPagesForTier(
+          intakeForImages.requested_pages,
+          intakeTierForPages
+        )
+        galleryUrls = Array.isArray(intakeForImages.gallery_images)
+          ? intakeForImages.gallery_images.filter(
+              (u): u is string => typeof u === 'string' && u.trim().length > 0
+            )
+          : []
+      }
+    }
+
+    const normLabel = (s: string) =>
+      s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\b(\w+?)s\b/g, '$1').trim()
+
+    // Returns a stateful resolver: matches a product title to the best unused
+    // selected image (exact label → word-overlap → positional), never reusing
+    // a selection twice within one product list.
+    const makeImageResolver = () => {
+      const used = new Set<number>()
+      return (title: string | undefined): string | null => {
+        if (pickedImages.length === 0) return null
+        const t = normLabel(title || '')
+        let idx = pickedImages.findIndex(
+          (p, i) =>
+            !used.has(i) &&
+            t.length > 0 &&
+            (normLabel(p.name) === t ||
+              normLabel(p.name).includes(t) ||
+              t.includes(normLabel(p.name)))
+        )
+        if (idx < 0) {
+          const tw = new Set(t.split(' ').filter((w) => w.length > 2))
+          let best = 0
+          pickedImages.forEach((p, i) => {
+            if (used.has(i)) return
+            let score = 0
+            normLabel(p.name)
+              .split(' ')
+              .filter((w) => w.length > 2)
+              .forEach((w) => {
+                if (tw.has(w)) score++
+              })
+            if (score > best) {
+              best = score
+              idx = i
+            }
+          })
+        }
+        if (idx < 0) idx = pickedImages.findIndex((_, i) => !used.has(i))
+        if (idx < 0) return null
+        used.add(idx)
+        return pickedImages[idx].url
+      }
+    }
+
+    const defaultHeroBackground =
+      heroSelectedUrl ||
+      (heroImage && heroImage !== GENERIC_HERO
+        ? heroImage
+        : THEME_HERO_IMAGES[theme!] || GENERIC_HERO)
+    const resolveDefaultProductImage = makeImageResolver()
+
     let siteConfigData: Record<string, unknown> = {
       tenant_id: tenantId,
       brand_name: businessName,
@@ -214,10 +319,7 @@ export async function provisionTenant(
       pricing_notes: setup.pricingNotes || null,
       hero_config: {
         headline: heroHeadline || `Welcome to ${businessName}`,
-        backgroundImage:
-          heroImage && heroImage !== GENERIC_HERO
-            ? heroImage
-            : THEME_HERO_IMAGES[theme!] || GENERIC_HERO,
+        backgroundImage: defaultHeroBackground,
       },
       about_config: {
         description:
@@ -240,7 +342,7 @@ export async function provisionTenant(
         }
         return {
           title: serviceName,
-          image: catalogItem.image,
+          image: resolveDefaultProductImage(serviceName) || catalogItem.image,
           description: catalogItem.description,
           details: {
             subtitle: 'Bespoke Design',
@@ -251,6 +353,7 @@ export async function provisionTenant(
       }),
       seo_config: {
         legalName: businessName,
+        email: setup.contactEmail || ownerEmail || '',
         phone: setup.contactPhone || '555-0199',
         streetAddress: setup.streetAddress || '123 Main St',
         addressLocality: setup.addressLocality || setup.serviceArea || 'Anytown',
@@ -260,7 +363,7 @@ export async function provisionTenant(
       },
       before_after_config: {
         beforeImage: beforeImage || '/brands/lumina/before.png',
-        afterImage: heroImage || '/brands/lumina/hero.png',
+        afterImage: defaultHeroBackground || '/brands/lumina/hero.png',
         title: `The ${businessName} Transformation`,
         subtitle: 'Drag to see',
       },
@@ -271,10 +374,11 @@ export async function provisionTenant(
       const operatorHero =
         heroImage && heroImage !== GENERIC_HERO ? heroImage : null
       const backgroundImage =
-        operatorHero || THEME_HERO_IMAGES[finalTheme] || GENERIC_HERO
+        heroSelectedUrl || operatorHero || THEME_HERO_IMAGES[finalTheme] || GENERIC_HERO
       const aiProducts = Array.isArray(aiSiteConfig.products)
         ? aiSiteConfig.products
         : null
+      const resolveAiProductImage = makeImageResolver()
       const productsWithImages = (
         aiProducts ?? (siteConfigData.products_config as unknown[])
       ).map(
@@ -283,15 +387,40 @@ export async function provisionTenant(
             title?: string
             image?: string
             imagePrompt?: string
+            description?: string
+            details?: {
+              subtitle?: string
+              longDescription?: string
+              specifications?: string[]
+            }
             [k: string]: unknown
           },
           i: number
         ) => {
           const { imagePrompt: _imagePrompt, ...rest } = p
           void _imagePrompt
+          const title = p.title || `Custom Build ${i + 1}`
           return {
             ...rest,
+            title,
+            // Guarantee premium copy is always present so the rendered product
+            // modal never shows empty fields, even if the AI omitted one.
+            description:
+              p.description ||
+              serviceCatalog[title]?.description ||
+              `Bespoke ${title.toLowerCase()} crafted with premium materials and precision joinery.`,
+            details: {
+              subtitle: p.details?.subtitle || 'Signature Collection',
+              longDescription:
+                p.details?.longDescription ||
+                `Full architectural build-out for your ${title.toLowerCase()}, engineered for flawless daily function and lasting craftsmanship.`,
+              specifications:
+                p.details?.specifications && p.details.specifications.length > 0
+                  ? p.details.specifications
+                  : ['Premium Materials', 'Precision Fit', 'Lifetime Warranty'],
+            },
             image:
+              resolveAiProductImage(p.title) ||
               p.image ||
               (p.title && serviceCatalog[p.title]?.image) ||
               PRODUCT_IMAGE_POOL[i % PRODUCT_IMAGE_POOL.length],
@@ -330,7 +459,9 @@ export async function provisionTenant(
           hero?: Record<string, unknown>
           content_blocks?: Array<{ type?: string; image?: string }>
         }
-        const sanitizedPages = (aiSiteConfig.pagesConfig as PageConfig[]).map(
+        const sanitizedPages = (aiSiteConfig.pagesConfig as PageConfig[])
+          .slice(0, maxAdditionalPagesForTier(intakeTierForPages))
+          .map(
           (page, pIdx) => ({
             ...page,
             hero: { ...(page.hero || {}), backgroundImage },
@@ -353,6 +484,34 @@ export async function provisionTenant(
         })
         siteConfigData.nav_links = navLinks
       }
+    }
+
+    // Standard (non-AI) builds: ship exactly the pages the prospect chose on
+    // the intake form so the admin never guesses the sitemap. AI Premium
+    // builds already set pages_config above from the art-directed pagesConfig.
+    if (!siteConfigData.pages_config && requestedPageSlugs.length > 0) {
+      const basicPages = buildBasicPagesConfig(
+        clampPagesForTier(requestedPageSlugs, intakeTierForPages)
+      )
+      if (basicPages.length > 0) {
+        siteConfigData.pages_config = basicPages
+        const navLinks = [{ label: 'Home', slug: '/' }]
+        basicPages.forEach((page) => {
+          navLinks.push({ label: page.title, slug: page.slug })
+        })
+        siteConfigData.nav_links = navLinks
+      }
+    }
+
+    if (
+      galleryUrls.length > 0 &&
+      Array.isArray(siteConfigData.pages_config) &&
+      (siteConfigData.pages_config as BasicPageConfig[]).length > 0
+    ) {
+      siteConfigData.pages_config = injectGalleryImagesIntoPages(
+        siteConfigData.pages_config as BasicPageConfig[],
+        galleryUrls
+      )
     }
 
     const { error: configError } = await supabase.from('site_configs').insert(siteConfigData)
