@@ -1,15 +1,15 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
-import { getIntakePaymentSummary } from '@/lib/intake/intakePaymentStage'
+import { getTenantPublicUrl } from '@/lib/admin-preview'
+import { getIntakePaymentSummary, isLaunchBuildPaid } from '@/lib/intake/intakePaymentStage'
 import { formatUsd } from '@/lib/intake/tiers'
 import {
   approvePreviewAction,
   markSiteLiveAction,
-  publishSiteAfterLaunchAction,
   refundDepositAction,
 } from './actions'
-import { isLaunchBuildPaid } from '@/lib/intake/intakePaymentStage'
+import IntakeAdminAlerts from './IntakeAdminAlerts'
 
 export const dynamic = 'force-dynamic'
 
@@ -19,10 +19,13 @@ function fmt(d: string | null) {
 
 export default async function IntakeDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>
+  searchParams: Promise<{ site_published?: string; site_already_live?: string; error?: string }>
 }) {
   const { id } = await params
+  const sp = await searchParams
   const admin = getSupabaseAdmin()
   const { data, error } = await admin
     .from('prospect_intakes')
@@ -45,8 +48,43 @@ export default async function IntakeDetailPage({
   )
   const intakeUrl = `${(process.env.NEXT_PUBLIC_SITE_URL || '').replace(/\/$/, '')}/intake/${data.token}`
 
+  let tenantSiteStatus: string | null = null
+  let tenantSiteUrl: string | null = null
+  if (data.provisioned_contractor_id) {
+    const { data: tenant } = await admin
+      .from('tenants')
+      .select('site_status')
+      .eq('id', data.provisioned_contractor_id)
+      .maybeSingle()
+    tenantSiteStatus = tenant?.site_status ?? null
+
+    const { data: domain } = await admin
+      .from('domains')
+      .select('hostname')
+      .eq('tenant_id', data.provisioned_contractor_id)
+      .order('is_primary', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    if (domain?.hostname) {
+      const url = getTenantPublicUrl(domain.hostname)
+      tenantSiteUrl = url !== '#' ? url : null
+    }
+  }
+
+  const needsPublish =
+    launchPaid &&
+    data.provisioned_contractor_id &&
+    tenantSiteStatus !== 'active'
+
   return (
     <div>
+      <IntakeAdminAlerts
+        sitePublished={sp.site_published === '1'}
+        siteAlreadyLive={sp.site_already_live === '1'}
+        error={sp.error ?? null}
+        tenantSiteUrl={tenantSiteUrl}
+        tenantSiteStatus={tenantSiteStatus}
+      />
       <div className="mb-6">
         <Link href="/admin/intakes" className="text-sm text-blue-600 hover:underline">
           ← All intakes
@@ -126,9 +164,8 @@ export default async function IntakeDetailPage({
             </form>
           )}
 
-          {launchPaid && data.provisioned_contractor_id && (
-            <form action={publishSiteAfterLaunchAction}>
-              <input type="hidden" name="intake_id" value={data.id} />
+          {needsPublish && (
+            <form action={`/api/admin/intakes/${data.id}/publish-site`} method="POST">
               <button
                 type="submit"
                 className="w-full rounded-md bg-green-700 px-4 py-2 text-sm font-medium text-white hover:bg-green-600"
@@ -136,6 +173,25 @@ export default async function IntakeDetailPage({
                 Publish site (launch payment received)
               </button>
             </form>
+          )}
+
+          {launchPaid && tenantSiteStatus === 'active' && (
+            <p className="rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
+              Site is <strong>active</strong>.
+              {tenantSiteUrl ? (
+                <>
+                  {' '}
+                  <a
+                    href={tenantSiteUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-semibold underline"
+                  >
+                    View customer site
+                  </a>
+                </>
+              ) : null}
+            </p>
           )}
 
           {data.preview_approved_at && !data.site_live_at && (

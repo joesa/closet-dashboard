@@ -5,10 +5,7 @@ import { requireAdmin, logAdminAction } from '@/lib/admin'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { getStripe } from '@/lib/stripe'
 import { sendIntakeLaunchPaymentEmail } from '@/lib/intake/sendIntakeLaunchEmail'
-import {
-  getIntakePaymentSummary,
-  isLaunchBuildPaid,
-} from '@/lib/intake/intakePaymentStage'
+import { getIntakePaymentSummary } from '@/lib/intake/intakePaymentStage'
 import type { ProspectIntakeRow } from '@/lib/intake/getIntakeByToken'
 
 function siteOrigin(): string {
@@ -69,42 +66,6 @@ export async function approvePreviewAction(formData: FormData) {
     targetType: 'intake',
     targetId: intakeId,
     metadata: { payment_stage: payment.stage },
-  })
-
-  revalidatePath('/admin/intakes')
-  revalidatePath(`/admin/intakes/${intakeId}`)
-}
-
-/** After launch payment, make the provisioned tenant site publicly viewable. */
-export async function publishSiteAfterLaunchAction(formData: FormData) {
-  const me = await requireAdmin()
-  const intakeId = String(formData.get('intake_id') ?? '')
-  if (!intakeId) throw new Error('intake_id required')
-
-  const row = await loadIntake(intakeId)
-  if (!isLaunchBuildPaid(row)) {
-    throw new Error('Launch payment is not complete yet')
-  }
-  if (!row.provisioned_contractor_id) {
-    throw new Error('No provisioned contractor linked to this intake')
-  }
-
-  const admin = getSupabaseAdmin()
-  const { error } = await admin
-    .from('tenants')
-    .update({
-      site_status: 'active',
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', row.provisioned_contractor_id)
-  if (error) throw error
-
-  await logAdminAction({
-    actor: me,
-    action: 'intake.publish_after_launch',
-    targetType: 'intake',
-    targetId: intakeId,
-    metadata: { contractor_id: row.provisioned_contractor_id },
   })
 
   revalidatePath('/admin/intakes')
