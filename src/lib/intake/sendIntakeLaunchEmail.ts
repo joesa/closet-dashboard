@@ -22,7 +22,7 @@ export async function sendIntakeLaunchPaymentEmail(opts: {
     subject: `${who} — your site is ready to launch`,
     html: `
       <h1>Ready to launch</h1>
-      <p>Your ClosetQuote site preview has been approved. When you're satisfied, pay ${opts.amountLabel} (${formatUsd(opts.amountCents)}) to launch and get full dashboard access.</p>
+      <p>Your ClosetQuote site preview has been approved. When you're satisfied, pay ${formatUsd(opts.amountCents)} to launch and get full dashboard access.</p>
       <p><a href="${opts.intakeUrl}">Pay and launch</a></p>
       <p>If you have questions, reply to this email.</p>
     `,

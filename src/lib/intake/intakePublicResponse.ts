@@ -7,7 +7,10 @@ import {
   getSiteMaintenancePricing,
   formatUsd,
 } from '@/lib/intake/tiers'
-import { getIntakePaymentSummary } from '@/lib/intake/intakePaymentStage'
+import {
+  getIntakePaymentSummary,
+  isLaunchBuildPaid,
+} from '@/lib/intake/intakePaymentStage'
 
 export function buildIntakePublicJson(row: ProspectIntakeRow) {
   const tierEntry = getTierEntry(
@@ -53,5 +56,6 @@ export function buildIntakePublicJson(row: ProspectIntakeRow) {
     paymentDueLabel: payment.label,
     paymentCheckoutKind: payment.checkoutKind,
     canPayToLaunch: payment.canCheckout,
+    launchPaid: isLaunchBuildPaid(row),
   }
 }

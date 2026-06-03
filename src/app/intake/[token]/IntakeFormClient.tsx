@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { provisionServiceLabelsFromForm } from '@/lib/intake/provisionServiceLabels';
 import type { IntakeTierCatalogEntry } from '@/lib/intake/tiers';
 import type { IntakeCheckoutKind } from '@/lib/intake/intakePaymentStage';
@@ -18,6 +19,14 @@ import {
   SERVICE_GROUPS_ORDER,
   servicesByGroup,
 } from '@/lib/catalog/contractorServices';
+import {
+  SITE_PAGE_OPTIONS,
+  RECOMMENDED_PAGE_SLUGS,
+  sanitizePageSlugs,
+  clampPagesForTier,
+  maxPagesForTier,
+  maxAdditionalPagesForTier,
+} from '@/lib/catalog/sitePages';
 
 const SERVICE_GROUPS = servicesByGroup();
 const VIBE_OPTIONS = [
@@ -54,6 +63,7 @@ type Form = {
   primaryCta: string;
   desiredDomain: string;
   notes: string;
+  pages: string[];
 };
 
 const label = 'block text-sm font-medium text-gray-700 mb-1';
@@ -63,6 +73,8 @@ export type IntakeFormClientProps = {
   token: string;
   notFound?: boolean;
   businessName?: string;
+  prospectEmail?: string;
+  requestedPages?: string[];
   alreadySubmitted?: boolean;
   needsEmailVerify?: boolean;
   manualBuildOnSubmit?: boolean;
@@ -82,11 +94,11 @@ export type IntakeFormClientProps = {
   paymentAmountCents?: number;
 };
 
-function emptyForm(businessName: string): Form {
+function emptyForm(businessName: string, contactEmail = '', pages: string[] = []): Form {
   return {
     businessName,
     contactName: '',
-    contactEmail: '',
+    contactEmail,
     contactPhone: '',
     streetAddress: '',
     addressLocality: '',
@@ -107,6 +119,7 @@ function emptyForm(businessName: string): Form {
     primaryCta: '',
     desiredDomain: '',
     notes: '',
+    pages,
   };
 }
 
@@ -114,6 +127,8 @@ export default function IntakeFormClient({
   token,
   notFound = false,
   businessName = '',
+  prospectEmail = '',
+  requestedPages = [],
   alreadySubmitted = false,
   needsEmailVerify = false,
   manualBuildOnSubmit = false,
@@ -127,14 +142,22 @@ export default function IntakeFormClient({
   imageSelections: initialSelections,
   initialTierFromQuery,
   payKindFromQuery,
-  paymentDueLabel = '',
-  paymentCheckoutKind = null,
-  canPayToLaunch = false,
-  paymentAmountCents = 0,
+  paymentDueLabel: initialPaymentDueLabel = '',
+  paymentCheckoutKind: initialPaymentCheckoutKind = null,
+  canPayToLaunch: initialCanPayToLaunch = false,
+  paymentAmountCents: initialPaymentAmountCents = 0,
 }: IntakeFormClientProps) {
+  const router = useRouter();
   const tierPreselectDone = useRef(false);
   const payAutoDone = useRef(false);
-  const [form, setForm] = useState<Form>(() => emptyForm(businessName));
+  const paymentConfirmDone = useRef(false);
+  const [form, setForm] = useState<Form>(() =>
+    emptyForm(
+      businessName,
+      prospectEmail,
+      requestedPages.length ? sanitizePageSlugs(requestedPages) : RECOMMENDED_PAGE_SLUGS
+    )
+  );
   const [logoDataUrl, setLogoDataUrl] = useState<string>('');
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(alreadySubmitted);
@@ -145,23 +168,147 @@ export default function IntakeFormClient({
   const [intakeTier, setIntakeTier] = useState(initialTier);
   const [depositStatus, setDepositStatus] = useState(initialDepositStatus);
   const [canUseImageStudio, setCanUseImageStudio] = useState(initialCanStudio);
+  const [paymentDueLabel, setPaymentDueLabel] = useState(initialPaymentDueLabel);
+  const [paymentCheckoutKind, setPaymentCheckoutKind] = useState(initialPaymentCheckoutKind);
+  const [canPayToLaunch, setCanPayToLaunch] = useState(initialCanPayToLaunch);
+  const [paymentAmountCents, setPaymentAmountCents] = useState(initialPaymentAmountCents);
+  const [launchPaid, setLaunchPaid] = useState(false);
+  const [tenantSiteUrl, setTenantSiteUrl] = useState<string | null>(null);
+  const [loginUrl, setLoginUrl] = useState<string | null>(null);
+  const [paymentSuccessMessage, setPaymentSuccessMessage] = useState('');
   const [aiSiteConfig, setAiSiteConfig] = useState(initialAiSite);
   const [imageSelections, setImageSelections] = useState(
     initialSelections ?? { hero: { attemptsUsed: 0, history: [] }, products: [] }
   );
 
+  // Gallery images — parallel to the form but kept separate because they may
+  // contain large data URLs that we don't want to serialize into the draft JSON.
+  type GalleryEntry = { dataUrl: string; url: string };
+  const [galleryCount, setGalleryCount] = useState(5);
+  const [galleryImages, setGalleryImages] = useState<GalleryEntry[]>(() =>
+    Array.from({ length: 10 }, () => ({ dataUrl: '', url: '' }))
+  );
+
+  const setGalleryEntry = (i: number, patch: Partial<GalleryEntry>) =>
+    setGalleryImages((prev) => prev.map((e, idx) => (idx === i ? { ...e, ...patch } : e)));
+
+  const onGalleryFile = (i: number, file: File | null) => {
+    if (!file) { setGalleryEntry(i, { dataUrl: '' }); return; }
+    if (file.size > 10 * 1024 * 1024) { setError('Each gallery image must be under 10MB.'); return; }
+    const reader = new FileReader();
+    reader.onload = () =>
+      setGalleryEntry(i, { dataUrl: typeof reader.result === 'string' ? reader.result : '', url: '' });
+    reader.readAsDataURL(file);
+  };
+
+  // Auto-save form fields to localStorage so a reload / back-button / accidental
+  // navigation doesn't wipe everything the user typed. Generated images and the
+  // selected tier are persisted server-side and reload on their own.
+  const draftKey = `closetquote-intake-draft-${token}`;
+  const draftRestored = useRef(false);
+
   useEffect(() => {
-    if (typeof window === 'undefined') return;
+    if (typeof window === 'undefined' || alreadySubmitted) {
+      draftRestored.current = true;
+      return;
+    }
+    try {
+      const raw = window.localStorage.getItem(draftKey);
+      if (raw) {
+        const saved = JSON.parse(raw) as { form?: Partial<Form>; logoDataUrl?: string };
+        if (saved.form) {
+          setForm((f) => ({
+            ...f,
+            ...saved.form,
+            // Never let a stale draft override a locked, prefilled email.
+            contactEmail: prospectEmail || saved.form?.contactEmail || f.contactEmail,
+          }));
+        }
+        if (typeof saved.logoDataUrl === 'string' && saved.logoDataUrl) {
+          setLogoDataUrl(saved.logoDataUrl);
+        }
+      }
+    } catch {
+      // Ignore malformed/unavailable storage.
+    }
+    draftRestored.current = true;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftKey]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !draftRestored.current || submitted) return;
+    try {
+      window.localStorage.setItem(draftKey, JSON.stringify({ form, logoDataUrl }));
+    } catch {
+      // Storage full (often the logo data URL). Retry without the logo so at
+      // least the typed fields survive.
+      try {
+        window.localStorage.setItem(draftKey, JSON.stringify({ form }));
+      } catch {
+        // Give up silently — persistence is best-effort.
+      }
+    }
+  }, [form, logoDataUrl, draftKey, submitted]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || paymentConfirmDone.current) return;
     const params = new URLSearchParams(window.location.search);
     if (params.get('payment') !== 'success') return;
-    fetch(`/api/intake/${token}`)
+    paymentConfirmDone.current = true;
+    const sessionId = params.get('session_id') || undefined;
+    const returnKind = params.get('kind');
+
+    fetch(`/api/intake/${token}/confirm-payment`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessionId }),
+    })
       .then((r) => r.json())
       .then((json) => {
+        if (json.error) return;
         if (json.depositStatus) setDepositStatus(json.depositStatus);
-        if (json.canUseImageStudio) setCanUseImageStudio(true);
+        if (typeof json.canUseImageStudio === 'boolean') {
+          setCanUseImageStudio(json.canUseImageStudio);
+        }
+        if (json.paymentDueLabel) setPaymentDueLabel(json.paymentDueLabel);
+        if ('paymentCheckoutKind' in json) {
+          setPaymentCheckoutKind(json.paymentCheckoutKind ?? null);
+        }
+        if (typeof json.canPayToLaunch === 'boolean') {
+          setCanPayToLaunch(json.canPayToLaunch);
+        }
+        if (json.launchPaid) setLaunchPaid(true);
+        if (json.tenantSiteUrl) setTenantSiteUrl(json.tenantSiteUrl);
+        if (json.loginUrl) setLoginUrl(json.loginUrl);
+
+        if (returnKind === 'deposit') {
+          setPaymentSuccessMessage('Deposit received — you can continue in the AI image studio.');
+        } else if (
+          returnKind === 'balance' ||
+          returnKind === 'standard_build'
+        ) {
+          setPaymentSuccessMessage(
+            'Payment received — your site is live. Redirecting you now…'
+          );
+          const target = json.tenantSiteUrl || json.loginUrl;
+          if (target) {
+            window.setTimeout(() => {
+              window.location.href = target;
+            }, 2200);
+          }
+        } else if (returnKind === 'maintenance') {
+          setPaymentSuccessMessage('Maintenance subscription started. Thank you!');
+        }
+
+        router.refresh();
+        params.delete('payment');
+        params.delete('kind');
+        params.delete('session_id');
+        const next = `${window.location.pathname}${params.toString() ? `?${params}` : ''}`;
+        window.history.replaceState({}, '', next);
       })
       .catch(() => {});
-  }, [token]);
+  }, [token, router]);
 
   useEffect(() => {
     if (tierPreselectDone.current || !initialTierFromQuery || submitted) return;
@@ -190,11 +337,34 @@ export default function IntakeFormClient({
   }, [payKindFromQuery, canPayToLaunch, token]);
 
   const set = <K extends keyof Form>(key: K, value: Form[K]) => setForm((f) => ({ ...f, [key]: value }));
-  const toggle = (key: 'services' | 'differentiators', value: string) =>
+  const toggle = (key: 'services' | 'differentiators' | 'pages', value: string) =>
     setForm((f) => {
       const list = f[key];
       return { ...f, [key]: list.includes(value) ? list.filter((v) => v !== value) : [...list, value] };
     });
+
+  // Page selection is capped by build tier (Home is always included):
+  // AI Premium = 10 total (9 extra), Standard = 5 total (4 extra).
+  const maxTotalPages = maxPagesForTier(intakeTier);
+  const maxExtraPages = maxAdditionalPagesForTier(intakeTier);
+  const pagesAtCap = form.pages.length >= maxExtraPages;
+  const togglePage = (slug: string) =>
+    setForm((f) => {
+      if (f.pages.includes(slug)) {
+        return { ...f, pages: f.pages.filter((v) => v !== slug) };
+      }
+      if (f.pages.length >= maxExtraPages) return f; // enforce tier cap
+      return { ...f, pages: [...f.pages, slug] };
+    });
+
+  // If the tier changes (e.g. Standard ↔ AI Premium) trim any pages that now
+  // exceed the new cap so the selection always stays valid.
+  useEffect(() => {
+    setForm((f) => {
+      const clamped = clampPagesForTier(f.pages, intakeTier);
+      return clamped.length === f.pages.length ? f : { ...f, pages: clamped };
+    });
+  }, [intakeTier]);
 
   const onLogo = (file: File | null) => {
     if (!file) { setLogoDataUrl(''); return; }
@@ -248,12 +418,25 @@ export default function IntakeFormClient({
           ...form,
           otherServices: form.otherServices.trim() || undefined,
           logoDataUrl: logoDataUrl || undefined,
+          galleryImages: form.pages.includes('portfolio')
+            ? galleryImages.slice(0, galleryCount).map(({ dataUrl, url }) => ({
+                ...(dataUrl ? { dataUrl } : {}),
+                ...(url.trim() ? { url: url.trim() } : {}),
+              })).filter((e) => e.dataUrl || e.url)
+            : [],
         }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Failed to submit');
       setManualBuild(!!json.manualBuild);
       setSubmitted(true);
+      if (typeof window !== 'undefined') {
+        try {
+          window.localStorage.removeItem(draftKey);
+        } catch {
+          // Best-effort cleanup.
+        }
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to submit');
     } finally {
@@ -278,10 +461,37 @@ export default function IntakeFormClient({
           <div className="mx-auto mb-4 grid h-12 w-12 place-items-center rounded-full bg-green-100 text-green-600">✓</div>
           <h1 className="text-xl font-semibold text-gray-900">Thank you!</h1>
           <p className="mt-2 text-sm text-gray-600">
-            {manualBuild
-              ? 'Your details have been received. Our team will build your custom site and quote calculator and email you when it is ready.'
-              : 'Your details have been received. We are building your site and quote calculator in the background. Check your email for login credentials when provisioning completes.'}
+            {launchPaid
+              ? 'Your launch payment is complete. Use the links below to view your site and sign in to the dashboard.'
+              : manualBuild
+                ? 'Your details have been received. Our team will build your custom site and quote calculator and email you when it is ready.'
+                : 'Your details have been received. We are building your site and quote calculator in the background. Check your email for login credentials when provisioning completes.'}
           </p>
+          {paymentSuccessMessage && (
+            <p className="mt-4 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
+              {paymentSuccessMessage}
+            </p>
+          )}
+          {launchPaid && (tenantSiteUrl || loginUrl) && (
+            <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-center">
+              {tenantSiteUrl && (
+                <a
+                  href={tenantSiteUrl}
+                  className="rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-bold text-white hover:bg-indigo-500"
+                >
+                  View your site
+                </a>
+              )}
+              {loginUrl && (
+                <a
+                  href={loginUrl}
+                  className="rounded-lg border border-indigo-300 px-5 py-2.5 text-sm font-semibold text-indigo-700 hover:bg-indigo-50"
+                >
+                  Contractor dashboard
+                </a>
+              )}
+            </div>
+          )}
           <div className="mt-8 text-left">
             <PayToLaunchBlock
               token={token}
@@ -368,7 +578,20 @@ export default function IntakeFormClient({
               </div>
               <div className="sm:col-span-2">
                 <label className={label}>Business email *</label>
-                <input className={input} type="email" required value={form.contactEmail} onChange={(e) => set('contactEmail', e.target.value)} />
+                <input
+                  className={`${input} ${prospectEmail ? 'cursor-not-allowed bg-gray-100 text-gray-500' : ''}`}
+                  type="email"
+                  required
+                  value={form.contactEmail}
+                  onChange={(e) => set('contactEmail', e.target.value)}
+                  readOnly={!!prospectEmail}
+                  disabled={!!prospectEmail}
+                />
+                {prospectEmail && (
+                  <p className="mt-1 text-xs text-gray-500">
+                    This is the email your setup link was sent to and can&apos;t be changed.
+                  </p>
+                )}
               </div>
               <div className="sm:col-span-2">
                 <label className={label}>Street address</label>
@@ -544,10 +767,164 @@ export default function IntakeFormClient({
             </div>
           </section>
 
+          <section className="rounded-xl border border-gray-200 bg-white p-6">
+            <h2 className="text-sm font-bold uppercase tracking-wide text-gray-500 mb-1">Pages for your site</h2>
+            <p className="text-sm text-gray-500 mb-4">
+              Your <span className="font-medium text-gray-700">Home</span> page is always
+              included. Your{' '}
+              <span className="font-medium text-gray-700">
+                {intakeTier === 'ai_premium' ? 'AI Premium' : 'Standard'}
+              </span>{' '}
+              build includes up to{' '}
+              <span className="font-medium text-gray-700">{maxTotalPages} pages total</span>{' '}
+              — Home plus {maxExtraPages} you choose below. Whatever you pick here is exactly
+              what we build. Not sure? The recommended set is a great starting point.
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {SITE_PAGE_OPTIONS.map((p) => {
+                const checked = form.pages.includes(p.slug);
+                const disabled = !checked && pagesAtCap;
+                return (
+                  <label
+                    key={p.slug}
+                    className={`flex items-start gap-2 rounded-md border px-3 py-2 text-sm ${disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'} ${checked ? 'border-indigo-500 bg-indigo-50 text-gray-900' : 'border-gray-300 text-gray-600'}`}
+                  >
+                    <input
+                      type="checkbox"
+                      className="mt-0.5"
+                      checked={checked}
+                      disabled={disabled}
+                      onChange={() => togglePage(p.slug)}
+                    />
+                    <span>
+                      <span className="font-medium text-gray-900">{p.label}</span>
+                      {p.recommended && (
+                        <span className="ml-2 rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-indigo-700">
+                          Recommended
+                        </span>
+                      )}
+                      <span className="block text-xs text-gray-500">{p.description}</span>
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+            <p className="mt-3 text-xs text-gray-500">
+              {form.pages.length + 1} of {maxTotalPages} page{maxTotalPages === 1 ? '' : 's'} selected
+              (including Home).
+              {pagesAtCap && (
+                <span className="ml-1 font-medium text-amber-700">
+                  You&apos;ve reached your plan&apos;s page limit
+                  {intakeTier !== 'ai_premium' ? ' — upgrade to AI Premium for up to 10 pages.' : '.'}
+                </span>
+              )}
+            </p>
+          </section>
+
+          {/* Gallery images — shown when Portfolio / Gallery page is selected */}
+          {form.pages.includes('portfolio') && (
+            <section className="rounded-xl border border-gray-200 bg-white p-6">
+              <h2 className="text-sm font-bold uppercase tracking-wide text-gray-500 mb-1">
+                Portfolio / Gallery images
+              </h2>
+              <p className="text-sm text-gray-600 mb-4">
+                Your gallery page needs real photos of work you&apos;ve done yourself — before &amp; after
+                shots, finished installs, happy clients, etc. Without your own project photos we
+                cannot configure the Portfolio page.
+              </p>
+
+              {/* Count selector */}
+              <div className="mb-5">
+                <label className={label}>How many gallery images would you like to include?</label>
+                <select
+                  className={`${input} w-40`}
+                  value={galleryCount}
+                  onChange={(e) => setGalleryCount(Number(e.target.value))}
+                >
+                  {[3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((n) => (
+                    <option key={n} value={n}>{n} images</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Per-image upload / URL inputs */}
+              <div className="space-y-4">
+                {Array.from({ length: galleryCount }, (_, i) => {
+                  const entry = galleryImages[i] ?? { dataUrl: '', url: '' };
+                  const hasContent = !!(entry.dataUrl || entry.url.trim());
+                  return (
+                    <div key={i} className={`rounded-lg border p-4 ${hasContent ? 'border-indigo-300 bg-indigo-50' : 'border-gray-200'}`}>
+                      <p className="text-sm font-medium text-gray-700 mb-3">
+                        Image {i + 1}
+                        {hasContent && (
+                          <span className="ml-2 text-indigo-600 text-xs font-normal">✓ Ready</span>
+                        )}
+                      </p>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-start">
+                        <div>
+                          <label className="block text-xs text-gray-500 mb-1">Upload a file</label>
+                          <input
+                            type="file"
+                            accept="image/png,image/jpeg,image/webp"
+                            className="text-sm text-gray-600 w-full"
+                            onChange={(e) => onGalleryFile(i, e.target.files?.[0] ?? null)}
+                          />
+                          {entry.dataUrl && (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={entry.dataUrl}
+                              alt={`Gallery preview ${i + 1}`}
+                              className="mt-2 h-20 w-full object-cover rounded"
+                            />
+                          )}
+                        </div>
+                        <div>
+                          <label className="block text-xs text-gray-500 mb-1">
+                            Or paste an image URL
+                          </label>
+                          <input
+                            className={input}
+                            type="url"
+                            placeholder="https://example.com/photo.jpg"
+                            value={entry.url}
+                            disabled={!!entry.dataUrl}
+                            onChange={(e) =>
+                              setGalleryEntry(i, { url: e.target.value, dataUrl: '' })
+                            }
+                          />
+                          {entry.url.trim() && !entry.dataUrl && (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={entry.url.trim()}
+                              alt={`Gallery preview ${i + 1}`}
+                              className="mt-2 h-20 w-full object-cover rounded"
+                              onError={(e) => {
+                                (e.currentTarget as HTMLImageElement).style.display = 'none';
+                              }}
+                            />
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Warning if no images provided */}
+              {galleryImages.slice(0, galleryCount).every((e) => !e.dataUrl && !e.url.trim()) && (
+                <p className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                  No gallery images added yet. If you don&apos;t upload any photos we won&apos;t be
+                  able to configure your Portfolio page — it will be excluded from your site.
+                </p>
+              )}
+            </section>
+          )}
+
           {canUseImageStudio && studioServices.length > 0 && (
             <IntakeImageStudio
               token={token}
               services={studioServices}
+              pages={form.pages}
               aiSiteConfig={aiSiteConfig as { hero?: { imagePrompt?: string }; products?: Array<{ title?: string; imagePrompt?: string }> } | null}
               imageSelections={imageSelections}
               onUpdate={(sel, site) => {

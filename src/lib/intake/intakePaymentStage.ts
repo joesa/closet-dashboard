@@ -20,9 +20,14 @@ export type IntakePaymentSummary = {
   canCheckout: boolean
 }
 
-function buildPaid(row: ProspectIntakeRow): boolean {
+/** Standard build paid in full, or AI Premium balance paid (launch). */
+export function isLaunchBuildPaid(row: ProspectIntakeRow): boolean {
   if (row.intake_tier === 'standard') return !!row.build_paid_at
   return !!row.balance_paid_at
+}
+
+function buildPaid(row: ProspectIntakeRow): boolean {
+  return isLaunchBuildPaid(row)
 }
 
 export function getIntakePaymentSummary(row: ProspectIntakeRow): IntakePaymentSummary {
@@ -110,7 +115,7 @@ export function getIntakePaymentSummary(row: ProspectIntakeRow): IntakePaymentSu
   if (buildPaid(row) && !row.maintenance_plan) {
     return {
       stage: 'complete',
-      label: 'Build paid — no maintenance plan on file',
+      label: 'Launch payment complete',
       checkoutKind: null,
       amountCents: 0,
       canCheckout: false,

@@ -6,8 +6,10 @@ import { formatUsd } from '@/lib/intake/tiers'
 import {
   approvePreviewAction,
   markSiteLiveAction,
+  publishSiteAfterLaunchAction,
   refundDepositAction,
 } from './actions'
+import { isLaunchBuildPaid } from '@/lib/intake/intakePaymentStage'
 
 export const dynamic = 'force-dynamic'
 
@@ -37,6 +39,9 @@ export default async function IntakeDetailPage({
 
   const payment = getIntakePaymentSummary(
     data as unknown as Parameters<typeof getIntakePaymentSummary>[0]
+  )
+  const launchPaid = isLaunchBuildPaid(
+    data as unknown as Parameters<typeof isLaunchBuildPaid>[0]
   )
   const intakeUrl = `${(process.env.NEXT_PUBLIC_SITE_URL || '').replace(/\/$/, '')}/intake/${data.token}`
 
@@ -70,14 +75,23 @@ export default async function IntakeDetailPage({
               <dt>Deposit</dt>
               <dd>{data.deposit_status}</dd>
             </div>
-            <div className="flex justify-between">
-              <dt>Build paid</dt>
-              <dd>{fmt(data.build_paid_at)}</dd>
-            </div>
-            <div className="flex justify-between">
-              <dt>Balance paid</dt>
-              <dd>{fmt(data.balance_paid_at)}</dd>
-            </div>
+            {data.intake_tier === 'ai_premium' ? (
+              <div className="flex justify-between">
+                <dt>Balance paid (launch)</dt>
+                <dd>{fmt(data.balance_paid_at)}</dd>
+              </div>
+            ) : (
+              <div className="flex justify-between">
+                <dt>Build paid (launch)</dt>
+                <dd>{fmt(data.build_paid_at)}</dd>
+              </div>
+            )}
+            {data.intake_tier === 'ai_premium' && data.build_paid_at && (
+              <div className="flex justify-between text-xs text-gray-400">
+                <dt>Build paid (legacy)</dt>
+                <dd>{fmt(data.build_paid_at)}</dd>
+              </div>
+            )}
             <div className="flex justify-between">
               <dt>Maintenance plan</dt>
               <dd>{data.maintenance_plan ?? '—'}</dd>
@@ -108,6 +122,18 @@ export default async function IntakeDetailPage({
                 className="w-full rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500"
               >
                 Mark preview approved &amp; email pay link
+              </button>
+            </form>
+          )}
+
+          {launchPaid && data.provisioned_contractor_id && (
+            <form action={publishSiteAfterLaunchAction}>
+              <input type="hidden" name="intake_id" value={data.id} />
+              <button
+                type="submit"
+                className="w-full rounded-md bg-green-700 px-4 py-2 text-sm font-medium text-white hover:bg-green-600"
+              >
+                Publish site (launch payment received)
               </button>
             </form>
           )}
