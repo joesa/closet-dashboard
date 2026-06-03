@@ -1,3 +1,5 @@
+import { maxPagesForTier } from '@/lib/catalog/sitePages'
+
 export type IntakeTierSlug = 'standard' | 'ai_premium'
 
 /** Managed hosting + ClosetQuote Pro after the one-time site build. */
@@ -17,6 +19,8 @@ export type IntakeTierCatalogEntry = {
   remainderCents: number
   requiresDeposit: boolean
   hasImageStudio: boolean
+  /** Max total pages (Home included) this build tier ships. */
+  maxPages: number
   maintenance: SiteMaintenancePricing
 }
 
@@ -116,6 +120,7 @@ export function getTierCatalog(): IntakeTierCatalogEntry[] {
       remainderCents: standardCents - standardDeposit,
       requiresDeposit: false,
       hasImageStudio: false,
+      maxPages: maxPagesForTier('standard'),
       maintenance,
     },
     {
@@ -126,6 +131,7 @@ export function getTierCatalog(): IntakeTierCatalogEntry[] {
       remainderCents: premiumCents - premiumDeposit,
       requiresDeposit: premiumDeposit > 0,
       hasImageStudio: true,
+      maxPages: maxPagesForTier('ai_premium'),
       maintenance,
     },
   ]

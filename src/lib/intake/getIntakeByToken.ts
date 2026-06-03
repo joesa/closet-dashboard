@@ -7,6 +7,7 @@ export type ProspectIntakeRow = {
   source: string
   business_name: string | null
   contact_email: string | null
+  verification_email: string | null
   email_verified_at: string | null
   requested_product: string
   provisioning_mode: string
@@ -47,10 +48,13 @@ export type ProspectIntakeRow = {
   notification_phone: string | null
   desired_domain: string | null
   other_services: string | null
+  requested_pages: string[]
+  gallery_images: string[]
 }
 
 const INTAKE_SELECT = `
   id, token, status, source, business_name, contact_email, email_verified_at,
+  verification_email,
   requested_product, provisioning_mode,
   intake_tier, tier_total_cents, deposit_required_cents, deposit_paid_cents,
   deposit_status, stripe_checkout_session_id,
@@ -60,7 +64,8 @@ const INTAKE_SELECT = `
   services, vibe, tone, customers, experience, differentiators, primary_cta, notes,
   pricing_notes, primary_color_hex, logo_url, contact_name, contact_phone,
   street_address, address_locality, address_region, postal_code, service_area,
-  notification_email, notification_phone, desired_domain, other_services
+  notification_email, notification_phone, desired_domain, other_services,
+  requested_pages, gallery_images
 `
 
 export async function getIntakeByToken(token: string): Promise<ProspectIntakeRow | null> {

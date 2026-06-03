@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import GuidedBuilder, { type GuidedResult } from './GuidedBuilder';
+import { SITE_PAGE_OPTIONS } from '@/lib/catalog/sitePages';
 
 // Sandbox/testing helper: fabricate a fake but usable login email. We only ever
 // surface these on non-production hosts so the production onboarding page never
@@ -72,6 +73,12 @@ type IntakeRow = IntakeSetup & {
   differentiators?: string[] | null;
   primary_cta?: string | null;
   notes?: string | null;
+  // AI Premium prospects build their own site + pick their own images in the
+  // intake studio. Reuse that work instead of starting from blank defaults.
+  ai_site_config?: unknown;
+  image_selections?: unknown;
+  requested_pages?: string[] | null;
+  intake_tier?: string | null;
 };
 
 // Build an AI brief from an intake row (same shape the guided builder produces).
@@ -100,7 +107,7 @@ type AiProduct = {
 
 type AiSiteConfig = {
   theme?: string;
-  hero?: { headline?: string; imagePrompt?: string };
+  hero?: { headline?: string; imagePrompt?: string; image?: string };
   about?: { description?: string };
   products?: AiProduct[];
   pagesConfig?: unknown[];
@@ -118,6 +125,79 @@ type AiWidgetConfig = {
   customFinishes?: unknown[];
   [key: string]: unknown;
 };
+
+// Shape of the prospect's saved image selections (intake studio output).
+type IntakeImageSelections = {
+  hero?: { selectedUrl?: string };
+  products?: { serviceName?: string; selectedUrl?: string }[];
+};
+
+const normLabel = (s: string) =>
+  s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\b(\w+?)s\b/g, '$1').trim();
+
+// Score how well a service label matches an AI product title by shared word stems.
+function labelMatchScore(serviceName: string, title: string): number {
+  const a = new Set(normLabel(serviceName).split(' ').filter((w) => w.length > 2));
+  const b = new Set(normLabel(title).split(' ').filter((w) => w.length > 2));
+  let score = 0;
+  for (const w of a) if (b.has(w)) score++;
+  return score;
+}
+
+/**
+ * Merge a prospect's selected studio images onto their AI site config so the
+ * build deploys the images they actually generated + picked. Product slots in
+ * the studio are keyed by service label; AI products use curated titles, so we
+ * match by shared word stems and fall back to positional assignment for any
+ * product the AI titled differently.
+ */
+function applyProspectImages(
+  config: AiSiteConfig,
+  selections: IntakeImageSelections
+): { config: AiSiteConfig; generated: GeneratedImages } {
+  const heroUrl = selections.hero?.selectedUrl || undefined;
+  const selected = (selections.products ?? []).filter((p) => !!p.selectedUrl);
+
+  const used = new Set<number>();
+  const pickFor = (title: string): string | undefined => {
+    let bestIdx = -1;
+    let bestScore = 0;
+    selected.forEach((s, i) => {
+      if (used.has(i)) return;
+      const score = labelMatchScore(s.serviceName ?? '', title);
+      if (score > bestScore) {
+        bestScore = score;
+        bestIdx = i;
+      }
+    });
+    if (bestIdx < 0) bestIdx = selected.findIndex((_, i) => !used.has(i));
+    if (bestIdx < 0) return undefined;
+    used.add(bestIdx);
+    return selected[bestIdx].selectedUrl || undefined;
+  };
+
+  const products: AiProduct[] = Array.isArray(config.products) ? [...config.products] : [];
+  const generatedProducts: GeneratedImages['products'] = [];
+  const nextProducts = products.map((p, i) => {
+    if (p.image) {
+      generatedProducts.push({ index: i, title: p.title, image: p.image });
+      return p;
+    }
+    const url = pickFor(p.title ?? '');
+    if (url) {
+      generatedProducts.push({ index: i, title: p.title, image: url });
+      return { ...p, image: url };
+    }
+    return p;
+  });
+
+  const nextConfig: AiSiteConfig = {
+    ...config,
+    products: nextProducts,
+    hero: { ...config.hero, ...(heroUrl ? { image: heroUrl } : {}) },
+  };
+  return { config: nextConfig, generated: { hero: heroUrl, products: generatedProducts } };
+}
 
 export default function SandboxOnboarding() {
   const [loading, setLoading] = useState(false);
@@ -244,9 +324,67 @@ export default function SandboxOnboarding() {
             theme: (it.vibe && VIBE_TO_THEME[it.vibe]) || prev.theme,
             services: it.services && it.services.length > 0 ? it.services : prev.services,
           }));
-          setIntakeBanner(`Loaded intake for ${it.business_name || 'prospect'}. Review the brief below, generate, then deploy.`);
-        } catch {
-          setIntakeBanner('Could not load the linked intake. You can still build manually.');
+
+          // AI Premium prospects already generated their site + picked images in
+          // the intake studio. Reuse that work so the operator deploys exactly
+          // what the customer paid for instead of a blank/default build.
+          const aiRaw = it.ai_site_config as { siteConfig?: AiSiteConfig } | AiSiteConfig | null;
+          const prospectConfig = (aiRaw && typeof aiRaw === 'object' && 'siteConfig' in aiRaw
+            ? (aiRaw as { siteConfig?: AiSiteConfig }).siteConfig
+            : (aiRaw as AiSiteConfig | null)) ?? null;
+
+          if (prospectConfig) {
+            const selections = (it.image_selections as IntakeImageSelections | null) ?? {};
+            const { config: mergedConfig, generated } = applyProspectImages(prospectConfig, selections);
+
+            // pagesConfig lives at the TOP level of ai_site_config (sibling of
+            // siteConfig), so it isn't part of prospectConfig. Lift it in so the
+            // operator deploys the prospect's multi-page build, not just Home.
+            const topLevelPages =
+              aiRaw && typeof aiRaw === 'object'
+                ? (aiRaw as { pagesConfig?: unknown[] }).pagesConfig
+                : undefined;
+            if (Array.isArray(topLevelPages) && topLevelPages.length > 0) {
+              mergedConfig.pagesConfig = topLevelPages;
+            }
+
+            setAiSiteConfig(mergedConfig);
+            if (generated.hero || generated.products.length > 0) {
+              setGeneratedImages(generated);
+            }
+
+            // Reflect the prospect's chosen pages in the sitemap UI so the
+            // operator sees all N pages (Home + selected), not a default of 1.
+            const requested = Array.isArray(it.requested_pages) ? it.requested_pages : [];
+            if (requested.length > 0) {
+              const labels = requested
+                .map((slug) => SITE_PAGE_OPTIONS.find((o) => o.slug === slug)?.label)
+                .filter((l): l is string => Boolean(l));
+              const fullSitemap = ['Home', ...labels];
+              setSitemap(fullSitemap);
+              setPageCount(fullSitemap.length);
+              setIsSitemapGenerated(true);
+            }
+
+            setFormData((prev) => ({
+              ...prev,
+              theme: mergedConfig.theme || prev.theme,
+              layoutStyle:
+                typeof mergedConfig.layoutStyle === 'string' ? mergedConfig.layoutStyle : prev.layoutStyle,
+              heroHeadline: mergedConfig.hero?.headline || prev.heroHeadline,
+              aboutDescription: mergedConfig.about?.description || prev.aboutDescription,
+              heroImage: generated.hero || prev.heroImage,
+            }));
+            setIntakeBanner(
+              `Loaded ${it.business_name || 'prospect'}'s AI Premium build — their generated site + ${generated.products.length} product image${generated.products.length === 1 ? '' : 's'}${generated.hero ? ' and hero' : ''} are pre-filled. Review and deploy.`
+            );
+          } else {
+            setIntakeBanner(`Loaded intake for ${it.business_name || 'prospect'}. Review the brief below, generate, then deploy.`);
+          }
+        } catch (e) {
+          setIntakeBanner(
+            `Could not load the linked intake${e instanceof Error ? `: ${e.message}` : ''}. You can still build manually.`
+          );
         }
       })();
     }
@@ -409,7 +547,7 @@ export default function SandboxOnboarding() {
   };
 
   // Opt-in bespoke image generation: render the hero + product images from the
-  // AI's art-direction prompts (gpt-image-1), upload them to Supabase Storage,
+  // AI's art-direction prompts (DALL-E 3), upload them to Supabase Storage,
   // and patch the permanent URLs back onto the form + aiSiteConfig so provision
   // persists them instead of the shared Unsplash placeholders.
   const handleGenerateImages = async () => {
@@ -659,7 +797,7 @@ export default function SandboxOnboarding() {
                   </button>
                 </div>
                 <p className="text-xs text-neutral-400 mb-3">
-                  Render a unique hero + product images from the AI&apos;s art-direction prompts (gpt-image-1, 16:9). Takes ~30-60s and costs a few cents. The permanent URLs replace the stock placeholders on deploy.
+                  Render a unique hero + product images from the AI&apos;s art-direction prompts (DALL-E 3, 16:9). Takes ~30-60s and costs a few cents. The permanent URLs replace the stock placeholders on deploy.
                 </p>
                 {imageLoading && (
                   <p className="text-xs text-purple-300 animate-pulse">Generating bespoke imagery… keep this tab open.</p>

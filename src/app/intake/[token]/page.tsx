@@ -28,6 +28,8 @@ export default async function IntakePage({
     <IntakeFormClient
       token={token}
       businessName={row.business_name ?? ''}
+      prospectEmail={row.contact_email || row.verification_email || ''}
+      requestedPages={row.requested_pages ?? []}
       alreadySubmitted={pub.alreadySubmitted}
       needsEmailVerify={pub.source === 'public' && !pub.emailVerified}
       manualBuildOnSubmit={row.provisioning_mode === 'manual'}

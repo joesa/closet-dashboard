@@ -6,6 +6,7 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { getStripe } from '@/lib/stripe'
 import { sendIntakeLaunchPaymentEmail } from '@/lib/intake/sendIntakeLaunchEmail'
 import { getIntakePaymentSummary } from '@/lib/intake/intakePaymentStage'
+import { syncTenantLaunchAccess } from '@/lib/intake/syncTenantLaunchAccess'
 import type { ProspectIntakeRow } from '@/lib/intake/getIntakeByToken'
 
 function siteOrigin(): string {
@@ -57,6 +58,13 @@ export async function approvePreviewAction(formData: FormData) {
       intakeUrl: `${siteOrigin()}/intake/${row.token}?pay=${payKind}`,
       amountLabel: payment.label,
       amountCents: payment.amountCents,
+    })
+  }
+
+  if (row.provisioned_contractor_id) {
+    await syncTenantLaunchAccess({
+      tenantId: row.provisioned_contractor_id,
+      intakeId,
     })
   }
 

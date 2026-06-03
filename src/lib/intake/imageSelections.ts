@@ -61,14 +61,12 @@ export function syncProductSlots(
   const existing = new Map(selections.products.map((p) => [p.serviceName, p]))
   const products: ProductImageSelection[] = serviceNames.map((serviceName, productIndex) => {
     const prev = existing.get(serviceName)
-    return (
-      prev ?? {
-        serviceName,
-        productIndex,
-        attemptsUsed: 0,
-        history: [],
-      }
-    )
+    // Always normalize productIndex to the current array position. Reusing a
+    // stale stored index lets the client (which matches slots by productIndex)
+    // and the server (which indexes the array by position) disagree whenever
+    // the service list order/content changes, producing "Invalid product index"
+    // or "URL not from a generated product batch" on selection.
+    return prev ? { ...prev, productIndex } : { serviceName, productIndex, attemptsUsed: 0, history: [] }
   })
   return { ...selections, products }
 }

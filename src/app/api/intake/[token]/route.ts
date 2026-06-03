@@ -6,6 +6,7 @@ import { getIntakeByToken } from '@/lib/intake/getIntakeByToken'
 import { buildIntakePublicJson } from '@/lib/intake/intakePublicResponse'
 import { validateAiPremiumReady } from '@/lib/intake/buildAiProvisionPayload'
 import { OTHER_SERVICE_LABEL } from '@/lib/catalog/contractorServices'
+import { clampPagesForTier } from '@/lib/catalog/sitePages'
 
 export const runtime = 'nodejs'
 
@@ -27,9 +28,19 @@ export async function GET(
 }
 
 function decodeDataUrl(dataUrl: string): { ext: string; mime: string; buffer: Buffer } | null {
-  const match = /^data:(image\/(png|jpeg|jpg|webp|svg\+xml));base64,(.+)$/i.exec(dataUrl)
-  if (!match) return null
-  const mime = match[1]
+  // Do NOT run a regex over the full data URL — for large images the base64
+  // payload can be several MB and /(.+)$/ recurses per-character in V8,
+  // exhausting the call stack.  Parse with string operations instead.
+  const commaIdx = dataUrl.indexOf(',')
+  if (commaIdx === -1) return null
+  const header = dataUrl.slice(0, commaIdx) // e.g. "data:image/png;base64"
+  const b64 = dataUrl.slice(commaIdx + 1)   // everything after the comma
+  if (!b64) return null
+
+  const headerMatch = /^data:(image\/(png|jpeg|jpg|webp|svg\+xml));base64$/i.exec(header)
+  if (!headerMatch) return null
+
+  const mime = headerMatch[1]
   const extMap: Record<string, string> = {
     'image/png': 'png',
     'image/jpeg': 'jpg',
@@ -37,7 +48,7 @@ function decodeDataUrl(dataUrl: string): { ext: string; mime: string; buffer: Bu
     'image/webp': 'webp',
     'image/svg+xml': 'svg',
   }
-  return { ext: extMap[mime] || 'png', mime, buffer: Buffer.from(match[3], 'base64') }
+  return { ext: extMap[mime.toLowerCase()] || 'png', mime, buffer: Buffer.from(b64, 'base64') }
 }
 
 export async function POST(
@@ -76,30 +87,6 @@ export async function POST(
       )
     }
 
-    if (existing.intake_tier === 'ai_premium') {
-      const aiErr = validateAiPremiumReady(existing)
-      if (aiErr) {
-        return NextResponse.json({ error: aiErr }, { status: 403 })
-      }
-    }
-
-    let logoUrl: string | null = null
-    if (typeof body.logoDataUrl === 'string' && body.logoDataUrl.startsWith('data:')) {
-      const decoded = decodeDataUrl(body.logoDataUrl)
-      if (!decoded) {
-        return NextResponse.json({ error: 'Unsupported logo format' }, { status: 400 })
-      }
-      if (decoded.buffer.byteLength > 3 * 1024 * 1024) {
-        return NextResponse.json({ error: 'Logo too large (max 3MB)' }, { status: 400 })
-      }
-      const path = `intakes/${token}/logo.${decoded.ext}`
-      const { error: upErr } = await supabase.storage
-        .from('site-assets')
-        .upload(path, decoded.buffer, { contentType: decoded.mime, upsert: true })
-      if (upErr) throw upErr
-      logoUrl = supabase.storage.from('site-assets').getPublicUrl(path).data.publicUrl
-    }
-
     const toStr = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : null)
     const toArr = (v: unknown) => (Array.isArray(v) ? v.filter((x) => typeof x === 'string') : [])
 
@@ -127,6 +114,70 @@ export async function POST(
         { error: 'Select at least one service you offer.' },
         { status: 400 }
       )
+    }
+
+    if (existing.intake_tier === 'ai_premium') {
+      // Validate image selections against the services being submitted in this
+      // request — not the (possibly stale/empty) services stored on the row.
+      // The studio keys hero/product selections by the current form's service
+      // labels; validating against the old row labels produced a false
+      // "Select hero and product images before submitting" failure.
+      const aiErr = validateAiPremiumReady({
+        ...existing,
+        services,
+        other_services: hasOther ? otherServices : null,
+      })
+      if (aiErr) {
+        return NextResponse.json({ error: aiErr }, { status: 403 })
+      }
+    }
+
+    // --- Gallery images ---
+    // Each entry is either { dataUrl: string } or { url: string }.
+    // data URLs are uploaded to storage; plain URLs are validated and kept as-is.
+    const galleryUrls: string[] = []
+    const rawGallery = Array.isArray(body.galleryImages) ? body.galleryImages : []
+    for (let i = 0; i < rawGallery.length && i < 20; i++) {
+      const entry = rawGallery[i]
+      if (!entry || typeof entry !== 'object') continue
+      if (typeof entry.dataUrl === 'string' && entry.dataUrl.startsWith('data:')) {
+        const decoded = decodeDataUrl(entry.dataUrl)
+        if (!decoded) continue
+        if (decoded.buffer.byteLength > 10 * 1024 * 1024) continue // 10MB per image limit
+        const path = `intakes/${token}/gallery/${i + 1}.${decoded.ext}`
+        const { error: upErr } = await supabase.storage
+          .from('site-assets')
+          .upload(path, decoded.buffer, { contentType: decoded.mime, upsert: true })
+        if (upErr) {
+          console.error('Gallery upload error for image', i + 1, upErr)
+          continue
+        }
+        galleryUrls.push(supabase.storage.from('site-assets').getPublicUrl(path).data.publicUrl)
+      } else if (typeof entry.url === 'string') {
+        try {
+          const parsed = new URL(entry.url.trim())
+          if (parsed.protocol === 'https:') galleryUrls.push(parsed.href)
+        } catch {
+          // Invalid URL — skip
+        }
+      }
+    }
+
+    let logoUrl: string | null = null
+    if (typeof body.logoDataUrl === 'string' && body.logoDataUrl.startsWith('data:')) {
+      const decoded = decodeDataUrl(body.logoDataUrl)
+      if (!decoded) {
+        return NextResponse.json({ error: 'Unsupported logo format' }, { status: 400 })
+      }
+      if (decoded.buffer.byteLength > 3 * 1024 * 1024) {
+        return NextResponse.json({ error: 'Logo too large (max 3MB)' }, { status: 400 })
+      }
+      const path = `intakes/${token}/logo.${decoded.ext}`
+      const { error: upErr } = await supabase.storage
+        .from('site-assets')
+        .upload(path, decoded.buffer, { contentType: decoded.mime, upsert: true })
+      if (upErr) throw upErr
+      logoUrl = supabase.storage.from('site-assets').getPublicUrl(path).data.publicUrl
     }
 
     const requestedProduct =
@@ -161,7 +212,12 @@ export async function POST(
       primary_cta: toStr(body.primaryCta),
       desired_domain: toStr(body.desiredDomain),
       notes: toStr(body.notes),
+      requested_pages: clampPagesForTier(
+        body.pages,
+        existing.intake_tier === 'ai_premium' ? 'ai_premium' : 'standard'
+      ),
       requested_product: requestedProduct,
+      gallery_images: galleryUrls,
     }
     if (logoUrl) update.logo_url = logoUrl
 
@@ -181,8 +237,14 @@ export async function POST(
       if (existing.intake_tier === 'ai_premium' && requestedProduct !== 'widget') {
         jobMode = 'ai_full'
       }
-      await enqueueProvisionJob(existing.id, jobMode)
-      provisionQueued = true
+      try {
+        await enqueueProvisionJob(existing.id, jobMode)
+        provisionQueued = true
+      } catch (enqueueErr) {
+        // Intake data is saved — log the enqueue failure but don't surface a 500
+        // to the user. An admin can manually re-queue from the dashboard.
+        console.error('enqueueProvisionJob failed (intake saved):', enqueueErr)
+      }
     }
 
     return NextResponse.json({

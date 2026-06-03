@@ -6,7 +6,7 @@
     },
     {
       "path": "/api/cron/process-provision-jobs",
-      "schedule": "*/2 * * * *"
+      "schedule": "0 5 * * *"
     }
   ]
 }

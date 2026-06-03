@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { getIntakeByToken } from '@/lib/intake/getIntakeByToken'
 import { assertDraftIntake, assertDepositPaid } from '@/lib/intake/intakeTierGates'
+import { resolveStudioServiceNames } from '@/lib/intake/studioServiceNames'
 import { parseImageSelections, syncProductSlots } from '@/lib/intake/imageSelections'
 
 export const runtime = 'nodejs'
@@ -41,7 +42,7 @@ export async function PATCH(
 
     const selections = syncProductSlots(
       parseImageSelections(row.image_selections),
-      row.services?.length ? row.services : []
+      resolveStudioServiceNames(row, body.serviceNames)
     )
 
     if (slot === 'hero') {

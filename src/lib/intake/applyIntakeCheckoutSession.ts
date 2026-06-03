@@ -1,5 +1,6 @@
 import type Stripe from 'stripe'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { syncTenantLaunchAccess } from '@/lib/intake/syncTenantLaunchAccess'
 
 type ApplyResult = {
   applied: boolean
@@ -90,13 +91,10 @@ export async function applyIntakeCheckoutSession(
         .maybeSingle()
 
       if (linked?.provisioned_contractor_id) {
-        await admin
-          .from('tenants')
-          .update({
-            site_status: 'active',
-            updated_at: now,
-          })
-          .eq('id', linked.provisioned_contractor_id)
+        await syncTenantLaunchAccess({
+          tenantId: linked.provisioned_contractor_id,
+          intakeId,
+        })
       }
     }
 

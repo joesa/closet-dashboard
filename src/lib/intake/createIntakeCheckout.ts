@@ -48,7 +48,7 @@ export async function createIntakeCheckoutSession(opts: {
         contractor_id: row.provisioned_contractor_id,
         maintenance_plan: plan,
       },
-      success_url: `${returnUrl}?payment=success&kind=maintenance`,
+      success_url: `${returnUrl}?payment=success&kind=maintenance&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${returnUrl}?payment=cancelled`,
     })
   } else {
@@ -108,7 +108,7 @@ export async function createIntakeCheckoutSession(opts: {
         intake_token: token,
         tier: row.intake_tier,
       },
-      success_url: `${returnUrl}?payment=success&kind=${kind}`,
+      success_url: `${returnUrl}?payment=success&kind=${kind}&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${returnUrl}?payment=cancelled`,
     })
 

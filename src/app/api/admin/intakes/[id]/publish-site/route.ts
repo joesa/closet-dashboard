@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { requireAdmin, logAdminAction } from '@/lib/admin'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { isLaunchBuildPaid } from '@/lib/intake/intakePaymentStage'
+import { syncTenantLaunchAccess } from '@/lib/intake/syncTenantLaunchAccess'
 import type { ProspectIntakeRow } from '@/lib/intake/getIntakeByToken'
 
 export async function POST(
@@ -45,20 +46,10 @@ export async function POST(
       )
     }
 
-    const { data: tenant, error: tenantErr } = await admin
-      .from('tenants')
-      .update({ site_status: 'active' })
-      .eq('id', row.provisioned_contractor_id)
-      .select('id, site_status')
-      .maybeSingle()
-
-    if (tenantErr) throw tenantErr
-    if (!tenant) {
-      return NextResponse.redirect(
-        new URL(`/admin/intakes/${intakeId}?error=tenant_not_found`, base),
-        303
-      )
-    }
+    const { siteStatus } = await syncTenantLaunchAccess({
+      tenantId: row.provisioned_contractor_id,
+      intakeId,
+    })
 
     await logAdminAction({
       actor: adminUser,
@@ -67,13 +58,15 @@ export async function POST(
       targetId: intakeId,
       metadata: {
         contractor_id: row.provisioned_contractor_id,
-        site_status: tenant.site_status,
+        site_status: siteStatus,
       },
     })
 
     const dest = new URL(`/admin/intakes/${intakeId}`, base)
-    if (tenant.site_status === 'active') {
+    if (siteStatus === 'active') {
       dest.searchParams.set('site_published', '1')
+    } else if (siteStatus === 'awaiting_launch_payment') {
+      dest.searchParams.set('error', 'launch_not_paid')
     }
     return NextResponse.redirect(dest, 303)
   } catch (error) {

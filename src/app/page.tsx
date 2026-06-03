@@ -446,6 +446,7 @@ const WIDGET_FEATURES = [
 
 const STANDARD_FEATURES = [
   'Custom marketing site + embedded quote calculator',
+  'Up to 5 pages — Home plus 4 you choose during setup',
   'Professional stock hero & product imagery',
   'Unlimited lead capture via SMS & email',
   'Custom room & finish pricing',
@@ -454,7 +455,10 @@ const STANDARD_FEATURES = [
 
 const PREMIUM_FEATURES = [
   'Everything in Standard',
+  'Up to 10 pages — Home plus 9 you choose during setup',
+  'AI-written selling copy for every page — no blank or placeholder content',
   'Custom AI hero & product photos (you pick during setup)',
+  'Photoreal, art-directed imagery — no generic AI-looking renders',
   'AI art-directed site copy & calculator config',
   'Up to 3 generations per image (3 options each)',
   'Same intake flow — build + maintenance match what you see',

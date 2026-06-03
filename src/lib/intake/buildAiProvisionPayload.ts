@@ -13,6 +13,7 @@ import {
   syncProductSlots,
 } from '@/lib/intake/imageSelections'
 import { provisionServiceLabels } from '@/lib/intake/provisionServiceLabels'
+import { normalizeAiPagesConfig } from '@/lib/catalog/sitePages'
 import type { ProvisionTenantInput } from '@/lib/provision/types'
 
 type AiSiteBundle = {
@@ -106,6 +107,15 @@ export async function buildAiProvisionPayload(
     theme,
     layoutStyle,
     products,
+    // The model returns pagesConfig at the TOP level of ai_site_config (sibling
+    // of siteConfig), so it must be lifted in here — otherwise provisioning
+    // never sees it and falls back to empty placeholder pages. Reconcile slugs
+    // against the prospect's chosen pages so routing + nav stay correct.
+    pagesConfig: normalizeAiPagesConfig(
+      rawConfig?.pagesConfig,
+      row.requested_pages ?? [],
+      row.intake_tier === 'ai_premium' ? 'ai_premium' : 'standard'
+    ),
     presentation: storedPres ?? {
       theme,
       layoutStyle,

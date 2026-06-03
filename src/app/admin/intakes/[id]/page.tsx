@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { getTenantPublicUrl } from '@/lib/admin-preview'
 import { getIntakePaymentSummary, isLaunchBuildPaid } from '@/lib/intake/intakePaymentStage'
+import { syncTenantLaunchAccess } from '@/lib/intake/syncTenantLaunchAccess'
 import { formatUsd } from '@/lib/intake/tiers'
 import {
   approvePreviewAction,
@@ -51,12 +52,11 @@ export default async function IntakeDetailPage({
   let tenantSiteStatus: string | null = null
   let tenantSiteUrl: string | null = null
   if (data.provisioned_contractor_id) {
-    const { data: tenant } = await admin
-      .from('tenants')
-      .select('site_status')
-      .eq('id', data.provisioned_contractor_id)
-      .maybeSingle()
-    tenantSiteStatus = tenant?.site_status ?? null
+    const synced = await syncTenantLaunchAccess({
+      tenantId: data.provisioned_contractor_id,
+      intakeId: data.id,
+    })
+    tenantSiteStatus = synced.siteStatus
 
     const { data: domain } = await admin
       .from('domains')
@@ -173,6 +173,14 @@ export default async function IntakeDetailPage({
                 Publish site (launch payment received)
               </button>
             </form>
+          )}
+
+          {tenantSiteStatus === 'awaiting_launch_payment' && (
+            <p className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+              The customer&apos;s domain (including any custom domain) shows a{' '}
+              <strong>pay-to-launch</strong> page—not the full site—until launch payment is
+              complete. Use admin preview to review the built site.
+            </p>
           )}
 
           {launchPaid && tenantSiteStatus === 'active' && (

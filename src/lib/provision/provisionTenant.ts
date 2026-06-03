@@ -20,6 +20,7 @@ import {
   type ProvisionTenantResult,
   ProvisionReviewError,
 } from '@/lib/provision/types'
+import { syncTenantLaunchAccess } from '@/lib/intake/syncTenantLaunchAccess'
 
 function generateTempPassword() {
   const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*'
@@ -669,6 +670,10 @@ export async function provisionTenant(
           updated_at: new Date().toISOString(),
         })
         .eq('id', intakeId)
+
+      if (!isWidgetOnly) {
+        await syncTenantLaunchAccess({ tenantId, intakeId })
+      }
     } catch (err) {
       console.error('Failed to mark intake built:', err)
     }

@@ -6,6 +6,7 @@ import {
 } from '@/lib/ai/generateImagesBatch'
 import { getIntakeByToken } from '@/lib/intake/getIntakeByToken'
 import { assertDraftIntake, assertDepositPaid } from '@/lib/intake/intakeTierGates'
+import { resolveStudioServiceNames } from '@/lib/intake/studioServiceNames'
 import {
   maxAttemptsPerSlot,
   parseImageSelections,
@@ -56,9 +57,10 @@ export async function POST(
     }
 
     const maxAttempts = maxAttemptsPerSlot()
+    const serviceNames = resolveStudioServiceNames(row, body.serviceNames)
     const selections = syncProductSlots(
       parseImageSelections(row.image_selections),
-      row.services?.length ? row.services : []
+      serviceNames
     )
 
     if (slot === 'hero') {

@@ -6,12 +6,13 @@ import { buildIntakeBrief } from '@/lib/intake/buildIntakeBrief'
 import { getIntakeByToken } from '@/lib/intake/getIntakeByToken'
 import { assertDraftIntake, assertDepositPaid } from '@/lib/intake/intakeTierGates'
 import { checkRateLimit, hashRateKey } from '@/lib/rateLimit'
+import { clampPagesForTier, pageSlugsToSitemap } from '@/lib/catalog/sitePages'
 
 export const maxDuration = 60
 export const runtime = 'nodejs'
 
 export async function POST(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ token: string }> }
 ) {
   try {
@@ -44,13 +45,30 @@ export async function POST(
       )
     }
 
-    const result = await generateSiteConfigFromInput(brief)
+    // Prefer pages selected in the live form; fall back to what's already
+    // saved. Either way, enforce the tier's page cap so the AI never builds
+    // more pages than the customer's plan allows.
+    const tier = row.intake_tier === 'ai_premium' ? 'ai_premium' : 'standard'
+    let pageSlugs: string[] = []
+    try {
+      const body = await req.json()
+      pageSlugs = clampPagesForTier(body?.pages, tier)
+    } catch {
+      // No/invalid body — fall back to persisted selection below.
+    }
+    if (pageSlugs.length === 0) {
+      pageSlugs = clampPagesForTier(row.requested_pages, tier)
+    }
+    const sitemap = pageSlugsToSitemap(pageSlugs)
+
+    const result = await generateSiteConfigFromInput(brief, sitemap)
     const merged = await mergeAiSiteConfigWithPresentation(row, result.data)
     const admin = getSupabaseAdmin()
     await admin
       .from('prospect_intakes')
       .update({
         ai_site_config: merged,
+        requested_pages: pageSlugs,
         updated_at: new Date().toISOString(),
       })
       .eq('id', row.id)
