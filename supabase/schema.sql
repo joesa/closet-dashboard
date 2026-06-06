@@ -97,6 +97,22 @@ create policy "Allow authenticated delete on addons"
     )
   );
 
+create policy "Allow authenticated update on addons"
+  on public.contractor_addons
+  for update
+  using (
+    exists (
+      select 1 from public.contractor_settings
+      where id = contractor_id and user_id = auth.uid()
+    )
+  )
+  with check (
+    exists (
+      select 1 from public.contractor_settings
+      where id = contractor_id and user_id = auth.uid()
+    )
+  );
+
 -- -----------------------------------------------------------------------------
 -- Migration: Room-Specific Pricing Matrix (JSONB)
 -- -----------------------------------------------------------------------------

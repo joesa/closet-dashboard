@@ -322,6 +322,38 @@ export default function DashboardPage() {
     setPreviewKey((prev) => prev + 1)
   }
 
+  const handleAddonNameChange = (addonId: string, value: string) => {
+    setAddons((prev) =>
+      prev.map((a) => (a.id === addonId ? { ...a, name: value } : a))
+    )
+  }
+
+  const handleAddonNameBlur = async (addonId: string, value: string) => {
+    const trimmed = value.trim()
+    if (!trimmed) return
+    setAddons((prev) =>
+      prev.map((a) => (a.id === addonId ? { ...a, name: trimmed } : a))
+    )
+    const { error } = await supabaseBrowser
+      .from('contractor_addons')
+      .update({ name: trimmed })
+      .eq('id', addonId)
+    if (!error) setPreviewKey((prev) => prev + 1)
+  }
+
+  const handleAddonPriceChange = useCallback(async (addonId: string, value: string) => {
+    const parsed = parseFloat(value)
+    const price = Number.isFinite(parsed) ? parsed : 0
+    setAddons((prev) =>
+      prev.map((a) => (a.id === addonId ? { ...a, price } : a))
+    )
+    await supabaseBrowser
+      .from('contractor_addons')
+      .update({ price })
+      .eq('id', addonId)
+    setPreviewKey((prev) => prev + 1)
+  }, [])
+
   const handleAddCustomRoom = async () => {
     if (!form || !newRoom.name.trim()) return
     const trimmed = newRoom.name.trim()
@@ -1125,20 +1157,40 @@ export default function DashboardPage() {
                       </summary>
                       <ul className="divide-y divide-white/[0.04] border-t border-white/[0.04]">
                         {roomAddons.map((addon) => (
-                          <li key={addon.id} className="flex items-center justify-between px-4 py-3">
-                            <span className="text-sm text-zinc-200">{addon.name}</span>
-                            <div className="flex items-center gap-4">
-                              <span className="font-mono text-sm text-zinc-400">${addon.price.toFixed(2)}</span>
-                              <button
-                                onClick={() => handleDeleteAddon(addon.id)}
-                                className="p-1.5 text-zinc-600 transition hover:text-red-400"
-                                title="Delete"
-                              >
-                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4">
-                                  <path fillRule="evenodd" d="M8.75 1A2.75 2.75 0 006 3.75v.443c-.795.077-1.584.176-2.365.298a.75.75 0 10.23 1.482l.149-.022.841 10.518A2.75 2.75 0 007.596 19h4.807a2.75 2.75 0 002.742-2.53l.841-10.52.149.023a.75.75 0 00.23-1.482A41.03 41.03 0 0014 4.193V3.75A2.75 2.75 0 0011.25 1h-2.5zM10 4c.84 0 1.673.025 2.5.075V3.75c0-.69-.56-1.25-1.25-1.25h-2.5c-.69 0-1.25.56-1.25 1.25v.325C8.327 4.025 9.16 4 10 4zM8.58 7.72a.75.75 0 00-1.5.06l.3 7.5a.75.75 0 101.5-.06l-.3-7.5zm4.34.06a.75.75 0 10-1.5-.06l-.3 7.5a.75.75 0 101.5.06l.3-7.5z" clipRule="evenodd" />
-                                </svg>
-                              </button>
+                          <li key={addon.id} className="flex items-center gap-3 px-4 py-3">
+                            <input
+                              type="text"
+                              value={addon.name}
+                              onChange={(e) => handleAddonNameChange(addon.id, e.target.value)}
+                              onBlur={(e) => handleAddonNameBlur(addon.id, e.target.value)}
+                              aria-label="Add-on name"
+                              className="min-w-0 flex-1 rounded-lg border border-white/[0.06] bg-white/[0.03] px-3 py-2 text-sm text-white outline-none transition focus:border-white/30 focus:bg-white/[0.08]"
+                            />
+                            <div className="relative w-28 shrink-0">
+                              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-zinc-600">
+                                $
+                              </span>
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={addon.price || ''}
+                                onChange={(e) => handleAddonPriceChange(addon.id, e.target.value)}
+                                aria-label={`${addon.name} price`}
+                                className="w-full rounded-lg border border-white/[0.06] bg-white/[0.03] py-2 pl-7 pr-3 text-sm text-white outline-none transition focus:border-white/30 focus:bg-white/[0.08]"
+                              />
                             </div>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteAddon(addon.id)}
+                              className="shrink-0 p-1.5 text-zinc-600 transition hover:text-red-400"
+                              title="Delete"
+                              aria-label={`Delete ${addon.name}`}
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4">
+                                <path fillRule="evenodd" d="M8.75 1A2.75 2.75 0 006 3.75v.443c-.795.077-1.584.176-2.365.298a.75.75 0 10.23 1.482l.149-.022.841 10.518A2.75 2.75 0 007.596 19h4.807a2.75 2.75 0 002.742-2.53l.841-10.52.149.023a.75.75 0 00.23-1.482A41.03 41.03 0 0014 4.193V3.75A2.75 2.75 0 0011.25 1h-2.5zM10 4c.84 0 1.673.025 2.5.075V3.75c0-.69-.56-1.25-1.25-1.25h-2.5c-.69 0-1.25.56-1.25 1.25v.325C8.327 4.025 9.16 4 10 4zM8.58 7.72a.75.75 0 00-1.5.06l.3 7.5a.75.75 0 101.5-.06l-.3-7.5zm4.34.06a.75.75 0 10-1.5-.06l-.3 7.5a.75.75 0 101.5.06l.3-7.5z" clipRule="evenodd" />
+                              </svg>
+                            </button>
                           </li>
                         ))}
                       </ul>
