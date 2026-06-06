@@ -10,6 +10,8 @@ const geistSans = Geist({
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
+  // Mono is sparse (IDs, prices) — preloading on every page triggers Chrome warnings.
+  preload: false,
 });
 
 export const metadata: Metadata = {
@@ -26,9 +28,11 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} h-full`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className={`${geistSans.className} min-h-full flex flex-col antialiased`}>
+        {children}
+      </body>
     </html>
   );
 }
