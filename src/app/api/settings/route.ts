@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { corsHeaders, handleOptions } from '@/lib/cors'
 import { normalizeRoomPricing } from '@/lib/rooms'
 import { assertEntitled } from '@/lib/gate'
+import { expandAddonsForWidget } from '@/lib/widgetAddons'
 
 export const runtime = 'edge'
 
@@ -121,12 +122,11 @@ export async function GET(req: Request) {
       // System defaults the contractor has hidden from their widget.
       disabledDefaultRooms: (data.disabled_default_rooms as string[] | null) || [],
       disabledDefaultFinishes: (data.disabled_default_finishes as string[] | null) || [],
-      addOns: (addonsData || []).map(addon => ({
-        id: addon.id,
-        roomType: addon.room_type,
-        name: addon.name,
-        price: addon.price
-      }))
+      addOns: expandAddonsForWidget(
+        addonsData || [],
+        (data.disabled_default_rooms as string[] | null) || [],
+        (roomsData || []).map((r) => r.name)
+      ),
     }
 
     return NextResponse.json(responsePayload, {
