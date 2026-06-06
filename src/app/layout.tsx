@@ -5,6 +5,9 @@ import "./globals.css";
 const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
+  // Dashboard hydrates after auth — preloaded woff2 isn't consumed within Chrome's
+  // window and triggers a console warning. Font still loads via next/font CSS.
+  preload: false,
 });
 
 const geistMono = Geist_Mono({
