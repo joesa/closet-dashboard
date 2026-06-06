@@ -1,5 +1,4 @@
 import { Resend } from 'resend'
-import { createClient } from '@supabase/supabase-js'
 import { corsHeaders, handleOptions } from '@/lib/cors'
 import { assertEntitled } from '@/lib/gate'
 import { DEMO_CONTRACTOR_ID, isAllowedDemoOrigin } from '@/lib/demo'
@@ -240,7 +239,7 @@ export async function POST(request: Request) {
     const calculatedLow = body.calculatedLow ?? body.range?.low ?? 0
     const calculatedHigh = body.calculatedHigh ?? body.range?.high ?? 0
 
-    if (!calculatedLow || !calculatedHigh) {
+    if (!Number.isFinite(calculatedHigh) || calculatedHigh <= 0) {
       return json({ error: 'Price range is required (range or calculatedLow/calculatedHigh).' }, 400)
     }
 
@@ -282,12 +281,12 @@ export async function POST(request: Request) {
         )
       }
 
-      const supabase = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-      )
+      // Service role: contact_email/contact_phone are not granted to anon (see
+      // 20260601150000_tenant_rls_and_config_extras.sql) but send-lead needs them
+      // to deliver the lead notification.
+      const adminSupa = getSupabaseAdmin()
 
-      const { data: settings, error: dbError } = await supabase
+      const { data: settings, error: dbError } = await adminSupa
         .from('contractor_settings')
         .select('contact_email, contact_phone, company_name')
         .eq('id', body.contractorId)
@@ -302,7 +301,7 @@ export async function POST(request: Request) {
       // Fetch Addons to resolve specific names
       const requestedAddOns = body.selectedAddOns || body.addOns || [];
       if (requestedAddOns.length > 0) {
-        const { data: addonsData } = await supabase
+        const { data: addonsData } = await adminSupa
           .from('contractor_addons')
           .select('id, name')
           .eq('contractor_id', body.contractorId)
@@ -372,7 +371,7 @@ export async function POST(request: Request) {
         estimated_total: body.estimatedTotal ?? null,
         range_low: calculatedLow,
         range_high: calculatedHigh,
-        add_ons: body.selectedAddOns ?? body.addOns ?? null,
+        add_ons: body.selectedAddOns ?? body.addOns ?? [],
         source_origin: origin,
         user_agent: ua,
         ip_hash: ipHash,
