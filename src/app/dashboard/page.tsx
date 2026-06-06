@@ -544,6 +544,33 @@ export default function DashboardPage() {
     }
   }
 
+  const addonGroups = useMemo(() => {
+    const map = new Map<
+      string,
+      { key: string; label: string; targets: string[]; addons: ContractorAddon[] }
+    >()
+    for (const addon of addons) {
+      const key = addonScopeKey(addon)
+      const targets = getAddonTargetRooms(addon)
+      const existing = map.get(key)
+      if (existing) {
+        existing.addons.push(addon)
+      } else {
+        map.set(key, {
+          key,
+          label: formatAddonScopeLabel(targets),
+          targets,
+          addons: [addon],
+        })
+      }
+    }
+    return [...map.values()].sort((a, b) => {
+      if (a.key === 'all') return -1
+      if (b.key === 'all') return 1
+      return a.label.localeCompare(b.label)
+    })
+  }, [addons])
+
   // ── Loading state while checking auth ──
   if (!authChecked || !form) {
     return (
@@ -574,33 +601,6 @@ export default function DashboardPage() {
     ...visibleDefaultRooms,
     ...customRooms.map((room) => room.name),
   ]
-
-  const addonGroups = useMemo(() => {
-    const map = new Map<
-      string,
-      { key: string; label: string; targets: string[]; addons: ContractorAddon[] }
-    >()
-    for (const addon of addons) {
-      const key = addonScopeKey(addon)
-      const targets = getAddonTargetRooms(addon)
-      const existing = map.get(key)
-      if (existing) {
-        existing.addons.push(addon)
-      } else {
-        map.set(key, {
-          key,
-          label: formatAddonScopeLabel(targets),
-          targets,
-          addons: [addon],
-        })
-      }
-    }
-    return [...map.values()].sort((a, b) => {
-      if (a.key === 'all') return -1
-      if (b.key === 'all') return 1
-      return a.label.localeCompare(b.label)
-    })
-  }, [addons])
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-white font-sans">
