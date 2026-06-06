@@ -42,6 +42,7 @@ export type ContractorSettings = {
   referred_by?: string | null
   disabled_default_rooms?: string[]
   disabled_default_finishes?: string[]
+  tier_names?: { basic?: string; standard?: string; premium?: string }
   // Billing fields (read-only from the dashboard; the Stripe webhook writes
   // these via the service-role client). Surfaced here so the trial banner
   // can be rendered without a second round-trip.
@@ -86,7 +87,7 @@ export default function DashboardPage() {
   const [previewKey, setPreviewKey] = useState(0)
 
   const [addons, setAddons] = useState<ContractorAddon[]>([])
-  const [newAddon, setNewAddon] = useState({ room_type: 'Walk-In Closet', name: '', price: 0 })
+  const [newAddon, setNewAddon] = useState({ room_type: 'all', name: '', price: 0 })
   const [addingAddon, setAddingAddon] = useState(false)
 
   const [customRooms, setCustomRooms] = useState<CustomRoom[]>([])
@@ -309,7 +310,7 @@ export default function DashboardPage() {
 
     if (!error && data) {
       setAddons((prev) => [...prev, data as ContractorAddon])
-      setNewAddon({ room_type: 'Walk-In Closet', name: '', price: 0 })
+      setNewAddon({ room_type: 'all', name: '', price: 0 })
       setPreviewKey((prev) => prev + 1)
     }
     setAddingAddon(false)
@@ -487,6 +488,23 @@ export default function DashboardPage() {
     )
   }
 
+  const disabledRoomList = form.disabled_default_rooms ?? []
+  const visibleDefaultRooms = ROOM_TYPES.filter((room) => !disabledRoomList.includes(room))
+  const disabledFinishesList = form.disabled_default_finishes ?? []
+  const allDefaultFinishesHidden = PRICING_TIERS.every((tier) =>
+    disabledFinishesList.includes(tier)
+  )
+  const tierLabel = (tier: PricingTier) => {
+    const names = form.tier_names
+    const custom = names?.[tier]?.trim()
+    if (custom) return custom
+    return tier.charAt(0).toUpperCase() + tier.slice(1)
+  }
+  const widgetRoomOptions = [
+    ...visibleDefaultRooms,
+    ...customRooms.map((room) => room.name),
+  ]
+
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-white font-sans">
       {/* ─── Top nav ─── */}
@@ -663,7 +681,7 @@ export default function DashboardPage() {
                 Room Pricing Matrix
               </h2>
               <span className="rounded-full bg-white/[0.06] px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-zinc-400">
-                {ROOM_TYPES.length} defaults · {customRooms.length} custom
+                {visibleDefaultRooms.length} active · {customRooms.length} custom
               </span>
             </div>
             <svg
@@ -678,31 +696,26 @@ export default function DashboardPage() {
           {roomsOpen && (
             <div id="room-pricing-panel">
               <p className="mb-5 text-xs text-zinc-500">
-                Set per-linear-foot pricing for each room type and finish tier. Toggle the switch to hide a default room from your widget, or add your own rooms below — only you will see them.
+                Pricing for the room types in your calculator. Add more rooms below if your offering grows.
               </p>
               <div className="mb-4 overflow-hidden rounded-xl border border-white/[0.06]">
                 <div className="sticky top-0 z-10 grid grid-cols-[1.4fr_1fr_1fr_1fr_2.5rem] gap-px border-b border-white/[0.06] bg-white/[0.04] text-[10px] font-medium uppercase tracking-widest text-zinc-500 backdrop-blur">
                   <div className="bg-[#12151C]/95 px-4 py-3">Room</div>
                   {PRICING_TIERS.map((tier) => (
                     <div key={tier} className="bg-[#12151C]/95 px-4 py-3">
-                      {tier}
+                      {tierLabel(tier)}
                     </div>
                   ))}
                   <div className="bg-[#12151C]/95 px-2 py-3 text-center" aria-label="Show in widget">On</div>
                 </div>
                 <div className="max-h-[28rem] overflow-y-auto">
-                  {ROOM_TYPES.map((room) => {
-                    const disabled = (form.disabled_default_rooms ?? []).includes(room)
-                    return (
+                  {visibleDefaultRooms.map((room) => (
                     <div
                       key={room}
-                      className={`grid grid-cols-[1.4fr_1fr_1fr_1fr_2.5rem] gap-px border-t border-white/[0.04] bg-white/[0.04] first:border-t-0 ${disabled ? 'opacity-50' : ''}`}
+                      className="grid grid-cols-[1.4fr_1fr_1fr_1fr_2.5rem] gap-px border-t border-white/[0.04] bg-white/[0.04] first:border-t-0"
                     >
                       <div className="flex items-center bg-[#12151C] px-4 py-3 text-sm text-zinc-200">
                         {room}
-                        {disabled && (
-                          <span className="ml-2 rounded bg-white/[0.06] px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wider text-zinc-500">hidden</span>
-                        )}
                       </div>
                       {PRICING_TIERS.map((tier) => (
                         <div key={tier} className="bg-[#12151C] px-3 py-2">
@@ -727,21 +740,20 @@ export default function DashboardPage() {
                         </div>
                       ))}
                       <div className="flex items-center justify-center bg-[#12151C]">
-                        <label className="relative inline-flex cursor-pointer items-center" title={disabled ? 'Show this room in the widget' : 'Hide this room from the widget'}>
+                        <label className="relative inline-flex cursor-pointer items-center" title="Hide this room from your widget">
                           <input
                             type="checkbox"
                             className="peer sr-only"
-                            checked={!disabled}
+                            checked
                             onChange={(e) => toggleDefaultRoom(room, e.target.checked)}
-                            aria-label={`${disabled ? 'Show' : 'Hide'} ${room}`}
+                            aria-label={`Hide ${room}`}
                           />
                           <span className="h-4 w-7 rounded-full bg-zinc-700 transition-colors peer-checked:bg-emerald-500" />
                           <span className="absolute left-0.5 top-0.5 h-3 w-3 rounded-full bg-white transition-transform peer-checked:translate-x-3" />
                         </label>
                       </div>
                     </div>
-                    )
-                  })}
+                  ))}
                   {customRooms.map((room) => (
                     <div
                       key={room.id}
@@ -808,7 +820,7 @@ export default function DashboardPage() {
                   return (
                     <div key={tier} className="w-full sm:w-24">
                       <label className="mb-1.5 block text-[10px] font-medium uppercase tracking-widest text-zinc-500">
-                        {tier}
+                        {tierLabel(tier)}
                       </label>
                       <div className="relative">
                         <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-zinc-500">$</span>
@@ -861,7 +873,7 @@ export default function DashboardPage() {
                       Materials &amp; Finishes
                     </h2>
                     <span className="rounded-full bg-white/[0.06] px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-zinc-400">
-                      {3 - disabledFinishes.length} default · {customFinishes.length} custom
+                      {customFinishes.length} material{customFinishes.length === 1 ? '' : 's'}
                     </span>
                   </div>
                   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className={`h-4 w-4 text-zinc-500 transition-transform ${finishesOpen ? 'rotate-180' : ''}`}>
@@ -871,7 +883,7 @@ export default function DashboardPage() {
                 {finishesOpen && (
                   <div id="finishes-panel" className="mb-10">
                     <p className="mb-5 text-xs text-zinc-500">
-                      Toggle off any default material you don&apos;t carry, or add your own colors. Each custom finish maps to a pricing tier so the per-foot rates stay consistent.
+                      Material options shown in your calculator. Each finish maps to a pricing tier ({tierLabel('basic')}, {tierLabel('standard')}, {tierLabel('premium')}).
                     </p>
 
                     <div className="mb-4 overflow-hidden rounded-xl border border-white/[0.06]">
@@ -883,38 +895,39 @@ export default function DashboardPage() {
                         <div className="bg-[#12151C]/95 px-2 py-3" />
                       </div>
 
-                      {PRICING_TIERS.map((tier) => {
-                        const meta = DEFAULT_FINISH_META[tier]
-                        const disabled = disabledFinishes.includes(tier)
-                        return (
-                          <div key={tier} className={`grid grid-cols-[auto_1fr_auto_auto_2.5rem] items-center gap-px border-t border-white/[0.04] bg-white/[0.04] first:border-t-0 ${disabled ? 'opacity-50' : ''}`}>
-                            <div className="bg-[#12151C] px-4 py-3">
-                              <span className="block h-6 w-10 rounded-md border border-white/10" style={{ backgroundColor: meta.swatch }} />
+                      {!allDefaultFinishesHidden &&
+                        PRICING_TIERS.map((tier) => {
+                          const meta = DEFAULT_FINISH_META[tier]
+                          const disabled = disabledFinishesList.includes(tier)
+                          return (
+                            <div key={tier} className={`grid grid-cols-[auto_1fr_auto_auto_2.5rem] items-center gap-px border-t border-white/[0.04] bg-white/[0.04] first:border-t-0 ${disabled ? 'opacity-50' : ''}`}>
+                              <div className="bg-[#12151C] px-4 py-3">
+                                <span className="block h-6 w-10 rounded-md border border-white/10" style={{ backgroundColor: meta.swatch }} />
+                              </div>
+                              <div className="bg-[#12151C] px-4 py-3 text-sm text-zinc-200">
+                                {meta.label}
+                                {disabled && (
+                                  <span className="ml-2 rounded bg-white/[0.06] px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wider text-zinc-500">hidden</span>
+                                )}
+                              </div>
+                              <div className="bg-[#12151C] px-4 py-3 text-xs uppercase tracking-wider text-zinc-500">{tierLabel(tier)}</div>
+                              <div className="flex items-center justify-center bg-[#12151C] px-4 py-3">
+                                <label className="relative inline-flex cursor-pointer items-center" title={disabled ? 'Show this finish in the widget' : 'Hide this finish from the widget'}>
+                                  <input
+                                    type="checkbox"
+                                    className="peer sr-only"
+                                    checked={!disabled}
+                                    onChange={(e) => toggleDefaultFinish(tier, e.target.checked)}
+                                    aria-label={`${disabled ? 'Show' : 'Hide'} ${meta.label}`}
+                                  />
+                                  <span className="h-4 w-7 rounded-full bg-zinc-700 transition-colors peer-checked:bg-emerald-500" />
+                                  <span className="absolute left-0.5 top-0.5 h-3 w-3 rounded-full bg-white transition-transform peer-checked:translate-x-3" />
+                                </label>
+                              </div>
+                              <div className="bg-[#12151C]" />
                             </div>
-                            <div className="bg-[#12151C] px-4 py-3 text-sm text-zinc-200">
-                              {meta.label}
-                              {disabled && (
-                                <span className="ml-2 rounded bg-white/[0.06] px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wider text-zinc-500">hidden</span>
-                              )}
-                            </div>
-                            <div className="bg-[#12151C] px-4 py-3 text-xs uppercase tracking-wider text-zinc-500">{tier}</div>
-                            <div className="flex items-center justify-center bg-[#12151C] px-4 py-3">
-                              <label className="relative inline-flex cursor-pointer items-center" title={disabled ? 'Show this finish in the widget' : 'Hide this finish from the widget'}>
-                                <input
-                                  type="checkbox"
-                                  className="peer sr-only"
-                                  checked={!disabled}
-                                  onChange={(e) => toggleDefaultFinish(tier, e.target.checked)}
-                                  aria-label={`${disabled ? 'Show' : 'Hide'} ${meta.label}`}
-                                />
-                                <span className="h-4 w-7 rounded-full bg-zinc-700 transition-colors peer-checked:bg-emerald-500" />
-                                <span className="absolute left-0.5 top-0.5 h-3 w-3 rounded-full bg-white transition-transform peer-checked:translate-x-3" />
-                              </label>
-                            </div>
-                            <div className="bg-[#12151C]" />
-                          </div>
-                        )
-                      })}
+                          )
+                        })}
 
                       {customFinishes.map((finish) => (
                         <div key={finish.id} className="grid grid-cols-[auto_1fr_auto_auto_2.5rem] items-center gap-px border-t border-white/[0.04] bg-white/[0.04]">
@@ -925,7 +938,7 @@ export default function DashboardPage() {
                             <span>{finish.label}</span>
                             <span className="rounded bg-white/[0.06] px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wider text-zinc-500">custom</span>
                           </div>
-                          <div className="bg-[#12151C] px-4 py-3 text-xs uppercase tracking-wider text-zinc-500">{finish.tier}</div>
+                          <div className="bg-[#12151C] px-4 py-3 text-xs uppercase tracking-wider text-zinc-500">{tierLabel(finish.tier as PricingTier)}</div>
                           <div className="bg-[#12151C] px-4 py-3 text-center text-xs text-emerald-400">✓</div>
                           <div className="flex items-center justify-center bg-[#12151C]">
                             <button
@@ -976,7 +989,7 @@ export default function DashboardPage() {
                           className="w-full rounded-lg border border-white/[0.06] bg-[#12151C] px-3 py-2.5 text-sm text-white outline-none focus:border-white/30"
                         >
                           {PRICING_TIERS.map((t) => (
-                            <option key={t} value={t}>{t}</option>
+                            <option key={t} value={t}>{tierLabel(t)}</option>
                           ))}
                         </select>
                       </div>
@@ -1035,16 +1048,10 @@ export default function DashboardPage() {
                   onChange={(e) => setNewAddon(prev => ({ ...prev, room_type: e.target.value }))}
                   className="w-full rounded-lg border border-white/[0.06] bg-[#12151C] px-3 py-2.5 text-sm text-white outline-none focus:border-white/30"
                 >
-                  {ROOM_TYPES.map((room) => (
+                  <option value="all">All rooms</option>
+                  {widgetRoomOptions.map((room) => (
                     <option key={room} value={room}>{room}</option>
                   ))}
-                  {customRooms.length > 0 && (
-                    <optgroup label="Your Custom Rooms">
-                      {customRooms.map((room) => (
-                        <option key={room.id} value={room.name}>{room.name}</option>
-                      ))}
-                    </optgroup>
-                  )}
                 </select>
               </div>
               <div className="flex-1">
@@ -1087,12 +1094,17 @@ export default function DashboardPage() {
             {/* Add-on List — grouped by room, each group collapsible */}
             {addons.length > 0 ? (
               <div className="space-y-2">
-                {[...ROOM_TYPES, ...customRooms.map((r) => r.name)].map((room) => {
-                  const roomAddons = addons.filter((a) => a.room_type === room)
+                {[
+                  ...(addons.some((a) => a.room_type === 'all')
+                    ? [{ key: 'all', label: 'All rooms' }]
+                    : []),
+                  ...widgetRoomOptions.map((room) => ({ key: room, label: room })),
+                ].map(({ key, label }) => {
+                  const roomAddons = addons.filter((a) => a.room_type === key)
                   if (roomAddons.length === 0) return null
                   return (
                     <details
-                      key={room}
+                      key={key}
                       className="group rounded-xl border border-white/[0.06] bg-[#12151C] open:bg-[#12151C]"
                     >
                       <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-3 text-xs font-semibold uppercase tracking-wider text-zinc-400 transition hover:text-zinc-200">
@@ -1105,7 +1117,7 @@ export default function DashboardPage() {
                           >
                             <path fillRule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.06 10 7.23 6.29a.75.75 0 111.04-1.08l4.39 4.25a.75.75 0 010 1.08l-4.39 4.25a.75.75 0 01-1.06-.02z" clipRule="evenodd" />
                           </svg>
-                          <span>{room}</span>
+                          <span>{label}</span>
                         </span>
                         <span className="rounded-full bg-white/[0.06] px-2 py-0.5 text-[10px] font-medium normal-case text-zinc-400">
                           {roomAddons.length}

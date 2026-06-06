@@ -1,11 +1,13 @@
 import {
   buildWidgetConfig,
+  parseAddOnText,
   type GeneratedWidgetConfig,
   type WidgetConfigHints,
 } from '@/lib/ai/buildWidgetConfig'
 import {
   cloneDefaultRoomPricing,
   isRoomType,
+  ROOM_TYPES,
   type RoomPricing,
 } from '@/lib/rooms'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
@@ -49,12 +51,63 @@ export function buildRoomPricingFromHints(hints: WidgetConfigHints): RoomPricing
  * Used when the contractor already has a trial row from signup — avoids
  * spinning up a duplicate tenant via the async provision cron.
  */
+function mergeGeneratedConfig(
+  hints: WidgetConfigHints,
+  generated: GeneratedWidgetConfig
+): GeneratedWidgetConfig {
+  const offered = new Set(hints.services ?? [])
+  const disabledDefaultRooms = ROOM_TYPES.filter((room) => !offered.has(room))
+
+  const customRooms = [...(generated.customRooms ?? [])]
+  const other = hints.otherServices?.trim()
+  if (other && !customRooms.some((r) => r.name.toLowerCase() === other.toLowerCase())) {
+    const seed = hints.seedPricing
+    const defaults = { basic: 45, standard: 65, premium: 110 }
+    customRooms.push({
+      name: other,
+      basic: hints.pricingModel === 'fixed' ? (seed?.basic ?? 0) : (seed?.basic ?? defaults.basic),
+      standard: seed?.standard ?? defaults.standard,
+      premium: seed?.premium ?? defaults.premium,
+    })
+  }
+
+  const customAddOns =
+    generated.customAddOns?.length
+      ? generated.customAddOns
+      : parseAddOnText(hints.addOnText)
+
+  const customFinishes =
+    hints.hasFinishes && hints.finishLabels?.length
+      ? hints.finishLabels.map((f, i) => {
+          const tierMap = ['basic', 'standard', 'premium'] as const
+          return {
+            label: f.label,
+            description: `${f.label} finish option`,
+            swatchHex: f.swatchHex || '#A78B6A',
+            tier: tierMap[i % 3],
+          }
+        })
+      : (generated.customFinishes ?? [])
+
+  const disableDefaultFinishes =
+    customFinishes.length > 0 || generated.disableDefaultFinishes
+
+  return {
+    ...generated,
+    customRooms,
+    customAddOns,
+    customFinishes,
+    disabledDefaultRooms,
+    disableDefaultFinishes,
+  }
+}
+
 export async function applyProWidgetConfig(
   contractorId: string,
   hints: WidgetConfigHints
 ): Promise<void> {
   const admin = getSupabaseAdmin()
-  const generated = await buildWidgetConfig(hints)
+  const generated = mergeGeneratedConfig(hints, await buildWidgetConfig(hints))
   const tierNames = defaultTierNames(hints)
   const roomPricing = buildRoomPricingFromHints(hints)
 
