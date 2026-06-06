@@ -43,7 +43,7 @@ export async function GET(req: Request) {
       // Selecting brand fields + pricing fields so the widget has everything it needs.
       // price_per_ft_* are DEPRECATED; kept in the response during the room_pricing
       // rollout for older widget builds and will be removed in a follow-up.
-      .select('company_name, primary_color_hex, price_per_ft_basic, price_per_ft_standard, price_per_ft_premium, price_drawer, price_shoe_rack, room_pricing, disabled_default_rooms, disabled_default_finishes')
+      .select('company_name, primary_color_hex, price_per_ft_basic, price_per_ft_standard, price_per_ft_premium, price_drawer, price_shoe_rack, room_pricing, disabled_default_rooms, disabled_default_finishes, tier_names')
       .eq('id', contractorId)
       .maybeSingle()
 
@@ -83,9 +83,19 @@ export async function GET(req: Request) {
       .eq('contractor_id', contractorId)
       .order('sort_order', { ascending: true })
 
+    const tierNamesRaw = data.tier_names as
+      | { basic?: string; standard?: string; premium?: string }
+      | null
+    const tierNames = {
+      basic: tierNamesRaw?.basic || 'Basic',
+      standard: tierNamesRaw?.standard || 'Standard',
+      premium: tierNamesRaw?.premium || 'Premium',
+    }
+
     const responsePayload = {
       companyName: data.company_name,
       primaryColorHex: data.primary_color_hex,
+      tierNames,
       // DEPRECATED: legacy global tiers, kept for older widget builds.
       pricePerFtBasic: data.price_per_ft_basic,
       pricePerFtStandard: data.price_per_ft_standard,

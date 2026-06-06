@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { applyProWidgetConfig } from '@/lib/provision/applyProWidgetConfig'
+import type { WidgetConfigHints } from '@/lib/ai/buildWidgetConfig'
 import { randomUUID } from 'crypto'
 
 export const runtime = 'nodejs'
@@ -11,8 +13,9 @@ export const runtime = 'nodejs'
  * from the ClosetQuote Pro intake wizard. This is called immediately after
  * the user creates their Supabase auth account in step 5 of the wizard.
  *
- * A background provisioning job picks up the intake and calls buildWidgetConfig()
- * to generate a bespoke calculator config from the hints.
+ * Applies widget_config_hints to the contractor's existing trial row immediately
+ * (signup already created contractor_settings). A provision job is recorded for
+ * audit/retry but the calculator is ready before redirect to /dashboard.
  */
 export async function POST(req: Request) {
   try {
@@ -64,21 +67,57 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    // Enqueue a widget provisioning job so the AI config runs async.
-    // Uses the same job queue the admin cron processes.
-    await supabase.from('provision_jobs').insert({
-      intake_id: data.id,
-      status: 'pending',
-      mode: 'widget',
-      attempts: 0,
-    }).then(({ error: jobErr }) => {
-      if (jobErr) console.error('[pro/start] Failed to enqueue provision job:', jobErr)
-    })
+    let configured = false
+    let contractorId: string | null = null
+
+    const { data: contractor } = await supabase
+      .from('contractor_settings')
+      .select('id')
+      .eq('contact_email', email)
+      .maybeSingle()
+
+    if (contractor?.id && widgetConfigHints) {
+      try {
+        await applyProWidgetConfig(
+          contractor.id,
+          widgetConfigHints as WidgetConfigHints
+        )
+        configured = true
+        contractorId = contractor.id
+        await supabase
+          .from('prospect_intakes')
+          .update({
+            status: 'built',
+            provisioned_contractor_id: contractor.id,
+          })
+          .eq('id', data.id)
+      } catch (applyErr) {
+        console.error('[pro/start] applyProWidgetConfig failed:', applyErr)
+      }
+    }
+
+    // Audit trail + cron retry if inline apply failed (e.g. transient Gemini error).
+    await supabase
+      .from('provision_jobs')
+      .insert({
+        intake_id: data.id,
+        status: configured ? 'succeeded' : 'pending',
+        mode: 'widget',
+        attempts: configured ? 1 : 0,
+        finished_at: configured ? new Date().toISOString() : null,
+      })
+      .then(({ error: jobErr }) => {
+        if (jobErr) console.error('[pro/start] Failed to enqueue provision job:', jobErr)
+      })
 
     return NextResponse.json({
       success: true,
       intakeId: data.id,
-      message: 'Your calculator is being configured — you\'ll see it in your dashboard shortly.',
+      contractorId,
+      configured,
+      message: configured
+        ? 'Your calculator is ready in your dashboard.'
+        : 'Your calculator is being configured — you\'ll see it in your dashboard shortly.',
     })
   } catch (err) {
     console.error('[pro/start] Error:', err)
