@@ -66,7 +66,7 @@ export async function GET(req: Request) {
     // Fetch custom addons
     const { data: addonsData } = await supabase
       .from('contractor_addons')
-      .select('id, room_type, name, price')
+      .select('id, room_type, room_types, name, price')
       .eq('contractor_id', contractorId)
       .order('created_at', { ascending: true })
 

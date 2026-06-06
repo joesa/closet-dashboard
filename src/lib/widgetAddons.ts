@@ -1,3 +1,4 @@
+import { getAddonTargetRooms } from '@/lib/addonRooms'
 import { ROOM_TYPES } from '@/lib/rooms'
 
 export type WidgetAddonRow = {
@@ -13,7 +14,13 @@ export type WidgetAddonRow = {
  * Keeps the real addon id so /api/calculate can resolve pricing.
  */
 export function expandAddonsForWidget(
-  addons: Array<{ id: string; room_type: string | null; name: string; price: number }>,
+  addons: Array<{
+    id: string
+    room_type: string | null
+    room_types?: string[] | null
+    name: string
+    price: number
+  }>,
   disabledDefaultRooms: string[],
   customRoomNames: string[]
 ): WidgetAddonRow[] {
@@ -22,24 +29,21 @@ export function expandAddonsForWidget(
     ...ROOM_TYPES.filter((room) => !disabled.has(room)),
     ...customRoomNames,
   ]
+  const enabledSet = new Set(enabledRooms)
 
   const result: WidgetAddonRow[] = []
 
   for (const addon of addons) {
-    const rt = (addon.room_type || 'all').trim()
-    if (rt.toLowerCase() === 'all') {
-      for (const room of enabledRooms) {
-        result.push({
-          id: addon.id,
-          roomType: room,
-          name: addon.name,
-          price: Number(addon.price) || 0,
-        })
-      }
-    } else {
+    const targets = getAddonTargetRooms(addon)
+    const rooms =
+      targets.length === 0
+        ? enabledRooms
+        : targets.filter((room) => enabledSet.has(room))
+
+    for (const room of rooms) {
       result.push({
         id: addon.id,
-        roomType: rt,
+        roomType: room,
         name: addon.name,
         price: Number(addon.price) || 0,
       })

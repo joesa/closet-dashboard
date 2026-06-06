@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import Script from 'next/script'
@@ -18,11 +18,18 @@ import {
   type RoomPricing,
   type RoomType,
 } from '@/lib/rooms'
+import {
+  addonScopeKey,
+  formatAddonScopeLabel,
+  getAddonTargetRooms,
+  roomScopeToDbFields,
+} from '@/lib/addonRooms'
 
 export type ContractorAddon = {
   id: string
   contractor_id: string
   room_type: string
+  room_types?: string[] | null
   name: string
   price: number
 }
@@ -87,7 +94,12 @@ export default function DashboardPage() {
   const [previewKey, setPreviewKey] = useState(0)
 
   const [addons, setAddons] = useState<ContractorAddon[]>([])
-  const [newAddon, setNewAddon] = useState({ room_type: 'all', name: '', price: 0 })
+  const [newAddon, setNewAddon] = useState({
+    apply_all_rooms: true,
+    rooms: [] as string[],
+    name: '',
+    price: 0,
+  })
   const [addingAddon, setAddingAddon] = useState(false)
 
   const [customRooms, setCustomRooms] = useState<CustomRoom[]>([])
@@ -295,11 +307,16 @@ export default function DashboardPage() {
     if (!form || !newAddon.name.trim()) return
     setAddingAddon(true)
 
+    const { room_type, room_types } = roomScopeToDbFields(
+      newAddon.rooms,
+      newAddon.apply_all_rooms
+    )
     const payload = {
       contractor_id: form.id,
-      room_type: newAddon.room_type,
+      room_type,
+      room_types,
       name: newAddon.name.trim(),
-      price: newAddon.price
+      price: newAddon.price,
     }
 
     const { data, error } = await supabaseBrowser
@@ -310,7 +327,7 @@ export default function DashboardPage() {
 
     if (!error && data) {
       setAddons((prev) => [...prev, data as ContractorAddon])
-      setNewAddon({ room_type: 'all', name: '', price: 0 })
+      setNewAddon({ apply_all_rooms: true, rooms: [], name: '', price: 0 })
       setPreviewKey((prev) => prev + 1)
     }
     setAddingAddon(false)
@@ -353,6 +370,27 @@ export default function DashboardPage() {
       .eq('id', addonId)
     setPreviewKey((prev) => prev + 1)
   }, [])
+
+  const handleAddonScopeChange = async (
+    addonIds: string[],
+    applyAllRooms: boolean,
+    selectedRooms: string[]
+  ) => {
+    const { room_type, room_types } = roomScopeToDbFields(
+      selectedRooms,
+      applyAllRooms
+    )
+    setAddons((prev) =>
+      prev.map((a) =>
+        addonIds.includes(a.id) ? { ...a, room_type, room_types } : a
+      )
+    )
+    await supabaseBrowser
+      .from('contractor_addons')
+      .update({ room_type, room_types })
+      .in('id', addonIds)
+    setPreviewKey((prev) => prev + 1)
+  }
 
   const handleAddCustomRoom = async () => {
     if (!form || !newRoom.name.trim()) return
@@ -536,6 +574,33 @@ export default function DashboardPage() {
     ...visibleDefaultRooms,
     ...customRooms.map((room) => room.name),
   ]
+
+  const addonGroups = useMemo(() => {
+    const map = new Map<
+      string,
+      { key: string; label: string; targets: string[]; addons: ContractorAddon[] }
+    >()
+    for (const addon of addons) {
+      const key = addonScopeKey(addon)
+      const targets = getAddonTargetRooms(addon)
+      const existing = map.get(key)
+      if (existing) {
+        existing.addons.push(addon)
+      } else {
+        map.set(key, {
+          key,
+          label: formatAddonScopeLabel(targets),
+          targets,
+          addons: [addon],
+        })
+      }
+    }
+    return [...map.values()].sort((a, b) => {
+      if (a.key === 'all') return -1
+      if (b.key === 'all') return 1
+      return a.label.localeCompare(b.label)
+    })
+  }, [addons])
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-white font-sans">
@@ -1070,22 +1135,20 @@ export default function DashboardPage() {
           {addonsOpen && (
           <div id="addons-panel" className="mb-10">
             {/* Add-on Builder */}
-            <div className="mb-6 flex flex-col gap-4 rounded-xl border border-white/[0.06] bg-white/[0.02] p-4 sm:flex-row sm:items-end">
-              <div className="flex-1">
-                <label className="mb-1.5 block text-[10px] font-medium uppercase tracking-widest text-zinc-500">
-                  Room Type
-                </label>
-                <select
-                  value={newAddon.room_type}
-                  onChange={(e) => setNewAddon(prev => ({ ...prev, room_type: e.target.value }))}
-                  className="w-full rounded-lg border border-white/[0.06] bg-[#12151C] px-3 py-2.5 text-sm text-white outline-none focus:border-white/30"
-                >
-                  <option value="all">All rooms</option>
-                  {widgetRoomOptions.map((room) => (
-                    <option key={room} value={room}>{room}</option>
-                  ))}
-                </select>
-              </div>
+            <div className="mb-6 flex flex-col gap-4 rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
+              <AddonRoomScopePicker
+                roomOptions={widgetRoomOptions}
+                applyAllRooms={newAddon.apply_all_rooms}
+                selectedRooms={newAddon.rooms}
+                onChange={(applyAllRooms, selectedRooms) =>
+                  setNewAddon((prev) => ({
+                    ...prev,
+                    apply_all_rooms: applyAllRooms,
+                    rooms: selectedRooms,
+                  }))
+                }
+              />
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
               <div className="flex-1">
                 <label className="mb-1.5 block text-[10px] font-medium uppercase tracking-widest text-zinc-500">
                   Add-on Name
@@ -1116,27 +1179,24 @@ export default function DashboardPage() {
               </div>
               <button
                 onClick={handleAddAddon}
-                disabled={addingAddon || !newAddon.name.trim()}
+                disabled={
+                  addingAddon ||
+                  !newAddon.name.trim() ||
+                  (!newAddon.apply_all_rooms && newAddon.rooms.length === 0)
+                }
                 className="rounded-lg bg-white/10 px-6 py-2.5 text-sm font-medium text-white transition hover:bg-white/20 disabled:opacity-50"
               >
                 Add Item
               </button>
+              </div>
             </div>
 
-            {/* Add-on List — grouped by room, each group collapsible */}
+            {/* Add-on List — grouped by room scope, each group collapsible */}
             {addons.length > 0 ? (
               <div className="space-y-2">
-                {[
-                  ...(addons.some((a) => a.room_type === 'all')
-                    ? [{ key: 'all', label: 'All rooms' }]
-                    : []),
-                  ...widgetRoomOptions.map((room) => ({ key: room, label: room })),
-                ].map(({ key, label }) => {
-                  const roomAddons = addons.filter((a) => a.room_type === key)
-                  if (roomAddons.length === 0) return null
-                  return (
+                {addonGroups.map((group) => (
                     <details
-                      key={key}
+                      key={group.key}
                       className="group rounded-xl border border-white/[0.06] bg-[#12151C] open:bg-[#12151C]"
                     >
                       <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-3 text-xs font-semibold uppercase tracking-wider text-zinc-400 transition hover:text-zinc-200">
@@ -1149,14 +1209,28 @@ export default function DashboardPage() {
                           >
                             <path fillRule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.06 10 7.23 6.29a.75.75 0 111.04-1.08l4.39 4.25a.75.75 0 010 1.08l-4.39 4.25a.75.75 0 01-1.06-.02z" clipRule="evenodd" />
                           </svg>
-                          <span>{label}</span>
+                          <span>{group.label}</span>
                         </span>
                         <span className="rounded-full bg-white/[0.06] px-2 py-0.5 text-[10px] font-medium normal-case text-zinc-400">
-                          {roomAddons.length}
+                          {group.addons.length}
                         </span>
                       </summary>
+                      <div className="border-t border-white/[0.04] px-4 py-3">
+                        <AddonRoomScopePicker
+                          roomOptions={widgetRoomOptions}
+                          applyAllRooms={group.targets.length === 0}
+                          selectedRooms={group.targets}
+                          onChange={(applyAllRooms, selectedRooms) =>
+                            handleAddonScopeChange(
+                              group.addons.map((a) => a.id),
+                              applyAllRooms,
+                              selectedRooms
+                            )
+                          }
+                        />
+                      </div>
                       <ul className="divide-y divide-white/[0.04] border-t border-white/[0.04]">
-                        {roomAddons.map((addon) => (
+                        {group.addons.map((addon) => (
                           <li key={addon.id} className="flex items-center gap-3 px-4 py-3">
                             <input
                               type="text"
@@ -1195,8 +1269,7 @@ export default function DashboardPage() {
                         ))}
                       </ul>
                     </details>
-                  )
-                })}
+                ))}
               </div>
             ) : (
               <div className="rounded-xl border border-dashed border-white/[0.06] p-8 text-center">
@@ -1346,6 +1419,77 @@ export default function DashboardPage() {
 }
 
 /* ─── Sub-components ───────────────────────────────────────────────── */
+
+function AddonRoomScopePicker({
+  roomOptions,
+  applyAllRooms,
+  selectedRooms,
+  onChange,
+}: {
+  roomOptions: string[]
+  applyAllRooms: boolean
+  selectedRooms: string[]
+  onChange: (applyAllRooms: boolean, selectedRooms: string[]) => void
+}) {
+  const toggleAllRooms = (checked: boolean) => {
+    if (checked) {
+      onChange(true, [])
+      return
+    }
+    onChange(false, selectedRooms)
+  }
+
+  const toggleRoom = (room: string) => {
+    const next = new Set(selectedRooms)
+    if (next.has(room)) {
+      next.delete(room)
+    } else {
+      next.add(room)
+    }
+    onChange(false, [...next])
+  }
+
+  return (
+    <div>
+      <p className="mb-2 text-[10px] font-medium uppercase tracking-widest text-zinc-500">
+        Applies to
+      </p>
+      <div className="flex flex-wrap gap-2">
+        <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-xs text-zinc-200 transition hover:border-white/20">
+          <input
+            type="checkbox"
+            className="rounded border-white/20 bg-transparent text-emerald-500 focus:ring-0 focus:ring-offset-0"
+            checked={applyAllRooms}
+            onChange={(e) => toggleAllRooms(e.target.checked)}
+          />
+          All rooms
+        </label>
+        {roomOptions.map((room) => (
+          <label
+            key={room}
+            className={`inline-flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-xs transition ${
+              !applyAllRooms && selectedRooms.includes(room)
+                ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-100'
+                : 'border-white/[0.08] bg-white/[0.03] text-zinc-300 hover:border-white/20'
+            } ${applyAllRooms ? 'opacity-50' : ''}`}
+          >
+            <input
+              type="checkbox"
+              className="rounded border-white/20 bg-transparent text-emerald-500 focus:ring-0 focus:ring-offset-0"
+              checked={!applyAllRooms && selectedRooms.includes(room)}
+              disabled={applyAllRooms}
+              onChange={() => toggleRoom(room)}
+            />
+            {room}
+          </label>
+        ))}
+      </div>
+      {!applyAllRooms && selectedRooms.length === 0 && (
+        <p className="mt-2 text-xs text-amber-400/90">Select at least one room.</p>
+      )}
+    </div>
+  )
+}
 
 function SubscriptionBadge({
   status,

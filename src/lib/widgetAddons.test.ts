@@ -26,4 +26,25 @@ describe('expandAddonsForWidget', () => {
       { id: 'b1', roomType: 'Garage', name: 'Shelf', price: 50 },
     ])
   })
+
+  it('expands multi-room room_types to matching widget rooms only', () => {
+    const result = expandAddonsForWidget(
+      [
+        {
+          id: 'c1',
+          room_type: 'all',
+          room_types: ['Walk-In Closet', 'Basement Theaters'],
+          name: 'Speakers',
+          price: 150,
+        },
+      ],
+      ['Pantry & Wine'],
+      ['Basement Theaters']
+    )
+    expect(result).toHaveLength(2)
+    expect(result.map((r) => r.roomType).sort()).toEqual([
+      'Basement Theaters',
+      'Walk-In Closet',
+    ])
+  })
 })

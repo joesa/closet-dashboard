@@ -61,6 +61,7 @@ create table if not exists public.contractor_addons (
   id              uuid primary key default gen_random_uuid(),
   contractor_id   uuid not null references public.contractor_settings(id) on delete cascade,
   room_type       text not null,
+  room_types      text[],
   name            text not null,
   price           numeric(10,2) not null default 0,
   created_at      timestamptz not null default now()
