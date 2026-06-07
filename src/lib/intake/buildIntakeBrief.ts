@@ -8,6 +8,7 @@ export function buildIntakeBrief(row: ProspectIntakeRow): string {
   }
 
   add('Business name', row.business_name)
+  add('Industry / trade', row.industry)
   add('Service area', row.service_area)
   add('Vibe / look', row.vibe)
   add('Writing tone', row.tone)

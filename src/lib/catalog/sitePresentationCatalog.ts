@@ -66,6 +66,35 @@ export function coerceLayoutSlug(v: string | null | undefined): LayoutSlug {
   return DEFAULT_LAYOUT
 }
 
+/** Layouts that pair best with each theme (used to narrow AI/rule pools). */
+export const THEME_LAYOUT_AFFINITY: Record<ThemeSlug, LayoutSlug[]> = {
+  'luxury-minimal': ['standard', 'portfolio-first', 'gallery-showcase', 'minimalist-lead', 'visual-impact'],
+  brutalist: ['visual-impact', 'conversion-focus', 'portfolio-first', 'minimalist-lead', 'compact-quote'],
+  'classic-warm': ['standard', 'storyteller', 'trust-builder', 'local-expert', 'conversion-focus'],
+  'modern-office': ['standard', 'conversion-focus', 'compact-quote', 'trust-builder', 'minimalist-lead'],
+  'playful-kids': ['storyteller', 'standard', 'conversion-focus', 'gallery-showcase'],
+  'rustic-pantry': ['storyteller', 'standard', 'local-expert', 'gallery-showcase'],
+  'sleek-entertainment': ['visual-impact', 'portfolio-first', 'gallery-showcase', 'minimalist-lead'],
+  'elegant-dressing': ['portfolio-first', 'gallery-showcase', 'visual-impact', 'storyteller'],
+  'functional-utility': ['standard', 'conversion-focus', 'trust-builder', 'compact-quote', 'local-expert'],
+  'creative-craft': ['storyteller', 'gallery-showcase', 'standard', 'portfolio-first'],
+  'sophisticated-wine': ['gallery-showcase', 'storyteller', 'portfolio-first', 'standard'],
+  'cozy-library': ['storyteller', 'portfolio-first', 'local-expert', 'standard'],
+  'minimalist-zen': ['minimalist-lead', 'standard', 'compact-quote', 'conversion-focus'],
+  'garage-industrial': ['visual-impact', 'conversion-focus', 'portfolio-first', 'trust-builder'],
+  'pantry-fresh': ['standard', 'storyteller', 'gallery-showcase', 'conversion-focus'],
+  'laundry-clean': ['trust-builder', 'standard', 'conversion-focus', 'local-expert'],
+  'mudroom-family': ['local-expert', 'conversion-focus', 'standard', 'storyteller'],
+  'commercial-pro': ['trust-builder', 'conversion-focus', 'compact-quote', 'standard'],
+  'coastal-climate': ['local-expert', 'portfolio-first', 'visual-impact', 'trust-builder'],
+  'historic-classic': ['storyteller', 'trust-builder', 'local-expert', 'portfolio-first'],
+  'luxury-gallery': ['gallery-showcase', 'portfolio-first', 'visual-impact', 'storyteller'],
+  'kids-playful': ['storyteller', 'standard', 'conversion-focus', 'gallery-showcase'],
+  'media-theater': ['visual-impact', 'portfolio-first', 'gallery-showcase', 'minimalist-lead'],
+  'office-executive': ['trust-builder', 'conversion-focus', 'standard', 'storyteller'],
+  'wine-cellar': ['gallery-showcase', 'storyteller', 'portfolio-first', 'visual-impact'],
+}
+
 /** Maps intake vibe answers to a theme hint (merged with service affinity). */
 export const VIBE_TO_THEME: Record<string, ThemeSlug> = {
   'Luxury & minimal': 'luxury-minimal',

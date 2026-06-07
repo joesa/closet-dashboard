@@ -48,8 +48,10 @@ export type ProspectIntakeRow = {
   notification_phone: string | null
   desired_domain: string | null
   other_services: string | null
+  industry: string | null
   requested_pages: string[]
   gallery_images: string[]
+  page_contents: Record<string, string>
 }
 
 const INTAKE_SELECT = `
@@ -64,8 +66,8 @@ const INTAKE_SELECT = `
   services, vibe, tone, customers, experience, differentiators, primary_cta, notes,
   pricing_notes, primary_color_hex, logo_url, contact_name, contact_phone,
   street_address, address_locality, address_region, postal_code, service_area,
-  notification_email, notification_phone, desired_domain, other_services,
-  requested_pages, gallery_images
+  notification_email, notification_phone, desired_domain, other_services, industry,
+  requested_pages, gallery_images, page_contents
 `
 
 export async function getIntakeByToken(token: string): Promise<ProspectIntakeRow | null> {

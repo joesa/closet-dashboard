@@ -1,6 +1,6 @@
-# ClosetQuote Data Model
+# DitchTheForm Data Model
 
-ClosetQuote has two related-but-distinct data models that share one Supabase
+DitchTheForm has two related-but-distinct data models that share one Supabase
 database. This doc explains how they relate, after the Phase 3 reconciliation.
 
 ## The two models
@@ -85,10 +85,17 @@ other) can build on this invariant without a data-cleanup phase.
 
 | Column | Role |
 |--------|------|
-| `services` | Text array of catalog labels from `contractorServices.ts` (16 grouped checkboxes). May include sentinel `Other (describe below)` when the custom line is used. |
-| `other_services` | Optional free text (1–120 chars) when **Other** is checked; used in AI briefs and as an extra product line. |
-| `ai_site_config` | JSON from AI generate-site; may include `presentation: { theme, layoutStyle, resolvedAt, rationale, source }` for audit. |
+| `industry` | Optional trade label (e.g. Plumbing, HVAC). Used with services to pick the catalog industry and theme/layout pools. |
+| `services` | Text array of service labels (catalog labels or free-text from intake). May include sentinel `Other (describe below)`. |
+| `other_services` | Optional free text when **Other** is checked or legacy combined field; used in AI briefs and fuzzy catalog matching. |
+| `ai_site_config` | JSON from AI generate-site; may include `presentation: { industry, theme, layoutStyle, resolvedAt, rationale, source }` for audit. |
 
-**Presentation resolution** (`resolveSitePresentation`): unions per-service theme/layout pools from the catalog, applies vibe/CTA hints, optional Gemini pick, and sets `defaultRoom` for the widget. Used on template auto-provision, AI Premium provision (layout no longer hardcoded to `standard`), and intake generate-site (merged after Gemini).
+**Multi-industry catalog** (`src/lib/catalog/`):
+
+- `industries/` — per-trade service definitions (11 industries, 100+ services) with `recommendedThemes` and `recommendedLayouts` per service.
+- `serviceCatalog.ts` — resolves industry from trade + services, fuzzy-matches free-text services, unions theme/layout pools.
+- `sitePresentationCatalog.ts` — 25 themes, 10 layouts, `THEME_LAYOUT_AFFINITY` narrows layouts per theme.
+
+**Presentation resolution** (`resolveSitePresentation`): resolves industry → unions per-service theme/layout pools → applies vibe/CTA hints → filters layouts by theme affinity → optional Gemini pick. Sets `defaultRoom` (widget primary category). Used on template auto-provision, AI Premium provision, and intake generate-site.
 
 Theme/layout slugs are defined in `src/lib/catalog/sitePresentationCatalog.ts` and must stay in sync with `custom-closets-websites` `ThemeType` and `ClientPage` layout switch.

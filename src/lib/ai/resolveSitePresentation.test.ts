@@ -13,8 +13,19 @@ describe('resolveSitePresentationRules', () => {
     const result = resolveSitePresentationRules({
       services: ['Garages & Garage Storage', 'Garage Flooring & Slatwall Systems'],
     })
+    expect(result.industry).toBe('custom-closets')
     expect(['garage-industrial', 'brutalist', 'functional-utility']).toContain(result.theme)
     expect(['visual-impact', 'conversion-focus', 'standard']).toContain(result.layoutStyle)
+  })
+
+  it('selects plumbing presentation for plumbing services', () => {
+    const result = resolveSitePresentationRules({
+      industry: 'Plumbing',
+      services: ['Drain Cleaning', 'Emergency Plumbing'],
+      primary_cta: 'Call now',
+    })
+    expect(result.industry).toBe('plumbing')
+    expect(['minimalist-lead', 'conversion-focus', 'compact-quote']).toContain(result.layoutStyle)
   })
 
   it('maps custom Other text to wine-leaning theme pool', () => {
