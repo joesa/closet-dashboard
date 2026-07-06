@@ -23,7 +23,7 @@ import {
   maxPagesForTier,
   maxAdditionalPagesForTier,
 } from '@/lib/catalog/sitePages';
-import { listIndustries, resolveIndustrySlug, getIndustry, getEngagementModel } from '@/lib/catalog/serviceCatalog';
+import { listIndustries, resolveIndustrySlug, getIndustry, getEngagementModel, isLowConfidenceResolution } from '@/lib/catalog/serviceCatalog';
 
 /** Split the free-text services field into individual service/job labels. */
 function parseServiceList(text: string): string[] {
@@ -1029,6 +1029,8 @@ export default function IntakeFormClient({
       (widgetConfigHints as WidgetHintsSnapshot | null)?.industry ||
       '';
     if (!industryText.trim()) return [];
+    if (isLowConfidenceResolution({ industry: industryText })) return [];
+    
     const slug = resolveIndustrySlug({ industry: industryText });
     const industry = getIndustry(slug);
     const seen = new Set<string>();
@@ -1571,7 +1573,7 @@ export default function IntakeFormClient({
                 )}
                 <p className="mt-1 text-xs text-zinc-500">
                   {studioServices.length > 0 ? 'Based on your listed services: ' : 'Examples: '}
-                  {industryExamples.join(' · ')}
+                  {studioServices.length > 0 ? studioServices.join(' · ') : industryExamples.join(' · ')}
                 </p>
               </div>
               <div className="sm:col-span-2">
