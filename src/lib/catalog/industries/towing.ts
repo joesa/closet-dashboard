@@ -114,7 +114,7 @@ export const TOWING_GROUPS = ['Towing', 'Roadside', 'Recovery', 'Transport', 'Co
 export const TOWING_INDUSTRY: IndustryDef = {
   slug: 'towing',
   label: 'Towing',
-  keywords: ['tow', 'towing', 'roadside', 'wrecker', 'recovery'],
+  keywords: ['tow', 'towing', 'roadside', 'wrecker', 'vehicle recovery', 'roadside recovery'],
   serviceGroups: [...TOWING_GROUPS],
   defaultThemes: ['brutalist', 'functional-utility', 'garage-industrial', 'modern-office'],
   defaultLayouts: ['minimalist-lead', 'compact-quote', 'conversion-focus'],

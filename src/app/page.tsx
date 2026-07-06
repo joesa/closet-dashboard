@@ -1,10 +1,12 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import Script from 'next/script'
+import { useRouter } from 'next/navigation'
 import { Check } from 'lucide-react'
+import { getBrowserUser, supabaseBrowser } from '@/lib/supabase-browser'
 import { DEMO_CONTRACTOR_ID, DEMO_LOGIN, DEMO_RESET_NOTICE } from '@/lib/demo'
 import {
   getTierCatalog,
@@ -16,7 +18,112 @@ import {
 } from '@/lib/intake/tiers'
 import { WIDGET_CDN_URL } from '@/lib/urls'
 
+/**
+ * "Start Free" / "Start Your 30-Day Free Trial" is ambiguous on its own — the
+ * free trial is specifically for the embeddable widget, but a visitor with no
+ * website yet needs a full site build (with the calculator embedded in it),
+ * not a bare account. This modal makes that fork explicit before routing
+ * anywhere, instead of silently dropping "no website" visitors into a
+ * widget-only signup they can't actually use yet.
+ */
+function StartChoiceModal({
+  open,
+  onClose,
+}: {
+  open: boolean
+  onClose: () => void
+}) {
+  const router = useRouter()
+
+  if (!open) return null
+
+  return (
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 px-4 backdrop-blur-sm"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="start-choice-heading"
+    >
+      <div
+        className="relative w-full max-w-lg rounded-3xl border border-white/10 bg-[#0d0d0d] p-8 shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close"
+          className="absolute right-5 top-5 text-slate-500 transition hover:text-white"
+        >
+          ✕
+        </button>
+
+        <h3 id="start-choice-heading" className="text-xl font-bold tracking-tight text-white">
+          Which one are you?
+        </h3>
+        <p className="mt-2 text-sm leading-relaxed text-slate-400">
+          The 30-day free trial is for the embeddable quote calculator widget. If you
+          don&apos;t have a site to embed it on yet, we build one for you — with the
+          calculator already wired in.
+        </p>
+
+        <div className="mt-6 grid gap-4 sm:grid-cols-2">
+          <button
+            type="button"
+            onClick={() => router.push('/signup/pro')}
+            className="flex flex-col items-start gap-2 rounded-2xl border border-white/10 bg-white/[0.03] p-5 text-left transition hover:border-white/25 hover:bg-white/[0.06]"
+          >
+            <span className="rounded-full border border-white/20 bg-white/10 px-2.5 py-1 text-[10px] font-medium uppercase tracking-widest text-white">
+              30-day free trial
+            </span>
+            <span className="mt-2 text-sm font-semibold text-white">
+              I already have a website
+            </span>
+            <span className="text-xs leading-relaxed text-slate-400">
+              Just embed the instant quote calculator on your existing site. No card
+              required to start.
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => router.push('/get-started?tier=ai_premium')}
+            className="flex flex-col items-start gap-2 rounded-2xl border border-emerald-500/25 bg-emerald-950/20 p-5 text-left transition hover:border-emerald-500/40 hover:bg-emerald-950/30"
+          >
+            <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-medium uppercase tracking-widest text-emerald-300">
+              From $999
+            </span>
+            <span className="mt-2 text-sm font-semibold text-white">
+              I don&apos;t have a website yet
+            </span>
+            <span className="text-xs leading-relaxed text-slate-300">
+              We&apos;ll design and build you a full marketing site — your quote
+              calculator comes built in. Compare plans below.
+            </span>
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function LandingPage() {
+  const router = useRouter()
+  const [isLoggedIn, setIsLoggedIn] = useState(false)
+  const [showStartModal, setShowStartModal] = useState(false)
+
+  useEffect(() => {
+    getBrowserUser().then((user) => {
+      if (user) setIsLoggedIn(true)
+    })
+  }, [])
+
+  const handleSignOut = async () => {
+    await supabaseBrowser.auth.signOut()
+    router.refresh()
+    setIsLoggedIn(false)
+  }
+
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-white selection:bg-white/20 selection:text-white">
       <Script
@@ -29,7 +136,7 @@ export default function LandingPage() {
         <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-6">
           <div className="flex items-center gap-2">
             <span className="text-sm font-bold tracking-tight">
-              Closet<span className="text-slate-400">Quote</span>
+              Ditch<span className="text-slate-400">TheForm</span>
             </span>
           </div>
           <div className="flex items-center gap-6">
@@ -39,21 +146,46 @@ export default function LandingPage() {
             >
               Pricing
             </a>
-            <Link
-              href="/login"
-              className="text-xs font-medium text-slate-500 transition hover:text-white"
-            >
-              Sign In
-            </Link>
-            <Link
-              href="/signup"
-              className="rounded-full bg-white px-4 py-1.5 text-xs font-semibold text-black transition hover:bg-slate-200 active:scale-[0.97]"
-            >
-              Start Free
-            </Link>
+            {isLoggedIn ? (
+              <>
+                <Link
+                  href="/dashboard"
+                  className="text-xs font-medium text-slate-400 transition hover:text-white"
+                >
+                  Dashboard
+                </Link>
+                <button
+                  onClick={handleSignOut}
+                  className="rounded-full border border-white/10 px-4 py-1.5 text-xs font-semibold text-slate-300 transition hover:border-white/20 hover:text-white active:scale-[0.97]"
+                >
+                  Sign Out
+                </button>
+              </>
+            ) : (
+              <>
+                <Link
+                  href="/login"
+                  className="text-xs font-medium text-slate-500 transition hover:text-white"
+                >
+                  Sign In
+                </Link>
+                <button
+                  type="button"
+                  onClick={() => setShowStartModal(true)}
+                  className="rounded-full bg-white px-4 py-1.5 text-xs font-semibold text-black transition hover:bg-slate-200 active:scale-[0.97]"
+                >
+                  Start Free
+                </button>
+              </>
+            )}
           </div>
         </div>
       </nav>
+
+      <StartChoiceModal
+        open={showStartModal}
+        onClose={() => setShowStartModal(false)}
+      />
 
       {/* ─── Hero ─── */}
       <section className="relative mx-auto max-w-4xl px-6 pt-40 pb-24 text-center">
@@ -90,19 +222,20 @@ export default function LandingPage() {
         </h1>
 
         <p className="mx-auto mt-8 max-w-xl text-lg leading-relaxed text-slate-400 sm:text-xl">
-          Embed our interactive pricing calculator onto your existing site—or let us build you a premium, showcase storefront from scratch. Upsell finishes and get highly qualified design leads texted straight to your phone.
+          Embed our interactive pricing calculator onto your existing site—or let us build you a premium, showcase site from scratch. Whatever your trade — plumbing, towing, pressure washing, tree work, landscaping, custom closets — upsell options and get highly qualified leads texted straight to your phone.
         </p>
 
         <div className="mt-10 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
-          <Link
-            href="/signup"
+          <button
+            type="button"
+            onClick={() => setShowStartModal(true)}
             className="group relative rounded-full bg-white px-8 py-3.5 text-sm font-semibold text-black transition-all hover:bg-slate-100 active:scale-[0.97]"
           >
             Start Your 30-Day Free Trial
             <span className="ml-2 inline-block transition-transform group-hover:translate-x-0.5">
               →
             </span>
-          </Link>
+          </button>
           <a
             href="#pricing"
             className="rounded-full border border-white/10 px-8 py-3.5 text-sm font-medium text-slate-400 transition hover:border-white/20 hover:text-white"
@@ -130,7 +263,7 @@ export default function LandingPage() {
             </h2>
             <p className="mb-10 max-w-md text-base leading-relaxed text-slate-400">
               This isn&apos;t a screenshot. It&apos;s the real widget your
-              homeowners will use — wired to a live demo contractor. Walk through
+              customers will use — wired to a live demo business. Walk through
               the flow in 30 seconds:
             </p>
 
@@ -144,15 +277,15 @@ export default function LandingPage() {
               {[
                 {
                   n: '01',
-                  text: 'Select a room type to see custom icons and pricing kick in.',
+                  text: 'Pick a service or job type to see custom pricing kick in.',
                 },
                 {
                   n: '02',
-                  text: 'Drag the slider to input the linear footage of the project.',
+                  text: 'Enter the size of the job — square footage, hours, units, or distance.',
                 },
                 {
                   n: '03',
-                  text: 'Choose finishes and add-ons to see real-time price anchoring.',
+                  text: 'Choose options and add-ons to see real-time price anchoring.',
                 },
                 {
                   n: '04',
@@ -219,8 +352,8 @@ export default function LandingPage() {
                 <p className="leading-relaxed">
                   <span className="font-semibold text-slate-200">{DEMO_RESET_NOTICE.short}</span>{' '}
                   <span className="text-slate-500">
-                    This widget is wired to a shared demo contractor — feel
-                    free to add rooms, finishes, or add-ons after signing in.
+                    This widget is wired to a shared demo business — feel
+                    free to add services, options, or add-ons after signing in.
                     Everything resets to the default demo configuration
                     nightly so the next prospect sees the polished baseline.
                   </span>
@@ -268,10 +401,10 @@ export default function LandingPage() {
                 Total Pricing Control.
               </h3>
               <p className="max-w-md text-sm leading-relaxed text-slate-400">
-                Ditch the one-size-fits-all model. Use our dynamic Room Matrix to
-                set custom per-foot pricing for Walk-Ins, Garages, Pantries, and
-                11 other spaces. Add your own bespoke materials, toggle off what
-                you don&apos;t carry, and protect your margins.
+                Ditch the one-size-fits-all model. Use our dynamic pricing matrix
+                to set custom rates for every service, job type, or package you
+                offer — per unit, flat tiers, or base-plus-distance. Add your own
+                options, toggle off what you don&apos;t carry, and protect your margins.
               </p>
 
               {/* Mini UI mockup */}
@@ -287,7 +420,7 @@ export default function LandingPage() {
                     <div className="mt-1 font-mono text-lg font-bold text-white/80">
                       $—
                     </div>
-                    <span className="text-[10px] text-slate-600">/lin ft</span>
+                    <span className="text-[10px] text-slate-600">/unit</span>
                   </div>
                 ))}
               </div>
@@ -307,8 +440,8 @@ export default function LandingPage() {
                 Engine.
               </h3>
               <p className="text-sm leading-relaxed text-slate-400">
-                Create unlimited custom add-ons — from velvet jewelry trays to
-                heavy-duty garage racks. Homeowners upsell themselves before you
+                Create unlimited custom add-ons — from premium materials to
+                priority scheduling. Customers upsell themselves before you
                 even pick up the phone.
               </p>
 
@@ -348,8 +481,8 @@ export default function LandingPage() {
                 </h3>
                 <p className="max-w-lg text-sm leading-relaxed text-slate-400">
                   Copy one snippet of code to embed the calculator on any site.
-                  When homeowners lock in their estimate, their room type, linear
-                  footage, and selected finishes are texted directly to your phone
+                  When customers lock in their estimate, their selected service,
+                  job size, and chosen options are texted directly to your phone
                   via Twilio SMS — alongside a polished email confirmation for
                   your records.
                 </p>
@@ -392,39 +525,59 @@ export default function LandingPage() {
           using contact forms.
         </h2>
         <p className="mx-auto mt-6 max-w-md text-slate-400">
-          Give homeowners an instant, interactive quote — and watch your close
+          Give customers an instant, interactive quote — and watch your close
           rate climb.
         </p>
-        <Link
-          href="/signup"
+        <button
+          type="button"
+          onClick={() => setShowStartModal(true)}
           className="group mt-10 inline-flex items-center rounded-full bg-white px-8 py-4 text-sm font-semibold text-black transition-all hover:bg-slate-100 active:scale-[0.97]"
         >
           Start Your 30-Day Free Trial
           <span className="ml-2 inline-block transition-transform group-hover:translate-x-0.5">
             →
           </span>
-        </Link>
+        </button>
       </section>
 
       {/* ─── Footer ─── */}
       <footer className="border-t border-white/[0.06] py-8">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6">
           <span className="text-xs text-slate-600">
-            © {new Date().getFullYear()} ClosetQuote
+            © {new Date().getFullYear()} DitchTheForm
           </span>
           <div className="flex gap-6">
-            <Link
-              href="/login"
-              className="text-xs text-slate-600 transition hover:text-slate-400"
-            >
-              Sign In
-            </Link>
-            <Link
-              href="/signup"
-              className="text-xs text-slate-600 transition hover:text-slate-400"
-            >
-              Sign Up
-            </Link>
+            {isLoggedIn ? (
+              <>
+                <Link
+                  href="/dashboard"
+                  className="text-xs text-slate-600 transition hover:text-slate-400"
+                >
+                  Dashboard
+                </Link>
+                <button
+                  onClick={handleSignOut}
+                  className="text-xs text-slate-600 transition hover:text-slate-400"
+                >
+                  Sign Out
+                </button>
+              </>
+            ) : (
+              <>
+                <Link
+                  href="/login"
+                  className="text-xs text-slate-600 transition hover:text-slate-400"
+                >
+                  Sign In
+                </Link>
+                <Link
+                  href="/signup"
+                  className="text-xs text-slate-600 transition hover:text-slate-400"
+                >
+                  Sign Up
+                </Link>
+              </>
+            )}
           </div>
         </div>
       </footer>
@@ -435,29 +588,29 @@ export default function LandingPage() {
 /* ─── Pricing section ─────────────────────────────────────────────── */
 
 const WIDGET_FEATURES = [
-  'Interactive 3D closet quote widget for your existing site',
+  'Interactive instant-quote widget for your existing site',
   'One-line embed — WordPress, Squarespace, Webflow, or custom HTML',
   'Unlimited SMS & email lead capture (no per-lead fees)',
-  'Custom room types, finishes & price-per-square-foot rules',
-  'Dynamic add-on manager (lighting, islands, specialty storage)',
-  'Lead inbox, quote history & contractor dashboard',
+  'Custom services, job types & pricing rules (per-unit, tiered, or distance)',
+  'Dynamic add-on manager for upsells & extras',
+  'Lead inbox, quote history & business dashboard',
   'Works alongside your current brand and domain',
 ]
 
 const STANDARD_FEATURES = [
   'Custom marketing site + embedded quote calculator',
   'Up to 5 pages — Home plus 4 you choose during setup',
-  'Professional stock hero & product imagery',
+  'Professional stock hero & service imagery',
   'Unlimited lead capture via SMS & email',
-  'Custom room & finish pricing',
-  'Managed hosting, SSL & ClosetQuote Pro (ongoing)',
+  'Custom service & option pricing',
+  'Managed hosting, SSL & DitchTheForm Pro (ongoing)',
 ]
 
 const PREMIUM_FEATURES = [
   'Everything in Standard',
   'Up to 10 pages — Home plus 9 you choose during setup',
   'AI-written selling copy for every page — no blank or placeholder content',
-  'Custom AI hero & product photos (you pick during setup)',
+  'Custom AI hero & service photos (you pick during setup)',
   'Photoreal, art-directed imagery — no generic AI-looking renders',
   'AI art-directed site copy & calculator config',
   'Up to 3 generations per image (3 options each)',
@@ -674,7 +827,7 @@ function PricingSection() {
             </span>
           </div>
           <p className="mb-0.5 text-sm font-medium text-slate-400">Already have a website?</p>
-          <p className="mb-4 text-lg font-semibold text-white">ClosetQuote Pro</p>
+          <p className="mb-4 text-lg font-semibold text-white">DitchTheForm Pro</p>
           <div className="mb-1 flex items-baseline gap-2">
             <span className="text-5xl font-bold tracking-tighter text-white lg:text-6xl">
               {formatUsd(widgetDisplay.perMonthCents)}
@@ -692,13 +845,13 @@ function PricingSection() {
           <PricingFeatureList features={WIDGET_FEATURES} />
           <div className="mt-auto flex flex-col gap-2">
             <Link
-              href="/signup"
+              href="/signup/pro"
               className="flex w-full items-center justify-center rounded-lg bg-white px-5 py-3.5 text-sm font-semibold text-black transition-colors hover:bg-gray-200 active:scale-[0.99]"
             >
               Start 30-day free trial
             </Link>
             <Link
-              href={`/signup?subscribe=1&plan=${billing}`}
+              href={`/signup/pro?subscribe=1&plan=${billing}`}
               className="flex w-full items-center justify-center rounded-lg border border-white/15 px-5 py-3 text-sm font-medium text-white hover:bg-white/5"
             >
               Subscribe now — skip trial
@@ -721,7 +874,7 @@ function PricingSection() {
             <span className="block text-xs text-slate-500 mt-0.5">{siteMaint.billedLabel}</span>
           </p>
           <p className="mb-2 text-xs text-slate-400">
-            Maintenance includes ClosetQuote Pro — no separate {formatUsd(widgetSub.monthlyCents)}/mo widget fee.
+            Maintenance includes DitchTheForm Pro — no separate {formatUsd(widgetSub.monthlyCents)}/mo widget fee.
           </p>
           <p className="mb-4 text-xs font-medium text-slate-200 bg-white/[0.04] border border-white/10 rounded-lg px-3 py-2">
             No upfront deposit. Pay {formatUsd(standard.totalCents)} when satisfied — then launch and
@@ -757,7 +910,7 @@ function PricingSection() {
             <span className="block text-xs text-emerald-200/60 mt-0.5">{siteMaint.billedLabel}</span>
           </p>
           <p className="mb-2 text-xs text-emerald-200/70">
-            Maintenance includes ClosetQuote Pro — no separate widget subscription.
+            Maintenance includes DitchTheForm Pro — no separate widget subscription.
           </p>
           <p className="mb-2 text-xs font-medium text-amber-200/90 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
             30% today: {formatUsd(premium.depositCents)} · Balance{' '}
@@ -795,13 +948,13 @@ function PricingSection() {
             },
             {
               name: 'Ironclad',
-              style: 'Brutalist / Garage',
+              style: 'Bold / Industrial',
               image: '/ironclad_mockup.png',
               link: '#',
             },
             {
               name: 'Hearth & Home',
-              style: 'Suburban / Traditional',
+              style: 'Warm / Traditional',
               image: '/hearth_home_mockup.png',
               link: '#',
             },

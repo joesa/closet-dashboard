@@ -16,6 +16,7 @@ export type ProspectIntakeRow = {
   deposit_required_cents: number
   deposit_paid_cents: number
   deposit_status: string
+  tier_selected_at: string | null
   stripe_checkout_session_id: string | null
   build_paid_at: string | null
   balance_paid_at: string | null
@@ -25,6 +26,7 @@ export type ProspectIntakeRow = {
   provisioned_contractor_id: string | null
   maintenance_started_at: string | null
   ai_site_config: Record<string, unknown> | null
+  widget_config_hints: Record<string, unknown> | null
   image_selections: unknown
   services: string[]
   vibe: string | null
@@ -52,6 +54,7 @@ export type ProspectIntakeRow = {
   requested_pages: string[]
   gallery_images: string[]
   page_contents: Record<string, string>
+  menu_items: Array<{ name: string; price: number; category?: string }>
 }
 
 const INTAKE_SELECT = `
@@ -59,15 +62,15 @@ const INTAKE_SELECT = `
   verification_email,
   requested_product, provisioning_mode,
   intake_tier, tier_total_cents, deposit_required_cents, deposit_paid_cents,
-  deposit_status, stripe_checkout_session_id,
+  deposit_status, stripe_checkout_session_id, tier_selected_at,
   build_paid_at, balance_paid_at, maintenance_plan, preview_approved_at,
   site_live_at, provisioned_contractor_id, maintenance_started_at,
-  ai_site_config, image_selections,
+  ai_site_config, widget_config_hints, image_selections,
   services, vibe, tone, customers, experience, differentiators, primary_cta, notes,
   pricing_notes, primary_color_hex, logo_url, contact_name, contact_phone,
   street_address, address_locality, address_region, postal_code, service_area,
   notification_email, notification_phone, desired_domain, other_services, industry,
-  requested_pages, gallery_images, page_contents
+  requested_pages, gallery_images, page_contents, menu_items
 `
 
 export async function getIntakeByToken(token: string): Promise<ProspectIntakeRow | null> {

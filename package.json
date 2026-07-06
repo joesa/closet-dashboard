@@ -11,10 +11,12 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "stripe:verify": "node scripts/stripe-verify.mjs",
-    "stripe:catalog": "node scripts/stripe-setup-catalog.mjs"
+    "stripe:catalog": "node scripts/stripe-setup-catalog.mjs",
+    "backfill:widget-domain": "node scripts/backfill-widget-domain.mjs",
+    "backfill:widget-domain:apply": "node scripts/backfill-widget-domain.mjs --apply"
   },
   "dependencies": {
-    "@closetquote/pricing": "file:./packages/pricing",
+    "@ditchtheform/pricing": "file:./packages/pricing",
     "@google/generative-ai": "^0.24.1",
     "@supabase/ssr": "^0.10.3",
     "@supabase/supabase-js": "^2.105.4",

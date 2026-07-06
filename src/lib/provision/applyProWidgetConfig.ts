@@ -8,8 +8,12 @@ import {
   cloneDefaultRoomPricing,
   isRoomType,
   ROOM_TYPES,
+  DEFAULT_DOMAIN_CONFIG,
   type RoomPricing,
+  type DomainConfig,
+  type PricingModel,
 } from '@/lib/rooms'
+import { resolveIndustrySlug, INDUSTRY_CONFIGS } from '@/lib/catalog/serviceCatalog'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 
 function defaultTierNames(hints: WidgetConfigHints) {
@@ -19,6 +23,45 @@ function defaultTierNames(hints: WidgetConfigHints) {
     premium: hints.tierNames?.premium?.trim() || 'Premium',
   }
 }
+
+/** Map the intake-wizard pricing model onto the quoting engine's model. */
+function resolvePricingModel(hints: WidgetConfigHints): PricingModel {
+  switch (hints.pricingModel) {
+    case 'fixed':
+    case 'flat_tiered':
+      return 'flat_tiered'
+    case 'base_plus_distance':
+      return 'base_plus_distance'
+    case 'per_unit':
+    case 'linear_ft':
+    default:
+      return 'per_unit'
+  }
+}
+
+/** Build the widget domain_config from the contractor's intake hints. */
+function buildDomainConfigFromHints(hints: WidgetConfigHints): DomainConfig {
+  const industrySlug = resolveIndustrySlug({
+    industry: hints.industry,
+    services: hints.services,
+    other_services: hints.otherServices,
+  })
+
+  const industryConfig = INDUSTRY_CONFIGS[industrySlug]
+
+  return {
+    ...DEFAULT_DOMAIN_CONFIG,
+    categoryLabel: industryConfig?.categoryLabel || DEFAULT_DOMAIN_CONFIG.categoryLabel,
+    unitLabel: industryConfig?.unitLabel || DEFAULT_DOMAIN_CONFIG.unitLabel,
+    unitAbbrev: industryConfig?.unitAbbrev || DEFAULT_DOMAIN_CONFIG.unitAbbrev,
+    tierLabel: industryConfig?.tierLabel || DEFAULT_DOMAIN_CONFIG.tierLabel,
+    pricingModel: industryConfig?.pricingModel || resolvePricingModel(hints),
+    unitMin: industryConfig?.unitMin || DEFAULT_DOMAIN_CONFIG.unitMin,
+    unitMax: industryConfig?.unitMax || DEFAULT_DOMAIN_CONFIG.unitMax,
+    baseFee: industryConfig?.baseFee || DEFAULT_DOMAIN_CONFIG.baseFee,
+  }
+}
+
 
 /** Seed room_pricing for default rooms the contractor selected in intake. */
 export function buildRoomPricingFromHints(hints: WidgetConfigHints): RoomPricing {
@@ -128,6 +171,8 @@ export async function applyProWidgetConfig(
     disabled_default_rooms: generated.disabledDefaultRooms,
     disabled_default_finishes: disabledFinishes,
     tier_names: tierNames,
+    domain_config: buildDomainConfigFromHints(hints),
+    industry: hints.industry?.trim() || undefined,
   }
 
   const { error } = await admin

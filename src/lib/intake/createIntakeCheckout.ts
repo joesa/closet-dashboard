@@ -6,7 +6,13 @@ import {
   assertCheckoutAllowed,
   type IntakeCheckoutKind,
 } from '@/lib/intake/intakePaymentStage'
-import { depositForTier, formatUsd } from '@/lib/intake/tiers'
+import {
+  depositForTier,
+  depositStatusForTier,
+  formatUsd,
+  getTierEntry,
+  type IntakeTierSlug,
+} from '@/lib/intake/tiers'
 import { resolveOneTimePriceId, stripePriceEnv } from '@/lib/stripeCatalog'
 
 export async function createIntakeCheckoutSession(opts: {
@@ -15,14 +21,46 @@ export async function createIntakeCheckoutSession(opts: {
   kind: IntakeCheckoutKind
   origin: string
 }): Promise<{ url: string; sessionId: string }> {
-  const { row, token, kind, origin } = opts
+  const { token, kind, origin } = opts
+  let row = opts.row
   const gate = assertCheckoutAllowed(row, kind)
   if (gate) throw new Error(gate)
+
+  // Defensive self-heal: `intake_tier` defaults to 'standard' with
+  // `tier_total_cents`/`deposit_required_cents` defaulting to 0 for any row
+  // that never went through explicit tier selection (e.g. a prospect who
+  // never clicked a TierPicker card). Never let a stale/zero total slip
+  // through into a real Stripe charge — recompute from the tier catalog
+  // before pricing the session.
+  if (kind !== 'maintenance' && row.tier_total_cents <= 0) {
+    const tierSlug: IntakeTierSlug = row.intake_tier === 'ai_premium' ? 'ai_premium' : 'standard'
+    const entry = getTierEntry(tierSlug)
+    if (!entry) throw new Error('Unable to resolve tier pricing for checkout')
+    const depositStatus = depositStatusForTier(tierSlug, row.deposit_paid_cents, entry.depositCents)
+    const admin = getSupabaseAdmin()
+    await admin
+      .from('prospect_intakes')
+      .update({
+        intake_tier: tierSlug,
+        tier_total_cents: entry.totalCents,
+        deposit_required_cents: entry.depositCents,
+        deposit_status: depositStatus,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', row.id)
+    row = {
+      ...row,
+      intake_tier: tierSlug,
+      tier_total_cents: entry.totalCents,
+      deposit_required_cents: entry.depositCents,
+      deposit_status: depositStatus,
+    }
+  }
 
   const stripe = getStripe()
   const env = stripePriceEnv()
   const returnUrl = `${origin}/intake/${token}`
-  const email = row.contact_email || row.notification_email || undefined
+  const email = row.contact_email || row.notification_email || row.verification_email || undefined
 
   let session: Stripe.Checkout.Session
 
@@ -83,6 +121,14 @@ export async function createIntakeCheckoutSession(opts: {
       metaKind = 'intake_standard_build'
       productName = 'ClosetQuote Standard site build'
       description = `One-time build (${formatUsd(amountCents)}) — pay when satisfied.`
+    }
+
+    // Never create a $0 (or negative) one-time-payment session — a real
+    // build/deposit/balance charge should always have a positive amount.
+    // Maintenance (subscription) is priced entirely by its Stripe price ID
+    // and is exempt from this check.
+    if (amountCents <= 0) {
+      throw new Error(`Invalid checkout amount for ${kind}: ${amountCents} cents`)
     }
 
     const lineItems = priceId

@@ -7,6 +7,9 @@ import { buildIntakePublicJson } from '@/lib/intake/intakePublicResponse'
 import { validateAiPremiumReady } from '@/lib/intake/buildAiProvisionPayload'
 import { OTHER_SERVICE_LABEL } from '@/lib/catalog/contractorServices'
 import { clampPagesForTier } from '@/lib/catalog/sitePages'
+import { SITE_PAGE_SLUGS } from '@/lib/catalog/sitePages'
+import { coerceThemeSlug, coerceLayoutSlug } from '@/lib/catalog/sitePresentationCatalog'
+import { SURFACE_IDS, SHAPE_IDS, VOICE_IDS, SWATCH_IDS } from '@/lib/catalog/themeTokenPools'
 
 export const runtime = 'nodejs'
 
@@ -89,6 +92,22 @@ export async function POST(
 
     const toStr = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : null)
     const toArr = (v: unknown) => (Array.isArray(v) ? v.filter((x) => typeof x === 'string') : [])
+
+    // Menu items (order-industry businesses only — see EngagementModel).
+    // Sanitized here (not trusted from the client) the same way gallery/logo
+    // uploads are validated below.
+    const menuItems = (Array.isArray(body.menuItems) ? body.menuItems : [])
+      .filter((item: unknown): item is Record<string, unknown> => !!item && typeof item === 'object')
+      .slice(0, 100)
+      .map((item: Record<string, unknown>) => ({
+        name: typeof item.name === 'string' ? item.name.trim().slice(0, 200) : '',
+        price:
+          typeof item.price === 'number' && Number.isFinite(item.price) && item.price >= 0
+            ? item.price
+            : 0,
+        category: typeof item.category === 'string' ? item.category.trim().slice(0, 80) || undefined : undefined,
+      }))
+      .filter((item: { name: string }) => item.name.length > 0)
 
     const services = toArr(body.services)
     const otherServices = toStr(body.otherServices)
@@ -178,6 +197,15 @@ export async function POST(
         .upload(path, decoded.buffer, { contentType: decoded.mime, upsert: true })
       if (upErr) throw upErr
       logoUrl = supabase.storage.from('site-assets').getPublicUrl(path).data.publicUrl
+    } else if (typeof body.logoUrl === 'string' && body.logoUrl.trim()) {
+      try {
+        const parsed = new URL(body.logoUrl.trim())
+        if (parsed.protocol === 'https:') {
+          logoUrl = parsed.href
+        }
+      } catch {
+        // Ignore invalid URL, keep logo optional.
+      }
     }
 
     const requestedProduct =
@@ -190,6 +218,7 @@ export async function POST(
       submitted_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
       business_name: toStr(body.businessName),
+      industry: toStr(body.industry),
       contact_name: toStr(body.contactName),
       contact_email: toStr(body.contactEmail),
       contact_phone: toStr(body.contactPhone),
@@ -202,6 +231,10 @@ export async function POST(
       notification_phone: toStr(body.notificationPhone) || toStr(body.contactPhone),
       services,
       other_services: hasOther ? otherServices : null,
+      widget_config_hints:
+        body.widgetConfigHints && typeof body.widgetConfigHints === 'object'
+          ? body.widgetConfigHints
+          : existing.widget_config_hints,
       pricing_notes: toStr(body.pricingNotes),
       primary_color_hex: toStr(body.primaryColorHex),
       vibe: toStr(body.vibe),
@@ -218,8 +251,66 @@ export async function POST(
       ),
       requested_product: requestedProduct,
       gallery_images: galleryUrls,
+      menu_items: menuItems,
     }
     if (logoUrl) update.logo_url = logoUrl
+
+    // --- User presentation override (from the review step) ---
+    if (typeof body.themeOverride === 'string' && typeof body.layoutOverride === 'string') {
+      const existingAiConfig = (existing.ai_site_config ?? {}) as Record<string, unknown>
+      const existingPres = (existingAiConfig.presentation ?? {}) as Record<string, unknown>
+      // Only trust a client-supplied token selection if every ID is one of
+      // the legal pool IDs — otherwise silently drop it (falls back to the
+      // real named theme's authentic style instead of a bogus token combo).
+      const rawTokens = body.themeTokensOverride as
+        | { surface?: unknown; shape?: unknown; voice?: unknown; swatch?: unknown }
+        | null
+        | undefined
+      const validTokens =
+        rawTokens &&
+        typeof rawTokens.surface === 'string' && SURFACE_IDS.includes(rawTokens.surface) &&
+        typeof rawTokens.shape === 'string' && SHAPE_IDS.includes(rawTokens.shape) &&
+        typeof rawTokens.voice === 'string' && VOICE_IDS.includes(rawTokens.voice) &&
+        typeof rawTokens.swatch === 'string' && SWATCH_IDS.includes(rawTokens.swatch)
+          ? {
+              surface: rawTokens.surface,
+              shape: rawTokens.shape,
+              voice: rawTokens.voice,
+              swatch: rawTokens.swatch,
+            }
+          : undefined
+
+      update.ai_site_config = {
+        ...existingAiConfig,
+        presentation: {
+          ...existingPres,
+          theme: coerceThemeSlug(body.themeOverride),
+          layoutStyle: coerceLayoutSlug(body.layoutOverride),
+          themeTokens: validTokens,
+          source: 'user',
+          resolvedAt: new Date().toISOString(),
+        },
+      }
+    }
+    if (body.pageContents && typeof body.pageContents === 'object' && !Array.isArray(body.pageContents)) {
+      const validSlugs = new Set(SITE_PAGE_SLUGS)
+      const sanitized: Record<string, string> = {}
+      for (const [slug, raw] of Object.entries(body.pageContents)) {
+        if (!validSlugs.has(slug)) continue
+        if (typeof raw !== 'string') continue
+        const text = (raw as string).trim()
+        if (!text) continue
+        const wordCount = text.split(/\s+/).filter(Boolean).length
+        if (wordCount > 1200) {
+          return NextResponse.json(
+            { error: `Page "${slug}" exceeds the 1,200-word limit (${wordCount} words).` },
+            { status: 400 }
+          )
+        }
+        sanitized[slug] = text
+      }
+      update.page_contents = sanitized
+    }
 
     const { error: updateErr } = await supabase
       .from('prospect_intakes')

@@ -123,7 +123,7 @@ export const ROOFING_GROUPS = [
 export const ROOFING_INDUSTRY: IndustryDef = {
   slug: 'roofing',
   label: 'Roofing',
-  keywords: ['roof', 'roofing', 'shingle', 'gutter', 'hail'],
+  keywords: ['roof', 'roofing', 'shingle'],
   serviceGroups: [...ROOFING_GROUPS],
   defaultThemes: ['coastal-climate', 'classic-warm', 'modern-office', 'historic-classic'],
   defaultLayouts: ['trust-builder', 'portfolio-first', 'conversion-focus', 'local-expert'],

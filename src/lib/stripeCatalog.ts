@@ -1,5 +1,5 @@
 /**
- * ClosetQuote Stripe Price IDs (see scripts/stripe-setup-catalog.mjs).
+ * DitchTheForm Stripe Price IDs (see scripts/stripe-setup-catalog.mjs).
  * Lookup keys in Stripe: cq_pro_monthly, cq_standard_build_onetime, etc.
  */
 

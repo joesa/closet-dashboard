@@ -24,6 +24,7 @@ export function widgetEmbedScriptTag(): string {
   return `<script src="${WIDGET_CDN_URL}"></script>`
 }
 
-export function widgetEmbedSnippet(contractorId: string): string {
-  return `<closet-quote-widget data-contractor-id="${contractorId}" data-api-url="${PUBLIC_API_URL}"></closet-quote-widget>\n${widgetEmbedScriptTag()}`
+export function widgetEmbedSnippet(contractorId: string, engagementModel: string = 'quote'): string {
+  const tagName = engagementModel === 'order' ? 'closet-order-widget' : 'closet-quote-widget'
+  return `<${tagName} data-contractor-id="${contractorId}" data-api-url="${PUBLIC_API_URL}"></${tagName}>\n${widgetEmbedScriptTag()}`
 }

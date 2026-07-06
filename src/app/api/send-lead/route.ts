@@ -53,7 +53,8 @@ function buildEmailHtml(
     calculatedHigh: number
     spaceDetails: string
   },
-  companyName: string
+  companyName: string,
+  categoryLabel = 'Closet'
 ): string {
   const midpoint = (lead.calculatedLow + lead.calculatedHigh) / 2;
   return `
@@ -69,7 +70,7 @@ function buildEmailHtml(
         <tr>
           <td style="background:linear-gradient(135deg,#6C47FF 0%,#4F46E5 100%);padding:32px 40px;">
             <h1 style="margin:0;color:#ffffff;font-size:22px;font-weight:700;">
-              🏠 New Closet Quote Lead
+              🏠 New ${categoryLabel} Quote Lead
             </h1>
             <p style="margin:8px 0 0;color:rgba(255,255,255,0.85);font-size:14px;">
               A potential customer just requested a quote on your website.
@@ -204,6 +205,8 @@ export function OPTIONS() {
 export async function POST(request: Request) {
   try {
     const body = (await request.json()) as SendLeadRequest
+    let unitAbbrev = 'ft'
+    let categoryLabel = 'Closet'
 
     // ── Demo-account anti-theft (server side) ──
     // Refuse to deliver leads for the public demo contractor when the
@@ -288,7 +291,7 @@ export async function POST(request: Request) {
 
       const { data: settings, error: dbError } = await adminSupa
         .from('contractor_settings')
-        .select('contact_email, contact_phone, company_name')
+        .select('contact_email, contact_phone, company_name, domain_config')
         .eq('id', body.contractorId)
         .single()
 
@@ -296,6 +299,11 @@ export async function POST(request: Request) {
         if (settings.contact_email) toEmail = settings.contact_email
         if (settings.company_name) companyName = settings.company_name
         if (settings.contact_phone) contractorPhone = settings.contact_phone
+        if (settings.domain_config) {
+          const cfg = settings.domain_config as any
+          if (cfg.unitAbbrev) unitAbbrev = cfg.unitAbbrev
+          if (cfg.categoryLabel) categoryLabel = cfg.categoryLabel
+        }
       }
 
       // Fetch Addons to resolve specific names
@@ -403,7 +411,8 @@ export async function POST(request: Request) {
           calculatedHigh,
           spaceDetails,
         },
-        companyName
+        companyName,
+        categoryLabel
       ),
     })
 
@@ -460,8 +469,8 @@ export async function POST(request: Request) {
     smsLines.push(`✉️ ${body.customerEmail}`)
     smsLines.push('')
     if (body.linearFeet || body.roomType) {
-      const ft = body.linearFeet ? `${body.linearFeet}ft ` : ''
-      const room = body.roomType || 'Closet'
+      const ft = body.linearFeet ? `${body.linearFeet}${unitAbbrev} ` : ''
+      const room = body.roomType || categoryLabel
       smsLines.push(`🛠️ ${ft}${room}`)
     }
     if (body.finishType) smsLines.push(`🎨 Finish: ${body.finishType}`)

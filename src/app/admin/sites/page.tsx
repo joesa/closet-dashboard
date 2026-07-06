@@ -16,6 +16,7 @@ export default async function AdminSitesPage() {
       owner_email,
       site_status,
       created_at,
+      validation_status,
       domains ( hostname )
     `)
     .order('created_at', { ascending: false });
@@ -75,6 +76,11 @@ export default async function AdminSitesPage() {
                           Pending Approval
                         </span>
                       )}
+                      {tenant.site_status === 'pending_approval' && tenant.validation_status === 'failed' && (
+                        <span className="ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-500/10 text-red-400 border border-red-500/20">
+                          Needs Fixes
+                        </span>
+                      )}
                       {tenant.site_status === 'suspended' && (
                         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-500/10 text-red-400 border border-red-500/20">
                           Suspended
@@ -101,7 +107,7 @@ export default async function AdminSitesPage() {
                           rel="noreferrer"
                           className="text-xs font-medium text-blue-400 hover:text-blue-300 transition-colors uppercase tracking-wider"
                         >
-                          Review
+                          {tenant.site_status !== 'active' ? 'Preview Customer Unapprove Site' : 'Review'}
                         </a>
                       ) : (
                         <span

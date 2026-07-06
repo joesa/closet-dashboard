@@ -50,6 +50,10 @@ export async function POST(req: Request) {
         contact_phone: phone || null,
         primary_color_hex: brandColor || null,
         widget_config_hints: widgetConfigHints,
+        industry:
+          typeof widgetConfigHints?.industry === 'string'
+            ? widgetConfigHints.industry.trim() || null
+            : null,
         // Services array for dashboard display
         services: Array.isArray(widgetConfigHints?.services)
           ? widgetConfigHints.services

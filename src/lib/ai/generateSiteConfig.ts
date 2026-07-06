@@ -27,6 +27,7 @@ export const GENERATE_SITE_JSON_SCHEMA = {
             type: 'object',
             properties: {
               headline: { type: 'string' },
+              subheadline: { type: 'string' },
               backgroundImage: { type: 'string' },
               imagePrompt: { type: 'string' },
             },
@@ -78,8 +79,38 @@ export const GENERATE_SITE_JSON_SCHEMA = {
               required: ['title', 'description', 'imagePrompt', 'details'],
             },
           },
+          quiz: {
+            type: 'object',
+            properties: {
+              eyebrow: { type: 'string' },
+              headline: { type: 'string' },
+              questions: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    id: { type: 'string' },
+                    title: { type: 'string' },
+                    options: {
+                      type: 'array',
+                      items: {
+                        type: 'object',
+                        properties: {
+                          id: { type: 'string' },
+                          label: { type: 'string' },
+                        },
+                        required: ['id', 'label'],
+                      },
+                    },
+                  },
+                  required: ['id', 'title', 'options'],
+                },
+              },
+            },
+            required: ['eyebrow', 'headline', 'questions'],
+          },
         },
-        required: ['theme', 'layoutStyle', 'defaultRoom', 'hero', 'about', 'process', 'products'],
+        required: ['theme', 'layoutStyle', 'defaultRoom', 'hero', 'about', 'process', 'products', 'quiz'],
       },
       widgetConfig: {
         type: 'object',
@@ -193,6 +224,40 @@ export function extractJson(text: string): string {
   return t
 }
 
+export function sanitizeJsonString(json: string): string {
+  let insideString = false
+  let escaped = false
+  let result = ''
+  for (let i = 0; i < json.length; i++) {
+    const char = json[i]
+    if (char === '"' && !escaped) {
+      insideString = !insideString
+      result += char
+    } else if (char === '\\' && insideString && !escaped) {
+      escaped = true
+      result += char
+    } else {
+      if (insideString) {
+        if (char === '\n') {
+          result += '\\n'
+        } else if (char === '\r') {
+          result += '\\r'
+        } else if (char === '\t') {
+          result += '\\t'
+        } else if (char.charCodeAt(0) < 32) {
+          result += '\\u' + char.charCodeAt(0).toString(16).padStart(4, '0')
+        } else {
+          result += char
+        }
+      } else {
+        result += char
+      }
+      escaped = false
+    }
+  }
+  return result
+}
+
 function describeFromUrl(rawUrl: string): string {
   let hint = rawUrl
   try {
@@ -202,7 +267,7 @@ function describeFromUrl(rawUrl: string): string {
   } catch {
     /* keep */
   }
-  return `Business website: ${rawUrl}. The site could not be read automatically. Infer a plausible custom closets / home storage business from "${hint}".`
+  return `Business website: ${rawUrl}. The site could not be read automatically. Infer a plausible service business from the domain name "${hint}". Do NOT default to custom closets or home storage unless the domain name clearly implies that.`
 }
 
 export type GenerateSiteConfigResult = {
@@ -213,7 +278,9 @@ export type GenerateSiteConfigResult = {
 
 export async function generateSiteConfigFromInput(
   input: string,
-  sitemap?: string[] | null
+  sitemap?: string[] | null,
+  pageContents?: Record<string, string> | null,
+  industry?: string | null
 ): Promise<GenerateSiteConfigResult> {
   if (!process.env.GEMINI_API_KEY) {
     throw new Error('GEMINI_API_KEY is not configured')
@@ -252,18 +319,27 @@ export async function generateSiteConfigFromInput(
     if (!scrapeOk) scrapedText = describeFromUrl(input)
   }
 
+  const trade = industry?.trim()
+  const domainLine = trade
+    ? `This business operates in the ${trade} industry.`
+    : `This business operates in the exact trade indicated by the "Services offered" list in the business brief below — infer that trade from those services and NEVER default to custom closets, cabinetry, or home storage unless the listed services clearly are closets/storage.`
+  const tradeNoun = trade
+    ? `${trade} business`
+    : `business in the exact trade shown in the "Services offered" list`
+  const tradeServices = trade ?? 'the services listed in the brief'
+
   let systemPrompt = `You are an elite Luxury Brand Copywriter, Visual Art Director, and Next.js Frontend Architect.
 Your sole purpose is to generate high-end, bespoke content configurations and photorealistic image
 prompts that build premium digital storefronts looking like they cost $200,000 to design. You
 explicitly AVOID generic "AI-generated" tropes (no plastic surfaces, no warped geometry, no fake
 brand text, no uncanny symmetry, no stocky lifeless renders).
 
-BUSINESS DOMAIN (NON-NEGOTIABLE): This is a custom closets / home storage & organization company
-(walk-in closets, reach-in closets, pantries, garages, mudrooms, home offices, built-ins, etc.).
-EVERY image prompt MUST depict a real, organized residential storage space relevant to the services
-listed. NEVER generate unrelated subjects (no server rooms, data centers, offices full of computers,
-spaceships, labs, abstract tech, etc.) even if the brand tone is described as "modern", "sleek", or
-"high-tech" — interpret those words only as the styling of the closet/cabinetry, not the subject.
+BUSINESS DOMAIN (NON-NEGOTIABLE): ${domainLine}
+EVERY image prompt and all copy MUST depict real, on-the-job scenes, finished work, and environments
+relevant to a ${tradeNoun} and the services listed below.
+NEVER generate unrelated subjects (no server rooms, data centers, spaceships, labs, abstract tech, etc.)
+even if the brand tone is described as "modern", "sleek", or "high-tech" — interpret those words only as
+the styling of the work shown, not the subject.
 
 CRITICAL INSTRUCTIONS FOR QUOTE CALCULATOR:
 Replace default closet rooms with ACTUAL services when appropriate.
@@ -280,15 +356,18 @@ not digital art" and forbid plastic/glossy surfaces, waxy textures, warped geome
 perfect symmetry. The goal is an authentic architectural / real-estate photo that does NOT look
 AI-generated.
 
-The SUBJECT of every prompt is a custom closet / home-storage installation (cabinetry, shelving,
-drawers, hanging rods, organized wardrobe / pantry / garage / mudroom / home office). The brand tone
+The SUBJECT of every prompt is the actual work of a ${tradeNoun}
+(its finished work, crews on the job, equipment, and serviced spaces). The brand tone
 only adjusts MATERIALS, FINISHES, and LIGHTING — it never changes the subject. Write each prompt as a
-single dense paragraph (40-70 words). Name specific premium materials (e.g. rift-cut white oak,
-matte-black anodized hardware, fluted glass, brushed brass rails, backlit LED shelving, Italian
-porcelain, walnut veneer), specify the lighting, and end with the technical cues.
+single dense paragraph (40-70 words). Name specific real materials, tools, or equipment for THIS trade
+(for storage/cabinetry: rift-cut white oak, matte-black anodized hardware, fluted glass, brushed brass rails;
+for drain/plumbing: hydro-jet nozzles, PVC fittings, pipe wrenches, clean sewer lines;
+for HVAC: copper refrigerant lines, duct runs, condenser units;
+for roofing: architectural shingles, flashing, ridge caps;
+adapt to whatever the actual trade is), specify the lighting, and end with technical cues.
 
-HERO IMAGE (hero.imagePrompt) — one wide-angle cinematic ARCHITECTURAL photograph capturing the grand
-scale of a completed, immaculate installation.
+HERO IMAGE (hero.imagePrompt) — one wide-angle professional photograph capturing the grand
+scale of a completed, high-quality job for a ${tradeNoun}.
 
 CRITICAL — [primary service] MUST be the FIRST item from the "Services offered" field in the business
 brief (e.g. if "Services offered: Garages & Garage Storage, Pantries & Wine Storage" then [primary
@@ -296,19 +375,22 @@ service] = "garages and garage storage"). NEVER substitute "walk-in closet" or a
 walk-in closets are not listed in Services offered. The subject of the hero image must match the
 actual services the business sells.
 
-Use this structure:
-"Architectural photography, a grand wide-angle view of an immaculate [primary service] installation,
-featuring [premium materials, specific high-end finishes, luxury environmental elements]. Shot on a
-full-frame DSLR with a 24mm lens in natural window light, photorealistic, 8k resolution, crisp focus,
-clean lines, clutter-free, wide 16:9 composition, NOT a 3D render, NOT CGI, not digital art, no
+Use this structure (adapt to the actual trade — replace "installation" with the right noun for the job):
+"Professional wide-angle photograph of a completed [primary service] job for a ${tradeNoun},
+showing [real finished work, specific trade materials, tools, or equipment]. Shot on a
+full-frame DSLR with a 24mm lens in natural light, photorealistic, 8k resolution, crisp focus,
+clean composition, wide 16:9 ratio, NOT a 3D render, NOT CGI, not digital art, no
 plastic surfaces, no text, no people, no logos."
 
 PRODUCT IMAGES (products[].imagePrompt) — TIGHT MACRO close-ups that prove craftsmanship. NEVER reuse
 the hero room angle. Rotate the focus across products so the grid feels curated, cycling through:
   • Focus A — premium materials, hardware, soft-close drawers, or precision joinery (extreme close-up).
   • Focus B — integrated lighting, smart features, or a functional-luxury layout detail.
-  • Focus C — a highly organized, specialized auxiliary zone within that service (e.g. jewelry drawer,
-    shoe wall, pantry provisions, garage workbench) shot tight.
+  • Focus C — a specialized, detail-rich element of that service shot tight — a signature detail of
+    the finished job that proves trade skill. Examples: for closets/storage: a jewelry drawer, shoe
+    wall, pantry shelving; for drain/plumbing: a polished pipe connection or hydro-jet nozzle;
+    for HVAC: a mounted air handler or copper line-set; for roofing: flashing detail or ridge cap;
+    adapt to whatever the actual trade is.
 Every product prompt MUST end with: "Macro interior photography, close-up shot, shot on a full-frame
 DSLR with a 50mm macro lens in natural light, crisp real textures with subtle imperfections,
 photorealistic, 8k resolution, wide 16:9 composition, NOT a 3D render, NOT CGI, not digital art, no
@@ -316,19 +398,18 @@ plastic surfaces, no text, no people."
 Match each product to a real service from the business information.
 
 === PREMIUM COPYWRITING ===
-- hero.headline: a punchy, high-end headline (about 5 words) focused on status and craftsmanship.
-- about.description: a compelling 3-sentence narrative about raw architectural quality, master
-  craftsmanship, and flawless execution — specific to this brand and niche, never boilerplate.
-- process: title "Our Architectural Process", subtitle "From Vision to Flawless Reality", with 3 steps
-  (e.g. Bespoke Consultation → Material Engineering → Precision Execution), each a vivid one-sentence
-  description.
-- products[].description: 2 sentences of high-level overview of that space/service.
-- products[].details.subtitle: a premium line designation (e.g. "Signature Collection").
-- products[].details.longDescription: a detailed paragraph on design intent, workflow advantage, and
-  spatial value.
-- products[].details.specifications: 2-3 concrete specs naming materials, build standards, hardware, or
-  technology integration.
-- theme: infer exactly one of the allowed theme slugs from the brand's aesthetic.`
+- hero.headline: a punchy headline (about 5 words) that highlights the core value this ${tradeNoun} delivers. Make it outcome-driven and specific to the trade — NOT generic, NOT about architecture unless this IS an architecture/design firm.
+- hero.subheadline: ONE supporting sentence (12-22 words) that sits under the headline. Add concrete substance — what is delivered, for whom, and a real proof point or differentiator from the brief (e.g. years in business, area served, materials, guarantee). Specific to this trade; no filler, no repeating the headline.
+- about.description: a compelling 3-sentence brand narrative about quality, expertise, and reliability written for a ${tradeNoun}. Make it specific to this trade and brand. Do NOT use architectural, closet, or home-storage language unless those ARE the actual services listed.
+- process: a 3-step how-it-works section. The title and subtitle MUST reflect the actual trade — do NOT use "Our Architectural Process" or "From Vision to Flawless Reality" unless the business is literally an architecture or design firm. Example adaptations: drain cleaning → "Book → Diagnose → Fix"; HVAC → "Assess → Recommend → Install"; roofing → "Inspect → Estimate → Install"; closets → "Design → Build → Install". Each step is a vivid one-sentence description.
+- CRITICAL — products[]: Generate EXACTLY ONE product entry for EACH service listed in the "Services offered" field of the business brief. The title MUST be that exact service name — do NOT add, remove, rename, or substitute services. If the brief lists "drain cleaning", the product title is "drain cleaning". If the brief lists 1 service, generate 1 product. The AI MUST NOT invent new services or replace the listed ones with anything else.
+- products[].description: 2 sentences about what this specific service involves and who needs it.
+- products[].details.subtitle: a quality/tier label appropriate to the trade (for luxury closets: "Signature Collection"; for drain/plumbing: "Professional Grade"; for HVAC: "Certified Service"; for roofing: "Expert Install" — match the actual trade).
+- products[].details.longDescription: a detailed paragraph about this specific service: what is done, the tools or materials used, and the outcome for the customer.
+- products[].details.specifications: 2-3 concrete specs naming real trade standards, certifications, materials, or warranties specific to this service.
+- quiz: Generate exactly 3 custom lead-qualification questions relevant to this specific trade. Do not use generic fallbacks like "What's the biggest challenge?". Instead, ask trade-specific questions (e.g., HVAC: "What's wrong with your current system?", Landscaping: "What is your primary goal for the outdoor space?"). Provide exactly 4 options for each question. Give each question and option a short, unique string ID.
+- theme: infer exactly one of the allowed theme slugs that best fits this specific industry and trade.
+- layoutStyle: infer exactly one of the allowed layout styles that best fits this specific industry and trade.`
 
   if (sitemap && sitemap.length > 1) {
     systemPrompt += `\n\n=== MULTI-PAGE SITEMAP (CRITICAL) ===
@@ -355,6 +436,14 @@ For each page:
   Testimonials -> grid of quotes; Service Areas -> grid of cities + a text intro; About/Process ->
   text + image blocks. Fill every field with concrete, on-brand content. No lorem ipsum, no
   "describe your..." instructions, no empty bodies.`
+  }
+
+  if (pageContents && Object.keys(pageContents).length > 0) {
+    systemPrompt += `\n\n=== USER-CUSTOMIZED PAGE COPY (NON-NEGOTIABLE) ===
+The user has provided custom copy for the following pages. You MUST use this copy verbatim as the main content/body of the corresponding page's content_blocks. Do NOT generate new copy or paraphrase it.
+${Object.entries(pageContents)
+  .map(([slug, text]) => `- Page "/${slug.replace(/^\//, '')}": "${text.replace(/"/g, '\\"')}"`)
+  .join('\n')}`
   }
 
   systemPrompt += `\n\nOUTPUT: valid JSON only:\n${JSON.stringify(GENERATE_SITE_JSON_SCHEMA.parameters, null, 2)}`
@@ -391,7 +480,7 @@ For each page:
 
   let aiData: Record<string, unknown>
   try {
-    aiData = JSON.parse(extractJson(rawText)) as Record<string, unknown>
+    aiData = JSON.parse(sanitizeJsonString(extractJson(rawText))) as Record<string, unknown>
   } catch {
     throw new Error(
       finishReason === 'MAX_TOKENS'

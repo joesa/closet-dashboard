@@ -122,7 +122,7 @@ export const PAINTING_GROUPS = [
 export const PAINTING_INDUSTRY: IndustryDef = {
   slug: 'painting',
   label: 'Painting',
-  keywords: ['paint', 'painter', 'interior paint', 'exterior paint', 'cabinet'],
+  keywords: ['painter', 'interior paint', 'exterior paint'],
   serviceGroups: [...PAINTING_GROUPS],
   defaultThemes: ['classic-warm', 'luxury-minimal', 'modern-office', 'coastal-climate'],
   defaultLayouts: ['portfolio-first', 'gallery-showcase', 'conversion-focus', 'visual-impact'],

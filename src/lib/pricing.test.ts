@@ -73,3 +73,40 @@ describe('computeQuote', () => {
     expect(Number.isNaN(q.range.low)).toBe(false)
   })
 })
+
+describe('computeQuote pricing models', () => {
+  it('per_unit (default) multiplies rate by quantity via generic params', () => {
+    const q = computeQuote({ pricingModel: 'per_unit', ratePerUnit: 12, quantity: 5 })
+    expect(q.baseCost).toBe(60)
+    expect(q.estimatedTotal).toBe(60)
+  })
+
+  it('flat_tiered uses the tier rate as a flat job price (quantity ignored)', () => {
+    const q = computeQuote({ pricingModel: 'flat_tiered', ratePerUnit: 350, quantity: 99 })
+    expect(q.baseCost).toBe(350)
+    expect(q.estimatedTotal).toBe(350)
+  })
+
+  it('base_plus_distance adds a hookup fee to rate * distance', () => {
+    const q = computeQuote({
+      pricingModel: 'base_plus_distance',
+      baseFee: 75,
+      ratePerUnit: 4,
+      quantity: 10,
+    })
+    expect(q.baseCost).toBe(115)
+    expect(q.estimatedTotal).toBe(115)
+  })
+
+  it('flat_tiered still layers add-on costs on top of the flat base', () => {
+    const q = computeQuote({
+      pricingModel: 'flat_tiered',
+      ratePerUnit: 200,
+      requestedAddOns: [{ id: 'permit', quantity: 1 }],
+      addOnCatalog: [{ id: 'permit', name: 'Permit', price: 50 }],
+    })
+    expect(q.baseCost).toBe(200)
+    expect(q.addOnCost).toBe(50)
+    expect(q.estimatedTotal).toBe(250)
+  })
+})

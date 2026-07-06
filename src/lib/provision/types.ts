@@ -12,6 +12,9 @@ export type IntakeSetup = {
   logoUrl?: string
   desiredDomain?: string
   pricingNotes?: string
+  industry?: string | null
+  services?: string[]
+  primary_cta?: string | null
 }
 
 export type IntakeRowForProvision = IntakeSetup & {
@@ -39,12 +42,42 @@ export type IntakeRowForProvision = IntakeSetup & {
   primary_cta?: string | null
   notes?: string | null
   requested_product?: string | null
+  industry?: string | null
 }
 
 export type ProvisionTenantInput = {
   businessName: string
   theme?: string
   layoutStyle?: string
+  /**
+   * Optional synthesized "last-resort" theme look (surface/shape/voice/swatch
+   * IDs). When present, the renderer composes styling from these tokens
+   * instead of `theme`'s hand-tuned definition. See ThemeTokenSelection in
+   * custom-closets-websites/src/lib/theme.ts.
+   */
+  themeTokens?: { surface: string; shape: string; voice: string; swatch: string } | null
+  /**
+   * Before/after image subject category from a matching contractor-created
+   * custom industry (see @/lib/catalog/customIndustries), when the business's
+   * industry isn't in the static catalog. Overrides the static
+   * INDUSTRY_BEFORE_AFTER_CATEGORY guess in openai-images.ts.
+   */
+  beforeAfterCategoryOverride?: 'vehicle' | 'exterior' | 'fixture' | 'pet' | 'interior-space' | 'not-applicable'
+  /**
+   * Deterministic quote-vs-order detection (see EngagementModel in
+   * catalog/types.ts) — resolved once at provisioning time from the
+   * business's industry and stored on site_configs so the renderer knows
+   * which widget/section to show. Defaults to 'quote' when absent.
+   */
+  engagementModel?: 'quote' | 'order' | 'booking' | 'ticket'
+  /**
+   * Priced menu items entered on the intake's "Menu Items" step (order-
+   * industry businesses only) — seeded into the menu_items table at
+   * provisioning time.
+   */
+  menuItems?: Array<{ name: string; price: number; category?: string }>
+  /** Optional forced design-variant preset id; null/empty = seeded Auto. */
+  designVariant?: string | null
   subdomain?: string
   ownerEmail: string
   heroHeadline?: string

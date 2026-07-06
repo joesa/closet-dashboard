@@ -19,16 +19,24 @@ export async function mergeAiSiteConfigWithPresentation(
     opts
   )
 
+  // If the user picked a theme/layout in the review step, it's stored in
+  // row.ai_site_config.presentation — take that over the AI output.
+  const storedRowPres = (row.ai_site_config as Record<string, unknown> | null)?.presentation as
+    | { theme?: string; layoutStyle?: string; source?: string }
+    | undefined
+  const userTheme = storedRowPres?.source === 'user' ? storedRowPres?.theme : undefined
+  const userLayout = storedRowPres?.source === 'user' ? storedRowPres?.layoutStyle : undefined
+
   const site =
     data.siteConfig && typeof data.siteConfig === 'object'
       ? ({ ...(data.siteConfig as Record<string, unknown>) } as Record<string, unknown>)
       : {}
 
   const theme = coerceThemeSlug(
-    typeof site.theme === 'string' ? site.theme : presentation.theme
+    userTheme ?? (typeof site.theme === 'string' ? site.theme : presentation.theme)
   )
   const layoutStyle = coerceLayoutSlug(
-    typeof site.layoutStyle === 'string' ? site.layoutStyle : presentation.layoutStyle
+    userLayout ?? (typeof site.layoutStyle === 'string' ? site.layoutStyle : presentation.layoutStyle)
   )
   const defaultRoom =
     typeof site.defaultRoom === 'string' && site.defaultRoom.trim()

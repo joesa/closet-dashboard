@@ -4,4 +4,5 @@ export {
   type RequestedAddOn,
   type ExpandedAddOn,
   type QuoteResult,
-} from '@closetquote/pricing'
+  type PricingModel,
+} from '@ditchtheform/pricing'

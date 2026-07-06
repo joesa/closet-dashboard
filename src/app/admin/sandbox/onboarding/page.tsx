@@ -1,8 +1,13 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import GuidedBuilder, { type GuidedResult } from './GuidedBuilder';
 import { SITE_PAGE_OPTIONS } from '@/lib/catalog/sitePages';
+import { listIndustries, resolveIndustrySlug, servicesForIndustry } from '@/lib/catalog/serviceCatalog';
+
+const SANDBOX_INDUSTRY_OPTIONS = listIndustries()
+  .map((industry) => industry.label)
+  .sort((a, b) => a.localeCompare(b));
 
 // Sandbox/testing helper: fabricate a fake but usable login email. We only ever
 // surface these on non-production hosts so the production onboarding page never
@@ -51,6 +56,7 @@ type IntakeSetup = {
 
 type IntakeRow = IntakeSetup & {
   id: string;
+  industry?: string | null;
   business_name?: string | null;
   contact_email?: string | null;
   contact_phone?: string | null;
@@ -85,6 +91,7 @@ type IntakeRow = IntakeSetup & {
 function intakeToDescription(it: IntakeRow): string {
   const parts: string[] = [];
   if (it.business_name) parts.push(`Business name: ${it.business_name}.`);
+  if (it.industry) parts.push(`Industry / trade: ${it.industry}.`);
   if (it.service_area) parts.push(`It serves ${it.service_area}.`);
   if (it.services?.length) parts.push(`Services offered: ${it.services.join(', ')}.`);
   if (it.customers) parts.push(`Ideal customers: ${it.customers}.`);
@@ -244,6 +251,8 @@ export default function SandboxOnboarding() {
   const [intakeSetup, setIntakeSetup] = useState<IntakeSetup | null>(null);
   const [intakeId, setIntakeId] = useState<string | null>(null);
   const [intakeBanner, setIntakeBanner] = useState('');
+  const [intakeIndustry, setIntakeIndustry] = useState('');
+  const [selectedIndustry, setSelectedIndustry] = useState('');
 
   // True only on localhost / non-production hosts. Used to expose test-only
   // helpers (fake login emails) that must never appear on production.
@@ -299,6 +308,8 @@ export default function SandboxOnboarding() {
           const it = json.intake as IntakeRow;
 
           setIntakeId(it.id);
+          setIntakeIndustry(it.industry?.trim() || '');
+          setSelectedIndustry(it.industry?.trim() || '');
           setSiteMode('full');
           setAiInput(intakeToDescription(it));
           setIntakeSetup({
@@ -333,6 +344,19 @@ export default function SandboxOnboarding() {
             ? (aiRaw as { siteConfig?: AiSiteConfig }).siteConfig
             : (aiRaw as AiSiteConfig | null)) ?? null;
 
+            // Reflect the prospect's chosen pages in the sitemap UI so the
+            // operator sees all N pages (Home + selected), not a default of 1.
+            const requested = Array.isArray(it.requested_pages) ? it.requested_pages : [];
+            if (requested.length > 0) {
+              const labels = requested
+                .map((slug) => SITE_PAGE_OPTIONS.find((o) => o.slug === slug)?.label)
+                .filter((l): l is string => Boolean(l));
+              const fullSitemap = ['Home', ...labels];
+              setSitemap(fullSitemap);
+              setPageCount(fullSitemap.length);
+              setIsSitemapGenerated(true);
+            }
+
           if (prospectConfig) {
             const selections = (it.image_selections as IntakeImageSelections | null) ?? {};
             const { config: mergedConfig, generated } = applyProspectImages(prospectConfig, selections);
@@ -351,19 +375,6 @@ export default function SandboxOnboarding() {
             setAiSiteConfig(mergedConfig);
             if (generated.hero || generated.products.length > 0) {
               setGeneratedImages(generated);
-            }
-
-            // Reflect the prospect's chosen pages in the sitemap UI so the
-            // operator sees all N pages (Home + selected), not a default of 1.
-            const requested = Array.isArray(it.requested_pages) ? it.requested_pages : [];
-            if (requested.length > 0) {
-              const labels = requested
-                .map((slug) => SITE_PAGE_OPTIONS.find((o) => o.slug === slug)?.label)
-                .filter((l): l is string => Boolean(l));
-              const fullSitemap = ['Home', ...labels];
-              setSitemap(fullSitemap);
-              setPageCount(fullSitemap.length);
-              setIsSitemapGenerated(true);
             }
 
             setFormData((prev) => ({
@@ -390,24 +401,32 @@ export default function SandboxOnboarding() {
     }
   }, []);
 
-  const availableServices = [
-    'Walk-In Closets',
-    'Reach-In Closets',
-    'Kids & Youth Closets',
-    'Dressing Rooms & Boutique Storage',
-    'Garages & Garage Storage',
-    'Garage Flooring & Slatwall Systems',
-    'Pantries & Wine Storage',
-    'Mudrooms & Entryway Lockers',
-    'Home Offices & Built-In Desks',
-    'Wall Beds & Murphy Beds',
-    'Entertainment & Media Centers',
-    'Laundry & Utility Rooms',
-    'Craft, Hobby & Sewing Rooms',
-    'Home Libraries & Built-In Storage',
-    'Whole-Home Organization',
-    'Commercial & Office Storage',
-  ];
+  const availableServices = useMemo(() => {
+    const selected = formData.services.filter(Boolean);
+    const industrySlug = resolveIndustrySlug({
+      industry: selectedIndustry || intakeIndustry || undefined,
+      services: selected,
+    });
+    const catalog = servicesForIndustry(industrySlug).map((s) => s.label);
+
+    // Keep any prospect-selected custom labels visible even if they don't
+    // exactly match the catalog for the resolved industry.
+    const merged = Array.from(new Set([...selected, ...catalog]));
+    return merged;
+  }, [formData.services, intakeIndustry, selectedIndustry]);
+
+  const handleIndustryChange = (industryLabel: string) => {
+    setSelectedIndustry(industryLabel);
+    const industrySlug = resolveIndustrySlug({ industry: industryLabel || undefined });
+    const catalog = servicesForIndustry(industrySlug).map((s) => s.label);
+    setFormData((prev) => {
+      const retained = prev.services.filter((s) => catalog.includes(s));
+      return {
+        ...prev,
+        services: retained.length > 0 ? retained : catalog.slice(0, Math.min(3, catalog.length)),
+      };
+    });
+  };
 
   const handleServiceToggle = (service: string) => {
     setFormData(prev => {
@@ -703,6 +722,11 @@ export default function SandboxOnboarding() {
                   <option value={3}>3 Pages</option>
                   <option value={4}>4 Pages</option>
                   <option value={5}>5 Pages</option>
+                  <option value={6}>6 Pages</option>
+                  <option value={7}>7 Pages</option>
+                  <option value={8}>8 Pages</option>
+                  <option value={9}>9 Pages</option>
+                  <option value={10}>10 Pages</option>
                 </select>
                 )}
                 {!isSitemapGenerated && (
@@ -976,6 +1000,22 @@ export default function SandboxOnboarding() {
                   className="w-full bg-neutral-900 border border-neutral-700 rounded-md p-2 text-white text-xs font-mono"
                   placeholder="https://images.unsplash.com/..."
                 />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-2 text-neutral-300">Industry</label>
+                <select
+                  value={selectedIndustry}
+                  onChange={(e) => handleIndustryChange(e.target.value)}
+                  className="w-full bg-neutral-900 border border-neutral-700 rounded-md p-2 text-white"
+                >
+                  <option value="">Auto-detect from selected services</option>
+                  {SANDBOX_INDUSTRY_OPTIONS.map((industry) => (
+                    <option key={industry} value={industry}>
+                      {industry}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div>

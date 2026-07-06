@@ -9,7 +9,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
-      '@closetquote/pricing': path.resolve(__dirname, './packages/pricing/src/index.ts'),
+      '@ditchtheform/pricing': path.resolve(__dirname, './packages/pricing/src/index.ts'),
     },
   },
 })

@@ -50,7 +50,7 @@ describe('resolveSitePresentationRules', () => {
 })
 
 describe('THEME_SLUGS catalog', () => {
-  it('has 25 themes for AI pool strategy', () => {
-    expect(THEME_SLUGS).toHaveLength(25)
+  it('has 50 themes for AI pool strategy', () => {
+    expect(THEME_SLUGS).toHaveLength(50)
   })
 })

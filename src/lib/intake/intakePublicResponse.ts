@@ -20,6 +20,13 @@ export function buildIntakePublicJson(row: ProspectIntakeRow) {
   const aiRaw = row.ai_site_config as Record<string, unknown> | null
   const siteConfig = aiRaw?.siteConfig ?? aiRaw
   const payment = getIntakePaymentSummary(row)
+  const widgetConfigHints =
+    row.widget_config_hints && typeof row.widget_config_hints === 'object'
+      ? ({ ...row.widget_config_hints } as Record<string, unknown>)
+      : {}
+  if (row.industry && !widgetConfigHints.industry) {
+    widgetConfigHints.industry = row.industry
+  }
 
   return {
     businessName: row.business_name,
@@ -34,6 +41,10 @@ export function buildIntakePublicJson(row: ProspectIntakeRow) {
     depositRequiredCents: row.deposit_required_cents,
     depositPaidCents: row.deposit_paid_cents,
     depositStatus: row.deposit_status,
+    // True once the contractor has already made an explicit Standard vs AI
+    // Premium choice before reaching the form (get-started flow, or a
+    // tier-specific email link) — used to hide the redundant TierPicker.
+    tierSelected: !!row.tier_selected_at,
     tierLabel: tierEntry?.label,
     depositDisplay: formatUsd(row.deposit_required_cents),
     totalDisplay: formatUsd(row.tier_total_cents),
@@ -45,6 +56,7 @@ export function buildIntakePublicJson(row: ProspectIntakeRow) {
     tierCatalog: getTierCatalog(),
     siteMaintenance: getSiteMaintenancePricing(),
     aiSiteConfig: siteConfig ?? null,
+    widgetConfigHints: Object.keys(widgetConfigHints).length > 0 ? widgetConfigHints : null,
     imageSelections: selections,
     maintenancePlan: row.maintenance_plan,
     previewApprovedAt: row.preview_approved_at,

@@ -15,7 +15,25 @@ export async function POST(req: Request) {
     }
 
     const supabase = getSupabaseAdmin();
-    
+
+    const { data: tenant, error: loadError } = await supabase
+      .from('tenants')
+      .select('validation_status')
+      .eq('id', tenantId)
+      .maybeSingle();
+    if (loadError) throw loadError;
+
+    // Site-validation gate: don't allow approval until the automated QA
+    // battery (theme/layout consistency, nav presence, broken links/images,
+    // bespoke/duplicate design) has passed. Enforced server-side too, not
+    // just by hiding the button, since this is a real safety gate.
+    if (tenant?.validation_status !== 'passed') {
+      return NextResponse.redirect(
+        new URL(`/admin/sites/${tenantId}?error=validation_required`, req.url),
+        303
+      );
+    }
+
     const { error } = await supabase
       .from('tenants')
       .update({ site_status: 'active' })

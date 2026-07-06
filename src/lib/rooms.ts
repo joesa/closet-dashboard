@@ -26,6 +26,69 @@ export type PricingTier = (typeof PRICING_TIERS)[number]
 
 export type RoomPricing = Record<RoomType, Record<PricingTier, number>>
 
+// ── Generic vertical/domain config ──────────────────────────────────────────
+// Describes how a contractor's vertical labels and prices a quote. Stored as
+// JSONB on contractor_settings.domain_config and served to the widget via
+// /api/settings. The defaults below reproduce the original closet behaviour.
+export type PricingModel = 'per_unit' | 'flat_tiered' | 'base_plus_distance'
+
+export type DomainConfig = {
+  /** What a "job type" is called (closets: "Room"; plumbing: "Service"). */
+  categoryLabel: string
+  /** The measured unit (closets: "Linear Feet"; towing: "Miles"). */
+  unitLabel: string
+  /** Short unit abbreviation shown next to the number (closets: "ft"). */
+  unitAbbrev: string
+  /** What a pricing tier is called (closets: "Finish"; generic: "Package"). */
+  tierLabel: string
+  /** How the base cost is computed. */
+  pricingModel: PricingModel
+  /** Slider/input bounds for the measured quantity. */
+  unitMin: number
+  unitMax: number
+  /** Hookup/base fee used by the base_plus_distance model. */
+  baseFee: number
+}
+
+export const DEFAULT_DOMAIN_CONFIG: DomainConfig = {
+  categoryLabel: 'Room',
+  unitLabel: 'Linear Feet',
+  unitAbbrev: 'ft',
+  tierLabel: 'Finish',
+  pricingModel: 'per_unit',
+  unitMin: 1,
+  unitMax: 250,
+  baseFee: 0,
+}
+
+const PRICING_MODELS: readonly PricingModel[] = [
+  'per_unit',
+  'flat_tiered',
+  'base_plus_distance',
+]
+
+// Normalize a value from the DB (or an older row missing the column) into a
+// complete DomainConfig, falling back to the closet defaults for any field.
+export function normalizeDomainConfig(value: unknown): DomainConfig {
+  const base = { ...DEFAULT_DOMAIN_CONFIG }
+  if (!value || typeof value !== 'object') return base
+  const input = value as Record<string, unknown>
+  if (typeof input.categoryLabel === 'string' && input.categoryLabel) base.categoryLabel = input.categoryLabel
+  if (typeof input.unitLabel === 'string' && input.unitLabel) base.unitLabel = input.unitLabel
+  if (typeof input.unitAbbrev === 'string' && input.unitAbbrev) base.unitAbbrev = input.unitAbbrev
+  if (typeof input.tierLabel === 'string' && input.tierLabel) base.tierLabel = input.tierLabel
+  if (typeof input.pricingModel === 'string' && PRICING_MODELS.includes(input.pricingModel as PricingModel)) {
+    base.pricingModel = input.pricingModel as PricingModel
+  }
+  const min = Number(input.unitMin)
+  if (Number.isFinite(min)) base.unitMin = min
+  const max = Number(input.unitMax)
+  if (Number.isFinite(max)) base.unitMax = max
+  const baseFee = Number(input.baseFee)
+  if (Number.isFinite(baseFee)) base.baseFee = baseFee
+  return base
+}
+
 export const DEFAULT_ROOM_PRICING: RoomPricing = {
   'Walk-In Closet': { basic: 45, standard: 65, premium: 120 },
   'Reach-In Closet': { basic: 35, standard: 55, premium: 95 },

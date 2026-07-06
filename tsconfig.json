@@ -10,7 +10,7 @@
     "module": "esnext",
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
-    "ignoreDeprecations": "6.0",
+    "ignoreDeprecations": "5.0",
     "isolatedModules": true,
     "jsx": "react-jsx",
     "incremental": true,
@@ -21,7 +21,7 @@
     ],
     "paths": {
       "@/*": ["./src/*"],
-      "@closetquote/pricing": ["./packages/pricing/src/index.ts"]
+      "@ditchtheform/pricing": ["./packages/pricing/src/index.ts"]
     }
   },
   "include": [

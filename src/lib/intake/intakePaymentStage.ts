@@ -21,7 +21,9 @@ export type IntakePaymentSummary = {
 }
 
 /** Standard build paid in full, or AI Premium balance paid (launch). */
-export function isLaunchBuildPaid(row: ProspectIntakeRow): boolean {
+export function isLaunchBuildPaid(
+  row: Pick<ProspectIntakeRow, 'intake_tier' | 'build_paid_at' | 'balance_paid_at'>
+): boolean {
   if (row.intake_tier === 'standard') return !!row.build_paid_at
   return !!row.balance_paid_at
 }
@@ -33,7 +35,8 @@ function buildPaid(row: ProspectIntakeRow): boolean {
 export function getIntakePaymentSummary(row: ProspectIntakeRow): IntakePaymentSummary {
   const tier = getTierEntry(row.intake_tier === 'ai_premium' ? 'ai_premium' : 'standard')
   const total = row.tier_total_cents || tier?.totalCents || 0
-  const remainder = Math.max(0, total - row.deposit_required_cents)
+  const depositRequired = row.deposit_required_cents || 0
+  const remainder = Math.max(0, total - depositRequired)
 
   if (row.status === 'draft') {
     if (

@@ -201,16 +201,17 @@ export function injectGalleryImagesIntoPages(
  * customer picked instead of the admin guessing. AI Premium builds replace
  * these with art-directed pagesConfig from the model.
  */
-export function buildBasicPagesConfig(slugs: string[]): BasicPageConfig[] {
+export function buildBasicPagesConfig(slugs: string[], pageContents?: Record<string, string>): BasicPageConfig[] {
   return sanitizePageSlugs(slugs).map((slug) => {
     const opt = SLUG_TO_OPTION.get(slug)
     const title = opt?.label ?? slug
+    const customText = pageContents?.[slug]
     return {
       slug: `/${slug}`,
       title,
       hero: { headline: title, subheadline: opt?.description ?? '' },
       content_blocks: [
-        { type: 'text', heading: title, body: opt?.description ?? '' },
+        { type: 'text', heading: title, body: customText || opt?.description || '' },
       ],
     }
   })
@@ -247,7 +248,8 @@ type AiPageLike = {
 export function normalizeAiPagesConfig(
   rawPages: unknown,
   requestedSlugs: string[],
-  tier: string | null | undefined
+  tier: string | null | undefined,
+  pageContents?: Record<string, string> | null
 ): BasicPageConfig[] {
   const slugs = clampPagesForTier(requestedSlugs, tier)
   const aiPages = Array.isArray(rawPages) ? (rawPages as AiPageLike[]) : []
@@ -264,6 +266,19 @@ export function normalizeAiPagesConfig(
       ai && typeof (ai.hero as { headline?: unknown })?.headline === 'string'
         ? ((ai.hero as { headline: string }).headline)
         : title
+
+    // Use custom page contents if the prospect provided it.
+    if (pageContents && pageContents[slug]) {
+      return {
+        slug: `/${slug}`,
+        title,
+        hero: { headline: heroHeadline, subheadline: opt?.description ?? '' },
+        content_blocks: [
+          { type: 'text', heading: title, body: pageContents[slug] },
+        ],
+      }
+    }
+
     const blocks = Array.isArray(ai?.content_blocks) ? (ai!.content_blocks as BasicPageConfig['content_blocks']) : null
     if (blocks && blocks.length > 0) {
       return {
@@ -274,7 +289,7 @@ export function normalizeAiPagesConfig(
       }
     }
     // Gap filler: model omitted this page — ship a basic scaffold so it exists.
-    return buildBasicPagesConfig([slug])[0]
+    return buildBasicPagesConfig([slug], pageContents || undefined)[0]
   })
 }
 

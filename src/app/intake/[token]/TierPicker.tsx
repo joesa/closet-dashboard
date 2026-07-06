@@ -72,17 +72,17 @@ export default function TierPicker({
   };
 
   return (
-    <section className="rounded-xl border border-indigo-200 bg-indigo-50/50 p-6">
-      <h2 className="text-sm font-bold uppercase tracking-wide text-indigo-900 mb-1">
+    <section className="rounded-xl border border-white/[0.08] bg-white/[0.03] p-6">
+      <h2 className="mb-1 text-[11px] font-semibold uppercase tracking-widest text-zinc-500">
         Choose your setup package
       </h2>
-      <p className="text-xs text-indigo-800/80 mb-4">
+      <p className="mb-4 text-xs text-zinc-400">
         Standard uses professional stock imagery. AI Premium generates custom hero and product photos during this form.
-        Build fees are one-time; managed hosting + ClosetQuote Pro starts after launch.
+        Build fees are one-time; managed hosting + DitchTheForm Pro starts after launch.
       </p>
       <div className="mb-4 flex flex-wrap items-center gap-2">
-        <span className="text-xs font-medium text-indigo-900">Site maintenance:</span>
-        <div className="inline-flex rounded-full border border-indigo-200 bg-white p-0.5">
+        <span className="text-xs font-medium text-zinc-300">Site maintenance:</span>
+        <div className="inline-flex rounded-full border border-white/[0.14] bg-white/[0.04] p-0.5">
           <button
             type="button"
             onClick={() => {
@@ -91,8 +91,8 @@ export default function TierPicker({
             }}
             className={`rounded-full px-3 py-1 text-xs font-medium ${
               maintenanceBilling === 'monthly'
-                ? 'bg-indigo-600 text-white'
-                : 'text-indigo-700'
+                ? 'bg-white text-black'
+                : 'text-zinc-300'
             }`}
           >
             Monthly
@@ -105,15 +105,15 @@ export default function TierPicker({
             }}
             className={`rounded-full px-3 py-1 text-xs font-medium ${
               maintenanceBilling === 'yearly'
-                ? 'bg-indigo-600 text-white'
-                : 'text-indigo-700'
+                ? 'bg-white text-black'
+                : 'text-zinc-300'
             }`}
           >
             Yearly
           </button>
         </div>
         {maintenance.yearlySavingsCents > 0 && maintenanceBilling === 'yearly' && (
-          <span className="text-xs text-emerald-700 font-medium">
+          <span className="text-xs font-medium text-emerald-300">
             Save {formatUsd(maintenance.yearlySavingsCents)}/yr
           </span>
         )}
@@ -129,48 +129,48 @@ export default function TierPicker({
               onClick={() => void selectTier(t.slug)}
               className={`rounded-lg border p-4 text-left transition ${
                 selected
-                  ? 'border-indigo-600 bg-white ring-2 ring-indigo-500'
-                  : 'border-gray-200 bg-white hover:border-indigo-300'
+                  ? 'border-indigo-300 bg-indigo-500/10 ring-1 ring-indigo-300'
+                  : 'border-white/[0.14] bg-white/[0.01] hover:border-indigo-300/50'
               }`}
             >
-              <div className="font-semibold text-gray-900">{t.label}</div>
-              <div className="mt-1 text-lg font-bold text-indigo-700">
+              <div className="font-semibold text-zinc-100">{t.label}</div>
+              <div className="mt-1 text-lg font-bold text-indigo-200">
                 {formatUsd(t.totalCents)}
-                <span className="text-sm font-semibold text-indigo-600/90"> one-time build</span>
+                <span className="text-sm font-semibold text-indigo-200/90"> one-time build</span>
               </div>
-              <p className="mt-1 text-xs text-gray-600">
+              <p className="mt-1 text-xs text-zinc-400">
                 Then {formatUsd(maintDisplay.perMonthCents)}/mo — {maintDisplay.billedLabel}
               </p>
               {t.slug === 'standard' && (
-                <p className="mt-2 text-xs font-medium text-slate-700 bg-slate-50 rounded px-2 py-1.5">
+                <p className="mt-2 rounded px-2 py-1.5 text-xs font-medium text-zinc-300 bg-white/[0.04]">
                   No upfront deposit. Pay {formatUsd(t.totalCents)} when satisfied with the preview,
                   then we launch and give you full dashboard access.
                 </p>
               )}
               {t.slug === 'ai_premium' && t.depositCents > 0 && (
                 <>
-                  <p className="mt-2 text-xs font-medium text-amber-800 bg-amber-50 rounded px-2 py-1">
+                  <p className="mt-2 rounded px-2 py-1 text-xs font-medium text-amber-100 bg-amber-500/15">
                     30% due today: {formatUsd(t.depositCents)} — unlocks AI studio. Balance{' '}
                     {formatUsd(t.remainderCents)} only if satisfied before launch.
                   </p>
-                  <p className="mt-1 text-xs text-emerald-800">
+                  <p className="mt-1 text-xs text-emerald-300">
                     Not satisfied? No balance — deposit returned.
                   </p>
                 </>
               )}
               {loading === t.slug && (
-                <p className="mt-2 text-xs text-gray-500">Saving…</p>
+                <p className="mt-2 text-xs text-zinc-500">Saving…</p>
               )}
             </button>
           );
         })}
       </div>
       {currentTier === 'ai_premium' && depositStatus !== 'paid' && depositStatus !== 'not_required' && (
-        <p className="mt-3 text-xs text-amber-800">
+        <p className="mt-3 text-xs text-amber-300">
           AI image studio unlocks after the 30% deposit is paid.
         </p>
       )}
-      {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+      {error && <p className="mt-2 text-sm text-red-400">{error}</p>}
     </section>
   );
 }

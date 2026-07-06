@@ -9,6 +9,7 @@ export async function assertNoDuplicateProvision(opts: {
   businessName: string
   ownerEmail: string
   contactPhone?: string | null
+  existingTenantId?: string | null
 }) {
   const admin = getSupabaseAdmin()
   const email = opts.ownerEmail.trim().toLowerCase()
@@ -19,7 +20,7 @@ export async function assertNoDuplicateProvision(opts: {
     .select('id')
     .eq('owner_email', email)
     .maybeSingle()
-  if (tenantByEmail) {
+  if (tenantByEmail && tenantByEmail.id !== opts.existingTenantId) {
     throw new ProvisionReviewError('A tenant already exists for this owner email')
   }
 

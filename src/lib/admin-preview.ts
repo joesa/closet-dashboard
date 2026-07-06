@@ -36,7 +36,7 @@ export function getTenantPublicUrl(hostname: string): string {
   if (!host) return '#'
 
   if (isDevHostname(host)) {
-    return process.env.NODE_ENV !== 'production' ? `http://${host}:3000` : '#'
+    return `http://${host}:3000`
   }
 
   return `https://${host}`

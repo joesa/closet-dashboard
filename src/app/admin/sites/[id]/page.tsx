@@ -4,12 +4,16 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { buildTenantPreviewUrl, getTenantPublicUrl } from '@/lib/admin-preview';
 import { notFound } from 'next/navigation';
 import DeleteTenantDialog from '@/components/DeleteTenantDialog';
+import SiteValidationPanel from '@/components/SiteValidationPanel';
+import { DESIGN_VARIANT_OPTIONS } from '@/lib/catalog/designVariantCatalog';
 
 export const dynamic = 'force-dynamic';
 
 type SiteConfigShape = {
   theme?: string;
   default_room?: string;
+  design_variant?: string | null;
+  engagement_model?: string | null;
   hero_config?: { headline?: string; backgroundImage?: string } & Record<string, unknown>;
   about_config?: { description?: string } & Record<string, unknown>;
   products_config?: { image?: string; title?: string; description?: string }[];
@@ -28,10 +32,15 @@ export default async function TenantDetailsPage({ params }: { params: Promise<{ 
       owner_email,
       site_status,
       created_at,
+      validation_status,
+      validation_report,
+      validated_at,
       domains ( hostname ),
       site_configs (
         theme,
         default_room,
+        design_variant,
+        engagement_model,
         hero_config,
         about_config,
         products_config
@@ -55,6 +64,10 @@ export default async function TenantDetailsPage({ params }: { params: Promise<{ 
   const config = (Array.isArray(tenant.site_configs) && tenant.site_configs.length > 0 
     ? tenant.site_configs[0]
     : tenant.site_configs) as unknown as SiteConfigShape | null;
+
+  const validationStatus = (tenant.validation_status ?? null) as 'pending' | 'passed' | 'failed' | null;
+  const validationIssues = Array.isArray(tenant.validation_report) ? tenant.validation_report : [];
+  const readyForApproval = validationStatus === 'passed';
 
   return (
     <div className="min-h-screen bg-neutral-950 text-white p-8">
@@ -86,6 +99,11 @@ export default async function TenantDetailsPage({ params }: { params: Promise<{ 
                   Pending Approval
                 </span>
               )}
+              {tenant.site_status === 'pending_approval' && !readyForApproval && (
+                <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-red-500/10 text-red-400 border border-red-500/20">
+                  Needs Fixes
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -99,7 +117,7 @@ export default async function TenantDetailsPage({ params }: { params: Promise<{ 
               rel="noreferrer"
               className="px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white font-medium rounded-lg transition-colors flex items-center gap-2 shadow-lg shadow-blue-500/20"
             >
-              Review Staging View
+              {tenant.site_status !== 'active' ? 'Preview Customer Unapprove Site' : 'Review Staging View'}
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
               </svg>
@@ -110,7 +128,7 @@ export default async function TenantDetailsPage({ params }: { params: Promise<{ 
             </span>
           )}
           
-          {tenant.site_status === 'pending_approval' && (
+          {tenant.site_status === 'pending_approval' && readyForApproval && (
             <form action={`/api/admin/sites/approve`} method="POST">
               <input type="hidden" name="tenantId" value={tenant.id} />
               <button 
@@ -121,11 +139,24 @@ export default async function TenantDetailsPage({ params }: { params: Promise<{ 
               </button>
             </form>
           )}
+          {tenant.site_status === 'pending_approval' && !readyForApproval && (
+            <span className="text-sm text-neutral-500">
+              Resolve validation issues below before this site can be approved.
+            </span>
+          )}
 
           <div className="ml-auto">
             <DeleteTenantDialog tenantId={tenant.id} businessName={tenant.business_name} variant="detail" />
           </div>
         </div>
+
+        {/* Site Validation Gate */}
+        <SiteValidationPanel
+          tenantId={tenant.id}
+          status={validationStatus}
+          issues={validationIssues}
+          validatedAt={tenant.validated_at ?? null}
+        />
 
         {/* Configuration Inspection */}
         {config ? (
@@ -147,6 +178,38 @@ export default async function TenantDetailsPage({ params }: { params: Promise<{ 
                     <div className="text-white">
                       {config.default_room}
                     </div>
+                  </div>
+                  <div>
+                    <span className="text-neutral-400 text-sm block mb-1">Engagement Model</span>
+                    <div className={`font-mono px-3 py-2 rounded inline-block ${config.engagement_model === 'order' ? 'bg-purple-500/10 text-purple-300' : 'bg-black/50 text-blue-400'}`}>
+                      {config.engagement_model === 'order' ? 'order (menu \u2192 cart \u2192 submit)' : 'quote (estimate \u2192 lead capture)'}
+                    </div>
+                  </div>
+                  <div>
+                    <span className="text-neutral-400 text-sm block mb-1">Studio Style (Design Variant)</span>
+                    <form action="/api/admin/sites/design-variant" method="POST" className="flex flex-wrap items-center gap-2">
+                      <input type="hidden" name="tenantId" value={tenant.id} />
+                      <select
+                        name="designVariant"
+                        defaultValue={config.design_variant ?? ''}
+                        className="bg-black/50 border border-neutral-700 text-white text-sm rounded px-3 py-2 font-mono"
+                      >
+                        {DESIGN_VARIANT_OPTIONS.map((opt) => (
+                          <option key={opt.id || 'auto'} value={opt.id}>
+                            {opt.label}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="submit"
+                        className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded transition-colors"
+                      >
+                        Save
+                      </button>
+                    </form>
+                    <p className="text-neutral-500 text-xs mt-2">
+                      &ldquo;Auto&rdquo; gives every site a unique seeded layout. Pick a preset to force a specific look, then use Preview to review.
+                    </p>
                   </div>
                 </div>
               </section>

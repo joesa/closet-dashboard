@@ -15,67 +15,141 @@ type Props = {
   aiSiteConfig: SiteConfigShape | null;
   imageSelections: IntakeImageSelections;
   onUpdate: (selections: IntakeImageSelections, siteConfig: SiteConfigShape | null) => void;
+  formState?: any;
+  isActive?: boolean;
 };
+
+// Optional richer art direction for storage / organization verticals, where
+// naming specific finishes noticeably improves realism. Returns null for any
+// other trade so the prompt falls back to industry-neutral language instead of
+// forcing closet-style materials onto, say, a plumber or tow operator.
+function storageVerticalMaterials(name: string): string | null {
+  if (/garage/.test(name)) {
+    return (
+      'powder-coated steel slatwall panels, heavy-duty epoxy floor coating, stainless overhead storage, ' +
+      'matte-black track hardware, built-in workbench with hardwood butcher-block surface'
+    );
+  }
+  if (/pantry|wine|cellar/.test(name)) {
+    return (
+      'rift-cut white oak open shelving, brushed brass rails, pull-out wicker baskets, ' +
+      'integrated LED under-shelf lighting, honed marble countertops, recessed spice niches'
+    );
+  }
+  if (/mudroom|mud room|laundry|entryway/.test(name)) {
+    return (
+      'painted shaker cabinetry, matte-black hooks, teak bench slats, wainscoting panels, ' +
+      'cubbies with linen fabric baskets, integrated LED lighting'
+    );
+  }
+  if (/office|desk|library/.test(name)) {
+    return (
+      'walnut veneer shelving, fluted glass cabinet doors, matte-black anodized hardware, ' +
+      'integrated LED task lighting, cable-management channels, floating desk surface'
+    );
+  }
+  if (/closet|wardrobe|dressing|reach-in|reach in/.test(name)) {
+    return (
+      'rift-cut white oak, matte-black anodized hardware, brushed brass rails, integrated LED shelf lighting, ' +
+      'soft-close drawers with precision joinery'
+    );
+  }
+  return null;
+}
 
 function defaultProductPrompt(serviceName: string): string {
   const name = serviceName.toLowerCase();
+  const materials = storageVerticalMaterials(name);
 
-  // Derive service-appropriate materials so the fallback prompt matches the
-  // actual product being photographed instead of always referencing closet finishes.
-  const isGarage = /garage/.test(name);
-  const isPantry = /pantry|wine|cellar/.test(name);
-  const isMudroom = /mudroom|mud room|laundry|entryway/.test(name);
-  const isOffice = /office|desk|library/.test(name);
-
-  let materials: string;
-  if (isGarage) {
-    materials =
-      'powder-coated steel slatwall panels, heavy-duty epoxy floor coating, stainless overhead storage, ' +
-      'matte-black track hardware, built-in workbench with hardwood butcher-block surface';
-  } else if (isPantry) {
-    materials =
-      'rift-cut white oak open shelving, brushed brass rails, pull-out wicker baskets, ' +
-      'integrated LED under-shelf lighting, honed marble countertops, recessed spice niches';
-  } else if (isMudroom) {
-    materials =
-      'painted shaker cabinetry, matte-black hooks, teak bench slats, wainscoting panels, ' +
-      'cubbies with linen fabric baskets, integrated LED lighting';
-  } else if (isOffice) {
-    materials =
-      'walnut veneer shelving, fluted glass cabinet doors, matte-black anodized hardware, ' +
-      'integrated LED task lighting, cable-management channels, floating desk surface';
-  } else {
-    // Default: closet / wardrobe
-    materials =
-      'rift-cut white oak, matte-black anodized hardware, brushed brass rails, integrated LED shelf lighting, ' +
-      'soft-close drawers with precision joinery';
+  if (materials) {
+    return (
+      `Authentic real interior photograph, tight close-up of a beautifully organized ${name} ` +
+      `installation. Featuring real premium materials (${materials}), natural grain and subtle ` +
+      `lived-in imperfections. Shot on a full-frame DSLR with a 35mm lens, ` +
+      `natural window light, photorealistic, 8k, crisp textures, wide 16:9 composition. NOT a 3D render, ` +
+      `NOT CGI, not digital art — avoid plastic/glossy surfaces, waxy textures, and uncanny symmetry. ` +
+      `No text, no people, no logos.`
+    );
   }
 
+  // Industry-neutral fallback: photograph the finished, professional result of
+  // whatever service the business actually performs.
   return (
-    `Authentic real interior photograph, tight close-up of a beautifully organized ${name} ` +
-    `installation. Featuring real premium materials (${materials}), natural grain and subtle ` +
-    `lived-in imperfections. Shot on a full-frame DSLR with a 35mm lens, ` +
-    `natural window light, photorealistic, 8k, crisp textures, wide 16:9 composition. NOT a 3D render, ` +
-    `NOT CGI, not digital art — avoid plastic/glossy surfaces, waxy textures, and uncanny symmetry. ` +
-    `No text, no people, no logos.`
+    `Authentic real photograph documenting professional, completed ${name} work — a clean, ` +
+    `well-executed result shown in a true-to-life setting with realistic detail and natural wear. ` +
+    `Shot on a full-frame DSLR with a 35mm lens, natural light, photorealistic, 8k, crisp textures, ` +
+    `wide 16:9 composition. NOT a 3D render, NOT CGI, not digital art — avoid plastic/glossy surfaces, ` +
+    `waxy textures, and uncanny symmetry. No text, no people, no logos.`
   );
 }
 
 function defaultHeroPrompt(serviceName: string): string {
-  const name = (serviceName || 'custom closet').toLowerCase();
+  const name = (serviceName || 'professional service').toLowerCase();
+  const materials = storageVerticalMaterials(name);
+
+  if (materials) {
+    return (
+      `Authentic real-estate / architectural photograph, a grand wide-angle view of an immaculate ` +
+      `${name} installation. Featuring real premium materials, custom cabinetry, backlit shelving, and ` +
+      `luxury finishes in a bright residential space. Shot on a full-frame DSLR with a 24mm lens, ` +
+      `natural window light with soft realistic shadows, photorealistic, 8k, crisp focus, clean lines, ` +
+      `clutter-free, wide 16:9 composition. NOT a 3D render, NOT CGI, not digital art — avoid ` +
+      `plastic/glossy surfaces, waxy textures, warped geometry, and uncanny perfect symmetry. ` +
+      `No text, no people, no logos.`
+    );
+  }
+
+  // Industry-neutral hero: a clean, inviting, real-world scene that conveys the
+  // quality and trustworthiness of the business, whatever the trade.
   return (
-    `Authentic real-estate / architectural photograph, a grand wide-angle view of an immaculate ` +
-    `${name} installation. Featuring real premium materials, custom cabinetry, backlit shelving, and ` +
-    `luxury finishes in a bright residential space. Shot on a full-frame DSLR with a 24mm lens, ` +
-    `natural window light with soft realistic shadows, photorealistic, 8k, crisp focus, clean lines, ` +
-    `clutter-free, wide 16:9 composition. NOT a 3D render, NOT CGI, not digital art — avoid ` +
-    `plastic/glossy surfaces, waxy textures, warped geometry, and uncanny perfect symmetry. ` +
-    `No text, no people, no logos.`
+    `Authentic real photograph representing a professional ${name} business — a clean, inviting, ` +
+    `real-world scene that conveys quality, craftsmanship, and trust. Shot on a full-frame DSLR ` +
+    `with a 24mm lens, natural light with soft realistic shadows, photorealistic, 8k, crisp focus, ` +
+    `clean composition, wide 16:9. NOT a 3D render, NOT CGI, not digital art — avoid plastic/glossy ` +
+    `surfaces, waxy textures, warped geometry, and uncanny perfect symmetry. No text, no people, no logos.`
   );
 }
 
 function normalizeName(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+// Words that are too generic to prove a stored hero prompt matches the
+// contractor's current trade/service (e.g. "install" can match anything).
+const GENERIC_SERVICE_WORDS = new Set([
+  'install',
+  'installation',
+  'repair',
+  'replace',
+  'replacement',
+  'service',
+  'services',
+  'maintenance',
+  'clean',
+  'cleaning',
+  'upgrade',
+  'upgrades',
+  'inspection',
+  'inspections',
+  'system',
+  'systems',
+  'unit',
+  'units',
+  'job',
+  'jobs',
+  'work',
+  'professional',
+]);
+
+function serviceSpecificKeywords(services: string[]): string[] {
+  const out = new Set<string>();
+  services.forEach((svc) => {
+    normalizeName(svc)
+      .split(' ')
+      .filter((w) => w.length >= 4 && !GENERIC_SERVICE_WORDS.has(w))
+      .forEach((w) => out.add(w));
+  });
+  return [...out];
 }
 
 export default function IntakeImageStudio({
@@ -85,6 +159,8 @@ export default function IntakeImageStudio({
   aiSiteConfig: initialSite,
   imageSelections: initialSelections,
   onUpdate,
+  formState,
+  isActive,
 }: Props) {
   const [siteConfig, setSiteConfig] = useState<SiteConfigShape | null>(initialSite);
   const [selections, setSelections] = useState(initialSelections);
@@ -124,8 +200,28 @@ export default function IntakeImageStudio({
     });
   }, [services, siteConfig]);
 
-  const heroPrompt =
-    siteConfig?.hero?.imagePrompt?.trim() || defaultHeroPrompt(services[0] ?? '');
+  const heroPrompt = (() => {
+    const stored = siteConfig?.hero?.imagePrompt?.trim();
+    if (stored && services.length > 0) {
+      const lower = stored.toLowerCase();
+      // Reuse stored hero art direction only when it mentions trade-specific
+      // keywords from current services. Generic verbs like "install" / "repair"
+      // are ignored, so stale prompts from another trade (e.g. HVAC) don't
+      // survive just because they contain "installation".
+      const keywords = serviceSpecificKeywords(services);
+      const isRelevant =
+        keywords.length > 0
+          ? keywords.some((word) => lower.includes(word))
+          : services.some((svc) =>
+              normalizeName(svc)
+                .split(' ')
+                .filter((w) => w.length >= 4)
+                .some((word) => lower.includes(word))
+            );
+      if (isRelevant) return stored;
+    }
+    return defaultHeroPrompt(services[0] ?? '');
+  })();
 
   const runBrief = async () => {
     setBriefLoading(true);
@@ -134,7 +230,7 @@ export default function IntakeImageStudio({
       const res = await fetch(`/api/intake/${token}/generate-site`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pages }),
+        body: JSON.stringify({ pages, ...formState }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Brief generation failed');
@@ -147,6 +243,14 @@ export default function IntakeImageStudio({
       setBriefLoading(false);
     }
   };
+
+  // Auto-trigger brief when this step becomes active
+  React.useEffect(() => {
+    if (isActive && !siteConfig && !briefLoading) {
+      void runBrief();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isActive, siteConfig, briefLoading]);
 
   const generateBatch = async (
     slot: 'hero' | 'product',
@@ -182,6 +286,32 @@ export default function IntakeImageStudio({
     }
   };
 
+  // Auto-trigger sequential image generation
+  const [autoGenStarted, setAutoGenStarted] = useState(false);
+  
+  React.useEffect(() => {
+    if (!isActive || !siteConfig || autoGenStarted) return;
+    
+    const runSequentialGen = async () => {
+      setAutoGenStarted(true);
+      
+      // Hero
+      if (!selections.hero.selectedUrl && (selections.hero.attemptsUsed ?? 0) === 0) {
+        await generateBatch('hero', heroPrompt);
+      }
+      
+      // Products
+      for (const p of products) {
+        const slotState = selections.products.find((x) => x.serviceName === p.serviceName);
+        if (!slotState?.selectedUrl && (slotState?.attemptsUsed ?? 0) === 0) {
+          await generateBatch('product', p.prompt, p.index);
+        }
+      }
+    };
+    
+    void runSequentialGen();
+  }, [isActive, siteConfig, autoGenStarted, selections, products, heroPrompt]);
+
   const selectImage = async (
     slot: 'hero' | 'product',
     selectedUrl: string,
@@ -213,7 +343,7 @@ export default function IntakeImageStudio({
     productIndex?: number
   ) => {
     const attemptsUsed = slotState.attemptsUsed ?? 0;
-    const max = 3;
+    const max = 5;
     const lastBatch = slotState.history?.[slotState.history.length - 1];
 
     return (
@@ -299,12 +429,23 @@ export default function IntakeImageStudio({
 
       {!siteConfig && (
         <button
+          id="btn-build-ai-brief"
           type="button"
           disabled={briefLoading}
           onClick={() => void runBrief()}
           className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500 disabled:opacity-50"
         >
-          {briefLoading ? 'Building AI brief…' : 'Generate AI brief from your answers'}
+          {briefLoading ? (
+            <span className="flex items-center gap-2">
+              <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+              </svg>
+              Building AI brief…
+            </span>
+          ) : (
+            'Generate AI brief from your answers'
+          )}
         </button>
       )}
 

@@ -6,6 +6,7 @@ type Props = {
   error?: string | null
   tenantSiteUrl?: string | null
   tenantSiteStatus?: string | null
+  bypassUrl?: string | null
 }
 
 const ERROR_MESSAGES: Record<string, string> = {
@@ -22,6 +23,7 @@ export default function IntakeAdminAlerts({
   error,
   tenantSiteUrl,
   tenantSiteStatus,
+  bypassUrl,
 }: Props) {
   const errorMsg = error ? ERROR_MESSAGES[error] ?? `Error: ${error}` : null
 
@@ -44,6 +46,20 @@ export default function IntakeAdminAlerts({
                 className="text-blue-600 hover:underline"
               >
                 Open customer site
+              </a>
+            </>
+          )}
+          {bypassUrl && (
+            <>
+              {' '}
+              ·{' '}
+              <a
+                href={bypassUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-600 hover:underline font-semibold"
+              >
+                Preview Customer Unapprove Site
               </a>
             </>
           )}

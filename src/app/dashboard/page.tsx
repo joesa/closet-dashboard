@@ -59,6 +59,16 @@ export type ContractorSettings = {
   stripe_customer_id?: string | null
   stripe_subscription_id?: string | null
   subscription_plan?: 'monthly' | 'yearly' | null
+  domain_config?: {
+    categoryLabel?: string
+    unitLabel?: string
+    unitAbbrev?: string
+    tierLabel?: string
+    pricingModel?: string
+    unitMin?: number
+    unitMax?: number
+    baseFee?: number
+  } | null
 }
 
 function createInitialForm(): ContractorSettings {
@@ -586,6 +596,8 @@ export default function DashboardPage() {
   }
 
   const disabledRoomList = form.disabled_default_rooms ?? []
+  const categoryLabel = form.domain_config?.categoryLabel || 'Room'
+  const categoryLabelPlural = categoryLabel === 'Room' ? 'Rooms' : categoryLabel === 'Service' ? 'Services' : `${categoryLabel}s`
   const visibleDefaultRooms = ROOM_TYPES.filter((room) => !disabledRoomList.includes(room))
   const disabledFinishesList = form.disabled_default_finishes ?? []
   const allDefaultFinishesHidden = PRICING_TIERS.every((tier) =>
@@ -775,7 +787,7 @@ export default function DashboardPage() {
           >
             <div className="flex items-baseline gap-3">
               <h2 className="text-sm font-medium uppercase tracking-widest text-zinc-500">
-                Room Pricing Matrix
+                {categoryLabel} Pricing Matrix
               </h2>
               <span className="rounded-full bg-white/[0.06] px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-zinc-400">
                 {visibleDefaultRooms.length} active · {customRooms.length} custom
@@ -793,11 +805,11 @@ export default function DashboardPage() {
           {roomsOpen && (
             <div id="room-pricing-panel">
               <p className="mb-5 text-xs text-zinc-500">
-                Pricing for the room types in your calculator. Add more rooms below if your offering grows.
+                Pricing for the {categoryLabel.toLowerCase()} types in your calculator. Add more {categoryLabel.toLowerCase()}s below if your offering grows.
               </p>
               <div className="mb-4 overflow-hidden rounded-xl border border-white/[0.06]">
                 <div className="sticky top-0 z-10 grid grid-cols-[1.4fr_1fr_1fr_1fr_2.5rem] gap-px border-b border-white/[0.06] bg-white/[0.04] text-[10px] font-medium uppercase tracking-widest text-zinc-500 backdrop-blur">
-                  <div className="bg-[#12151C]/95 px-4 py-3">Room</div>
+                  <div className="bg-[#12151C]/95 px-4 py-3">{categoryLabel}</div>
                   {PRICING_TIERS.map((tier) => (
                     <div key={tier} className="bg-[#12151C]/95 px-4 py-3">
                       {tierLabel(tier)}
@@ -825,7 +837,7 @@ export default function DashboardPage() {
                               type="number"
                               min="0"
                               step="0.01"
-                              aria-label={`${room} ${tier} price per linear foot`}
+                              aria-label={`${room} ${tier} price per ${form.domain_config?.unitLabel?.toLowerCase() || 'linear foot'}`}
                               value={form.room_pricing[room][tier] || ''}
                               onChange={(e) =>
                                 handleRoomPriceChange(room, tier, e.target.value)
@@ -837,7 +849,7 @@ export default function DashboardPage() {
                         </div>
                       ))}
                       <div className="flex items-center justify-center bg-[#12151C]">
-                        <label className="relative inline-flex cursor-pointer items-center" title="Hide this room from your widget">
+                        <label className="relative inline-flex cursor-pointer items-center" title={`Hide this ${categoryLabel.toLowerCase()} from your widget`}>
                           <input
                             type="checkbox"
                             className="peer sr-only"
@@ -870,7 +882,7 @@ export default function DashboardPage() {
                                 type="number"
                                 min="0"
                                 step="0.01"
-                                aria-label={`${room.name} ${tier} price per linear foot`}
+                                aria-label={`${room.name} ${tier} price per ${form.domain_config?.unitLabel?.toLowerCase() || 'linear foot'}`}
                                 value={room[col] || ''}
                                 onChange={(e) => handleCustomRoomPriceChange(room.id, tier, e.target.value)}
                                 placeholder="0.00"
@@ -885,7 +897,7 @@ export default function DashboardPage() {
                           type="button"
                           onClick={() => handleDeleteCustomRoom(room.id)}
                           className="p-1.5 text-zinc-600 transition hover:text-red-400"
-                          title="Delete custom room"
+                          title={`Delete custom ${categoryLabel.toLowerCase()}`}
                           aria-label={`Delete ${room.name}`}
                         >
                           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4">
@@ -902,11 +914,11 @@ export default function DashboardPage() {
               <div className="mb-8 flex flex-col gap-3 rounded-xl border border-dashed border-white/[0.08] bg-white/[0.02] p-4 sm:flex-row sm:items-end">
                 <div className="flex-1">
                   <label className="mb-1.5 block text-[10px] font-medium uppercase tracking-widest text-zinc-500">
-                    New Room Name
+                    New {categoryLabel} Name
                   </label>
                   <input
                     type="text"
-                    placeholder="e.g. Wine Cellar"
+                    placeholder={categoryLabel === 'Service' ? 'e.g. Leak Detection' : 'e.g. Wine Cellar'}
                     value={newRoom.name}
                     onChange={(e) => setNewRoom((p) => ({ ...p, name: e.target.value }))}
                     className="w-full rounded-lg border border-white/[0.06] bg-[#12151C] px-3 py-2.5 text-sm text-white placeholder:text-zinc-600 outline-none focus:border-white/30"
@@ -939,7 +951,7 @@ export default function DashboardPage() {
                   disabled={addingRoom || !newRoom.name.trim()}
                   className="rounded-lg bg-white/10 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-white/20 disabled:opacity-50"
                 >
-                  Add Room
+                  Add {categoryLabel}
                 </button>
               </div>
             </div>
@@ -1140,6 +1152,7 @@ export default function DashboardPage() {
                 roomOptions={widgetRoomOptions}
                 applyAllRooms={newAddon.apply_all_rooms}
                 selectedRooms={newAddon.rooms}
+                categoryLabel={categoryLabel}
                 onChange={(applyAllRooms, selectedRooms) =>
                   setNewAddon((prev) => ({
                     ...prev,
@@ -1220,6 +1233,7 @@ export default function DashboardPage() {
                           roomOptions={widgetRoomOptions}
                           applyAllRooms={group.targets.length === 0}
                           selectedRooms={group.targets}
+                          categoryLabel={categoryLabel}
                           onChange={(applyAllRooms, selectedRooms) =>
                             handleAddonScopeChange(
                               group.addons.map((a) => a.id),
@@ -1425,11 +1439,13 @@ function AddonRoomScopePicker({
   applyAllRooms,
   selectedRooms,
   onChange,
+  categoryLabel,
 }: {
   roomOptions: string[]
   applyAllRooms: boolean
   selectedRooms: string[]
   onChange: (applyAllRooms: boolean, selectedRooms: string[]) => void
+  categoryLabel?: string
 }) {
   const toggleAllRooms = (checked: boolean) => {
     if (checked) {
@@ -1462,7 +1478,7 @@ function AddonRoomScopePicker({
             checked={applyAllRooms}
             onChange={(e) => toggleAllRooms(e.target.checked)}
           />
-          All rooms
+          {categoryLabel ? `All ${categoryLabel.toLowerCase()}s` : 'All rooms'}
         </label>
         {roomOptions.map((room) => (
           <label
@@ -1485,7 +1501,7 @@ function AddonRoomScopePicker({
         ))}
       </div>
       {!applyAllRooms && selectedRooms.length === 0 && (
-        <p className="mt-2 text-xs text-amber-400/90">Select at least one room.</p>
+        <p className="mt-2 text-xs text-amber-400/90">Select at least one {categoryLabel?.toLowerCase() || 'room'}.</p>
       )}
     </div>
   )

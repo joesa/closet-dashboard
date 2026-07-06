@@ -1,22 +1,26 @@
 import { GoogleGenerativeAI } from '@google/generative-ai'
 
 /**
- * Widget configuration hints gathered during the ClosetQuote Pro intake
+ * Widget configuration hints gathered during the DitchTheForm Pro intake
  * wizard. These drive the AI-generated calculator config so each contractor
  * gets a setup that matches their actual business — not a one-size-fits-all
  * default.
  */
 export type WidgetConfigHints = {
+  /** Industry / trade the contractor is in (e.g. "Plumbing", "Towing",
+   *  "Landscaping"). Defaults conceptually to custom storage / closets. */
+  industry?: string
   /** Space types the contractor works in (empty = no room-based pricing) */
   services: string[]
   /** Whether they offer other services that don't map to rooms */
   otherServices?: string
   /**
    * Pricing model:
-   * - 'linear_ft'  – per-linear-foot (default closet industry standard)
-   * - 'fixed'      – flat price per room/project
+   * - 'linear_ft' / 'per_unit'        – rate per measured unit (closet ft, pressure-wash ft², etc.)
+   * - 'fixed' / 'flat_tiered'         – flat price per job/tier (plumbing fixtures, tow hookup)
+   * - 'base_plus_distance'            – base/hookup fee + rate per distance (towing)
    */
-  pricingModel: 'linear_ft' | 'fixed'
+  pricingModel: 'linear_ft' | 'fixed' | 'per_unit' | 'flat_tiered' | 'base_plus_distance'
   /** Custom names for the three pricing tiers (default: Basic/Standard/Premium) */
   tierNames?: { basic?: string; standard?: string; premium?: string }
   /** Seed pricing per tier — optional starting points the AI can refine */
@@ -27,6 +31,8 @@ export type WidgetConfigHints = {
   finishLabels?: Array<{ label: string; swatchHex?: string }>
   /** Free-text add-ons they offer (comma-separated) */
   addOnText?: string
+  /** Extra explanation of how the contractor thinks about quoting jobs. */
+  calculatorNotes?: string
   /** Brand color hex */
   brandColor?: string
   /** Business name for context */
@@ -83,7 +89,7 @@ const DEFAULT_ROOMS = [
 ]
 
 /**
- * Use Gemini to generate a bespoke ClosetQuote Pro calculator configuration
+ * Use Gemini to generate a bespoke DitchTheForm Pro calculator configuration
  * from the answers a contractor gave during the Pro intake wizard.
  *
  * Returns room pricing, add-ons, finishes, and instructions on which system
@@ -102,24 +108,29 @@ export async function buildWidgetConfig(
     const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' })
 
     const noRoomServices = hints.services.length === 0
+    const industry = hints.industry?.trim() || 'Custom Closets / Storage'
     const seedPricingStr = hints.seedPricing
-      ? `Basic ≈ $${hints.seedPricing.basic ?? '?'}/ft, Standard ≈ $${hints.seedPricing.standard ?? '?'}/ft, Premium ≈ $${hints.seedPricing.premium ?? '?'}/ft`
-      : 'No seed pricing provided — use industry-standard estimates for a premium custom closet/storage company.'
+      ? `Basic ≈ $${hints.seedPricing.basic ?? '?'}, Standard ≈ $${hints.seedPricing.standard ?? '?'}, Premium ≈ $${hints.seedPricing.premium ?? '?'}`
+      : `No seed pricing provided — use industry-standard estimates for a premium ${industry} business.`
 
     const prompt = `
-You are configuring a ClosetQuote Pro pricing calculator for a bespoke custom storage and organization business.
-The calculator shows homeowners their estimate in real-time. You MUST generate a configuration that fits 
-THIS contractor's specific business — not a generic default.
+You are configuring a real-time pricing calculator ("instant quote widget") for a ${industry} business.
+The calculator shows prospective customers their estimate in real-time. You MUST generate a configuration that fits
+THIS contractor's specific ${industry} business — not a generic default. "Rooms" below is the generic term for the
+bookable job types / service categories this business offers (for ${industry} they may be services, vehicle types,
+property sizes, etc., NOT literal rooms).
 
-BUSINESS: ${hints.businessName || 'a premium custom storage contractor'}
-SERVICES OFFERED: ${noRoomServices ? 'None of the standard room types — they work in specialty spaces not covered by the standard list' : hints.services.join(', ')}
+INDUSTRY / TRADE: ${industry}
+BUSINESS: ${hints.businessName || `a premium ${industry} contractor`}
+SERVICES / JOB TYPES OFFERED: ${noRoomServices ? 'None of the standard list — they work in specialty categories not covered by the standard list' : hints.services.join(', ')}
 OTHER SERVICES: ${hints.otherServices || 'None'}
-PRICING MODEL: ${hints.pricingModel === 'linear_ft' ? 'Per linear foot (industry standard)' : 'Fixed price per room/project'}
+PRICING MODEL: ${hints.pricingModel}
 TIER NAMES: Basic="${hints.tierNames?.basic || 'Basic'}", Standard="${hints.tierNames?.standard || 'Standard'}", Premium="${hints.tierNames?.premium || 'Premium'}"
 SEED PRICING: ${seedPricingStr}
-HAS CUSTOM FINISHES: ${hints.hasFinishes ? 'Yes' : 'No'}
-FINISH LABELS: ${hints.finishLabels?.map((f) => f.label).join(', ') || 'None — use defaults'}
+HAS CUSTOM FINISHES/TIERS: ${hints.hasFinishes ? 'Yes' : 'No'}
+FINISH/TIER LABELS: ${hints.finishLabels?.map((f) => f.label).join(', ') || 'None — use defaults'}
 ADD-ONS OFFERED: ${hints.addOnText || 'None specified'}
+CALCULATOR-SPECIFIC NOTES: ${hints.calculatorNotes || 'None provided'}
 
 DEFAULT ROOM LIST (for reference): ${DEFAULT_ROOMS.join(', ')}
 
@@ -146,7 +157,8 @@ RULES:
 5. disabledDefaultRooms: List the default rooms they DON'T offer so we can hide them from their widget.
 6. disableDefaultFinishes: true if they have custom finishes that fully replace the defaults, false otherwise.
 7. Keep prices realistic for a premium custom storage company in the US. Per-foot: basic $35-60, standard $60-100, premium $100-180.
-8. Return ONLY valid JSON — no markdown, no explanation.
+8. Use CALCULATOR-SPECIFIC NOTES as a strong signal for what should affect price, which services should be flat-rate vs measured, and which upgrades deserve add-on cards.
+9. Return ONLY valid JSON — no markdown, no explanation.
 `
 
     const result = await model.generateContent(prompt)

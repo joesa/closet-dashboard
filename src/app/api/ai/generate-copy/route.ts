@@ -15,6 +15,11 @@ const COPY_SCHEMA = {
       description:
         'A punchy, high-converting H1 headline (6–12 words). Lead with the core benefit or transformation. Use the business name or niche when it strengthens the hook. No quotes.',
     },
+    heroSubheadline: {
+      type: 'string',
+      description:
+        'One supporting sentence (12–22 words) that sits under the headline. Add concrete substance — what is delivered, for whom, and a real proof point or differentiator from the brief (years in business, area served, materials, guarantee). No filler, do not repeat the headline.',
+    },
     aboutDescription: {
       type: 'string',
       description:
@@ -69,6 +74,40 @@ function extractJson(text: string): string {
   return t
 }
 
+function sanitizeJsonString(json: string): string {
+  let insideString = false
+  let escaped = false
+  let result = ''
+  for (let i = 0; i < json.length; i++) {
+    const char = json[i]
+    if (char === '"' && !escaped) {
+      insideString = !insideString
+      result += char
+    } else if (char === '\\' && insideString && !escaped) {
+      escaped = true
+      result += char
+    } else {
+      if (insideString) {
+        if (char === '\n') {
+          result += '\\n'
+        } else if (char === '\r') {
+          result += '\\r'
+        } else if (char === '\t') {
+          result += '\\t'
+        } else if (char.charCodeAt(0) < 32) {
+          result += '\\u' + char.charCodeAt(0).toString(16).padStart(4, '0')
+        } else {
+          result += char
+        }
+      } else {
+        result += char
+      }
+      escaped = false
+    }
+  }
+  return result
+}
+
 export async function POST(req: Request) {
   try {
     const admin = await getCurrentAdmin()
@@ -91,12 +130,13 @@ export async function POST(req: Request) {
       } as GenerationConfig,
     })
 
-    const prompt = `System: You are an elite direct-response copywriter for custom closet, garage, and whole-home storage contractors.
+    const prompt = `System: You are an elite direct-response copywriter for local service businesses and contractors across any trade (e.g. plumbing, towing, HVAC, electrical, landscaping, custom closets & storage). Infer the specific trade from the business brief.
 
 Read the business brief below and write website copy that SELLS — specific to this business, not generic filler.
 
 RULES:
 - Hero headline: benefit-first, confident, memorable. Reference their niche or location when it adds punch.
+- Hero subheadline: one supporting sentence with a concrete proof point or differentiator from the brief; never repeat the headline.
 - About story: warm but professional; name the business; mention services and 1–2 differentiators from the brief.
 - Match the tone they asked for (e.g. playful, luxury, bold).
 - Never mention "Apex Garage" or unrelated placeholder brands.
@@ -123,7 +163,7 @@ ${input.trim()}`
       throw new Error('AI returned no copy')
     }
 
-    const data = JSON.parse(extractJson(rawText))
+    const data = JSON.parse(sanitizeJsonString(extractJson(rawText)))
 
     return NextResponse.json({ success: true, data })
   } catch (error) {

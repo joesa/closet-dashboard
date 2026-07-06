@@ -1,0 +1,12 @@
+-- URGENT FIX: the anon role's SELECT grant on public.tenants is COLUMN-SCOPED
+-- (see 20260601150000_tenant_rls_and_config_extras.sql: `grant select (id,
+-- widget_id, site_status) on public.tenants to anon;`). Adding
+-- `tenants.validation_status` to custom-closets-websites' getConfig.ts query
+-- (20260704020000_site_validation.sql's new column) without also extending
+-- this grant broke EVERY tenant site render for the anon key with
+-- "permission denied for table tenants" (Postgres reports the whole-table
+-- error even though it's really a missing column-privilege).
+--
+-- Adding a column to an EXISTING column-scoped grant is additive in Postgres
+-- (does not need to repeat the already-granted columns).
+grant select (validation_status) on public.tenants to anon;

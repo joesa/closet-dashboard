@@ -1,33 +1,17 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { supabaseBrowser } from '@/lib/supabase-browser'
+import { inferQuoteCalculatorGuidance } from '@/lib/quoteCalculatorGuidance'
 
-// ── Space types the wizard offers ─────────────────────────────────────────
-const SPACE_TYPES = [
-  { id: 'Walk-In Closet', icon: '👔', label: 'Walk-In Closets' },
-  { id: 'Reach-In Closet', icon: '🚪', label: 'Reach-In Closets' },
-  { id: 'Garage', icon: '🚗', label: 'Garages' },
-  { id: 'Pantry & Wine', icon: '🍷', label: 'Pantry & Wine' },
-  { id: 'Home Office', icon: '💼', label: 'Home Offices' },
-  { id: 'Laundry Room', icon: '👕', label: 'Laundry Rooms' },
-  { id: 'Mudroom', icon: '🥾', label: 'Mudrooms' },
-  { id: 'Entertainment Center', icon: '📺', label: 'Entertainment Centers' },
-  { id: 'Wall Beds', icon: '🛏', label: 'Wall Beds' },
-  { id: 'Craft Room', icon: '✂️', label: 'Craft Rooms' },
-  { id: 'Home Library', icon: '📚', label: 'Home Libraries' },
-  { id: 'Kid Spaces', icon: '🧸', label: 'Kid Spaces' },
-  { id: 'Dressing Room', icon: '🪞', label: 'Dressing Rooms' },
-  { id: 'Home Storage', icon: '📦', label: 'Home Storage' },
-]
-
-type Step = 1 | 2 | 3 | 4 | 5
+type Step = 1 | 2 | 3 | 4
 
 interface FormState {
   // Step 1 — basics
   businessName: string
+  industry: string
   email: string
   phone: string
   brandColor: string
@@ -48,12 +32,13 @@ interface FormState {
   finish2Label: string; finish2Color: string
   finish3Label: string; finish3Color: string
   addOnText: string
+  calculatorNotes: string
   // Step 5 — account
   password: string
 }
 
 const INITIAL: FormState = {
-  businessName: '', email: '', phone: '', brandColor: '#6C47FF',
+  businessName: '', industry: '', email: '', phone: '', brandColor: '#6C47FF',
   services: [], otherServices: '',
   pricingModel: 'linear_ft',
   tierNameBasic: 'Basic', tierNameStandard: 'Standard', tierNamePremium: 'Premium',
@@ -63,6 +48,7 @@ const INITIAL: FormState = {
   finish2Label: '', finish2Color: '#8B6F47',
   finish3Label: '', finish3Color: '#3D2B1F',
   addOnText: '',
+  calculatorNotes: '',
   password: '',
 }
 
@@ -87,7 +73,17 @@ function StepDots({ current }: { current: Step }) {
 }
 
 // ── Step 1 — Business Basics ───────────────────────────────────────────────
-function Step1({ form, set }: { form: FormState; set: (k: keyof FormState, v: string) => void }) {
+function Step1({
+  form,
+  set,
+  businessNameRef,
+  emailRef,
+}: {
+  form: FormState
+  set: (k: keyof FormState, v: string) => void
+  businessNameRef: React.RefObject<HTMLInputElement | null>
+  emailRef: React.RefObject<HTMLInputElement | null>
+}) {
   return (
     <div className="space-y-5">
       <div>
@@ -95,17 +91,33 @@ function Step1({ form, set }: { form: FormState; set: (k: keyof FormState, v: st
           Business Name
         </label>
         <input
+          ref={businessNameRef}
           className={INPUT}
-          placeholder="e.g. Meridian Custom Closets"
+          placeholder="e.g. Apex Plumbing Co."
           value={form.businessName}
           onChange={(e) => set('businessName', e.target.value)}
         />
       </div>
       <div>
         <label className="mb-2 block text-[11px] font-semibold uppercase tracking-widest text-zinc-500">
+          Industry / Trade
+        </label>
+        <input
+          className={INPUT}
+          placeholder="e.g. Custom Closets, Plumbing, Towing, Landscaping"
+          value={form.industry}
+          onChange={(e) => set('industry', e.target.value)}
+        />
+        <p className="mt-2 text-[11px] text-zinc-600">
+          We tailor your calculator and copy to your trade. Leave blank for custom storage / closets.
+        </p>
+      </div>
+      <div>
+        <label className="mb-2 block text-[11px] font-semibold uppercase tracking-widest text-zinc-500">
           Your Email
         </label>
         <input
+          ref={emailRef}
           className={INPUT}
           type="email"
           placeholder="you@yourbusiness.com"
@@ -125,7 +137,7 @@ function Step1({ form, set }: { form: FormState; set: (k: keyof FormState, v: st
           onChange={(e) => set('phone', e.target.value)}
         />
         <p className="mt-2 text-[11px] text-zinc-600">
-          We'll text you instantly when a homeowner submits the calculator.
+          We'll text you instantly when a customer submits the calculator.
         </p>
       </div>
       <div>
@@ -150,138 +162,72 @@ function Step1({ form, set }: { form: FormState; set: (k: keyof FormState, v: st
   )
 }
 
-// ── Step 2 — Service Model ─────────────────────────────────────────────────
+// ── Step 2 — Services Offered ──────────────────────────────────────────────
 function Step2({
   form,
-  toggle,
   set,
+  guidance,
 }: {
   form: FormState
-  toggle: (id: string) => void
   set: (k: keyof FormState, v: string) => void
+  guidance: ReturnType<typeof inferQuoteCalculatorGuidance>
 }) {
   return (
-    <div>
-      <p className="mb-5 text-sm text-zinc-400">
-        Select every space type you work in. We'll hide the rest from your calculator so
-        homeowners only see what you actually offer.
+    <div className="space-y-5">
+      <p className="text-sm text-zinc-400">
+        List the services or jobs you quote — whatever your trade. Separate each
+        one with a comma. Your calculator and AI copy are built around exactly
+        what you offer.
       </p>
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-        {SPACE_TYPES.map((s) => {
-          const active = form.services.includes(s.id)
-          return (
-            <button
-              key={s.id}
-              type="button"
-              onClick={() => toggle(s.id)}
-              className={`flex items-center gap-2.5 rounded-xl border px-3 py-2.5 text-left text-sm font-medium transition-all ${
-                active
-                  ? 'border-white/30 bg-white/10 text-white'
-                  : 'border-white/[0.06] bg-white/[0.02] text-zinc-500 hover:border-white/15 hover:text-zinc-300'
-              }`}
-            >
-              <span className="text-base leading-none">{s.icon}</span>
-              <span className="text-[12px] leading-snug">{s.label}</span>
-            </button>
-          )
-        })}
-      </div>
-
-      <div className="mt-5">
+      <div>
         <label className="mb-2 block text-[11px] font-semibold uppercase tracking-widest text-zinc-500">
-          Other Spaces <span className="text-zinc-600 normal-case font-normal">(not listed above)</span>
+          Services / Jobs You Offer
         </label>
-        <input
-          className={INPUT}
-          placeholder="e.g. Safe rooms, Wine cellars, Custom built-ins…"
+        <textarea
+          rows={4}
+          className={`${INPUT} resize-none`}
+          placeholder="e.g. Drain cleaning, Water heater install, Leak repair — or Light towing, Winch-out, Jump start — or Walk-in closets, Garages, Pantries…"
           value={form.otherServices}
           onChange={(e) => set('otherServices', e.target.value)}
         />
+        <p className="mt-2 text-[11px] text-zinc-600">
+          Don&apos;t overthink it — you can fine-tune every service, price, and label from your dashboard later.
+        </p>
+      </div>
+      <div className="rounded-xl border border-white/[0.08] bg-white/[0.03] p-4">
+        <p className="text-[11px] font-semibold uppercase tracking-widest text-zinc-500">Examples for {guidance.tradeLabel}</p>
+        <p className="mt-2 text-sm text-zinc-300">Good service lists are specific enough that each item could become its own quote option.</p>
+        <p className="mt-2 text-sm text-zinc-400">Try something like: {guidance.serviceExamples.join(', ')}</p>
       </div>
     </div>
   )
 }
 
 // ── Step 3 — Pricing Philosophy ────────────────────────────────────────────
-function Step3({ form, set }: { form: FormState; set: (k: keyof FormState, v: string) => void }) {
+function Step3({
+  form,
+  set,
+  guidance,
+}: {
+  form: FormState
+  set: (k: keyof FormState, v: string) => void
+  guidance: ReturnType<typeof inferQuoteCalculatorGuidance>
+}) {
   return (
     <div className="space-y-7">
-      {/* Pricing model */}
-      <div>
-        <label className="mb-3 block text-[11px] font-semibold uppercase tracking-widest text-zinc-500">
-          How do you price your work?
-        </label>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          {[
-            {
-              id: 'linear_ft',
-              label: 'Per Linear Foot',
-              sub: 'Industry standard — price scales with footage',
-            },
-            {
-              id: 'fixed',
-              label: 'Fixed Per Room',
-              sub: 'Flat project price regardless of size',
-            },
-          ].map((opt) => {
-            const active = form.pricingModel === opt.id
-            return (
-              <button
-                key={opt.id}
-                type="button"
-                onClick={() => set('pricingModel', opt.id)}
-                className={`rounded-xl border p-4 text-left transition-all ${
-                  active
-                    ? 'border-white/30 bg-white/[0.07]'
-                    : 'border-white/[0.06] bg-white/[0.02] hover:border-white/15'
-                }`}
-              >
-                <p className="text-sm font-semibold text-white">{opt.label}</p>
-                <p className="mt-1 text-[12px] text-zinc-500">{opt.sub}</p>
-              </button>
-            )
-          })}
-        </div>
-      </div>
-
-      {/* Tier names */}
-      <div>
-        <label className="mb-3 block text-[11px] font-semibold uppercase tracking-widest text-zinc-500">
-          What do you call your tiers?
-        </label>
-        <div className="grid grid-cols-3 gap-3">
-          {[
-            { key: 'tierNameBasic' as const, placeholder: 'Basic' },
-            { key: 'tierNameStandard' as const, placeholder: 'Standard' },
-            { key: 'tierNamePremium' as const, placeholder: 'Premium' },
-          ].map((t) => (
-            <input
-              key={t.key}
-              className={INPUT}
-              placeholder={t.placeholder}
-              value={form[t.key]}
-              onChange={(e) => set(t.key, e.target.value)}
-            />
-          ))}
-        </div>
-      </div>
-
       {/* Seed pricing */}
       <div>
         <label className="mb-1 block text-[11px] font-semibold uppercase tracking-widest text-zinc-500">
-          Approximate pricing per tier{' '}
-          <span className="text-zinc-600 normal-case font-normal">
-            ({form.pricingModel === 'linear_ft' ? '$/lin ft — optional' : '$/room — optional'})
-          </span>
+          Provide 1-2 starting prices so our AI can configure your calculator
         </label>
         <p className="mb-3 text-[12px] text-zinc-600">
           Leave blank and our AI will use industry-standard estimates. You can always fine-tune from your dashboard.
         </p>
         <div className="grid grid-cols-3 gap-3">
           {[
-            { key: 'seedBasic' as const, label: form.tierNameBasic || 'Basic' },
-            { key: 'seedStandard' as const, label: form.tierNameStandard || 'Standard' },
-            { key: 'seedPremium' as const, label: form.tierNamePremium || 'Premium' },
+            { key: 'seedBasic' as const, label: 'Seed 1' },
+            { key: 'seedStandard' as const, label: 'Seed 2' },
+            { key: 'seedPremium' as const, label: 'Seed 3' },
           ].map((t) => (
             <div key={t.key}>
               <p className="mb-1.5 text-[11px] text-zinc-500">{t.label}</p>
@@ -303,91 +249,8 @@ function Step3({ form, set }: { form: FormState; set: (k: keyof FormState, v: st
     </div>
   )
 }
-
-// ── Step 4 — Finishes & Add-Ons ────────────────────────────────────────────
-function Step4({ form, set, setBool }: {
-  form: FormState
-  set: (k: keyof FormState, v: string) => void
-  setBool: (k: keyof FormState, v: boolean) => void
-}) {
-  return (
-    <div className="space-y-7">
-      {/* Finishes toggle */}
-      <div>
-        <label className="mb-3 block text-[11px] font-semibold uppercase tracking-widest text-zinc-500">
-          Do you carry different material finishes?
-        </label>
-        <div className="grid grid-cols-2 gap-3">
-          {[
-            { v: true, label: 'Yes — I offer multiple finishes' },
-            { v: false, label: 'No — standard materials only' },
-          ].map((opt) => (
-            <button
-              key={String(opt.v)}
-              type="button"
-              onClick={() => setBool('hasFinishes', opt.v)}
-              className={`rounded-xl border p-4 text-left text-sm font-medium transition-all ${
-                form.hasFinishes === opt.v
-                  ? 'border-white/30 bg-white/[0.07] text-white'
-                  : 'border-white/[0.06] bg-white/[0.02] text-zinc-500 hover:border-white/15'
-              }`}
-            >
-              {opt.label}
-            </button>
-          ))}
-        </div>
-
-        {form.hasFinishes && (
-          <div className="mt-4 space-y-3">
-            <p className="text-[12px] text-zinc-500">
-              Name up to 3 finishes. Pick a swatch color for each.
-            </p>
-            {[
-              { labelKey: 'finish1Label' as const, colorKey: 'finish1Color' as const },
-              { labelKey: 'finish2Label' as const, colorKey: 'finish2Color' as const },
-              { labelKey: 'finish3Label' as const, colorKey: 'finish3Color' as const },
-            ].map((f, i) => (
-              <div key={i} className="flex items-center gap-3">
-                <input
-                  type="color"
-                  value={form[f.colorKey]}
-                  onChange={(e) => set(f.colorKey, e.target.value)}
-                  className="h-10 w-12 cursor-pointer rounded-lg border border-white/[0.08] bg-transparent p-1 flex-shrink-0"
-                />
-                <input
-                  className={INPUT}
-                  placeholder={`Finish ${i + 1} name (e.g. Espresso, White Oak, Midnight)`}
-                  value={form[f.labelKey]}
-                  onChange={(e) => set(f.labelKey, e.target.value)}
-                />
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Add-ons */}
-      <div>
-        <label className="mb-2 block text-[11px] font-semibold uppercase tracking-widest text-zinc-500">
-          Add-Ons You Offer <span className="text-zinc-600 normal-case font-normal">(optional)</span>
-        </label>
-        <textarea
-          rows={3}
-          className={`${INPUT} resize-none`}
-          placeholder="e.g. LED lighting, pull-out drawers, velvet jewelry trays, shoe racks, island with seating…"
-          value={form.addOnText}
-          onChange={(e) => set('addOnText', e.target.value)}
-        />
-        <p className="mt-2 text-[11px] text-zinc-600">
-          Separate by commas. Our AI will create add-on cards in your calculator and assign reasonable default prices.
-        </p>
-      </div>
-    </div>
-  )
-}
-
-// ── Step 5 — Review & Launch ───────────────────────────────────────────────
-function Step5({
+// ── Step 4 — Review & Launch ───────────────────────────────────────────────
+function Step4({
   form,
   set,
   submitting,
@@ -400,7 +263,11 @@ function Step5({
   error: string
   onSubmit: () => void
 }) {
-  const services = form.services.length > 0 ? form.services.join(', ') : 'Custom spaces'
+  const serviceList = form.otherServices
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+  const services = serviceList.length > 0 ? serviceList.join(', ') : 'Your services'
   const finishes = form.hasFinishes
     ? [form.finish1Label, form.finish2Label, form.finish3Label].filter(Boolean).join(', ')
     : 'Standard'
@@ -413,11 +280,12 @@ function Step5({
           { label: 'Business', value: form.businessName || '—' },
           { label: 'Email', value: form.email || '—' },
           { label: 'Phone', value: form.phone || 'Not set' },
-          { label: 'Spaces', value: services },
-          { label: 'Pricing', value: form.pricingModel === 'linear_ft' ? 'Per linear foot' : 'Fixed per room' },
+          { label: 'Services', value: services },
+          { label: 'Pricing', value: form.pricingModel === 'linear_ft' ? 'Per unit / size' : 'Flat per job' },
           { label: 'Tiers', value: `${form.tierNameBasic || 'Basic'} / ${form.tierNameStandard || 'Standard'} / ${form.tierNamePremium || 'Premium'}` },
           { label: 'Finishes', value: finishes },
           { label: 'Add-Ons', value: form.addOnText || 'None' },
+          { label: 'Quote logic', value: form.calculatorNotes || 'AI will infer from the rest of your answers' },
         ].map((row) => (
           <div key={row.label} className="flex items-baseline gap-4 px-5 py-3">
             <span className="w-20 flex-shrink-0 text-[11px] font-semibold uppercase tracking-wider text-zinc-600">
@@ -501,7 +369,7 @@ async function ensureProAccount(
 }
 
 // ── Main wizard ────────────────────────────────────────────────────────────
-export default function ProSignupPage() {
+function ProSignupWizard() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const subscribePlan = searchParams.get('plan')
@@ -510,6 +378,12 @@ export default function ProSignupPage() {
   const [form, setForm] = useState<FormState>(INITIAL)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
+  const businessNameRef = useRef<HTMLInputElement>(null)
+  const emailRef = useRef<HTMLInputElement>(null)
+  const guidance = inferQuoteCalculatorGuidance({
+    industry: form.industry,
+    servicesText: form.otherServices,
+  })
 
   // Pre-fill email from query string if coming from a link
   useEffect(() => {
@@ -523,18 +397,34 @@ export default function ProSignupPage() {
   const setBool = (k: keyof FormState, v: boolean) =>
     setForm((f) => ({ ...f, [k]: v }))
 
-  const toggleService = (id: string) =>
-    setForm((f) => ({
-      ...f,
-      services: f.services.includes(id)
-        ? f.services.filter((s) => s !== id)
-        : [...f.services, id],
-    }))
+  const readStep1Values = () => {
+    const businessName = (businessNameRef.current?.value ?? form.businessName).trim()
+    const email = (emailRef.current?.value ?? form.email).trim()
+    return { businessName, email }
+  }
+
+  const canAdvanceFromStep1 = () => {
+    const { businessName, email } = readStep1Values()
+    return businessName.length > 0 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+  }
 
   const canAdvance = (): boolean => {
-    if (step === 1) return form.businessName.trim().length > 0 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)
-    if (step === 5) return form.password.length >= 8
+    if (step === 1) return canAdvanceFromStep1()
+    if (step === 4) return form.password.length >= 8
     return true
+  }
+
+  const goNextStep = () => {
+    if (step === 1) {
+      const { businessName, email } = readStep1Values()
+      if (!canAdvanceFromStep1()) return
+      if (businessName !== form.businessName || email !== form.email) {
+        setForm((f) => ({ ...f, businessName, email }))
+      }
+      setStep(2)
+      return
+    }
+    setStep((s) => (s + 1) as Step)
   }
 
   const handleSubmit = async () => {
@@ -552,29 +442,20 @@ export default function ProSignupPage() {
       }
 
       // 2. Build widget_config_hints payload
-      const finishLabels = [
-        form.finish1Label && { label: form.finish1Label, swatchHex: form.finish1Color },
-        form.finish2Label && { label: form.finish2Label, swatchHex: form.finish2Color },
-        form.finish3Label && { label: form.finish3Label, swatchHex: form.finish3Color },
-      ].filter(Boolean)
+      const serviceList = form.otherServices
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean)
 
       const widgetConfigHints = {
-        services: form.services,
-        otherServices: form.otherServices || undefined,
-        pricingModel: form.pricingModel,
-        tierNames: {
-          basic: form.tierNameBasic || 'Basic',
-          standard: form.tierNameStandard || 'Standard',
-          premium: form.tierNamePremium || 'Premium',
-        },
+        industry: form.industry?.trim() || undefined,
+        services: serviceList,
+        otherServices: undefined,
         seedPricing: {
           basic: form.seedBasic ? parseFloat(form.seedBasic) : undefined,
           standard: form.seedStandard ? parseFloat(form.seedStandard) : undefined,
           premium: form.seedPremium ? parseFloat(form.seedPremium) : undefined,
         },
-        hasFinishes: form.hasFinishes,
-        finishLabels: finishLabels.length > 0 ? finishLabels : undefined,
-        addOnText: form.addOnText || undefined,
         brandColor: form.brandColor,
         businessName: form.businessName,
       }
@@ -606,18 +487,16 @@ export default function ProSignupPage() {
 
   const STEP_TITLES: Record<Step, string> = {
     1: 'Your Business',
-    2: 'What Spaces Do You Work In?',
-    3: 'How Do You Price Your Work?',
-    4: 'Finishes & Add-Ons',
-    5: 'Review & Launch',
+    2: 'What Services Do You Offer?',
+    3: 'Seed Pricing',
+    4: 'Review & Launch',
   }
 
   const STEP_SUBTITLES: Record<Step, string> = {
     1: 'Let\'s get the basics down.',
-    2: 'Your calculator will only show the spaces you actually offer.',
-    3: 'We\'ll pre-configure your pricing so homeowners see real estimates.',
-    4: 'These become upsell cards inside your calculator.',
-    5: 'Your AI-configured calculator is ready to build.',
+    2: 'Your calculator only shows the services you actually offer.',
+    3: 'We\'ll pre-configure your pricing so customers see real estimates.',
+    4: 'Your AI-configured calculator is ready to build.',
   }
 
   return (
@@ -626,7 +505,7 @@ export default function ProSignupPage() {
       <nav className="fixed top-0 left-0 right-0 z-50 border-b border-white/[0.06] bg-[#0a0a0a]/80 backdrop-blur-xl">
         <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-6">
           <Link href="/" className="text-sm font-bold tracking-tight">
-            Closet<span className="text-slate-400">Quote</span>
+            Ditch<span className="text-slate-400">TheForm</span>
           </Link>
           <span className="rounded-full border border-white/10 px-3 py-1 text-[11px] font-medium text-zinc-500">
             Pro Calculator Setup
@@ -639,7 +518,7 @@ export default function ProSignupPage() {
         <div className="mb-8">
           <StepDots current={step} />
           <p className="mb-1 text-[11px] font-semibold uppercase tracking-widest text-zinc-600">
-            Step {step} of 5
+            Step {step} of 4
           </p>
           <h1 className="text-2xl font-bold tracking-tight text-white">
             {STEP_TITLES[step]}
@@ -649,12 +528,18 @@ export default function ProSignupPage() {
 
         {/* Step content */}
         <div className="mb-8">
-          {step === 1 && <Step1 form={form} set={set} />}
-          {step === 2 && <Step2 form={form} toggle={toggleService} set={set} />}
-          {step === 3 && <Step3 form={form} set={set} />}
-          {step === 4 && <Step4 form={form} set={set} setBool={setBool} />}
-          {step === 5 && (
-            <Step5
+          {step === 1 && (
+            <Step1
+              form={form}
+              set={set}
+              businessNameRef={businessNameRef}
+              emailRef={emailRef}
+            />
+          )}
+          {step === 2 && <Step2 form={form} set={set} guidance={guidance} />}
+          {step === 3 && <Step3 form={form} set={set} guidance={guidance} />}
+          {step === 4 && (
+            <Step4
               form={form}
               set={set}
               submitting={submitting}
@@ -665,7 +550,7 @@ export default function ProSignupPage() {
         </div>
 
         {/* Navigation */}
-        {step < 5 && (
+        {step < 4 && (
           <div className="flex items-center justify-between">
             {step > 1 ? (
               <button
@@ -682,8 +567,8 @@ export default function ProSignupPage() {
             )}
             <button
               type="button"
-              disabled={!canAdvance()}
-              onClick={() => setStep((s) => (s + 1) as Step)}
+              disabled={step !== 1 && !canAdvance()}
+              onClick={goNextStep}
               className="rounded-xl bg-white px-6 py-2.5 text-sm font-semibold text-black transition hover:bg-slate-100 active:scale-[0.98] disabled:opacity-30"
             >
               Continue →
@@ -692,5 +577,13 @@ export default function ProSignupPage() {
         )}
       </main>
     </div>
+  )
+}
+
+export default function ProSignupPage() {
+  return (
+    <Suspense fallback={null}>
+      <ProSignupWizard />
+    </Suspense>
   )
 }

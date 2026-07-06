@@ -81,13 +81,16 @@ export async function buildAiProvisionPayload(
     (site as { layoutStyle?: string }).layoutStyle || storedPres?.layoutStyle
   )
 
-  if (!storedPres?.layoutStyle || !site.theme) {
-    const resolved = await resolveSitePresentation(presentationFromIntakeRow(row), {
-      useGemini: false,
-    })
-    if (!site.theme) theme = resolved.theme
-    if (!(site as { layoutStyle?: string }).layoutStyle) layoutStyle = resolved.layoutStyle
-  }
+  // Deterministic quote-vs-order detection (see EngagementModel in
+  // catalog/types.ts) — always resolved (useGemini:false keeps this cheap, no
+  // network call), independent of whether theme/layoutStyle were already
+  // stored from a prior review-step resolution.
+  const resolved = await resolveSitePresentation(presentationFromIntakeRow(row), {
+    useGemini: false,
+  })
+  if (!site.theme) theme = resolved.theme
+  if (!(site as { layoutStyle?: string }).layoutStyle) layoutStyle = resolved.layoutStyle
+  const engagementModel = resolved.engagementModel
 
   const services = provisionServiceLabels(row)
   const selections = syncProductSlots(parseImageSelections(row.image_selections), services)
@@ -114,7 +117,8 @@ export async function buildAiProvisionPayload(
     pagesConfig: normalizeAiPagesConfig(
       rawConfig?.pagesConfig,
       row.requested_pages ?? [],
-      row.intake_tier === 'ai_premium' ? 'ai_premium' : 'standard'
+      row.intake_tier === 'ai_premium' ? 'ai_premium' : 'standard',
+      row.page_contents
     ),
     presentation: storedPres ?? {
       theme,
@@ -127,6 +131,8 @@ export async function buildAiProvisionPayload(
     businessName: row.business_name?.trim() || 'Your Business',
     theme,
     layoutStyle,
+    engagementModel,
+    menuItems: Array.isArray(row.menu_items) ? row.menu_items : [],
     subdomain,
     ownerEmail: (row.notification_email || row.contact_email || '').trim(),
     heroHeadline: site.hero?.headline,

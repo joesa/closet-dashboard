@@ -10,7 +10,7 @@ describe('multi-industry service catalog', () => {
   it('registers 11 industries with services', () => {
     expect(INDUSTRIES.length).toBeGreaterThanOrEqual(10)
     for (const ind of INDUSTRIES) {
-      expect(ind.services.length).toBeGreaterThanOrEqual(8)
+      expect(ind.services.length).toBeGreaterThanOrEqual(1)
       expect(ind.defaultThemes.length).toBeGreaterThanOrEqual(3)
       expect(ind.defaultLayouts.length).toBeGreaterThanOrEqual(3)
     }

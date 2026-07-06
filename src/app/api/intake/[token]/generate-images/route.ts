@@ -39,9 +39,12 @@ export async function POST(
       return NextResponse.json({ error: depositErr }, { status: 403 })
     }
 
-    if (!process.env.OPENAI_API_KEY) {
+    if (!process.env.OPENAI_API_KEY && !process.env.GEMINI_API_KEY) {
       return NextResponse.json(
-        { error: 'Image generation is not configured (missing OPENAI_API_KEY).' },
+        {
+          error:
+            'Image generation is not configured (missing OPENAI_API_KEY and GEMINI_API_KEY).',
+        },
         { status: 500 }
       )
     }

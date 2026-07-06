@@ -27,6 +27,13 @@ export function describeImageError(error: unknown): { status: number; message: s
   if (err?.status === 429) {
     return { status: 429, message: 'OpenAI rate limit hit. Wait and retry.' }
   }
+  if (code === 'gemini_image_error' || code === 'gemini_no_image_data') {
+    return {
+      status: err?.status || 502,
+      message:
+        `OpenAI is currently unavailable and Gemini fallback failed. ${raw}`,
+    }
+  }
   return { status: 500, message: raw }
 }
 

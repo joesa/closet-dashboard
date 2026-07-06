@@ -88,6 +88,9 @@ async function reseed() {
   const admin = getSupabaseAdmin()
 
   // 1) Reset contractor_settings row (room_pricing matrix + basics).
+  // Also keep the demo perpetually entitled — subscription_status/trial_ends_at
+  // are otherwise never refreshed and the widget starts returning 402
+  // "trial_expired" once the trial window lapses (real bug hit in production).
   const { error: settingsErr, data: settingsRow } = await admin
     .from('contractor_settings')
     .update({
@@ -98,6 +101,8 @@ async function reseed() {
       room_pricing: DEMO_ROOM_PRICING,
       disabled_default_rooms: [],
       disabled_default_finishes: [],
+      subscription_status: 'trialing',
+      trial_ends_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
     })
     .eq('id', demoId)
     .select('id')

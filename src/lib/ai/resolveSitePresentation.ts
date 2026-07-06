@@ -11,15 +11,20 @@ import {
 import {
   collectThemeLayoutPools,
   inferWidgetCategory,
+  isLowConfidenceResolution,
   layoutsForTheme,
   matchServiceDef,
   pickBestLayout,
   pickBestTheme,
+  getEngagementModel,
 } from '@/lib/catalog/serviceCatalog'
-import type { IndustrySlug } from '@/lib/catalog/types'
+import type { IndustrySlug, EngagementModel } from '@/lib/catalog/types'
 import { buildIntakeBrief } from '@/lib/intake/buildIntakeBrief'
 import type { ProspectIntakeRow } from '@/lib/intake/getIntakeByToken'
 import { GoogleGenerativeAI, type GenerationConfig } from '@google/generative-ai'
+import { synthesizeThemeTokens, type ThemeTokenSelection } from '@/lib/ai/synthesizeThemeTokens'
+import { findCustomIndustryByLabel } from '@/lib/catalog/customIndustries'
+import type { BeforeAfterCategory } from '@/lib/openai-images'
 
 export type SitePresentationInput = {
   industry?: string | null
@@ -43,6 +48,31 @@ export type SitePresentationResult = {
   defaultRoom: string
   rationale: string
   source: 'rules' | 'gemini'
+  /**
+   * Deterministic quote-vs-order detection (see EngagementModel in
+   * catalog/types.ts) — a catalog lookup, never re-guessed by Gemini (theme/
+   * layout refinement never changes which interaction model the business
+   * needs).
+   */
+  engagementModel: EngagementModel
+  /**
+   * Last-resort synthesized "look" (surface/shape/voice/swatch), populated
+   * only when isLowConfidenceResolution() found no real industry/service
+   * match — i.e. `theme` above fell back to the generic top-8 pool. When
+   * present, the renderer composes styling from these tokens instead of
+   * `theme`'s hand-tuned definition (see ThemeTokenSelection in
+   * custom-closets-websites/src/lib/theme.ts).
+   */
+  themeTokens?: ThemeTokenSelection
+  themeTokensSource?: 'gemini' | 'fallback'
+  /**
+   * Before/after image subject category from a matching contractor-created
+   * custom industry (see @/lib/catalog/customIndustries), when one was found.
+   * Overrides the static INDUSTRY_BEFORE_AFTER_CATEGORY guess in
+   * openai-images.ts, which has no entry for industries that only exist in
+   * the DB rather than the compiled catalog.
+   */
+  beforeAfterCategoryOverride?: BeforeAfterCategory
 }
 
 function primaryServiceLabel(services: string[]): string {
@@ -65,9 +95,13 @@ export function resolveSitePresentationRules(
     industry: input.industry,
   })
 
-  const bestTheme = pickBestTheme(themes, input.vibe, VIBE_TO_THEME)
+  // Stable per-business seed so two businesses in the same vertical (and even
+  // with the same vibe/CTA absent) diverge to different theme/layout looks
+  // instead of always landing on the first pool entry.
+  const seed = (input.business_name || input.service_area || '').trim() || null
+  const bestTheme = pickBestTheme(themes, input.vibe, VIBE_TO_THEME, seed)
   const themeLayouts = layoutsForTheme(bestTheme, layouts)
-  const bestLayout = pickBestLayout(themeLayouts, bestTheme, input.primary_cta, CTA_TO_LAYOUT)
+  const bestLayout = pickBestLayout(themeLayouts, bestTheme, input.primary_cta, CTA_TO_LAYOUT, seed)
 
   const primary = primaryServiceLabel(services)
   const other = (input.other_services || '').trim()
@@ -88,6 +122,7 @@ export function resolveSitePresentationRules(
     defaultRoom,
     rationale: `Rules: industry=${industry}, primary="${primary}", pools ${themes.length} themes / ${themeLayouts.length} layouts.`,
     source: 'rules',
+    engagementModel: getEngagementModel(industry),
   }
 }
 
@@ -98,7 +133,66 @@ export async function resolveSitePresentation(
   const rules = resolveSitePresentationRules(input)
   const useGemini = opts?.useGemini !== false && !!process.env.GEMINI_API_KEY
 
-  if (!useGemini) return rules
+  // A contractor-created custom industry (see @/lib/catalog/customIndustries)
+  // already carries a curated theme/layout pool + before/after category from
+  // when it was generated — reuse it directly instead of re-running theme
+  // synthesis/Gemini refinement on top of it. Only worth checking when the
+  // static catalog genuinely has no confident match (the same signal that
+  // gates last-resort theme-token synthesis below).
+  const lowConfidence = isLowConfidenceResolution({
+    industry: input.industry,
+    services: input.services,
+    other_services: input.other_services,
+  })
+  if (lowConfidence && input.industry?.trim()) {
+    const customIndustry = await findCustomIndustryByLabel(input.industry)
+    if (customIndustry) {
+      const seed = (input.business_name || input.service_area || '').trim() || null
+      const theme = pickBestTheme(customIndustry.defaultThemes, input.vibe, VIBE_TO_THEME, seed)
+      const themeLayouts = layoutsForTheme(theme, customIndustry.defaultLayouts)
+      const layoutStyle = pickBestLayout(
+        themeLayouts.length > 0 ? themeLayouts : customIndustry.defaultLayouts,
+        theme,
+        input.primary_cta,
+        CTA_TO_LAYOUT,
+        seed
+      )
+      return {
+        ...rules,
+        theme,
+        layoutStyle,
+        rationale: `Custom industry "${customIndustry.label}" (${customIndustry.slug}): pool ${customIndustry.defaultThemes.length} themes / ${customIndustry.defaultLayouts.length} layouts.`,
+        source: 'rules',
+        beforeAfterCategoryOverride: customIndustry.beforeAfterCategory,
+        engagementModel: customIndustry.engagementModel,
+      }
+    }
+  }
+
+  // Last-resort theme synthesis — only when the industry/services genuinely
+  // matched nothing in the catalog (not just when the theme pool happens to
+  // be the generic top-8 fallback, since industry.defaultThemes covers most
+  // real industries already).
+  let themeTokens: ThemeTokenSelection | undefined
+  let themeTokensSource: 'gemini' | 'fallback' | undefined
+  if (lowConfidence) {
+    const synthesized = await synthesizeThemeTokens(
+      {
+        industry: input.industry,
+        business_name: input.business_name,
+        services: input.services,
+        other_services: input.other_services,
+        vibe: input.vibe,
+        tone: input.tone,
+        differentiators: input.differentiators,
+      },
+      { useGemini }
+    )
+    themeTokens = synthesized.tokens
+    themeTokensSource = synthesized.source
+  }
+
+  if (!useGemini) return { ...rules, themeTokens, themeTokensSource }
 
   const services =
     input.services?.length && input.services.length > 0
@@ -148,11 +242,24 @@ Rules suggestion (use unless clearly wrong): theme=${rules.theme}, layout=${rule
     const theme = coerceThemeSlug(
       themes.includes(parsed.theme as ThemeSlug) ? parsed.theme : rules.theme
     )
-    const narrowedLayouts = layoutsForTheme(theme, themeLayouts)
+    // Recompute the valid layout pool from the FULL layouts pool for
+    // whichever theme was actually chosen above (not from `themeLayouts`,
+    // which was narrowed for `rules.theme` — if Gemini picked a DIFFERENT
+    // theme than the rules suggestion, narrowing from that stale subset
+    // could produce a layout that doesn't actually pair with the final
+    // theme's affinity, e.g. theme="gourmet-warm" + layoutStyle="visual-impact"
+    // even though "visual-impact" isn't in gourmet-warm's affinity list).
+    const narrowedLayouts = layoutsForTheme(theme, layouts)
     const layoutStyle = coerceLayoutSlug(
       narrowedLayouts.includes(parsed.layoutStyle as LayoutSlug)
         ? parsed.layoutStyle
-        : rules.layoutStyle
+        // Only reuse the rules layout if it's actually valid for the FINAL
+        // theme; otherwise pick the top affinity-ranked layout for that
+        // theme instead of a mismatched one carried over from a different
+        // theme's suggestion.
+        : narrowedLayouts.includes(rules.layoutStyle)
+          ? rules.layoutStyle
+          : narrowedLayouts[0]
     )
     return {
       industry,
@@ -161,11 +268,15 @@ Rules suggestion (use unless clearly wrong): theme=${rules.theme}, layout=${rule
       defaultRoom: parsed.defaultRoom?.trim() || rules.defaultRoom,
       rationale: parsed.rationale?.trim() || rules.rationale,
       source: 'gemini',
+      themeTokens,
+      themeTokensSource,
+      engagementModel: rules.engagementModel,
     }
   } catch {
-    return rules
+    return { ...rules, themeTokens, themeTokensSource }
   }
 }
+
 
 export function presentationFromIntakeRow(row: ProspectIntakeRow): SitePresentationInput {
   return {

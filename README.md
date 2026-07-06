@@ -1,6 +1,6 @@
 # Closet Dashboard
 
-The control plane for ClosetQuote. A Next.js 16 (App Router) + Supabase app that
+The control plane for DitchTheForm. A Next.js 16 (App Router) + Supabase app that
 serves the widget backend APIs, contractor/admin dashboards, Stripe billing, AI
 site generation, and the outbound (Instantly + Twilio) automation surface.
 

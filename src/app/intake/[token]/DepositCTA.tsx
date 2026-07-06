@@ -21,7 +21,7 @@ export default function DepositCTA({
 
   if (depositStatus === 'paid' || depositRequiredCents <= 0) {
     return (
-      <div className="rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
+      <div className="rounded-md border border-emerald-300/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
         Deposit received — AI image studio is unlocked.
       </div>
     );
@@ -43,12 +43,12 @@ export default function DepositCTA({
   };
 
   return (
-    <div className="rounded-xl border border-amber-300 bg-amber-50 p-5">
-      <h3 className="font-semibold text-amber-900">Pay 30% deposit to continue</h3>
-      <p className="mt-1 text-xs text-amber-700/90">
+    <div className="rounded-xl border border-amber-300/30 bg-amber-500/10 p-5">
+      <h3 className="font-semibold text-amber-100">Pay 30% deposit to continue</h3>
+      <p className="mt-1 text-xs text-amber-200/90">
         Selecting AI Premium also opens checkout automatically. Use this button if you need to pay again.
       </p>
-      <p className="mt-1 text-sm text-amber-800">
+      <p className="mt-1 text-sm text-amber-100">
         AI Premium requires {formatUsd(depositRequiredCents)} today (30% of {formatUsd(totalCents)}) to
         unlock the image studio. The remaining {formatUsd(totalCents - depositRequiredCents)} is only
         due if you&apos;re satisfied before launch. Not satisfied? You don&apos;t pay the balance — your
@@ -58,11 +58,11 @@ export default function DepositCTA({
         type="button"
         disabled={loading}
         onClick={() => void pay()}
-        className="mt-4 rounded-lg bg-amber-600 px-5 py-2.5 text-sm font-bold text-white hover:bg-amber-500 disabled:opacity-50"
+        className="mt-4 rounded-lg bg-white px-5 py-2.5 text-sm font-bold text-black hover:bg-slate-200 disabled:opacity-50"
       >
         {loading ? 'Redirecting…' : `Pay ${formatUsd(depositRequiredCents)} now`}
       </button>
-      {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+      {error && <p className="mt-2 text-sm text-red-400">{error}</p>}
     </div>
   );
 }

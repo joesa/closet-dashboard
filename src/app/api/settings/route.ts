@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { corsHeaders, handleOptions } from '@/lib/cors'
-import { normalizeRoomPricing } from '@/lib/rooms'
+import { normalizeRoomPricing, normalizeDomainConfig } from '@/lib/rooms'
 import { assertEntitled } from '@/lib/gate'
 import { expandAddonsForWidget } from '@/lib/widgetAddons'
 
@@ -44,7 +44,7 @@ export async function GET(req: Request) {
       // Selecting brand fields + pricing fields so the widget has everything it needs.
       // price_per_ft_* are DEPRECATED; kept in the response during the room_pricing
       // rollout for older widget builds and will be removed in a follow-up.
-      .select('company_name, primary_color_hex, price_per_ft_basic, price_per_ft_standard, price_per_ft_premium, price_drawer, price_shoe_rack, room_pricing, disabled_default_rooms, disabled_default_finishes, tier_names')
+      .select('company_name, primary_color_hex, price_per_ft_basic, price_per_ft_standard, price_per_ft_premium, price_drawer, price_shoe_rack, room_pricing, disabled_default_rooms, disabled_default_finishes, domain_config, tier_names')
       .eq('id', contractorId)
       .maybeSingle()
 
@@ -127,6 +127,9 @@ export async function GET(req: Request) {
         (data.disabled_default_rooms as string[] | null) || [],
         (roomsData || []).map((r) => r.name)
       ),
+      // Generic vertical config: drives widget labels (category/unit/tier) and
+      // the pricing model. Defaults reproduce closet behaviour for legacy rows.
+      domainConfig: normalizeDomainConfig(data.domain_config),
     }
 
     return NextResponse.json(responsePayload, {

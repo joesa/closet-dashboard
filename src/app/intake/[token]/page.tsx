@@ -37,10 +37,13 @@ export default async function IntakePage({
       depositStatus={pub.depositStatus}
       depositRequiredCents={pub.depositRequiredCents}
       tierTotalCents={pub.tierTotalCents}
+      tierAlreadySelected={pub.tierSelected}
       canUseImageStudio={pub.canUseImageStudio}
       tierCatalog={getTierCatalog()}
       aiSiteConfig={(aiRaw?.siteConfig ?? aiRaw) as Record<string, unknown> | null}
+      widgetConfigHints={row.widget_config_hints ?? null}
       imageSelections={parseImageSelections(row.image_selections)}
+      pageContents={row.page_contents ?? {}}
       initialTierFromQuery={
         sp.tier === 'ai_premium' || sp.tier === 'standard' ? sp.tier : undefined
       }

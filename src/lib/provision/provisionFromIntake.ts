@@ -15,6 +15,50 @@ import {
 } from '@/lib/provision/types'
 import { buildWidgetConfig, type WidgetConfigHints } from '@/lib/ai/buildWidgetConfig'
 import { applyProWidgetConfig } from '@/lib/provision/applyProWidgetConfig'
+import { resolveIndustrySlug, INDUSTRY_CONFIGS } from '@/lib/catalog/serviceCatalog'
+import { DEFAULT_DOMAIN_CONFIG, type PricingModel } from '@/lib/rooms'
+
+function resolvePricingModel(hints: WidgetConfigHints): PricingModel {
+  switch (hints.pricingModel) {
+    case 'fixed':
+    case 'flat_tiered':
+      return 'flat_tiered'
+    case 'base_plus_distance':
+      return 'base_plus_distance'
+    case 'per_unit':
+    case 'linear_ft':
+    default:
+      return 'per_unit'
+  }
+}
+
+function resolveTierNames(hints: WidgetConfigHints) {
+  return {
+    basic: hints.tierNames?.basic?.trim() || 'Basic',
+    standard: hints.tierNames?.standard?.trim() || 'Standard',
+    premium: hints.tierNames?.premium?.trim() || 'Premium',
+  }
+}
+
+function resolveDomainConfig(hints: WidgetConfigHints) {
+  const industrySlug = resolveIndustrySlug({
+    industry: hints.industry,
+    services: hints.services,
+    other_services: hints.otherServices,
+  })
+  const industry = INDUSTRY_CONFIGS[industrySlug]
+  return {
+    ...DEFAULT_DOMAIN_CONFIG,
+    categoryLabel: industry?.categoryLabel || DEFAULT_DOMAIN_CONFIG.categoryLabel,
+    unitLabel: industry?.unitLabel || DEFAULT_DOMAIN_CONFIG.unitLabel,
+    unitAbbrev: industry?.unitAbbrev || DEFAULT_DOMAIN_CONFIG.unitAbbrev,
+    tierLabel: industry?.tierLabel || DEFAULT_DOMAIN_CONFIG.tierLabel,
+    pricingModel: industry?.pricingModel || resolvePricingModel(hints),
+    unitMin: industry?.unitMin || DEFAULT_DOMAIN_CONFIG.unitMin,
+    unitMax: industry?.unitMax || DEFAULT_DOMAIN_CONFIG.unitMax,
+    baseFee: industry?.baseFee || DEFAULT_DOMAIN_CONFIG.baseFee,
+  }
+}
 
 export type ProvisionJobRow = {
   id: string
@@ -22,6 +66,29 @@ export type ProvisionJobRow = {
   status: string
   mode: string
   attempts: number
+}
+
+async function buildAiWidgetConfigFromHints(
+  hints: WidgetConfigHints | null | undefined,
+  rowId: string
+): Promise<Record<string, unknown> | undefined> {
+  if (!hints) return undefined
+  console.log(`[provisionFromIntake] Building bespoke widget config for ${rowId}`)
+  const generated = await buildWidgetConfig(hints).catch((err) => {
+    console.error('[provisionFromIntake] buildWidgetConfig failed, using defaults:', err)
+    return null
+  })
+  if (!generated) return undefined
+  return {
+    customRooms: generated.customRooms,
+    customAddOns: generated.customAddOns,
+    customFinishes: generated.customFinishes,
+    _disabledDefaultRooms: generated.disabledDefaultRooms,
+    _disableDefaultFinishes: generated.disableDefaultFinishes,
+    tierNames: resolveTierNames(hints),
+    industry: hints.industry?.trim() || undefined,
+    domainConfig: resolveDomainConfig(hints),
+  }
 }
 
 async function loadIntakeForJob(intakeId: string): Promise<ProspectIntakeRow> {
@@ -58,6 +125,7 @@ export async function provisionFromIntakeJob(
   })
 
   const mode = job.mode === 'widget' ? 'widget' : job.mode === 'ai_full' ? 'ai_full' : 'full'
+  const hints = row.widget_config_hints as WidgetConfigHints | null | undefined
 
   if (mode === 'ai_full') {
     const aiErr = validateAiPremiumReady(row)
@@ -79,11 +147,16 @@ export async function provisionFromIntakeJob(
       console.warn('Auto-QA warnings:', qa.reasons.join(', '))
     }
 
+    const aiWidgetConfigFromHints = payload.aiWidgetConfig
+      ? undefined
+      : await buildAiWidgetConfigFromHints(hints, row.id)
+
     const result = await provisionTenant({
       ...payload,
       intakeId: row.id,
       loginOrigin,
       sendWelcomeEmail: true,
+      ...(aiWidgetConfigFromHints ? { aiWidgetConfig: aiWidgetConfigFromHints } : {}),
     })
 
     await maybeAutoApproveTenant(result.tenantId, qa)
@@ -120,8 +193,8 @@ export async function provisionFromIntakeJob(
       .eq('id', row.id)
       .maybeSingle()
 
-    const hints = intakeWithHints?.widget_config_hints as WidgetConfigHints | null
-    if (hints) {
+    const widgetHints = intakeWithHints?.widget_config_hints as WidgetConfigHints | null
+    if (widgetHints) {
       // Pro signup already has a trial contractor_settings row — apply hints there
       // instead of provisioning a duplicate tenant.
       const { data: existingContractor } = await getSupabaseAdmin()
@@ -134,7 +207,7 @@ export async function provisionFromIntakeJob(
         console.log(
           `[provisionFromIntake] Applying widget config to existing contractor ${existingContractor.id}`
         )
-        await applyProWidgetConfig(existingContractor.id, hints)
+        await applyProWidgetConfig(existingContractor.id, widgetHints)
         await getSupabaseAdmin()
           .from('prospect_intakes')
           .update({
@@ -145,21 +218,10 @@ export async function provisionFromIntakeJob(
         return
       }
 
-      console.log(`[provisionFromIntake] Building bespoke widget config for ${row.id}`)
-      const generated = await buildWidgetConfig(hints).catch((err) => {
-        console.error('[provisionFromIntake] buildWidgetConfig failed, using defaults:', err)
-        return null
-      })
-      if (generated) {
-        aiWidgetConfig = {
-          customRooms: generated.customRooms,
-          customAddOns: generated.customAddOns,
-          customFinishes: generated.customFinishes,
-          _disabledDefaultRooms: generated.disabledDefaultRooms,
-          _disableDefaultFinishes: generated.disableDefaultFinishes,
-        }
-      }
+      aiWidgetConfig = await buildAiWidgetConfigFromHints(widgetHints, row.id)
     }
+  } else {
+    aiWidgetConfig = await buildAiWidgetConfigFromHints(hints, row.id)
   }
 
   const result = await provisionTenant({

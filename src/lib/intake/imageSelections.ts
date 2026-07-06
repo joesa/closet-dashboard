@@ -50,8 +50,8 @@ export function parseImageSelections(raw: unknown): IntakeImageSelections {
 }
 
 export function maxAttemptsPerSlot(): number {
-  const n = parseInt(process.env.INTAKE_AI_MAX_ATTEMPTS_PER_SLOT || '3', 10)
-  return Number.isFinite(n) && n > 0 ? n : 3
+  const n = parseInt(process.env.INTAKE_AI_MAX_ATTEMPTS_PER_SLOT || '5', 10)
+  return Number.isFinite(n) && n > 0 ? n : 5
 }
 
 export function syncProductSlots(

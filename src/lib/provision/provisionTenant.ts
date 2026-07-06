@@ -7,6 +7,7 @@ import {
   parseImageSelections,
   syncProductSlots,
 } from '@/lib/intake/imageSelections'
+import { generateBeforeImage, getBeforeAfterCategory } from '@/lib/openai-images'
 import { provisionServiceLabels } from '@/lib/intake/provisionServiceLabels'
 import {
   clampPagesForTier,
@@ -20,7 +21,87 @@ import {
   type ProvisionTenantResult,
   ProvisionReviewError,
 } from '@/lib/provision/types'
+import { resolveDesignSeed } from '@/lib/provision/resolveDesignSeed'
+import { isForcedPreset } from '@/lib/catalog/designVariantCatalog'
 import { syncTenantLaunchAccess } from '@/lib/intake/syncTenantLaunchAccess'
+import { MINIMAL_LAYOUTS_WITHOUT_ANCHOR_SECTIONS } from '@/lib/catalog/sitePresentationCatalog'
+import { validateTenantSite, saveValidationReport } from '@/lib/validation/siteValidator'
+import {
+  INDUSTRY_CONFIGS,
+  getIndustry,
+  resolveIndustrySlug,
+} from '@/lib/catalog/serviceCatalog'
+import {
+  DEFAULT_DOMAIN_CONFIG,
+  ROOM_TYPES,
+} from '@/lib/rooms'
+
+const DEFAULT_DISABLED_ROOMS = [...ROOM_TYPES]
+
+function inferWidgetDomainConfig(services: string[] | null | undefined) {
+  if (!services || services.length === 0) return null
+  const industrySlug = resolveIndustrySlug({ services })
+  const industry = INDUSTRY_CONFIGS[industrySlug]
+  return {
+    ...DEFAULT_DOMAIN_CONFIG,
+    categoryLabel: industry?.categoryLabel || DEFAULT_DOMAIN_CONFIG.categoryLabel,
+    unitLabel: industry?.unitLabel || DEFAULT_DOMAIN_CONFIG.unitLabel,
+    unitAbbrev: industry?.unitAbbrev || DEFAULT_DOMAIN_CONFIG.unitAbbrev,
+    tierLabel: industry?.tierLabel || DEFAULT_DOMAIN_CONFIG.tierLabel,
+    pricingModel: industry?.pricingModel || DEFAULT_DOMAIN_CONFIG.pricingModel,
+    unitMin: industry?.unitMin || DEFAULT_DOMAIN_CONFIG.unitMin,
+    unitMax: industry?.unitMax || DEFAULT_DOMAIN_CONFIG.unitMax,
+    baseFee: industry?.baseFee || DEFAULT_DOMAIN_CONFIG.baseFee,
+  }
+}
+
+function inferDisabledDefaultRooms(services: string[] | null | undefined): string[] {
+  if (!services || services.length === 0) return DEFAULT_DISABLED_ROOMS
+  const offered = new Set(services)
+  return ROOM_TYPES.filter((room) => !offered.has(room))
+}
+
+type CustomRoomInput = { name: string; basic?: number; standard?: number; premium?: number }
+
+// The admin's "Services Offered" checkboxes (or, for a prospect intake, the
+// customer's own selected services) are the authoritative list of what the
+// business actually sells. The AI widget generation only sees a snapshot of
+// that list at generation time — if the admin later checks additional
+// services (or the AI simply omitted some), the quote calculator would
+// otherwise silently only offer whatever the AI happened to generate. Add a
+// room for every selected service that's missing, so the calculator always
+// matches the selected services list.
+function mergeCustomRoomsWithServices(
+  customRooms: CustomRoomInput[],
+  services: string[] | null | undefined
+): CustomRoomInput[] {
+  const existingNames = new Set(customRooms.map((r) => r.name.toLowerCase().trim()))
+  const missing = (services || []).filter(
+    (s) => s.trim() && !existingNames.has(s.toLowerCase().trim())
+  )
+  if (missing.length === 0) return customRooms
+
+  // Default new services to the average pricing of whatever the AI already
+  // generated (if any) instead of leaving them at $0, while still keeping it
+  // easy to spot in the dashboard that their pricing needs a review.
+  const avg = (key: 'basic' | 'standard' | 'premium') => {
+    const values = customRooms
+      .map((r) => r[key])
+      .filter((v): v is number => typeof v === 'number' && v > 0)
+    if (values.length === 0) return 0
+    return Math.round(values.reduce((sum, v) => sum + v, 0) / values.length)
+  }
+  const defaults = { basic: avg('basic'), standard: avg('standard'), premium: avg('premium') }
+
+  return [...customRooms, ...missing.map((name) => ({ name, ...defaults }))]
+}
+
+function isMissingDesignVariantColumn(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false
+  const e = error as { code?: string; message?: string; details?: string }
+  const msg = `${e.message || ''} ${e.details || ''}`.toLowerCase()
+  return e.code === 'PGRST204' || msg.includes('design_variant')
+}
 
 function generateTempPassword() {
   const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*'
@@ -38,6 +119,11 @@ export async function provisionTenant(
     businessName,
     theme,
     layoutStyle,
+    themeTokens,
+    beforeAfterCategoryOverride,
+    engagementModel,
+    menuItems,
+    designVariant,
     subdomain,
     ownerEmail,
     heroHeadline,
@@ -54,6 +140,42 @@ export async function provisionTenant(
   } = body
 
   const setup = intakeSetup || {}
+  // Industry/services context for before-image generation so the AI "before"
+  // scene matches the business's actual subject (vehicle, exterior, fixture,
+  // or interior space) instead of always assuming a messy storage room.
+  //
+  // Resolve via the same services->industry catalog matching used everywhere
+  // else in provisioning (resolveIndustrySlug), rather than relying solely on
+  // aiWidgetConfig.industry — that field is only ever set by the manual AI
+  // "Generate" button in the admin sandbox tool, so for prospects loaded from
+  // a real intake (or any flow that skips that button) it's undefined and
+  // before-image generation was silently falling back to the generic
+  // interior/closet scene even for e.g. a roofing business.
+  const aiWidgetIndustryText =
+    typeof (aiWidgetConfig as Record<string, unknown> | null)?.industry === 'string'
+      ? ((aiWidgetConfig as Record<string, unknown>).industry as string)
+      : setup.industry
+  const beforeAfterContext = {
+    industry: resolveIndustrySlug({ industry: aiWidgetIndustryText, services }),
+    services,
+    // Explicit override from a matching contractor-created custom industry
+    // (see resolveSitePresentation.ts) takes precedence over the static
+    // slug-guess classification in openai-images.ts.
+    beforeAfterCategoryOverride: beforeAfterCategoryOverride || undefined,
+  }
+
+  const resolvedEngagementModel = engagementModel || (aiSiteConfig?.engagementModel as string) || getIndustry(beforeAfterContext.industry)?.engagementModel || 'quote';
+  const isOrderBusiness = resolvedEngagementModel === 'order';
+
+  // We explicitly log to let us trace tenant creation in edge logs.
+  // Some businesses have no physical "before" state at all (order/direct-
+  // purchase businesses, pure professional services, ticketed/booking
+  // businesses, or anything centered on a person's body/face) — see the
+  // BeforeAfterCategory docstring in openai-images.ts. Skip generating AND
+  // rendering the before/after slider entirely for these, rather than
+  // showing a nonsensical or ethically-questionable image.
+  const beforeAfterApplicable =
+    (beforeAfterCategoryOverride || getBeforeAfterCategory(beforeAfterContext.industry)) !== 'not-applicable'
   const mode: 'full' | 'widget' = body.mode === 'widget' ? 'widget' : 'full'
   const isWidgetOnly = mode === 'widget'
 
@@ -72,7 +194,16 @@ export async function provisionTenant(
     .eq('owner_email', ownerEmail)
     .maybeSingle()
   if (existingTenant) {
-    throw new ProvisionReviewError(`Owner email already provisioned: ${ownerEmail}`)
+    // Tear down the previous tenant so the admin can redeploy cleanly.
+    const oldId = existingTenant.id
+    await supabase.from('site_configs').delete().eq('tenant_id', oldId)
+    await supabase.from('domains').delete().eq('tenant_id', oldId)
+    await supabase.from('contractor_rooms').delete().eq('contractor_id', oldId)
+    await supabase.from('contractor_addons').delete().eq('contractor_id', oldId)
+    await supabase.from('contractor_finishes').delete().eq('contractor_id', oldId)
+    await supabase.from('contractor_settings').delete().eq('id', oldId)
+    await supabase.from('tenants').delete().eq('id', oldId)
+    console.log(`Redeploy: tore down previous tenant ${oldId} for ${ownerEmail}`)
   }
 
   const tenantId = body.tenantId || uuidv4()
@@ -92,6 +223,11 @@ export async function provisionTenant(
   if (leadEmail) settingsRow.contact_email = leadEmail
   if (leadPhone) settingsRow.contact_phone = leadPhone
   if (setup.primaryColorHex) settingsRow.primary_color_hex = setup.primaryColorHex
+
+  const inferredDomainConfig = inferWidgetDomainConfig(services)
+  if (inferredDomainConfig) {
+    settingsRow.domain_config = inferredDomainConfig
+  }
 
   const { error: settingsError } = await supabase
     .from('contractor_settings')
@@ -116,6 +252,12 @@ export async function provisionTenant(
     const isLocalBase = baseDomain === 'localhost' || baseDomain.endsWith('.localhost')
     const platformHost = `${subdomain}.${baseDomain}`
     const customHost = normalizeDomain(setup.desiredDomain)
+    // Slug used for all site-assets storage paths (hero, products, before).
+    const assetSlug = (subdomain || tenantId)
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 40) || tenantId
 
     const { error: domainError } = await supabase.from('domains').insert({
       tenant_id: tenantId,
@@ -214,8 +356,13 @@ export async function provisionTenant(
       'https://images.unsplash.com/photo-1593640408182-31c70c8268f5',
     ]
 
+    const industryDef = getIndustry(beforeAfterContext.industry)
+    const fallbackServices = industryDef 
+      ? industryDef.services.slice(0, 4).map(s => s.label) 
+      : ['Walk-In Closets']
+
     const selectedServices =
-      services && services.length > 0 ? services : ['Walk-In Closets']
+      services && services.length > 0 ? services : fallbackServices
 
     // Authoritatively apply the prospect's generated + selected studio images.
     // Selections are keyed by service label and always win over catalog/AI
@@ -227,11 +374,12 @@ export async function provisionTenant(
     let requestedPageSlugs: string[] = []
     let intakeTierForPages: 'standard' | 'ai_premium' = 'standard'
     let galleryUrls: string[] = []
+    let pageContents: Record<string, string> = {}
     if (intakeId) {
       const { data: intakeForImages } = await supabase
         .from('prospect_intakes')
         .select(
-          'services, other_services, image_selections, requested_pages, intake_tier, gallery_images'
+          'services, other_services, image_selections, requested_pages, intake_tier, gallery_images, page_contents'
         )
         .eq('id', intakeId)
         .maybeSingle()
@@ -256,6 +404,7 @@ export async function provisionTenant(
               (u): u is string => typeof u === 'string' && u.trim().length > 0
             )
           : []
+        pageContents = (intakeForImages.page_contents as Record<string, string>) || {}
       }
     }
 
@@ -315,11 +464,15 @@ export async function provisionTenant(
       brand_name: businessName,
       theme: theme!,
       layout_style: layoutStyle || 'standard',
+      theme_tokens: themeTokens || null,
+      design_variant: designVariant || null,
+      engagement_model: resolvedEngagementModel,
       default_room: 'Custom Space',
       logo_url: setup.logoUrl || null,
       pricing_notes: setup.pricingNotes || null,
       hero_config: {
         headline: heroHeadline || `Welcome to ${businessName}`,
+        subheadline: (aiSiteConfig?.hero as { subheadline?: string })?.subheadline || null,
         backgroundImage: defaultHeroBackground,
       },
       about_config: {
@@ -336,19 +489,32 @@ export async function provisionTenant(
           { number: '03', title: 'Install', description: 'We build it.' },
         ],
       },
+      quiz_config: aiSiteConfig?.quiz || null,
       products_config: selectedServices.map((serviceName: string) => {
-        const catalogItem = serviceCatalog[serviceName] || {
+        const industryDef = getIndustry(beforeAfterContext.industry)
+        const industryService = industryDef?.services.find((s) => s.label === serviceName)
+        
+        const catalogItem = serviceCatalog[serviceName] || industryService?.catalog || {
           image: GENERIC_HERO,
-          description: 'Premium custom storage solution.',
+          description: isOrderBusiness ? 'Premium menu item.' : 'Premium service offering.',
         }
+        
+        const subtitle = isOrderBusiness ? 'Freshly Prepared' : 'Expert Service'
+        const longDesc = isOrderBusiness 
+          ? `Enjoy our freshly prepared ${serviceName}, crafted to order.`
+          : `Professional, high-quality execution for your ${serviceName}.`
+        const specs = isOrderBusiness
+          ? ['Premium Quality', 'Made to Order', 'Satisfaction Guaranteed']
+          : ['Premium Materials', 'Professional Execution', 'Quality Guaranteed']
+
         return {
           title: serviceName,
           image: resolveDefaultProductImage(serviceName) || catalogItem.image,
           description: catalogItem.description,
           details: {
-            subtitle: 'Bespoke Design',
-            longDescription: `Full architectural build out for your ${serviceName}.`,
-            specifications: ['Premium Materials', 'Precision Fit', 'Lifetime Warranty'],
+            subtitle,
+            longDescription: longDesc,
+            specifications: specs,
           },
         }
       }),
@@ -362,12 +528,33 @@ export async function provisionTenant(
         postalCode: setup.postalCode || '10001',
         geo: { latitude: '40.7128', longitude: '-74.0060' },
       },
-      before_after_config: {
-        beforeImage: beforeImage || '/brands/lumina/before.png',
-        afterImage: defaultHeroBackground || '/brands/lumina/hero.png',
-        title: `The ${businessName} Transformation`,
-        subtitle: 'Drag to see',
-      },
+      before_after_config: beforeAfterApplicable
+        ? {
+            // beforeImage resolved below after async generation
+            beforeImage: beforeImage || '/brands/lumina/before.png',
+            afterImage: defaultHeroBackground || '/brands/lumina/hero.png',
+            title: `The ${businessName} Transformation`,
+            subtitle: 'Drag to see',
+          }
+        : null,
+    }
+
+    // Generate a unique messy "before" image anchored to this site's after
+    // image / space type. Runs for all tiers. Gracefully falls back to the
+    // static placeholder so provisioning never hard-fails. Skipped entirely
+    // when there's no physical "before" state for this business (see
+    // beforeAfterApplicable above) — saves a real AI image-generation call
+    // and avoids rendering a nonsensical before/after slider.
+    if (beforeAfterApplicable && process.env.OPENAI_API_KEY) {
+      const afterUrl = defaultHeroBackground || '/brands/lumina/hero.png'
+      const generatedBeforeUrl = await generateBeforeImage(afterUrl, assetSlug, beforeAfterContext).catch((err) => {
+        console.warn('[provisionTenant] Before image generation failed, using fallback:', err)
+        return null
+      })
+      if (generatedBeforeUrl) {
+        ;(siteConfigData.before_after_config as Record<string, unknown>).beforeImage =
+          generatedBeforeUrl
+      }
     }
 
     if (aiSiteConfig) {
@@ -437,16 +624,41 @@ export async function provisionTenant(
           headline:
             (aiSiteConfig.hero as { headline?: string })?.headline ||
             (siteConfigData.hero_config as { headline: string }).headline,
+          subheadline:
+            (aiSiteConfig.hero as { subheadline?: string })?.subheadline ||
+            (siteConfigData.hero_config as { subheadline?: string | null }).subheadline ||
+            null,
           backgroundImage,
         },
         about_config: aiSiteConfig.about || siteConfigData.about_config,
         process_config: aiSiteConfig.process || siteConfigData.process_config,
+        quiz_config: aiSiteConfig.quiz || siteConfigData.quiz_config,
+        engagement_model: (aiSiteConfig.engagementModel as string) || siteConfigData.engagement_model,
         products_config: productsWithImages,
       }
 
-      siteConfigData.before_after_config = {
-        ...(siteConfigData.before_after_config as object),
-        afterImage: backgroundImage,
+      // Update afterImage to the AI-resolved background.
+      // Re-generate the before image against the final after URL so the slider
+      // pair always references the same space type. Skipped entirely when
+      // this business has no physical "before" state (beforeAfterApplicable).
+      if (beforeAfterApplicable) {
+        const aiAfterUrl = backgroundImage
+        siteConfigData.before_after_config = {
+          ...(siteConfigData.before_after_config as object),
+          afterImage: aiAfterUrl,
+        }
+        if (process.env.OPENAI_API_KEY) {
+          const regeneratedBeforeUrl = await generateBeforeImage(aiAfterUrl, assetSlug, beforeAfterContext).catch(
+            (err) => {
+              console.warn('[provisionTenant] AI before image generation failed, using fallback:', err)
+              return null
+            }
+          )
+          if (regeneratedBeforeUrl) {
+            ;(siteConfigData.before_after_config as Record<string, unknown>).beforeImage =
+              regeneratedBeforeUrl
+          }
+        }
       }
 
       if (aiSiteConfig.pagesConfig && Array.isArray(aiSiteConfig.pagesConfig)) {
@@ -492,7 +704,8 @@ export async function provisionTenant(
     // builds already set pages_config above from the art-directed pagesConfig.
     if (!siteConfigData.pages_config && requestedPageSlugs.length > 0) {
       const basicPages = buildBasicPagesConfig(
-        clampPagesForTier(requestedPageSlugs, intakeTierForPages)
+        clampPagesForTier(requestedPageSlugs, intakeTierForPages),
+        pageContents
       )
       if (basicPages.length > 0) {
         siteConfigData.pages_config = basicPages
@@ -502,6 +715,26 @@ export async function provisionTenant(
         })
         siteConfigData.nav_links = navLinks
       }
+    }
+
+    // Single-page sites (no additional pages requested/generated above) used
+    // to end up with `nav_links: []` — which makes the renderer skip the
+    // themed <Navbar> entirely (6 structural compositions, per-theme accent
+    // colors, real fonts) and fall back to a bare logo-only header, the SAME
+    // one for every theme. Give them an in-page anchor nav instead so they
+    // still get real Navbar variety. Skipped for the two layouts that
+    // deliberately strip everything down to hero+quote (no About/Portfolio
+    // sections exist on those pages, so anchor links would be dead links).
+    if (
+      (!siteConfigData.nav_links || (siteConfigData.nav_links as unknown[]).length === 0) &&
+      !(MINIMAL_LAYOUTS_WITHOUT_ANCHOR_SECTIONS as Set<string>).has(String(siteConfigData.layout_style))
+    ) {
+      siteConfigData.nav_links = [
+        { label: 'Home', slug: '/' },
+        { label: 'About', slug: '/#about' },
+        { label: 'Our Work', slug: '/#portfolio' },
+        { label: engagementModel === 'order' ? 'Order' : 'Get Quote', slug: '/#quote' },
+      ]
     }
 
     if (
@@ -515,13 +748,99 @@ export async function provisionTenant(
       )
     }
 
+    // Deterministically pick this site's design. Unless the admin forced a
+    // named preset, derive a seed from the contractor's answers and probe it
+    // against every existing site in the same theme so the resulting design is
+    // never an exact duplicate. The stored seed drives the renderer's entire
+    // visual voice (structure + typography + accent color).
+    try {
+      if (isForcedPreset(designVariant)) {
+        siteConfigData.design_variant = designVariant
+      } else {
+        const resolvedTheme = String(siteConfigData.theme || theme || '')
+        if (resolvedTheme) {
+          siteConfigData.design_variant = await resolveDesignSeed({
+            supabase,
+            theme: resolvedTheme,
+            answers: [
+              businessName,
+              subdomain,
+              (selectedServices || []).join(','),
+              setup.serviceArea,
+              setup.addressLocality,
+              layoutStyle,
+            ],
+            fallbackId: tenantId,
+            excludeTenantId: tenantId,
+          })
+        }
+      }
+    } catch (seedError) {
+      if (isMissingDesignVariantColumn(seedError)) {
+        // Environment is missing the new design_variant column. Continue with
+        // legacy behavior so provisioning still succeeds.
+        delete siteConfigData.design_variant
+      } else {
+        throw seedError
+      }
+    }
+
     const { error: configError } = await supabase.from('site_configs').insert(siteConfigData)
-    if (configError) throw configError
+    if (configError && isMissingDesignVariantColumn(configError)) {
+      // Retry once without the new field for DBs that haven't applied the
+      // migration yet or have stale PostgREST schema cache.
+      delete siteConfigData.design_variant
+      const { error: legacyInsertError } = await supabase.from('site_configs').insert(siteConfigData)
+      if (legacyInsertError) throw legacyInsertError
+    } else if (configError) {
+      throw configError
+    }
+  }
+
+  const aiCustomRooms =
+    (aiWidgetConfig as { customRooms?: CustomRoomInput[] } | null)?.customRooms ?? []
+  const mergedCustomRooms = mergeCustomRoomsWithServices(aiCustomRooms, services)
+  if (isOrderBusiness) {
+    // Order-industry businesses (see EngagementModel) — seed the menu/catalog
+    // items into the menu_items table. If the AI sandbox generated customRooms,
+    // adapt those into menu items.
+    let finalMenuItems = menuItems || []
+    if (finalMenuItems.length === 0 && mergedCustomRooms.length > 0) {
+      finalMenuItems = mergedCustomRooms.map(r => ({
+        name: r.name,
+        price: r.standard || r.basic || 10,
+        category: 'Menu'
+      }))
+    }
+    
+    if (finalMenuItems.length > 0) {
+      await supabase.from('menu_items').insert(
+        finalMenuItems.map((item, i) => ({
+          contractor_id: tenantId,
+          name: item.name,
+          price: item.price,
+          category: item.category || 'Menu',
+          sort_order: i,
+        }))
+      )
+    }
+  } else {
+    // Quote-industry businesses — seed into contractor_rooms
+    if (mergedCustomRooms.length) {
+      await supabase.from('contractor_rooms').insert(
+        mergedCustomRooms.map((r) => ({
+          contractor_id: tenantId,
+          name: r.name,
+          price_basic: r.basic || 0,
+          price_standard: r.standard || 0,
+          price_premium: r.premium || 0,
+        }))
+      )
+    }
   }
 
   if (aiWidgetConfig) {
-    const { customRooms, customAddOns, customFinishes } = aiWidgetConfig as {
-      customRooms?: Array<{ name: string; basic?: number; standard?: number; premium?: number }>
+    const { customAddOns, customFinishes } = aiWidgetConfig as {
       customAddOns?: Array<{ name: string; roomType?: string; price?: number }>
       customFinishes?: Array<{
         label: string
@@ -531,17 +850,6 @@ export async function provisionTenant(
       }>
     }
 
-    if (customRooms?.length) {
-      await supabase.from('contractor_rooms').insert(
-        customRooms.map((r) => ({
-          contractor_id: tenantId,
-          name: r.name,
-          price_basic: r.basic || 0,
-          price_standard: r.standard || 0,
-          price_premium: r.premium || 0,
-        }))
-      )
-    }
     if (customAddOns?.length) {
       await supabase.from('contractor_addons').insert(
         customAddOns.map((a) => ({
@@ -564,30 +872,46 @@ export async function provisionTenant(
         }))
       )
     }
-
-    await supabase
-      .from('contractor_settings')
-      .update({
-        disabled_default_rooms: [
-          'Walk-In Closet',
-          'Reach-In Closet',
-          'Garage',
-          'Pantry & Wine',
-          'Home Office',
-          'Laundry Room',
-          'Mudroom',
-          'Entertainment Center',
-          'Wall Beds',
-          'Craft Room',
-          'Home Library',
-          'Kid Spaces',
-          'Dressing Room',
-          'Home Storage',
-        ],
-        disabled_default_finishes: ['basic', 'standard', 'premium'],
-      })
-      .eq('id', tenantId)
   }
+
+  // Reconcile disabled-default-rooms + the human industry label + domain
+  // config against the FINAL services/rooms list. This runs UNCONDITIONALLY
+  // (not gated on aiWidgetConfig being present) — a business provisioned
+  // without ever clicking the optional "Generate AI Widget" button (e.g. the
+  // admin sandbox tool, or any flow that just uses the services checkboxes)
+  // used to keep every closet default room (Walk-In Closet, Garage, Pantry &
+  // Wine, ...) enabled alongside its real custom rooms, since this whole
+  // reconciliation previously lived inside `if (aiWidgetConfig)`. Similarly,
+  // contractor_settings.industry was left at the raw DB default
+  // ('Custom Closets') for completely unrelated trades.
+  const widgetCfg = (aiWidgetConfig ?? {}) as Record<string, unknown>
+  const aiDisabledRooms = widgetCfg._disabledDefaultRooms as string[] | undefined
+  const aiDisableFinishes = widgetCfg._disableDefaultFinishes as boolean | undefined
+  const aiTierNames = widgetCfg.tierNames as
+    | { basic?: string; standard?: string; premium?: string }
+    | undefined
+  const aiIndustry =
+    typeof widgetCfg.industry === 'string' && widgetCfg.industry.trim().length > 0
+      ? widgetCfg.industry.trim()
+      : undefined
+  const aiDomainConfig = widgetCfg.domainConfig as Record<string, unknown> | undefined
+
+  const disabledRooms = aiDisabledRooms ?? inferDisabledDefaultRooms(services)
+  const disabledFinishes = aiDisableFinishes ? ['basic', 'standard', 'premium'] : []
+  const resolvedIndustryLabel = aiIndustry ?? getIndustry(beforeAfterContext.industry).label
+
+  await supabase
+    .from('contractor_settings')
+    .update({
+      disabled_default_rooms: disabledRooms,
+      ...(disabledFinishes.length > 0 ? { disabled_default_finishes: disabledFinishes } : {}),
+      ...(aiTierNames ? { tier_names: aiTierNames } : {}),
+      industry: resolvedIndustryLabel,
+      ...(aiDomainConfig ? { domain_config: aiDomainConfig } : {}),
+    })
+    .eq('id', tenantId)
+
+
 
   const tempPassword = generateTempPassword()
   let authUserId: string | null = null
@@ -628,7 +952,7 @@ export async function provisionTenant(
   }
 
   const loginUrl = `${loginOrigin.replace(/\/$/, '')}/login`
-  const embedSnippet = widgetEmbedSnippet(widgetId)
+  const embedSnippet = widgetEmbedSnippet(widgetId, engagementModel)
 
   if (sendWelcomeEmail && process.env.RESEND_API_KEY) {
     const resend = new Resend(process.env.RESEND_API_KEY)
@@ -641,13 +965,13 @@ export async function provisionTenant(
         : `<p>Your custom site is live.</p>`
 
     await resend.emails.send({
-      from: process.env.INTAKE_FROM_EMAIL || 'ClosetQuote <admin@closetquotes.com>',
+      from: process.env.INTAKE_FROM_EMAIL || 'DitchTheForm <admin@closetquotes.com>',
       to: [ownerEmail],
       subject: isWidgetOnly
-        ? 'Your ClosetQuote Calculator is ready to embed'
+        ? 'Your DitchTheForm Calculator is ready to embed'
         : pendingSite
-          ? 'Welcome to ClosetQuote! Your site is pending approval.'
-          : 'Welcome to ClosetQuote!',
+          ? 'Welcome to DitchTheForm! Your site is pending approval.'
+          : 'Welcome to DitchTheForm!',
       html: `
         <h1>Welcome, ${businessName}!</h1>
         ${productLine}
@@ -676,6 +1000,49 @@ export async function provisionTenant(
       }
     } catch (err) {
       console.error('Failed to mark intake built:', err)
+    }
+  }
+
+  if (!isWidgetOnly && siteUrl) {
+    // Best-effort on-demand cache invalidation so the tenant site reflects
+    // this provisioning immediately instead of waiting out its 60s cache
+    // window (see custom-closets-websites getConfig.ts / api/revalidate).
+    // Never let a failure here fail provisioning — the site self-heals
+    // within 60s regardless.
+    const secret = process.env.ADMIN_BYPASS_SECRET?.trim()
+    if (secret) {
+      try {
+        await fetch(`${siteUrl.replace(/\/$/, '')}/api/revalidate`, {
+          method: 'POST',
+          headers: { 'x-revalidate-secret': secret },
+          signal: AbortSignal.timeout(5000),
+        })
+      } catch (err) {
+        console.error('Failed to revalidate tenant site cache:', err)
+      }
+    }
+  }
+
+  // Agentic site-validation gate: before a freshly built full site is offered
+  // to the admin for preview/approval, run the automated QA battery (theme/
+  // layout consistency, nav presence, broken links/images, duplicate/
+  // non-bespoke design). Tracked on `tenants.validation_status` — completely
+  // independent of `site_status` (the payment/launch state machine set just
+  // above via syncTenantLaunchAccess) so the two concerns never conflict.
+  // Best-effort: never let a validator failure fail provisioning itself —
+  // worst case the tenant is left with validation_status='pending' for the
+  // admin to re-run manually from /admin/sites/[id].
+  if (!isWidgetOnly) {
+    try {
+      const report = await validateTenantSite(tenantId)
+      await saveValidationReport(tenantId, report)
+    } catch (err) {
+      console.error('Site validation failed to run:', err)
+      try {
+        await supabase.from('tenants').update({ validation_status: 'pending' }).eq('id', tenantId)
+      } catch {
+        // best-effort only
+      }
     }
   }
 

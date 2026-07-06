@@ -18,7 +18,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "ClosetQuote — Interactive Pricing Widgets for Closet Contractors",
+  title: "DitchTheForm — Instant Quote Widgets for Service Businesses",
   description:
     "Embed a premium, interactive pricing calculator on your website in 60 seconds. Qualify leads, upsell finishes, and close more deals.",
 };

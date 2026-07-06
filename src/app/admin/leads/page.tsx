@@ -21,7 +21,13 @@ type Lead = {
   created_at: string
 }
 
-type ContractorLite = { id: string; company_name: string | null }
+type ContractorLite = {
+  id: string
+  company_name: string | null
+  domain_config?: {
+    unitAbbrev?: string
+  } | null
+}
 
 const RANGE_OPTIONS = [
   { key: '24h',  label: 'Last 24h',  hours: 24 },
@@ -84,7 +90,7 @@ export default async function LeadsInboxPage({
     query,
     admin
       .from('contractor_settings')
-      .select('id, company_name')
+      .select('id, company_name, domain_config')
       .order('company_name', { ascending: true })
       .limit(500),
   ])
@@ -195,7 +201,9 @@ export default async function LeadsInboxPage({
             )}
             {rows.map((r) => {
               const name = [r.first_name, r.last_name].filter(Boolean).join(' ').trim() || '(unknown)'
-              const project = [r.room_type, r.finish_type, r.linear_feet ? `${r.linear_feet}ft` : null].filter(Boolean).join(' · ')
+              const cInfo = contractors.find((c) => c.id === r.contractor_id)
+              const unit = cInfo?.domain_config?.unitAbbrev || 'ft'
+              const project = [r.room_type, r.finish_type, r.linear_feet ? `${r.linear_feet}${unit}` : null].filter(Boolean).join(' · ')
               return (
                 <tr key={r.id} className="hover:bg-gray-50">
                   <td className="px-3 py-2 text-xs text-gray-500">{fmt(r.created_at)}</td>

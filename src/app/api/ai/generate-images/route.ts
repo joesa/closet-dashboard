@@ -37,9 +37,12 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: usage.reason || 'AI limit reached' }, { status: 429 })
     }
 
-    if (!process.env.OPENAI_API_KEY) {
+    if (!process.env.OPENAI_API_KEY && !process.env.GEMINI_API_KEY) {
       return NextResponse.json(
-        { error: 'Image generation is not configured (missing OPENAI_API_KEY).' },
+        {
+          error:
+            'Image generation is not configured (missing OPENAI_API_KEY and GEMINI_API_KEY).',
+        },
         { status: 500 }
       )
     }
