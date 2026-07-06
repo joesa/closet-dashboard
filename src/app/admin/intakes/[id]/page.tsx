@@ -52,6 +52,9 @@ export default async function IntakeDetailPage({
 
   let tenantSiteStatus: string | null = null
   let tenantSiteUrl: string | null = null
+  let tenantValidationStatus: string | null = null
+  let tenantValidationReport: Array<{code: string; severity: string; message: string; fixable: boolean}> = []
+  let tenantValidatedAt: string | null = null
   if (data.provisioned_contractor_id) {
     const synced = await syncTenantLaunchAccess({
       tenantId: data.provisioned_contractor_id,
@@ -70,6 +73,15 @@ export default async function IntakeDetailPage({
       const url = getTenantPublicUrl(domain.hostname)
       tenantSiteUrl = url !== '#' ? url : null
     }
+
+    const { data: tenantRow } = await admin
+      .from('tenants')
+      .select('validation_status, validation_report, validated_at')
+      .eq('id', data.provisioned_contractor_id)
+      .maybeSingle()
+    tenantValidationStatus = tenantRow?.validation_status ?? null
+    tenantValidationReport = Array.isArray(tenantRow?.validation_report) ? tenantRow.validation_report : []
+    tenantValidatedAt = tenantRow?.validated_at ?? null
   }
 
   const needsPublish =
@@ -243,6 +255,81 @@ export default async function IntakeDetailPage({
           )}
         </div>
       </div>
+
+      {data.provisioned_contractor_id && (
+        <div className="mt-6 rounded-lg border border-gray-200 bg-white p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">
+              Site Validation
+            </h2>
+            <Link
+              href={`/admin/sites/${data.provisioned_contractor_id}`}
+              className="text-sm font-medium text-indigo-600 hover:underline flex items-center gap-1"
+            >
+              Open full site details →
+            </Link>
+          </div>
+
+          {!tenantValidationStatus && (
+            <p className="text-sm text-gray-500">Validation has not been run yet. Open site details to run it.</p>
+          )}
+
+          {tenantValidationStatus && (
+            <>
+              <div className="flex items-center gap-3 mb-3">
+                <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium border ${
+                  tenantValidationStatus === 'passed'
+                    ? 'bg-green-50 text-green-700 border-green-200'
+                    : tenantValidationStatus === 'failed'
+                    ? 'bg-red-50 text-red-700 border-red-200'
+                    : 'bg-amber-50 text-amber-700 border-amber-200'
+                }`}>
+                  {tenantValidationStatus === 'passed' && '✓ All checks passed'}
+                  {tenantValidationStatus === 'failed' && `✗ ${tenantValidationReport.filter(i => i.severity === 'error').length} error(s) found`}
+                  {tenantValidationStatus === 'pending' && '⏳ Validation pending'}
+                </span>
+                {tenantValidatedAt && (
+                  <span className="text-xs text-gray-400">Last checked: {new Date(tenantValidatedAt).toLocaleString()}</span>
+                )}
+              </div>
+
+              {tenantValidationReport.length > 0 ? (
+                <ul className="space-y-2">
+                  {tenantValidationReport.map((issue, i) => (
+                    <li
+                      key={`${issue.code}-${i}`}
+                      className={`text-sm rounded-lg border px-4 py-3 ${
+                        issue.severity === 'error'
+                          ? 'border-red-200 bg-red-50 text-red-700'
+                          : 'border-amber-200 bg-amber-50 text-amber-700'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <span className="font-mono text-xs opacity-60 mr-2">[{issue.code}]</span>
+                          {issue.message}
+                        </div>
+                        {issue.fixable && (
+                          <span className="shrink-0 text-xs font-medium text-gray-500 bg-gray-100 px-2 py-0.5 rounded">AI-fixable</span>
+                        )}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              ) : tenantValidationStatus === 'passed' ? (
+                <p className="text-sm text-green-700">No issues — site is clean and ready for review.</p>
+              ) : null}
+
+              <p className="mt-4 text-xs text-gray-400">
+                To re-run validation or use the AI auto-fixer, open{' '}
+                <Link href={`/admin/sites/${data.provisioned_contractor_id}`} className="text-indigo-600 hover:underline">
+                  the full site details page
+                </Link>.
+              </p>
+            </>
+          )}
+        </div>
+      )}
 
       {data.ai_site_config && (
         <div className="mt-6 rounded-lg border border-gray-200 bg-white p-6">

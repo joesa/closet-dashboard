@@ -334,6 +334,75 @@ export default function IntakeImageStudio({
     }
   };
 
+  const handleFileUpload = (
+    e: React.ChangeEvent<HTMLInputElement>,
+    slot: 'hero' | 'product',
+    productIndex?: number
+  ) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      const dataUrl = event.target?.result as string;
+      if (!dataUrl) return;
+
+      const attemptRecord = {
+        attempt: (Date.now() % 1000000), // unique pseudo-attempt ID
+        urls: [dataUrl],
+        prompt: 'Custom user upload',
+      };
+
+      let newSelections: IntakeImageSelections;
+      if (slot === 'hero') {
+        newSelections = {
+          ...selections,
+          hero: {
+            ...selections.hero,
+            selectedUrl: dataUrl,
+            selectedAttempt: attemptRecord.attempt,
+            history: [...(selections.hero.history || []), attemptRecord],
+          },
+        };
+      } else {
+        const productsList = [...selections.products];
+        const idx = productsList.findIndex((p) => p.productIndex === productIndex);
+        if (idx >= 0) {
+          productsList[idx] = {
+            ...productsList[idx],
+            selectedUrl: dataUrl,
+            selectedAttempt: attemptRecord.attempt,
+            history: [...(productsList[idx].history || []), attemptRecord],
+          };
+        } else if (productIndex !== undefined) {
+          productsList.push({
+            serviceName: products[productIndex]?.serviceName || `Service ${productIndex}`,
+            productIndex,
+            attemptsUsed: 0,
+            selectedUrl: dataUrl,
+            selectedAttempt: attemptRecord.attempt,
+            history: [attemptRecord],
+          });
+        }
+        newSelections = { ...selections, products: productsList };
+      }
+
+      setSelections(newSelections);
+      onUpdate(newSelections, siteConfig);
+
+      try {
+        await fetch(`/api/intake/${token}/image-selection`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(newSelections),
+        });
+      } catch (err) {
+        console.error('Failed to save custom upload to server', err);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
   const renderSlot = (
     label: string,
     slot: 'hero' | 'product',
@@ -360,16 +429,28 @@ export default function IntakeImageStudio({
           value={prompt}
           onChange={(e) => onPromptChange(e.target.value)}
         />
-        <button
-          type="button"
-          disabled={!!genLoading || !prompt.trim() || attemptsUsed >= max}
-          onClick={() => void generateBatch(slot, prompt, productIndex)}
-          className="mt-2 rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-500 disabled:opacity-50"
-        >
-          {genLoading === (slot === 'hero' ? 'hero' : `product-${productIndex}`)
-            ? 'Generating 3 options…'
-            : 'Generate 3 options'}
-        </button>
+        <div className="mt-2 flex items-center gap-3">
+          <button
+            type="button"
+            disabled={!!genLoading || !prompt.trim() || attemptsUsed >= max}
+            onClick={() => void generateBatch(slot, prompt, productIndex)}
+            className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-500 disabled:opacity-50"
+          >
+            {genLoading === (slot === 'hero' ? 'hero' : `product-${productIndex}`)
+              ? 'Generating 3 options…'
+              : 'Generate 3 options'}
+          </button>
+          
+          <label className="cursor-pointer rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50">
+            Upload own image
+            <input
+              type="file"
+              accept="image/*"
+              className="sr-only"
+              onChange={(e) => handleFileUpload(e, slot, productIndex)}
+            />
+          </label>
+        </div>
         {attemptsUsed >= max && (
           <p className="mt-2 text-xs text-gray-500">
             No generations remaining for this {slot === 'hero' ? 'hero image' : 'product'}.

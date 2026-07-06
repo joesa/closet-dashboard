@@ -110,6 +110,7 @@ type Props = {
   allowedLayouts: string[]
   themeTokens?: ThemeTokenSelection | null
   isSynthesized?: boolean
+  isAdmin?: boolean
   onThemeChange: (t: string) => void
   onLayoutChange: (l: string) => void
   onBack: () => void
@@ -127,6 +128,7 @@ export default function PresentationReviewStep({
   allowedLayouts,
   themeTokens,
   isSynthesized,
+  isAdmin = false,
   onThemeChange,
   onLayoutChange,
   onBack,
@@ -198,88 +200,92 @@ export default function PresentationReviewStep({
         </div>
       )}
 
-      {/* ── Theme picker ── */}
-      <div className="mb-6">
-        <h3 className="text-sm font-bold uppercase tracking-wide text-gray-500 mb-3">Theme</h3>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-          {displayThemes.map((slug) => {
-            const active = slug === selectedTheme
-            return (
-              <button
-                key={slug}
-                type="button"
-                onClick={() => onThemeChange(slug)}
-                className={`relative text-left rounded-xl border-2 overflow-hidden transition-all focus:outline-none ${
-                  active
-                    ? 'border-indigo-500 ring-2 ring-indigo-300 shadow-md'
-                    : 'border-gray-200 hover:border-indigo-300 hover:shadow-sm'
-                }`}
-              >
-                {/* Color strip */}
-                <div
-                  className="h-8 w-full"
-                  style={{ backgroundColor: themeColor(slug) }}
-                />
-                <div className="px-3 py-2">
-                  <p className="text-xs font-bold text-gray-900 leading-tight">{themeLabel(slug)}</p>
-                  <p className="text-[11px] text-gray-500 mt-0.5 leading-tight">{themeTagline(slug)}</p>
-                </div>
-                {active && (
-                  <span className="absolute top-1.5 right-1.5 rounded-full bg-indigo-600 px-1.5 py-0.5 text-[10px] font-bold text-white">✓</span>
-                )}
-                {slug === aiTheme && !active && (
-                  <span className="absolute top-1.5 right-1.5 rounded-full bg-gray-100 border border-gray-300 px-1.5 py-0.5 text-[10px] text-gray-500">AI</span>
-                )}
-              </button>
-            )
-          })}
+      {/* ── Theme picker (admin only) ── */}
+      {isAdmin && (
+        <div className="mb-6">
+          <h3 className="text-sm font-bold uppercase tracking-wide text-gray-500 mb-3">Theme</h3>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            {displayThemes.map((slug) => {
+              const active = slug === selectedTheme
+              return (
+                <button
+                  key={slug}
+                  type="button"
+                  onClick={() => onThemeChange(slug)}
+                  className={`relative text-left rounded-xl border-2 overflow-hidden transition-all focus:outline-none ${
+                    active
+                      ? 'border-indigo-500 ring-2 ring-indigo-300 shadow-md'
+                      : 'border-gray-200 hover:border-indigo-300 hover:shadow-sm'
+                  }`}
+                >
+                  {/* Color strip */}
+                  <div
+                    className="h-8 w-full"
+                    style={{ backgroundColor: themeColor(slug) }}
+                  />
+                  <div className="px-3 py-2">
+                    <p className="text-xs font-bold text-gray-900 leading-tight">{themeLabel(slug)}</p>
+                    <p className="text-[11px] text-gray-500 mt-0.5 leading-tight">{themeTagline(slug)}</p>
+                  </div>
+                  {active && (
+                    <span className="absolute top-1.5 right-1.5 rounded-full bg-indigo-600 px-1.5 py-0.5 text-[10px] font-bold text-white">✓</span>
+                  )}
+                  {slug === aiTheme && !active && (
+                    <span className="absolute top-1.5 right-1.5 rounded-full bg-gray-100 border border-gray-300 px-1.5 py-0.5 text-[10px] text-gray-500">AI</span>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowAllThemes((v) => !v)}
+            className="mt-3 text-xs font-semibold text-indigo-600 hover:underline"
+          >
+            {showAllThemes ? '↑ Show fewer themes' : `↓ Browse all themes`}
+          </button>
         </div>
-        <button
-          type="button"
-          onClick={() => setShowAllThemes((v) => !v)}
-          className="mt-3 text-xs font-semibold text-indigo-600 hover:underline"
-        >
-          {showAllThemes ? '↑ Show fewer themes' : `↓ Browse all themes`}
-        </button>
-      </div>
+      )}
 
-      {/* ── Layout picker ── */}
-      <div className="mb-6">
-        <h3 className="text-sm font-bold uppercase tracking-wide text-gray-500 mb-3">Page layout</h3>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          {layoutsToShow.map((slug) => {
-            const active = slug === selectedLayout
-            return (
-              <button
-                key={slug}
-                type="button"
-                onClick={() => onLayoutChange(slug)}
-                className={`flex items-start gap-3 rounded-xl border-2 px-3 py-2.5 text-left transition-all focus:outline-none ${
-                  active
-                    ? 'border-indigo-500 bg-indigo-50 ring-1 ring-indigo-300'
-                    : 'border-gray-200 bg-white hover:border-indigo-300 hover:bg-gray-50'
-                }`}
-              >
-                <span className="text-xl mt-0.5 select-none">{layoutIcon(slug)}</span>
-                <div className="min-w-0">
-                  <p className="text-xs font-bold text-gray-900 leading-tight">{layoutLabel(slug)}</p>
-                  <p className="text-[11px] text-gray-500 mt-0.5 leading-tight">{layoutTagline(slug)}</p>
-                </div>
-                {active && (
-                  <span className="ml-auto rounded-full bg-indigo-600 w-4 h-4 flex items-center justify-center text-white text-[10px] shrink-0">✓</span>
-                )}
-              </button>
-            )
-          })}
+      {/* ── Layout picker (admin only) ── */}
+      {isAdmin && (
+        <div className="mb-6">
+          <h3 className="text-sm font-bold uppercase tracking-wide text-gray-500 mb-3">Page layout</h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {layoutsToShow.map((slug) => {
+              const active = slug === selectedLayout
+              return (
+                <button
+                  key={slug}
+                  type="button"
+                  onClick={() => onLayoutChange(slug)}
+                  className={`flex items-start gap-3 rounded-xl border-2 px-3 py-2.5 text-left transition-all focus:outline-none ${
+                    active
+                      ? 'border-indigo-500 bg-indigo-50 ring-1 ring-indigo-300'
+                      : 'border-gray-200 bg-white hover:border-indigo-300 hover:bg-gray-50'
+                  }`}
+                >
+                  <span className="text-xl mt-0.5 select-none">{layoutIcon(slug)}</span>
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold text-gray-900 leading-tight">{layoutLabel(slug)}</p>
+                    <p className="text-[11px] text-gray-500 mt-0.5 leading-tight">{layoutTagline(slug)}</p>
+                  </div>
+                  {active && (
+                    <span className="ml-auto rounded-full bg-indigo-600 w-4 h-4 flex items-center justify-center text-white text-[10px] shrink-0">✓</span>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowAllLayouts((v) => !v)}
+            className="mt-3 text-xs font-semibold text-indigo-600 hover:underline"
+          >
+            {showAllLayouts ? '↑ Show fewer layouts' : '↓ Browse all layouts'}
+          </button>
         </div>
-        <button
-          type="button"
-          onClick={() => setShowAllLayouts((v) => !v)}
-          className="mt-3 text-xs font-semibold text-indigo-600 hover:underline"
-        >
-          {showAllLayouts ? '↑ Show fewer layouts' : '↓ Browse all layouts'}
-        </button>
-      </div>
+      )}
 
       {/* Errors */}
       {error && (

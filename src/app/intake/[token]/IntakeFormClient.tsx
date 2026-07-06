@@ -205,6 +205,7 @@ const sectionTitle = 'mb-4 text-[11px] font-semibold uppercase tracking-widest t
 
 export type IntakeFormClientProps = {
   token: string;
+  isAdmin?: boolean;
   notFound?: boolean;
   businessName?: string;
   prospectEmail?: string;
@@ -344,6 +345,7 @@ function IntakeStepProgress({
 
 export default function IntakeFormClient({
   token,
+  isAdmin = false,
   notFound = false,
   businessName = '',
   prospectEmail = '',
@@ -963,6 +965,22 @@ export default function IntakeFormClient({
     if (!industryText.trim() && studioServices.length === 0) return false;
     const slug = resolveIndustrySlug({ industry: industryText, services: studioServices });
     return getEngagementModel(slug) === 'order';
+  }, [form.industry, studioServices, widgetConfigHints]);
+
+  const isBookingBusiness = useMemo(() => {
+    const industryText =
+      form.industry.trim() || (widgetConfigHints as WidgetHintsSnapshot | null)?.industry || '';
+    if (!industryText.trim() && studioServices.length === 0) return false;
+    const slug = resolveIndustrySlug({ industry: industryText, services: studioServices });
+    return getEngagementModel(slug) === 'booking';
+  }, [form.industry, studioServices, widgetConfigHints]);
+
+  const isTicketBusiness = useMemo(() => {
+    const industryText =
+      form.industry.trim() || (widgetConfigHints as WidgetHintsSnapshot | null)?.industry || '';
+    if (!industryText.trim() && studioServices.length === 0) return false;
+    const slug = resolveIndustrySlug({ industry: industryText, services: studioServices });
+    return getEngagementModel(slug) === 'ticket';
   }, [form.industry, studioServices, widgetConfigHints]);
 
   const addMenuItem = () => {
@@ -1786,6 +1804,22 @@ export default function IntakeFormClient({
                   order, rather than requesting a quote — build your priced menu below instead of a quote calculator.
                 </p>
               </div>
+            ) : isBookingBusiness ? (
+              <div className="mb-4 rounded-xl border border-blue-300/20 bg-blue-500/10 p-4 text-sm text-blue-100">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-blue-300">Booking system detected</p>
+                <p className="mt-1">
+                  Customers of {calculatorGuidance.tradeLabel.toLowerCase()} businesses schedule appointments or book time slots.
+                  Your site will be configured with a booking call-to-action instead of a quote calculator.
+                </p>
+              </div>
+            ) : isTicketBusiness ? (
+              <div className="mb-4 rounded-xl border border-emerald-300/20 bg-emerald-500/10 p-4 text-sm text-emerald-100">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-300">Ticketing system detected</p>
+                <p className="mt-1">
+                  Customers of {calculatorGuidance.tradeLabel.toLowerCase()} businesses purchase tickets for events or entry.
+                  Your site will be configured with a ticketing call-to-action instead of a quote calculator.
+                </p>
+              </div>
             ) : (
               <>
             <label className={label}>How do you price these jobs?</label>
@@ -2370,6 +2404,7 @@ export default function IntakeFormClient({
                 allowedLayouts={previewResult.allowedLayouts}
                 themeTokens={previewResult.themeTokens}
                 isSynthesized={!!previewResult.isSynthesized}
+                isAdmin={isAdmin}
                 onThemeChange={setPendingTheme}
                 onLayoutChange={setPendingLayout}
                 onBack={() => { setPreviewResult(null); setError(''); }}

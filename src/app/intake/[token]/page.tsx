@@ -3,6 +3,7 @@ import { buildIntakePublicJson } from '@/lib/intake/intakePublicResponse'
 import { parseImageSelections } from '@/lib/intake/imageSelections'
 import { getTierCatalog } from '@/lib/intake/tiers'
 import IntakeFormClient from './IntakeFormClient'
+import { getCurrentAdmin } from '@/lib/admin'
 
 export const dynamic = 'force-dynamic'
 
@@ -24,8 +25,12 @@ export default async function IntakePage({
   const pub = buildIntakePublicJson(row)
   const aiRaw = row.ai_site_config as Record<string, unknown> | null
 
+  const adminUser = await getCurrentAdmin()
+  const isAdmin = adminUser !== null
+
   return (
     <IntakeFormClient
+      isAdmin={isAdmin}
       token={token}
       businessName={row.business_name ?? ''}
       prospectEmail={row.contact_email || row.verification_email || ''}
