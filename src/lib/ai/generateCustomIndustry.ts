@@ -5,7 +5,7 @@ import type { BeforeAfterCategory } from '@/lib/openai-images'
 import type { EngagementModel } from '@/lib/catalog/types'
 
 const VALID_CATEGORIES: BeforeAfterCategory[] = ['vehicle', 'exterior', 'fixture', 'pet', 'interior-space', 'not-applicable']
-const VALID_ENGAGEMENT_MODELS: EngagementModel[] = ['quote', 'order']
+const VALID_ENGAGEMENT_MODELS: EngagementModel[] = ['quote', 'order', 'booking', 'ticket']
 
 export type GenerateCustomIndustryInput = {
   industryText: string
@@ -83,10 +83,14 @@ Return JSON only, no markdown, with this EXACT shape:
   "defaultThemes": string[],           // pick 3-4 IDs ONLY from this exact list: ${THEME_SLUGS.join(', ')}
   "defaultLayouts": string[],          // pick 2-4 IDs ONLY from this exact list: ${LAYOUT_SLUGS.join(', ')}
   "beforeAfterCategory": string,       // REQUIRED. Pick EXACTLY ONE of: "vehicle" | "exterior" | "fixture" | "pet" | "interior-space" | "not-applicable"
-  "engagementModel": string             // REQUIRED. Pick EXACTLY ONE of: "quote" | "order"
+  "engagementModel": string             // REQUIRED. Pick EXACTLY ONE of: "quote" | "order" | "booking" | "ticket"
 }
 
-engagementModel guide: pick "order" ONLY if a customer of this business would browse a menu/catalog of individually-priced items and place a direct order (e.g. a restaurant, cafe, bakery, or any walk-up food/retail seller). Pick "quote" for EVERY OTHER case — any project-based or service-based trade where price varies per job and a human still scopes/estimates it (this is the correct choice for the vast majority of trades, including businesses that book appointments or rent equipment).
+engagementModel guide:
+- "order": pick ONLY if a customer of this business would browse a menu/catalog of individually-priced items and place a direct order (e.g. a restaurant, cafe, bakery, walk-up food/retail seller).
+- "booking": pick ONLY if the core business is scheduling a fixed time slot for a person (e.g. dental, medical, salon, massage, therapy, consulting, classes, personal training, tutoring).
+- "ticket": pick ONLY if the business sells tickets to a specific event, venue, or attraction (e.g. museum, theater, concert, amusement park, tours).
+- "quote": pick for EVERY OTHER case — any project-based or service-based trade where price varies per job and a human still scopes/estimates it (e.g. contractors, landscapers, cleaners, towing, mechanics). This is the correct choice for the vast majority of trades.
 
 beforeAfterCategory guide (this drives an image-editing prompt that must depict the SAME physical subject in a worse-off "before" state vs. the finished "after" photo — pick whichever matches what a customer of this business would actually show off in a before/after photo):
 - "vehicle": the business's own before/after subject is a car/truck/van/boat/motorcycle (detailing, wraps, towing, transport).
