@@ -31,14 +31,36 @@ const DOMAIN_ANCHOR =
   'Subject is the real, on-the-job work of the business — its finished installations or completed ' +
   'work, crews, tools, equipment, and the actual spaces it services for its trade — never a server ' +
   'room, data center, lab, spaceship, or any unrelated abstract-tech subject.'
-const QUALITY_SUFFIX =
-  'Authentic real-estate / architectural interior photograph, shot on a full-frame DSLR with a ' +
+
+const QUALITY_SUFFIX_INTERIOR =
+  'Authentic real-world interior photograph, shot on a full-frame DSLR with a ' +
   '24-35mm lens at f/8, natural window light with soft realistic shadows and accurate color ' +
   'temperature. Real physical materials with natural grain, subtle wear, and lived-in imperfections. ' +
   'Photorealistic, 8k, crisp focus, shallow realistic depth of field, wide 16:9 composition. ' +
   'NOT a 3D render, NOT CGI, not digital art, not an illustration — avoid plastic/glossy surfaces, ' +
   'waxy textures, warped geometry, uncanny perfect symmetry, fake reflections, and over-saturation. ' +
-  'No text, no people, no logos, no watermarks.'
+  'No text, no logos, no watermarks.'
+
+const QUALITY_SUFFIX_EXTERIOR =
+  'Authentic real-world outdoor / exterior photograph, shot on a full-frame DSLR with a ' +
+  '24-35mm lens at f/8, natural daylight with realistic sun/shade shadows and accurate color ' +
+  'temperature. Real physical materials with natural textures, subtle wear, and lived-in imperfections. ' +
+  'Photorealistic, 8k, crisp focus, realistic depth of field, wide 16:9 composition. ' +
+  'NOT a 3D render, NOT CGI, not digital art, not an illustration — avoid plastic/glossy surfaces, ' +
+  'waxy textures, warped geometry, uncanny perfect symmetry, fake reflections, and over-saturation. ' +
+  'No text, no logos, no watermarks.'
+
+function isExteriorPrompt(prompt: string): boolean {
+  const lower = prompt.toLowerCase()
+  const exteriorKeywords = [
+    'exterior', 'outdoor', 'outside', 'roof', 'yard', 'lawn', 'landscap',
+    'tree', 'pool', 'deck', 'driveway', 'siding', 'gutter', 'street',
+    'vehicle', 'truck', 'car ', 'boat', 'aerial', 'building facade',
+    'siding', 'fence', 'fencing', 'painting exterior', 'power washing',
+    'pressure washing', 'concrete pouring', 'masonry'
+  ]
+  return exteriorKeywords.some(kw => lower.includes(kw))
+}
 
 function enrichImagePrompt(prompt: string): string {
   const trimmed = prompt.trim()
@@ -47,15 +69,23 @@ function enrichImagePrompt(prompt: string): string {
   if (!lower.includes('on-the-job') && !lower.includes('unrelated abstract-tech')) {
     parts.push(DOMAIN_ANCHOR)
   }
-  if (!lower.includes('photorealistic') || !lower.includes('no people')) {
-    parts.push(QUALITY_SUFFIX)
+
+  const isExt = isExteriorPrompt(trimmed)
+  const qualitySuffix = isExt ? QUALITY_SUFFIX_EXTERIOR : QUALITY_SUFFIX_INTERIOR
+
+  if (!lower.includes('photorealistic')) {
+    parts.push(qualitySuffix)
   } else if (!lower.includes('not cgi') && !lower.includes('not a 3d render')) {
     // Prompt is already photographic but lacks the anti-AI realism guardrail —
     // append the realism cues so output looks like a real photo, not a render.
     parts.push(
-      'Authentic real photograph, shot on a full-frame DSLR, natural light, real materials with ' +
-        'subtle imperfections. NOT a 3D render, NOT CGI, not digital art — avoid plastic surfaces, ' +
-        'waxy textures, and uncanny perfect symmetry.'
+      isExt
+        ? 'Authentic real outdoor photograph, shot on a full-frame DSLR, natural daylight, real materials with ' +
+          'subtle imperfections. NOT a 3D render, NOT CGI, not digital art — avoid plastic surfaces, ' +
+          'waxy textures, and uncanny perfect symmetry.'
+        : 'Authentic real indoor photograph, shot on a full-frame DSLR, natural light, real materials with ' +
+          'subtle imperfections. NOT a 3D render, NOT CGI, not digital art — avoid plastic surfaces, ' +
+          'waxy textures, and uncanny perfect symmetry.'
     )
   }
   return parts.join(' ')
@@ -120,10 +150,7 @@ async function generateImageWithGemini(prompt: string, shape: ImageShape): Promi
     configured.length > 0
       ? configured
       : [
-          'gemini-2.5-flash-image',
-          'gemini-3.1-flash-image',
-          'gemini-3-pro-image',
-          'gemini-3-pro-image-preview',
+          'imagen-4.0-generate-001',
         ]
 
   const body = {
@@ -203,19 +230,25 @@ async function generateImageWithOpenAI(prompt: string, shape: ImageShape): Promi
 }
 
 async function generateImageWithProvider(prompt: string, shape: ImageShape): Promise<Buffer> {
-  if (process.env.OPENAI_API_KEY) {
+  if (process.env.GEMINI_API_KEY) {
     try {
-      return await generateImageWithOpenAI(prompt, shape)
+      return await generateImageWithGemini(prompt, shape)
     } catch (error) {
-      if (isOpenAIQuotaLike(error) && process.env.GEMINI_API_KEY) {
-        return generateImageWithGemini(prompt, shape)
+      console.warn('Gemini image generation failed, falling back to OpenAI:', error)
+      if (process.env.OPENAI_API_KEY) {
+        try {
+          return await generateImageWithOpenAI(prompt, shape)
+        } catch (openAiError) {
+          console.error('OpenAI fallback image generation also failed:', openAiError)
+          throw openAiError
+        }
       }
       throw error
     }
   }
 
-  if (process.env.GEMINI_API_KEY) {
-    return generateImageWithGemini(prompt, shape)
+  if (process.env.OPENAI_API_KEY) {
+    return generateImageWithOpenAI(prompt, shape)
   }
 
   throw new Error('Missing OPENAI_API_KEY and GEMINI_API_KEY')
@@ -286,10 +319,7 @@ async function generateImageEditWithGemini(
     configured.length > 0
       ? configured
       : [
-          'gemini-2.5-flash-image',
-          'gemini-3.1-flash-image',
-          'gemini-3-pro-image',
-          'gemini-3-pro-image-preview',
+          'imagen-4.0-generate-001',
         ]
 
   const body = {
@@ -359,19 +389,25 @@ async function generateImageEditWithProvider(
   prompt: string,
   shape: ImageShape
 ): Promise<Buffer> {
-  if (process.env.OPENAI_API_KEY) {
+  if (process.env.GEMINI_API_KEY) {
     try {
-      return await generateImageEditWithOpenAI(imageBuffer, prompt, shape)
+      return await generateImageEditWithGemini(imageBuffer, prompt, shape)
     } catch (error) {
-      if (isOpenAIQuotaLike(error) && process.env.GEMINI_API_KEY) {
-        return generateImageEditWithGemini(imageBuffer, prompt, shape)
+      console.warn('Gemini image edit failed, falling back to OpenAI:', error)
+      if (process.env.OPENAI_API_KEY) {
+        try {
+          return await generateImageEditWithOpenAI(imageBuffer, prompt, shape)
+        } catch (openAiError) {
+          console.error('OpenAI fallback image edit also failed:', openAiError)
+          throw openAiError
+        }
       }
       throw error
     }
   }
 
-  if (process.env.GEMINI_API_KEY) {
-    return generateImageEditWithGemini(imageBuffer, prompt, shape)
+  if (process.env.OPENAI_API_KEY) {
+    return generateImageEditWithOpenAI(imageBuffer, prompt, shape)
   }
 
   throw new Error('Missing OPENAI_API_KEY and GEMINI_API_KEY')

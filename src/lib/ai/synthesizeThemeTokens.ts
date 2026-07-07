@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI, type GenerationConfig } from '@google/generative-ai'
+import { generateTextWithFallback } from '@/lib/ai/aiTextProvider'
 import {
   SURFACE_TOKENS,
   SHAPE_TOKENS,
@@ -65,16 +65,6 @@ export async function synthesizeThemeTokens(
   const useGemini = opts?.useGemini !== false && !!process.env.GEMINI_API_KEY
   if (!useGemini) return { tokens: fallback, source: 'fallback' }
 
-  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '')
-  const model = genAI.getGenerativeModel({
-    model: 'gemini-2.5-flash',
-    generationConfig: {
-      responseMimeType: 'application/json',
-      temperature: 0.6,
-      maxOutputTokens: 512,
-    } as GenerationConfig,
-  })
-
   const prompt = `Design a bespoke marketing website "look" for a contractor business by picking exactly one option from each curated list below. Return JSON only: { "surface": string, "shape": string, "voice": string, "swatch": string }
 
 SURFACE (background mood) — pick one id:
@@ -100,8 +90,12 @@ ${input.primary_color_hex ? `Preferred brand color (nudge swatch toward the clos
 Pick values that feel authentic and trustworthy for this specific trade — avoid generic default combos.`
 
   try {
-    const result = await model.generateContent(prompt)
-    const raw = result.response.text()
+    const { text: raw, provider } = await generateTextWithFallback({
+      prompt,
+      jsonMode: true,
+      temperature: 0.6,
+      maxOutputTokens: 512,
+    })
     const parsed = JSON.parse(raw) as Partial<ThemeTokenSelection>
     return {
       tokens: {
@@ -110,7 +104,7 @@ Pick values that feel authentic and trustworthy for this specific trade — avoi
         voice: parsed.voice && VOICE_IDS.includes(parsed.voice) ? parsed.voice : fallback.voice,
         swatch: parsed.swatch && SWATCH_IDS.includes(parsed.swatch) ? parsed.swatch : fallback.swatch,
       },
-      source: 'gemini',
+      source: provider as any,
     }
   } catch {
     return { tokens: fallback, source: 'fallback' }

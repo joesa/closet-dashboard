@@ -1,11 +1,9 @@
 import { NextResponse } from 'next/server'
-import { GoogleGenerativeAI, type GenerationConfig } from '@google/generative-ai'
+import { generateTextWithFallback } from '@/lib/ai/aiTextProvider'
 import { getCurrentAdmin } from '@/lib/admin'
 
 export const maxDuration = 30
 export const runtime = 'nodejs'
-
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '')
 
 const COPY_SCHEMA = {
   type: 'object',
@@ -120,19 +118,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Input is required' }, { status: 400 })
     }
 
-    const model = genAI.getGenerativeModel({
-      model: 'gemini-2.5-flash',
-      generationConfig: {
-        responseMimeType: 'application/json',
-        temperature: 0.75,
-        maxOutputTokens: 2048,
-        thinkingConfig: { thinkingBudget: 0 },
-      } as GenerationConfig,
-    })
+    const systemPrompt = `You are an elite direct-response copywriter for local service businesses and contractors across any trade (e.g. plumbing, towing, HVAC, electrical, landscaping, custom closets & storage). Infer the specific trade from the business brief.`
 
-    const prompt = `System: You are an elite direct-response copywriter for local service businesses and contractors across any trade (e.g. plumbing, towing, HVAC, electrical, landscaping, custom closets & storage). Infer the specific trade from the business brief.
-
-Read the business brief below and write website copy that SELLS — specific to this business, not generic filler.
+    const prompt = `Read the business brief below and write website copy that SELLS — specific to this business, not generic filler.
 
 RULES:
 - Hero headline: benefit-first, confident, memorable. Reference their niche or location when it adds punch.
@@ -148,16 +136,13 @@ ${JSON.stringify(COPY_SCHEMA, null, 2)}
 User brief:
 ${input.trim()}`
 
-    const result = await model.generateContent(prompt)
-    let rawText = ''
-    try {
-      rawText = result.response.text()
-    } catch {
-      rawText =
-        result.response.candidates?.[0]?.content?.parts
-          ?.map((p) => ('text' in p ? p.text : ''))
-          .join('') ?? ''
-    }
+    const { text: rawText } = await generateTextWithFallback({
+      prompt,
+      systemPrompt,
+      jsonMode: true,
+      temperature: 0.75,
+      maxOutputTokens: 2048,
+    })
 
     if (!rawText.trim()) {
       throw new Error('AI returned no copy')

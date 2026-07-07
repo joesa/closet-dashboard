@@ -1,0 +1,26 @@
+{
+  "hostname": "ceteh-barbershop.localhost",
+  "tenants": {
+    "id": "1eb56b33-0d69-42fa-a87d-ca7ca291a9c6",
+    "site_configs": {
+      "brand_name": "Ceteh Barbershop",
+      "process_config": {
+        "steps": [
+          {
+            "title": "Craft",
+            "number": "02",
+            "description": "Our skilled barbers meticulously apply their artistry, using premium tools and techniques to execute your chosen cut, trim, or shave with expert precision."
+          },
+          {
+            "title": "Refine",
+            "number": "03",
+            "description": "We finish with a detailed refinement, ensuring every line is sharp, every fade is seamless, and your look is perfected with high-quality styling products."
+          }
+        ],
+        "title": "Our Grooming Journey",
+        "subtitle": "From consultation to a flawless finish, we craft your ideal look with precision and care."
+      }
+    },
+    "business_name": "Ceteh Barbershop"
+  }
+}

@@ -72,27 +72,32 @@ export async function POST(req: Request) {
     }
 
     let configured = false
-    let contractorId: string | null = null
+    let targetContractorId = body.contractorId
 
-    const { data: contractor } = await supabase
-      .from('contractor_settings')
-      .select('id')
-      .eq('contact_email', email)
-      .maybeSingle()
+    // Fallback if client doesn't send contractorId (older client versions)
+    if (!targetContractorId) {
+      const { data: contractorList } = await supabase
+        .from('contractor_settings')
+        .select('id')
+        .eq('contact_email', email)
+        .order('created_at', { ascending: false })
+        .limit(1)
+      
+      targetContractorId = contractorList?.[0]?.id
+    }
 
-    if (contractor?.id && widgetConfigHints) {
+    if (targetContractorId && widgetConfigHints) {
       try {
         await applyProWidgetConfig(
-          contractor.id,
+          targetContractorId,
           widgetConfigHints as WidgetConfigHints
         )
         configured = true
-        contractorId = contractor.id
         await supabase
           .from('prospect_intakes')
           .update({
             status: 'built',
-            provisioned_contractor_id: contractor.id,
+            provisioned_contractor_id: targetContractorId,
           })
           .eq('id', data.id)
       } catch (applyErr) {
@@ -117,7 +122,7 @@ export async function POST(req: Request) {
     return NextResponse.json({
       success: true,
       intakeId: data.id,
-      contractorId,
+      contractorId: targetContractorId,
       configured,
       message: configured
         ? 'Your calculator is ready in your dashboard.'

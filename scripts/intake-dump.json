@@ -1,0 +1,487 @@
+{
+  "id": "421e4877-7164-48c4-b7b6-a645c9745c61",
+  "token": "016588a00a934e8b99bb1c599fb27f8d",
+  "status": "built",
+  "scraper_lead_id": null,
+  "business_name": "Ceteh Barbershop",
+  "contact_name": "Ceteh Barbershop",
+  "contact_email": "ceteh44839@asitrai.com",
+  "contact_phone": "123-456-7890",
+  "street_address": "2868 Summer Lawn Drive",
+  "address_locality": "Clarksville",
+  "address_region": "TN",
+  "postal_code": "37043",
+  "service_area": "Nashville, TN",
+  "notification_email": "joesa73@gmail.com",
+  "notification_phone": "123-456-7890",
+  "services": [
+    "Hair Salon Services",
+    "Barbershop Services",
+    "Nail Salon Services"
+  ],
+  "pricing_notes": null,
+  "primary_color_hex": "#6C47FF",
+  "logo_url": "https://vtlvqatzsolycqzeknru.supabase.co/storage/v1/object/public/site-assets/intakes/016588a00a934e8b99bb1c599fb27f8d/logo-ai-1783312516649-1.png",
+  "vibe": null,
+  "tone": null,
+  "customers": null,
+  "experience": null,
+  "differentiators": [],
+  "primary_cta": null,
+  "desired_domain": null,
+  "notes": null,
+  "raw": {},
+  "created_at": "2026-07-06T04:33:21.04576+00:00",
+  "submitted_at": "2026-07-06T04:49:18.428+00:00",
+  "updated_at": "2026-07-06T04:51:42.805+00:00",
+  "source": "public",
+  "requested_product": "full",
+  "email_verified_at": "2026-07-06T04:33:43.378+00:00",
+  "verification_email": "ceteh44839@asitrai.com",
+  "provisioning_mode": "auto",
+  "intake_tier": "ai_premium",
+  "tier_total_cents": 199900,
+  "deposit_required_cents": 59970,
+  "deposit_paid_cents": 59970,
+  "deposit_status": "paid",
+  "stripe_checkout_session_id": "cs_test_a19T5sjuhjZaEe3NCH7VKNz3EVek8TAUeaprE3Kg0itwrx8O3I1n2td8nI",
+  "ai_site_config": {
+    "siteConfig": {
+      "hero": {
+        "headline": "Masterful Grooming, Elevated Style",
+        "imagePrompt": "Professional wide-angle photograph of a completed Classic Cut service at a high-end barbershop, showing a barber meticulously finishing a client's haircut with scissors and comb, surrounded by classic wood and leather styling chairs. Shot on a full-frame DSLR with a 24mm lens in natural window light, photorealistic, 8k resolution, crisp focus, clean composition, wide 16:9 ratio, NOT a 3D render, NOT CGI, not digital art, no plastic surfaces, no text, no logos.",
+        "subheadline": "Experience precision barbering and bespoke styling tailored for the modern man in Nashville, TN."
+      },
+      "quiz": {
+        "eyebrow": "Your Style, Our Expertise",
+        "headline": "Tell us about your grooming needs",
+        "questions": [
+          {
+            "id": "q1",
+            "title": "What kind of haircut are you looking for today?",
+            "options": [
+              {
+                "id": "q1_opt1",
+                "label": "Classic Fade"
+              },
+              {
+                "id": "q1_opt2",
+                "label": "Modern Textured Cut"
+              },
+              {
+                "id": "q1_opt3",
+                "label": "Traditional Scissor Cut"
+              },
+              {
+                "id": "q1_opt4",
+                "label": "Buzz Cut / Crew Cut"
+              }
+            ]
+          },
+          {
+            "id": "q2",
+            "title": "How would you describe your beard grooming preferences?",
+            "options": [
+              {
+                "id": "q2_opt1",
+                "label": "Sharp & Sculpted"
+              },
+              {
+                "id": "q2_opt2",
+                "label": "Natural & Tidy"
+              },
+              {
+                "id": "q2_opt3",
+                "label": "Full & Maintained"
+              },
+              {
+                "id": "q2_opt4",
+                "label": "Clean Shaven"
+              }
+            ]
+          },
+          {
+            "id": "q3",
+            "title": "Are you interested in any additional services?",
+            "options": [
+              {
+                "id": "q3_opt1",
+                "label": "Hot Lather Shave"
+              },
+              {
+                "id": "q3_opt2",
+                "label": "Hair Coloring / Gray Blending"
+              },
+              {
+                "id": "q3_opt3",
+                "label": "Scalp Treatment"
+              },
+              {
+                "id": "q3_opt4",
+                "label": "None at this time"
+              }
+            ]
+          }
+        ]
+      },
+      "about": {
+        "description": "Welcome to Ceteh Barbershop, a Nashville institution built on a foundation of precision, passion, and genuine community spirit. We're more than just a place for a haircut; we're a destination where classic barbering artistry meets modern style, all delivered with a personal touch that makes you feel right at home. Our story began with a simple vision: to create a barbershop in Nashville where every client receives not just a service, but an experience – a moment of relaxation, rejuvenation, and confidence. We saw a need for a place that honored the timeless traditions of barbering while embracing the evolving trends in men's grooming, and Ceteh Barbershop was born from that very ambition. What truly sets Ceteh Barbershop apart is our unwavering commitment to craftsmanship. Every barber on our team is a master of their trade, meticulously trained and deeply passionate about the art of hair and beard grooming. We believe that a great haircut isn't just about technique; it's about understanding individual style, facial structure, and personal preference. From classic fades and sharp line-ups to intricate beard trims and luxurious hot towel shaves, we approach every service with an artist's eye and a craftsman's precision. We use only the finest products, ensuring that your hair and skin are treated with the care they deserve, resulting in a look that is both impeccable and long-lasting. Our reputation in Nashville, TN, is built on trust and consistent excellence. Clients choose Ceteh Barbershop not only for our skill but for the genuine, welcoming atmosphere we cultivate. We believe in building relationships, taking the time to listen to your needs, and offering expert advice to help you achieve your ideal look. It's this dedication to personalized service and meticulous attention to detail that has made us a beloved fixture in the community. When you step into Ceteh Barbershop at 2868 Summer Lawn Drive, Clarksville, TN, 37043, you're not just getting a service; you're becoming part of a tradition of quality and care. We invite you to experience the Ceteh Barbershop difference for yourself. Discover why so many in Nashville trust us with their grooming needs and why we are passionate about making every visit exceptional. We look forward to welcoming you and helping you look and feel your absolute best. To schedule your next appointment or simply to learn more, please don't hesitate to reach out to us at 123-456-7890 or email us at ceteh44839@asitrai.com."
+      },
+      "theme": "wellness-calm",
+      "process": {
+        "steps": [
+          {
+            "title": "Craft",
+            "number": "02",
+            "description": "Our skilled barbers meticulously apply their artistry, using premium tools and techniques to execute your chosen cut, trim, or shave with expert precision."
+          },
+          {
+            "title": "Refine",
+            "number": "03",
+            "description": "We finish with a detailed refinement, ensuring every line is sharp, every fade is seamless, and your look is perfected with high-quality styling products."
+          }
+        ],
+        "title": "Our Grooming Journey",
+        "subtitle": "From consultation to a flawless finish, we craft your ideal look with precision and care."
+      },
+      "products": [
+        {
+          "title": "Classic Cut",
+          "description": "Our signature haircut, tailored to your individual style and facial structure for a sharp, refined look. Perfect for those seeking a timeless and impeccable appearance.",
+          "imagePrompt": "Macro interior photography, close-up shot of a barber's hands using professional shears and a comb to create a precise fade on a client's sideburn, showing individual hairs and sharp lines. The barber's gold-plated shears and a fine-tooth comb are clearly visible. Shot on a full-frame DSLR with a 50mm macro lens in natural light, crisp real textures with subtle imperfections, photorealistic, 8k resolution, wide 16:9 composition, NOT a 3D render, NOT CGI, not digital art, no plastic surfaces, no text, no people."
+        },
+        {
+          "title": "Expert Beard Trim and Shaping",
+          "description": "Define your facial hair with a meticulously sculpted beard trim, tailored to enhance your features and personal aesthetic. Essential for maintaining a distinguished and well-groomed beard.",
+          "imagePrompt": "Macro interior photography, close-up shot of a barber using a straight razor to meticulously define the neckline of a client's beard, showing the smooth, clean line and the texture of the beard hair. A hot, steamy towel is draped on the client's neck. Shot on a full-frame DSLR with a 50mm macro lens in natural light, crisp real textures with subtle imperfections, photorealistic, 8k resolution, wide 16:9 composition, NOT a 3D render, NOT CGI, not digital art, no plastic surfaces, no text, no people."
+        },
+        {
+          "title": "Traditional Hot Lather Shave",
+          "description": "Indulge in the ultimate grooming ritual with a relaxing hot lather shave, providing an incredibly close and smooth finish. Ideal for those desiring a luxurious, irritation-free shave and revitalized skin.",
+          "imagePrompt": "Macro interior photography, close-up shot of a badger hair shaving brush applying rich, warm lather to a client's cheek, showing the creamy texture of the foam and subtle stubble. A vintage chrome safety razor is visible in the background. Shot on a full-frame DSLR with a 50mm macro lens in natural light, crisp real textures with subtle imperfections, photorealistic, 8k resolution, wide 16:9 composition, NOT a 3D render, NOT CGI, not digital art, no plastic surfaces, no text, no people."
+        },
+        {
+          "title": "Hair Coloring and Gray Blending",
+          "description": "Refresh your look or make a statement with professional hair coloring or subtle gray blending. Perfect for those wanting to enhance their natural color or achieve a bold new shade.",
+          "imagePrompt": "Macro interior photography, close-up shot of a barber's gloved hands applying hair color with a brush to a client's hair near the roots, showing the rich color product and natural hair texture. A bowl of hair dye and tint brush are in the foreground. Shot on a full-frame DSLR with a 50mm macro lens in natural light, crisp real textures with subtle imperfections, photorealistic, 8k resolution, wide 16:9 composition, NOT a 3D render, NOT CGI, not digital art, no plastic surfaces, no text, no people."
+        }
+      ],
+      "defaultRoom": "Classic Cut",
+      "layoutStyle": "visual-impact"
+    },
+    "pagesConfig": [
+      {
+        "hero": {
+          "headline": "Our Legacy of Craft & Community"
+        },
+        "slug": "/about",
+        "title": "About Us",
+        "content_blocks": [
+          {
+            "body": "Welcome to Ceteh Barbershop, a Nashville institution built on a foundation of precision, passion, and genuine community spirit. We're more than just a place for a haircut; we're a destination where classic barbering artistry meets modern style, all delivered with a personal touch that makes you feel right at home. Our story began with a simple vision: to create a barbershop in Nashville where every client receives not just a service, but an experience – a moment of relaxation, rejuvenation, and confidence. We saw a need for a place that honored the timeless traditions of barbering while embracing the evolving trends in men's grooming, and Ceteh Barbershop was born from that very ambition.",
+            "type": "text",
+            "heading": "The Ceteh Barbershop Story"
+          },
+          {
+            "body": "What truly sets Ceteh Barbershop apart is our unwavering commitment to craftsmanship. Every barber on our team is a master of their trade, meticulously trained and deeply passionate about the art of hair and beard grooming. We believe that a great haircut isn't just about technique; it's about understanding individual style, facial structure, and personal preference. From classic fades and sharp line-ups to intricate beard trims and luxurious hot towel shaves, we approach every service with an artist's eye and a craftsman's precision. We use only the finest products, ensuring that your hair and skin are treated with the care they deserve, resulting in a look that is both impeccable and long-lasting.",
+            "type": "image_left",
+            "heading": "Unwavering Commitment to Craftsmanship"
+          },
+          {
+            "body": "Our reputation in Nashville, TN, is built on trust and consistent excellence. Clients choose Ceteh Barbershop not only for our skill but for the genuine, welcoming atmosphere we cultivate. We believe in building relationships, taking the time to listen to your needs, and offering expert advice to help you achieve your ideal look. It's this dedication to personalized service and meticulous attention to detail that has made us a beloved fixture in the community. When you step into Ceteh Barbershop at 2868 Summer Lawn Drive, Clarksville, TN, 37043, you're not just getting a service; you're becoming part of a tradition of quality and care.",
+            "type": "image_right",
+            "heading": "A Trusted Fixture in Nashville Grooming"
+          },
+          {
+            "body": "We invite you to experience the Ceteh Barbershop difference for yourself. Discover why so many in Nashville trust us with their grooming needs and why we are passionate about making every visit exceptional. We look forward to welcoming you and helping you look and feel your absolute best. To schedule your next appointment or simply to learn more, please don't hesitate to reach out to us at 123-456-7890 or email us at ceteh44839@asitrai.com.",
+            "type": "text",
+            "heading": "Experience the Ceteh Difference"
+          }
+        ]
+      },
+      {
+        "hero": {
+          "headline": "Masterful Grooming Services"
+        },
+        "slug": "/services",
+        "title": "Services",
+        "content_blocks": [
+          {
+            "body": "At Ceteh Barbershop, we're not just offering haircuts; we're crafting experiences. Located right here in Nashville, TN, our comprehensive suite of grooming services is meticulously designed to ensure every client walks out looking and feeling their absolute best. From classic cuts to modern styles, beard sculpting to luxurious shaves, our skilled barbers are dedicated to precision, artistry, and an unparalleled level of personal attention. We pride ourselves on using top-tier products and time-honored techniques, ensuring a distinguished look that lasts.",
+            "type": "text",
+            "heading": "Crafting Your Perfect Look"
+          },
+          {
+            "body": "Explore our curated menu of services, each designed to deliver exceptional results and an unforgettable grooming experience.",
+            "type": "grid",
+            "items": [
+              {
+                "title": "Classic Cut",
+                "description": "Our signature service, the Classic Cut, is more than just a trim. It's a precise art form, tailored to complement your individual facial structure and personal style. We begin with a thorough consultation, discussing your preferences and offering expert advice on the best cut for you. Using premium shears and clippers, our barbers execute clean lines and seamless fades, ensuring a sharp, refined finish. This service is perfected with a hot lather neck shave and a classic styling product application, leaving you with a timeless look that exudes confidence."
+              },
+              {
+                "title": "Expert Beard Trim and Shaping",
+                "description": "For those seeking to define their facial hair, our Expert Beard Trim and Shaping service is essential. We understand that a well-groomed beard is a statement, and our barbers are masters of the craft. Whether you prefer a sharp, sculpted edge or a natural, rugged look, we meticulously trim, shape, and line up your beard to perfection. We utilize specialized trimmers and razors, along with nourishing beard oils and balms, to ensure your beard is not only immaculately styled but also healthy and soft to the touch. This service transforms your beard into a distinguished feature."
+              },
+              {
+                "title": "Traditional Hot Lather Shave",
+                "description": "Indulge in the ultimate relaxation with our Traditional Hot Lather Shave. This isn't just a shave; it's a therapeutic ritual designed to provide the closest, smoothest shave possible while revitalizing your skin. We start with hot towels to soften the skin and open pores, followed by a rich, warm lather applied with a badger brush. Our barbers use fresh, sharp straight razors, executing precise strokes to remove every trace of stubble. The experience concludes with a soothing aftershave balm and a cold towel, leaving your skin incredibly smooth, refreshed, and completely irritation-free."
+              },
+              {
+                "title": "Hair Coloring and Gray Blending",
+                "description": "Beyond the cut and shave, we also offer specialized services like Hair Coloring and Gray Blending. Whether you're looking to subtly cover grays, add dimension with natural-looking highlights, or opt for a bolder, transformative color, our experts use professional-grade dyes and techniques to achieve your desired shade. We prioritize hair health, ensuring the coloring process leaves your hair vibrant, shiny, and undamaged. This service allows you to refresh your look, enhance your natural color, or make a distinctive statement with confidence."
+              }
+            ],
+            "heading": "Our Signature Services"
+          },
+          {
+            "body": "Experience the difference of dedicated artistry and unparalleled service. To schedule your next grooming appointment or to discuss which service is right for you, contact Ceteh Barbershop today at 123-456-7890, email us at ceteh44839@asitrai.com, or visit us at 2868 Summer Lawn Drive, Clarksville, TN, 37043. We look forward to welcoming you to the Ceteh Barbershop experience.",
+            "type": "text",
+            "heading": "Book Your Transformation Today"
+          }
+        ]
+      },
+      {
+        "hero": {
+          "headline": "Our Artistry in Action"
+        },
+        "slug": "/portfolio",
+        "title": "Portfolio / Gallery",
+        "content_blocks": [
+          {
+            "body": "Step into the visual story of Ceteh Barbershop, where every cut, shave, and style is a testament to our unwavering commitment to craftsmanship and meticulous attention to detail. This gallery isn't just a collection of photos; it's a celebration of the artistry our barbers bring to the men of Nashville, TN, transforming good into exceptional. Each image captures a moment of precision, a client's renewed confidence, and the distinctive Ceteh touch that defines our work.",
+            "type": "text",
+            "heading": "Showcasing Precision and Style"
+          },
+          {
+            "body": "Browse through our portfolio and witness the diverse range of styles we master. You'll see crisp, clean fades that transition seamlessly, sharp line-ups that frame the face with precision, and classic cuts that exude timeless sophistication. We showcase a variety of textures and lengths, from intricate scissor cuts that shape and define, to expertly executed straight razor shaves that leave skin feeling incredibly smooth and refreshed. Observe the subtle nuances in our beard trims, where every hair is considered to achieve the perfect shape and length, enhancing natural features. We pride ourselves on creating looks that are not only on-trend but also perfectly suited to each individual's personality and lifestyle in Nashville, TN.",
+            "type": "image_left",
+            "heading": "A Spectrum of Mastered Styles"
+          },
+          {
+            "body": "Every photograph here represents a client who trusted Ceteh Barbershop to deliver an outstanding grooming experience. From a bold new look to a perfectly maintained signature style, our gallery reflects the consistent quality and personalized service that has made us a cornerstone of men's grooming in the community. Notice the healthy sheen of well-conditioned hair, the sharp edges of a perfectly sculpted beard, and the confident expressions of our satisfied clientele. We invite you to explore this visual journey and envision the possibilities for your own transformation.",
+            "type": "image_right",
+            "heading": "Client Confidence, Our Greatest Achievement"
+          },
+          {
+            "body": "If you're inspired by what you see and are ready to experience the Ceteh Barbershop difference for yourself, we encourage you to schedule your appointment. Visit us at 2868 Summer Lawn Drive, Clarksville, TN, or call us at 123-456-7890 to book your next exceptional grooming session.",
+            "type": "text",
+            "heading": "Ready for Your Transformation?"
+          }
+        ]
+      },
+      {
+        "hero": {
+          "headline": "Connect With Ceteh Barbershop"
+        },
+        "slug": "/contact",
+        "title": "Contact",
+        "content_blocks": [
+          {
+            "body": "Welcome to Ceteh Barbershop, your destination for exceptional grooming in Nashville, TN. We're delighted you're considering us for your next haircut, shave, or styling experience. Getting in touch with our team is simple, and we’re always eager to connect with new and returning clients. Whether you have a question about our services, want to book an appointment, or simply wish to learn more about the Ceteh Barbershop difference, we’re here to help. We believe that great style starts with a great conversation, and we’re ready to listen. Feel free to reach out to us through any of the convenient methods listed on this page. We’ve made it easy for you to connect with the skilled barbers who are passionate about crafting your perfect look.",
+            "type": "text",
+            "heading": "Your Gateway to Exceptional Grooming"
+          },
+          {
+            "body": "When you contact Ceteh Barbershop, you're taking the first step towards a superior grooming experience. Here's what you can expect: once we receive your inquiry, whether by phone, email, or through our online form, a friendly member of our team will promptly get back to you. We'll discuss your specific needs, answer any questions you might have about our range of services—from classic cuts to modern styles, beard trims, and hot shaves—and help you find the ideal time for your visit to our Clarksville location at 2868 Summer Lawn Drive. Our goal is to ensure a smooth, personalized process from your initial contact right through to your expert service. We value your time and your trust, and we’re committed to providing clear communication and an effortless booking experience.",
+            "type": "image_left",
+            "heading": "Seamless Booking and Personalized Service"
+          },
+          {
+            "body": "We understand that when you’re looking for a barber, prompt communication is key. At Ceteh Barbershop, we pride ourselves on our responsiveness. You can reach us directly by phone at 123-456-7890 during our business hours, or send us an email at ceteh44839@asitrai.com anytime. We strive to respond to all email inquiries within one business day, ensuring you receive the information you need without unnecessary delay. For immediate assistance or to schedule your next appointment in Nashville, TN, calling us is often the quickest way to secure your preferred time. We look forward to welcoming you to Ceteh Barbershop and helping you achieve your best look yet. Contact us today to experience the difference.",
+            "type": "text",
+            "heading": "Reach Out to Us"
+          }
+        ]
+      }
+    ],
+    "upsellPitch": "Elevate your daily routine with a Ceteh Barbershop membership, offering exclusive discounts on all services and priority booking. Invest in consistent, top-tier grooming tailored just for you.",
+    "presentation": {
+      "theme": "elegant-dressing",
+      "source": "user",
+      "rationale": "Rules: industry=beauty-salon, primary=\"Walk-In Closets\", pools 4 themes / 3 layouts.",
+      "resolvedAt": "2026-07-06T04:49:18.429Z",
+      "defaultRoom": "Classic Cut",
+      "layoutStyle": "gallery-showcase"
+    },
+    "widgetConfig": {
+      "customRooms": [
+        {
+          "name": "Classic Cut",
+          "basic": 35,
+          "premium": 55,
+          "standard": 45
+        },
+        {
+          "name": "Expert Beard Trim and Shaping",
+          "basic": 25,
+          "premium": 45,
+          "standard": 35
+        },
+        {
+          "name": "Traditional Hot Lather Shave",
+          "basic": 40,
+          "premium": 60,
+          "standard": 50
+        },
+        {
+          "name": "Hair Coloring and Gray Blending",
+          "basic": 70,
+          "premium": 110,
+          "standard": 90
+        }
+      ],
+      "customAddOns": [],
+      "customFinishes": [
+        {
+          "tier": "basic",
+          "label": "Standard Grooming",
+          "swatchHex": "#A9A9A9",
+          "description": "Quality products and efficient service for a clean, sharp look."
+        },
+        {
+          "tier": "standard",
+          "label": "Premium Experience",
+          "swatchHex": "#CD7F32",
+          "description": "Elevated products, hot towel service, and extended consultation for a truly refined finish."
+        },
+        {
+          "tier": "premium",
+          "label": "Signature Luxury",
+          "swatchHex": "#D4AF37",
+          "description": "Top-tier products, multiple hot towels, facial massage, and a bespoke styling session for the ultimate pampering."
+        }
+      ]
+    }
+  },
+  "image_selections": {
+    "hero": {
+      "prompt": "Professional wide-angle photograph of a completed Classic Cut service at a high-end barbershop, showing a barber meticulously finishing a client's haircut with scissors and comb, surrounded by classic wood and leather styling chairs. Shot on a full-frame DSLR with a 24mm lens in natural window light, photorealistic, 8k resolution, crisp focus, clean composition, wide 16:9 ratio, NOT a 3D render, NOT CGI, not digital art, no plastic surfaces, no text, no logos.",
+      "history": [
+        {
+          "urls": [
+            "https://vtlvqatzsolycqzeknru.supabase.co/storage/v1/object/public/site-assets/intakes/016588a00a934e8b99bb1c599fb27f8d/hero-a1-1.png",
+            "https://vtlvqatzsolycqzeknru.supabase.co/storage/v1/object/public/site-assets/intakes/016588a00a934e8b99bb1c599fb27f8d/hero-a1-2.png",
+            "https://vtlvqatzsolycqzeknru.supabase.co/storage/v1/object/public/site-assets/intakes/016588a00a934e8b99bb1c599fb27f8d/hero-a1-3.png"
+          ],
+          "prompt": "Professional wide-angle photograph of a completed Classic Cut service at a high-end barbershop, showing a barber meticulously finishing a client's haircut with scissors and comb, surrounded by classic wood and leather styling chairs. Shot on a full-frame DSLR with a 24mm lens in natural window light, photorealistic, 8k resolution, crisp focus, clean composition, wide 16:9 ratio, NOT a 3D render, NOT CGI, not digital art, no plastic surfaces, no text, no logos.",
+          "attempt": 1
+        }
+      ],
+      "selectedUrl": "https://vtlvqatzsolycqzeknru.supabase.co/storage/v1/object/public/site-assets/intakes/016588a00a934e8b99bb1c599fb27f8d/hero-a1-1.png",
+      "attemptsUsed": 1,
+      "selectedAttempt": 1
+    },
+    "products": [
+      {
+        "prompt": "Authentic real photograph documenting professional, completed hair salon services work — a clean, well-executed result shown in a true-to-life setting with realistic detail and natural wear. Shot on a full-frame DSLR with a 35mm lens, natural light, photorealistic, 8k, crisp textures, wide 16:9 composition. NOT a 3D render, NOT CGI, not digital art — avoid plastic/glossy surfaces, waxy textures, and uncanny symmetry. No text, no people, no logos.",
+        "history": [
+          {
+            "urls": [
+              "https://vtlvqatzsolycqzeknru.supabase.co/storage/v1/object/public/site-assets/intakes/016588a00a934e8b99bb1c599fb27f8d/product-1-a1-1.png",
+              "https://vtlvqatzsolycqzeknru.supabase.co/storage/v1/object/public/site-assets/intakes/016588a00a934e8b99bb1c599fb27f8d/product-1-a1-2.png",
+              "https://vtlvqatzsolycqzeknru.supabase.co/storage/v1/object/public/site-assets/intakes/016588a00a934e8b99bb1c599fb27f8d/product-1-a1-3.png"
+            ],
+            "prompt": "Authentic real photograph documenting professional, completed hair salon services work — a clean, well-executed result shown in a true-to-life setting with realistic detail and natural wear. Shot on a full-frame DSLR with a 35mm lens, natural light, photorealistic, 8k, crisp textures, wide 16:9 composition. NOT a 3D render, NOT CGI, not digital art — avoid plastic/glossy surfaces, waxy textures, and uncanny symmetry. No text, no people, no logos.",
+            "attempt": 1
+          }
+        ],
+        "selectedUrl": "https://vtlvqatzsolycqzeknru.supabase.co/storage/v1/object/public/site-assets/intakes/016588a00a934e8b99bb1c599fb27f8d/product-1-a1-1.png",
+        "serviceName": "Hair Salon Services",
+        "attemptsUsed": 1,
+        "productIndex": 0,
+        "selectedAttempt": 1
+      },
+      {
+        "prompt": "Authentic real photograph documenting professional, completed barbershop services work — a clean, well-executed result shown in a true-to-life setting with realistic detail and natural wear. Shot on a full-frame DSLR with a 35mm lens, natural light, photorealistic, 8k, crisp textures, wide 16:9 composition. NOT a 3D render, NOT CGI, not digital art — avoid plastic/glossy surfaces, waxy textures, and uncanny symmetry. No text, no people, no logos.",
+        "history": [
+          {
+            "urls": [
+              "https://vtlvqatzsolycqzeknru.supabase.co/storage/v1/object/public/site-assets/intakes/016588a00a934e8b99bb1c599fb27f8d/product-2-a1-1.png",
+              "https://vtlvqatzsolycqzeknru.supabase.co/storage/v1/object/public/site-assets/intakes/016588a00a934e8b99bb1c599fb27f8d/product-2-a1-2.png",
+              "https://vtlvqatzsolycqzeknru.supabase.co/storage/v1/object/public/site-assets/intakes/016588a00a934e8b99bb1c599fb27f8d/product-2-a1-3.png"
+            ],
+            "prompt": "Authentic real photograph documenting professional, completed barbershop services work — a clean, well-executed result shown in a true-to-life setting with realistic detail and natural wear. Shot on a full-frame DSLR with a 35mm lens, natural light, photorealistic, 8k, crisp textures, wide 16:9 composition. NOT a 3D render, NOT CGI, not digital art — avoid plastic/glossy surfaces, waxy textures, and uncanny symmetry. No text, no people, no logos.",
+            "attempt": 1
+          }
+        ],
+        "selectedUrl": "https://vtlvqatzsolycqzeknru.supabase.co/storage/v1/object/public/site-assets/intakes/016588a00a934e8b99bb1c599fb27f8d/product-2-a1-3.png",
+        "serviceName": "Barbershop Services",
+        "attemptsUsed": 1,
+        "productIndex": 1,
+        "selectedAttempt": 1
+      },
+      {
+        "prompt": "Authentic real photograph documenting professional, completed nail salon services work — a clean, well-executed result shown in a true-to-life setting with realistic detail and natural wear. Shot on a full-frame DSLR with a 35mm lens, natural light, photorealistic, 8k, crisp textures, wide 16:9 composition. NOT a 3D render, NOT CGI, not digital art — avoid plastic/glossy surfaces, waxy textures, and uncanny symmetry. No text, no people, no logos.",
+        "history": [
+          {
+            "urls": [
+              "https://vtlvqatzsolycqzeknru.supabase.co/storage/v1/object/public/site-assets/intakes/016588a00a934e8b99bb1c599fb27f8d/product-3-a1-1.png",
+              "https://vtlvqatzsolycqzeknru.supabase.co/storage/v1/object/public/site-assets/intakes/016588a00a934e8b99bb1c599fb27f8d/product-3-a1-2.png",
+              "https://vtlvqatzsolycqzeknru.supabase.co/storage/v1/object/public/site-assets/intakes/016588a00a934e8b99bb1c599fb27f8d/product-3-a1-3.png"
+            ],
+            "prompt": "Authentic real photograph documenting professional, completed nail salon services work — a clean, well-executed result shown in a true-to-life setting with realistic detail and natural wear. Shot on a full-frame DSLR with a 35mm lens, natural light, photorealistic, 8k, crisp textures, wide 16:9 composition. NOT a 3D render, NOT CGI, not digital art — avoid plastic/glossy surfaces, waxy textures, and uncanny symmetry. No text, no people, no logos.",
+            "attempt": 1
+          }
+        ],
+        "selectedUrl": "https://vtlvqatzsolycqzeknru.supabase.co/storage/v1/object/public/site-assets/intakes/016588a00a934e8b99bb1c599fb27f8d/product-3-a1-1.png",
+        "serviceName": "Nail Salon Services",
+        "attemptsUsed": 1,
+        "productIndex": 2,
+        "selectedAttempt": 1
+      }
+    ]
+  },
+  "build_paid_at": null,
+  "balance_paid_at": null,
+  "maintenance_plan": null,
+  "preview_approved_at": null,
+  "site_live_at": null,
+  "provisioned_contractor_id": "1eb56b33-0d69-42fa-a87d-ca7ca291a9c6",
+  "maintenance_started_at": null,
+  "other_services": null,
+  "requested_pages": [
+    "about",
+    "services",
+    "portfolio",
+    "contact"
+  ],
+  "gallery_images": [
+    "https://vtlvqatzsolycqzeknru.supabase.co/storage/v1/object/public/site-assets/intakes/016588a00a934e8b99bb1c599fb27f8d/gallery/1.jpg",
+    "https://vtlvqatzsolycqzeknru.supabase.co/storage/v1/object/public/site-assets/intakes/016588a00a934e8b99bb1c599fb27f8d/gallery/2.jpg",
+    "https://vtlvqatzsolycqzeknru.supabase.co/storage/v1/object/public/site-assets/intakes/016588a00a934e8b99bb1c599fb27f8d/gallery/3.jpg",
+    "https://vtlvqatzsolycqzeknru.supabase.co/storage/v1/object/public/site-assets/intakes/016588a00a934e8b99bb1c599fb27f8d/gallery/4.jpg",
+    "https://vtlvqatzsolycqzeknru.supabase.co/storage/v1/object/public/site-assets/intakes/016588a00a934e8b99bb1c599fb27f8d/gallery/5.jpg"
+  ],
+  "page_contents": {
+    "about": "Welcome to Ceteh Barbershop, a Nashville institution built on a foundation of precision, passion, and genuine community spirit. We're more than just a place for a haircut; we're a destination where classic barbering artistry meets modern style, all delivered with a personal touch that makes you feel right at home. Our story began with a simple vision: to create a barbershop in Nashville where every client receives not just a service, but an experience – a moment of relaxation, rejuvenation, and confidence. We saw a need for a place that honored the timeless traditions of barbering while embracing the evolving trends in men's grooming, and Ceteh Barbershop was born from that very ambition.\n\nWhat truly sets Ceteh Barbershop apart is our unwavering commitment to craftsmanship. Every barber on our team is a master of their trade, meticulously trained and deeply passionate about the art of hair and beard grooming. We believe that a great haircut isn't just about technique; it's about understanding individual style, facial structure, and personal preference. From classic fades and sharp line-ups to intricate beard trims and luxurious hot towel shaves, we approach every service with an artist's eye and a craftsman's precision. We use only the finest products, ensuring that your hair and skin are treated with the care they deserve, resulting in a look that is both impeccable and long-lasting.\n\nOur reputation in Nashville, TN, is built on trust and consistent excellence. Clients choose Ceteh Barbershop not only for our skill but for the genuine, welcoming atmosphere we cultivate. We believe in building relationships, taking the time to listen to your needs, and offering expert advice to help you achieve your ideal look. It's this dedication to personalized service and meticulous attention to detail that has made us a beloved fixture in the community. When you step into Ceteh Barbershop at 2868 Summer Lawn Drive, Clarksville, TN, 37043, you're not just getting a service; you're becoming part of a tradition of quality and care.\n\nWe invite you to experience the Ceteh Barbershop difference for yourself. Discover why so many in Nashville trust us with their grooming needs and why we are passionate about making every visit exceptional. We look forward to welcoming you and helping you look and feel your absolute best. To schedule your next appointment or simply to learn more, please don't hesitate to reach out to us at 123-456-7890 or email us at ceteh44839@asitrai.com.",
+    "contact": "Welcome to Ceteh Barbershop, your destination for exceptional grooming in Nashville, TN. We're delighted you're considering us for your next haircut, shave, or styling experience. Getting in touch with our team is simple, and we’re always eager to connect with new and returning clients. Whether you have a question about our services, want to book an appointment, or simply wish to learn more about the Ceteh Barbershop difference, we’re here to help. We believe that great style starts with a great conversation, and we’re ready to listen. Feel free to reach out to us through any of the convenient methods listed on this page. We’ve made it easy for you to connect with the skilled barbers who are passionate about crafting your perfect look.\n\nWhen you contact Ceteh Barbershop, you're taking the first step towards a superior grooming experience. Here's what you can expect: once we receive your inquiry, whether by phone, email, or through our online form, a friendly member of our team will promptly get back to you. We'll discuss your specific needs, answer any questions you might have about our range of services—from classic cuts to modern styles, beard trims, and hot shaves—and help you find the ideal time for your visit to our Clarksville location at 2868 Summer Lawn Drive. Our goal is to ensure a smooth, personalized process from your initial contact right through to your expert service. We value your time and your trust, and we’re committed to providing clear communication and an effortless booking experience.\n\nWe understand that when you’re looking for a barber, prompt communication is key. At Ceteh Barbershop, we pride ourselves on our responsiveness. You can reach us directly by phone at 123-456-7890 during our business hours, or send us an email at ceteh44839@asitrai.com anytime. We strive to respond to all email inquiries within one business day, ensuring you receive the information you need without unnecessary delay. For immediate assistance or to schedule your next appointment in Nashville, TN, calling us is often the quickest way to secure your preferred time. We look forward to welcoming you to Ceteh Barbershop and helping you achieve your best look yet. Contact us today to experience the difference.",
+    "services": "At Ceteh Barbershop, we're not just offering haircuts; we're crafting experiences. Located right here in Nashville, TN, our comprehensive suite of grooming services is meticulously designed to ensure every client walks out looking and feeling their absolute best. From classic cuts to modern styles, beard sculpting to luxurious shaves, our skilled barbers are dedicated to precision, artistry, and an unparalleled level of personal attention. We pride ourselves on using top-tier products and time-honored techniques, ensuring a distinguished look that lasts.\n\nOur signature service, the Classic Cut, is more than just a trim. It's a precise art form, tailored to complement your individual facial structure and personal style. We begin with a thorough consultation, discussing your preferences and offering expert advice on the best cut for you. Using premium shears and clippers, our barbers execute clean lines and seamless fades, ensuring a sharp, refined finish. This service is perfected with a hot lather neck shave and a classic styling product application, leaving you with a timeless look that exudes confidence.\n\nFor those seeking to define their facial hair, our Expert Beard Trim and Shaping service is essential. We understand that a well-groomed beard is a statement, and our barbers are masters of the craft. Whether you prefer a sharp, sculpted edge or a natural, rugged look, we meticulously trim, shape, and line up your beard to perfection. We utilize specialized trimmers and razors, along with nourishing beard oils and balms, to ensure your beard is not only immaculately styled but also healthy and soft to the touch. This service transforms your beard into a distinguished feature.\n\nIndulge in the ultimate relaxation with our Traditional Hot Lather Shave. This isn't just a shave; it's a therapeutic ritual designed to provide the closest, smoothest shave possible while revitalizing your skin. We start with hot towels to soften the skin and open pores, followed by a rich, warm lather applied with a badger brush. Our barbers use fresh, sharp straight razors, executing precise strokes to remove every trace of stubble. The experience concludes with a soothing aftershave balm and a cold towel, leaving your skin incredibly smooth, refreshed, and completely irritation-free.\n\nBeyond the cut and shave, we also offer specialized services like Hair Coloring and Gray Blending. Whether you're looking to subtly cover grays, add dimension with natural-looking highlights, or opt for a bolder, transformative color, our experts use professional-grade dyes and techniques to achieve your desired shade. We prioritize hair health, ensuring the coloring process leaves your hair vibrant, shiny, and undamaged. This service allows you to refresh your look, enhance your natural color, or make a distinctive statement with confidence.\n\nExperience the difference of dedicated artistry and unparalleled service. To schedule your next grooming appointment or to discuss which service is right for you, contact Ceteh Barbershop today at 123-456-7890, email us at ceteh44839@asitrai.com, or visit us at 2868 Summer Lawn Drive, Clarksville, TN, 37043. We look forward to welcoming you to the Ceteh Barbershop experience.",
+    "portfolio": "Step into the visual story of Ceteh Barbershop, where every cut, shave, and style is a testament to our unwavering commitment to craftsmanship and meticulous attention to detail. This gallery isn't just a collection of photos; it's a celebration of the artistry our barbers bring to the men of Nashville, TN, transforming good into exceptional. Each image captures a moment of precision, a client's renewed confidence, and the distinctive Ceteh touch that defines our work.\n\nBrowse through our portfolio and witness the diverse range of styles we master. You'll see crisp, clean fades that transition seamlessly, sharp line-ups that frame the face with precision, and classic cuts that exude timeless sophistication. We showcase a variety of textures and lengths, from intricate scissor cuts that shape and define, to expertly executed straight razor shaves that leave skin feeling incredibly smooth and refreshed. Observe the subtle nuances in our beard trims, where every hair is considered to achieve the perfect shape and length, enhancing natural features. We pride ourselves on creating looks that are not only on-trend but also perfectly suited to each individual's personality and lifestyle in Nashville, TN.\n\nEvery photograph here represents a client who trusted Ceteh Barbershop to deliver an outstanding grooming experience. From a bold new look to a perfectly maintained signature style, our gallery reflects the consistent quality and personalized service that has made us a cornerstone of men's grooming in the community. Notice the healthy sheen of well-conditioned hair, the sharp edges of a perfectly sculpted beard, and the confident expressions of our satisfied clientele.\n\nWe invite you to explore this visual journey and envision the possibilities for your own transformation. If you're inspired by what you see and are ready to experience the Ceteh Barbershop difference for yourself, we encourage you to schedule your appointment. Visit us at 2868 Summer Lawn Drive, Clarksville, TN, or call us at 123-456-7890 to book your next exceptional grooming session."
+  },
+  "widget_config_hints": {
+    "industry": "Beauty & Grooming",
+    "services": [
+      "Hair Salon Services",
+      "Barbershop Services",
+      "Nail Salon Services"
+    ],
+    "tierNames": {
+      "basic": "Standard",
+      "premium": "Signature",
+      "standard": "Premium"
+    },
+    "brandColor": "#6C47FF",
+    "hasFinishes": false,
+    "seedPricing": {
+      "basic": 30,
+      "premium": 55,
+      "standard": 45
+    },
+    "businessName": "Ceteh Barbershop",
+    "pricingModel": "fixed"
+  },
+  "industry": "Beauty & Grooming",
+  "tier_selected_at": "2026-07-06T04:33:20.987+00:00",
+  "menu_items": []
+}

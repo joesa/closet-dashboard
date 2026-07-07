@@ -10,6 +10,8 @@ import { clampPagesForTier } from '@/lib/catalog/sitePages'
 import { SITE_PAGE_SLUGS } from '@/lib/catalog/sitePages'
 import { coerceThemeSlug, coerceLayoutSlug } from '@/lib/catalog/sitePresentationCatalog'
 import { SURFACE_IDS, SHAPE_IDS, VOICE_IDS, SWATCH_IDS } from '@/lib/catalog/themeTokenPools'
+import { decodeDataUrl } from '@/lib/images/decodeDataUrl'
+import { uploadOptimizedBuffer } from '@/lib/images/uploadOptimized'
 
 export const runtime = 'nodejs'
 
@@ -28,30 +30,6 @@ export async function GET(
   }
 
   return NextResponse.json(buildIntakePublicJson(row))
-}
-
-function decodeDataUrl(dataUrl: string): { ext: string; mime: string; buffer: Buffer } | null {
-  // Do NOT run a regex over the full data URL — for large images the base64
-  // payload can be several MB and /(.+)$/ recurses per-character in V8,
-  // exhausting the call stack.  Parse with string operations instead.
-  const commaIdx = dataUrl.indexOf(',')
-  if (commaIdx === -1) return null
-  const header = dataUrl.slice(0, commaIdx) // e.g. "data:image/png;base64"
-  const b64 = dataUrl.slice(commaIdx + 1)   // everything after the comma
-  if (!b64) return null
-
-  const headerMatch = /^data:(image\/(png|jpeg|jpg|webp|svg\+xml));base64$/i.exec(header)
-  if (!headerMatch) return null
-
-  const mime = headerMatch[1]
-  const extMap: Record<string, string> = {
-    'image/png': 'png',
-    'image/jpeg': 'jpg',
-    'image/jpg': 'jpg',
-    'image/webp': 'webp',
-    'image/svg+xml': 'svg',
-  }
-  return { ext: extMap[mime.toLowerCase()] || 'png', mime, buffer: Buffer.from(b64, 'base64') }
 }
 
 export async function POST(
@@ -163,15 +141,17 @@ export async function POST(
         const decoded = decodeDataUrl(entry.dataUrl)
         if (!decoded) continue
         if (decoded.buffer.byteLength > 10 * 1024 * 1024) continue // 10MB per image limit
-        const path = `intakes/${token}/gallery/${i + 1}.${decoded.ext}`
-        const { error: upErr } = await supabase.storage
-          .from('site-assets')
-          .upload(path, decoded.buffer, { contentType: decoded.mime, upsert: true })
-        if (upErr) {
-          console.error('Gallery upload error for image', i + 1, upErr)
-          continue
+        try {
+          const publicUrl = await uploadOptimizedBuffer(
+            decoded.buffer,
+            `intakes/${token}/gallery/${i + 1}`,
+            'gallery',
+            decoded.mime
+          )
+          galleryUrls.push(publicUrl)
+        } catch (err) {
+          console.error('Gallery optimize/upload error for image', i + 1, err)
         }
-        galleryUrls.push(supabase.storage.from('site-assets').getPublicUrl(path).data.publicUrl)
       } else if (typeof entry.url === 'string') {
         try {
           const parsed = new URL(entry.url.trim())
@@ -191,12 +171,13 @@ export async function POST(
       if (decoded.buffer.byteLength > 3 * 1024 * 1024) {
         return NextResponse.json({ error: 'Logo too large (max 3MB)' }, { status: 400 })
       }
-      const path = `intakes/${token}/logo.${decoded.ext}`
-      const { error: upErr } = await supabase.storage
-        .from('site-assets')
-        .upload(path, decoded.buffer, { contentType: decoded.mime, upsert: true })
-      if (upErr) throw upErr
-      logoUrl = supabase.storage.from('site-assets').getPublicUrl(path).data.publicUrl
+      const publicUrl = await uploadOptimizedBuffer(
+        decoded.buffer,
+        `intakes/${token}/logo`,
+        'logo',
+        decoded.mime
+      )
+      logoUrl = publicUrl
     } else if (typeof body.logoUrl === 'string' && body.logoUrl.trim()) {
       try {
         const parsed = new URL(body.logoUrl.trim())

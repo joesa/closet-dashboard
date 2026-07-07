@@ -13,7 +13,7 @@ import TierPicker from './TierPicker';
 import DepositCTA from './DepositCTA';
 import PayToLaunchBlock from './PayToLaunchBlock';
 import IntakeImageStudio from './IntakeImageStudio';
-import PresentationReviewStep from './PresentationReviewStep';
+
 import { inferQuoteCalculatorGuidance } from '@/lib/quoteCalculatorGuidance';
 import {
   SITE_PAGE_OPTIONS,
@@ -205,7 +205,6 @@ const sectionTitle = 'mb-4 text-[11px] font-semibold uppercase tracking-widest t
 
 export type IntakeFormClientProps = {
   token: string;
-  isAdmin?: boolean;
   notFound?: boolean;
   businessName?: string;
   prospectEmail?: string;
@@ -227,6 +226,7 @@ export type IntakeFormClientProps = {
   widgetConfigHints?: Record<string, unknown> | null;
   imageSelections?: IntakeImageSelections;
   pageContents?: Record<string, string>;
+  initialGalleryImages?: string[];
   initialTierFromQuery?: string;
   payKindFromQuery?: IntakeCheckoutKind;
   paymentDueLabel?: string;
@@ -345,7 +345,6 @@ function IntakeStepProgress({
 
 export default function IntakeFormClient({
   token,
-  isAdmin = false,
   notFound = false,
   businessName = '',
   prospectEmail = '',
@@ -364,6 +363,7 @@ export default function IntakeFormClient({
   widgetConfigHints = null,
   imageSelections: initialSelections,
   pageContents,
+  initialGalleryImages,
   initialTierFromQuery,
   payKindFromQuery,
   paymentDueLabel: initialPaymentDueLabel = '',
@@ -394,19 +394,10 @@ export default function IntakeFormClient({
   const [customerOptions, setCustomerOptions] = useState<string[]>(CUSTOMER_OPTIONS);
   const [suggestingCustomers, setSuggestingCustomers] = useState(false);
   const [customerOptionsSource, setCustomerOptionsSource] = useState<'default' | 'gemini'>('default');
-  // Contractor-contributed industries (not in the static catalog) fetched
-  // from the DB so they show up as first-class dropdown options for future
-  // contractors, not just the "Other" free-text escape hatch.
   const [customIndustryLabels, setCustomIndustryLabels] = useState<string[]>([]);
-  // AI-resolved service suggestions for a custom (non-catalog) industry the
-  // contractor just typed — takes over from the static catalog guess in
-  // `suggestedServices` once populated. null = not resolved yet / not needed.
   const [customIndustryServices, setCustomIndustryServices] = useState<string[] | null>(null);
   const [resolvingCustomIndustry, setResolvingCustomIndustry] = useState(false);
   const lastResolvedIndustryText = useRef<string>('');
-  // Tracks the industry+services combo the "Ideal customers" dropdown was
-  // last auto-suggested for, so it only re-fetches when something relevant
-  // actually changed (not on every unrelated re-render/step navigation).
   const lastSuggestedCustomersKey = useRef<string>('');
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(alreadySubmitted);
@@ -433,40 +424,31 @@ export default function IntakeFormClient({
   const [expandedPage, setExpandedPage] = useState<string | null>(null);
   const [bulkGenerating, setBulkGenerating] = useState(false);
   const [bulkProgress, setBulkProgress] = useState({ current: 0, total: 0 });
+  const [suggestingPages, setSuggestingPages] = useState(false);
+  const [suggestedPages, setSuggestedPages] = useState<Array<{ slug: string; label: string; description: string }>>([]);
   const [servicesBlurGuidance, setServicesBlurGuidance] = useState<ReturnType<
     typeof inferQuoteCalculatorGuidance
   > | null>(null);
 
-  // Guided step wizard — the form is broken into steps so it doesn't feel like
-  // one overwhelming wall of fields. All existing sections/fields/logic below
-  // are unchanged; steps just control which section(s) are visible at once.
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [maxStepIndexVisited, setMaxStepIndexVisited] = useState(0);
 
-  // Presentation review step
-  type ThemeTokenSelection = { surface: string; shape: string; voice: string; swatch: string };
-  type PreviewResult = {
-    theme: string;
-    layoutStyle: string;
-    allowedThemes: string[];
-    allowedLayouts: string[];
-    themeTokens?: ThemeTokenSelection | null;
-    isSynthesized?: boolean;
-  };
-  const [previewResult, setPreviewResult] = useState<PreviewResult | null>(null);
-  const [pendingTheme, setPendingTheme] = useState('');
-  const [pendingLayout, setPendingLayout] = useState('');
-  const reviewRef = useRef<HTMLDivElement>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
-  // Gallery images — parallel to the form but kept separate because they may
-  // contain large data URLs that we don't want to serialize into the draft JSON.
   type GalleryEntry = { dataUrl: string; url: string };
-  const [galleryCount, setGalleryCount] = useState(5);
-  const [galleryImages, setGalleryImages] = useState<GalleryEntry[]>(() =>
-    Array.from({ length: 10 }, () => ({ dataUrl: '', url: '' }))
-  );
+  const [galleryCount, setGalleryCount] = useState(initialGalleryImages?.length ? Math.max(5, initialGalleryImages.length) : 5);
+  const [galleryImages, setGalleryImages] = useState<GalleryEntry[]>(() => {
+    const defaultEntries = Array.from({ length: 10 }, () => ({ dataUrl: '', url: '' }));
+    if (initialGalleryImages && initialGalleryImages.length > 0) {
+      initialGalleryImages.forEach((url, i) => {
+        if (i < defaultEntries.length) {
+          defaultEntries[i] = { dataUrl: '', url };
+        }
+      });
+    }
+    return defaultEntries;
+  });
 
   const setGalleryEntry = (i: number, patch: Partial<GalleryEntry>) =>
     setGalleryImages((prev) => prev.map((e, idx) => (idx === i ? { ...e, ...patch } : e)));
@@ -482,8 +464,6 @@ export default function IntakeFormClient({
 
   const bulkGalleryInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Let the user pick multiple files in one dialog and fill Image 1, 2, 3…
-  // in order, instead of uploading each slot one at a time.
   const onBulkGalleryFiles = (files: FileList | null) => {
     if (!files || files.length === 0) return;
     const picked = Array.from(files).slice(0, galleryCount);
@@ -501,9 +481,6 @@ export default function IntakeFormClient({
       });
   };
 
-  // Load contractor-contributed custom industries (see
-  // /api/catalog/custom-industries) so they show up in the industry dropdown
-  // alongside the static catalog + EXTRA_INDUSTRY_OPTIONS.
   useEffect(() => {
     let cancelled = false;
     fetch('/api/catalog/custom-industries')
@@ -512,17 +489,12 @@ export default function IntakeFormClient({
         if (cancelled || !json?.industries) return;
         setCustomIndustryLabels(json.industries.map((i) => i.label).filter(Boolean));
       })
-      .catch(() => {
-        // Non-critical — the static catalog + "Other" free-text option still work.
-      });
+      .catch(() => {});
     return () => {
       cancelled = true;
     };
   }, []);
 
-  // Auto-save form fields to localStorage so a reload / back-button / accidental
-  // navigation doesn't wipe everything the user typed. Generated images and the
-  // selected tier are persisted server-side and reload on their own.
   const draftKey = `closetquote-intake-draft-${token}`;
   const draftRestored = useRef(false);
 
@@ -558,10 +530,8 @@ export default function IntakeFormClient({
         }
       }
     } catch {
-      // Ignore malformed/unavailable storage.
     }
     draftRestored.current = true;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draftKey]);
 
   useEffect(() => {
@@ -572,7 +542,6 @@ export default function IntakeFormClient({
         JSON.stringify(buildDraftSnapshot(form, selectedGeneratedLogoUrl, currentStepIndex))
       );
     } catch {
-      // Best-effort fallback: strip page copy entirely if storage is constrained.
       try {
         const minimal = {
           ...form,
@@ -583,7 +552,6 @@ export default function IntakeFormClient({
           JSON.stringify({ form: minimal, selectedGeneratedLogoUrl, currentStep: currentStepIndex })
         );
       } catch {
-        // Give up silently — persistence is best-effort.
       }
     }
   }, [form, logoDataUrl, selectedGeneratedLogoUrl, draftKey, submitted, currentStepIndex]);
@@ -676,28 +644,8 @@ export default function IntakeFormClient({
   const set = <K extends keyof Form>(key: K, value: Form[K]) => setForm((f) => ({ ...f, [key]: value }));
   const setBool = <K extends keyof Form>(key: K, value: boolean) =>
     setForm((f) => ({ ...f, [key]: value as Form[K] }));
-  const toggle = (key: 'services' | 'differentiators' | 'pages', value: string) =>
-    setForm((f) => {
-      const list = f[key];
-      return { ...f, [key]: list.includes(value) ? list.filter((v) => v !== value) : [...list, value] };
-    });
 
-  // Page selection is capped by build tier (Home is always included):
-  // AI Premium = 10 total (9 extra), Standard = 5 total (4 extra).
-  const maxTotalPages = maxPagesForTier(intakeTier);
   const maxExtraPages = maxAdditionalPagesForTier(intakeTier);
-  const pagesAtCap = form.pages.length >= maxExtraPages;
-  const togglePage = (slug: string) =>
-    setForm((f) => {
-      if (f.pages.includes(slug)) {
-        return { ...f, pages: f.pages.filter((v) => v !== slug) };
-      }
-      if (f.pages.length >= maxExtraPages) return f; // enforce tier cap
-      return { ...f, pages: [...f.pages, slug] };
-    });
-
-  // If the tier changes (e.g. Standard ↔ AI Premium) trim any pages that now
-  // exceed the new cap so the selection always stays valid.
   useEffect(() => {
     setForm((f) => {
       const clamped = clampPagesForTier(f.pages, intakeTier);
@@ -747,8 +695,6 @@ export default function IntakeFormClient({
         : [];
       setGeneratedLogoUrls(urls.slice(0, 3));
       setLogoDataUrl('');
-      // Auto-select the AI's top pick so users aren't forced to manually
-      // choose; they can still click a different option to override it.
       setSelectedGeneratedLogoUrl(urls[0] || '');
       if (typeof json.attemptsUsed === 'number') {
         setLogoGenAttemptsUsed(json.attemptsUsed);
@@ -766,8 +712,6 @@ export default function IntakeFormClient({
     }
   };
 
-  /** Core "ideal customers" AI suggestion call, shared by the manual
-   *  "✨ Suggest for my trade" button and the automatic triggers below. */
   const runSuggestCustomers = async () => {
     setSuggestingCustomers(true);
     setError('');
@@ -789,8 +733,6 @@ export default function IntakeFormClient({
         ? json.options.filter((o: unknown): o is string => typeof o === 'string')
         : [];
       if (options.length > 0) {
-        // Keep the current selection in the list even if the AI list doesn't
-        // include it, so we never silently orphan what the user already picked.
         const merged =
           form.customers && !options.includes(form.customers)
             ? [...options, form.customers]
@@ -805,13 +747,6 @@ export default function IntakeFormClient({
     }
   };
 
-  /** Manual "✨ Suggest for my trade" button — always re-rolls, even if the
-   *  industry/services haven't changed since the last suggestion. */
-  const handleSuggestCustomers = async () => {
-    lastSuggestedCustomersKey.current = suggestCustomersKey(form.industry, form.otherServices);
-    await runSuggestCustomers();
-  };
-
   const suggestCustomersKey = (industryText: string, servicesText: string) => {
     const services = parseServiceList(servicesText)
       .map((s) => s.toLowerCase())
@@ -820,11 +755,6 @@ export default function IntakeFormClient({
     return `${industryText.trim().toLowerCase()}|${services}`;
   };
 
-  /** Auto-infers "ideal customers" from the industry + services as soon as
-   *  both are known, so the dropdown reflects the actual trade instead of
-   *  sitting on the generic hardcoded default until the contractor notices
-   *  and clicks the manual button. Skips if nothing relevant changed since
-   *  the last suggestion (avoids redundant calls on unrelated re-renders). */
   const maybeAutoSuggestCustomers = (industryText: string, servicesText: string) => {
     if (industryText.trim().length < 3) return;
     const key = suggestCustomersKey(industryText, servicesText);
@@ -886,16 +816,53 @@ export default function IntakeFormClient({
           }));
         }
       } catch {
-        // Continue to next page on failure
       } finally {
         setGeneratingCopy((prev) => ({ ...prev, [slug]: false }));
       }
     }
     setBulkGenerating(false);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form, token]);
+  }, [form, token, handleGeneratePageCopy]);
 
-  /** Validate form fields + call preview-presentation API to show the review step. */
+  const handleSuggestPages = async () => {
+    setSuggestingPages(true);
+    setError('');
+    try {
+      const res = await fetch(`/api/intake/${token}/suggest-pages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          industry: form.industry,
+          services: form.services,
+          otherServices: form.otherServices,
+          businessName: form.businessName,
+          pricingModel: form.pricingModel,
+          existingPages: form.pages,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Failed to suggest pages');
+      if (Array.isArray(json.suggestions)) {
+        setSuggestedPages(json.suggestions);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to suggest pages');
+    } finally {
+      setSuggestingPages(false);
+    }
+  };
+
+  const handleAddSuggestedPage = (slug: string) => {
+    setForm((f) => {
+      if (f.pages.includes(slug)) return f;
+      return { ...f, pages: [...f.pages, slug] };
+    });
+    setSuggestedPages((prev) => prev.filter((p) => p.slug !== slug));
+  };
+
+  const handleRemovePage = (slug: string) => {
+    setForm((f) => ({ ...f, pages: f.pages.filter((p) => p !== slug) }));
+  };
+
   const handleReviewClick = async () => {
     const serviceList = parseServiceList(form.otherServices);
     if (serviceList.length === 0) {
@@ -917,31 +884,7 @@ export default function IntakeFormClient({
       }
     }
     setError('');
-    setSubmitting(true);
-    try {
-      const res = await fetch(`/api/intake/${token}/preview-presentation`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          industry: form.industry,
-          services: parseServiceList(form.otherServices),
-          otherServices: form.otherServices,
-          vibe: form.vibe,
-          primaryCta: form.primaryCta,
-          businessName: form.businessName,
-        }),
-      });
-      const json = await res.json() as PreviewResult;
-      setPreviewResult(json);
-      setPendingTheme(json.theme);
-      setPendingLayout(json.layoutStyle);
-      // Scroll to review panel
-      setTimeout(() => reviewRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
-    } catch {
-      setError('Could not preview site design. Please try again.');
-    } finally {
-      setSubmitting(false);
-    }
+    void submitForm();
   };
 
   const studioServices = useMemo(() => {
@@ -954,11 +897,6 @@ export default function IntakeFormClient({
     return merged;
   }, [form.services, form.otherServices, form.industry]);
 
-  /** Deterministic quote-vs-order detection (see EngagementModel in
-   *  @/lib/catalog/types) — a pure catalog lookup, computed client-side from
-   *  whatever industry/services text has been entered so far. Gates whether
-   *  the "Menu Items" editor (below) replaces the pricing-model/tier/seed-
-   *  pricing blocks that only make sense for a quote calculator. */
   const isOrderBusiness = useMemo(() => {
     const industryText =
       form.industry.trim() || (widgetConfigHints as WidgetHintsSnapshot | null)?.industry || '';
@@ -1032,12 +970,6 @@ export default function IntakeFormClient({
   };
   const handleServicesBlur = () => applyServicesGuidance(form.otherServices);
 
-  /** Curated per-industry service list (from the service catalog) shown as
-   *  clickable suggestion chips so non-technical contractors don't have to
-   *  think up their own service names from scratch. For a genuinely new
-   *  (non-catalog) industry, `customIndustryServices` (AI-resolved via
-   *  /api/intake/[token]/resolve-custom-industry on blur) takes over instead
-   *  of the static catalog's best-effort (often irrelevant) keyword guess. */
   const suggestedServices = useMemo(() => {
     if (customIndustryServices && customIndustryServices.length > 0) {
       return customIndustryServices;
@@ -1078,10 +1010,6 @@ export default function IntakeFormClient({
     applyServicesGuidance(nextText);
   };
 
-  /** Appends/removes a "Ask about {variable}." sentence in calculatorNotes so
-   *  contractors can click the AI-suggested quote inputs (e.g. "square
-   *  footage", "number of stories" for roofing) instead of having to think up
-   *  the right pricing variables themselves. */
   const toggleQuoteVariable = (variable: string) => {
     const phrase = `Ask about ${variable}.`;
     const already = form.calculatorNotes.toLowerCase().includes(variable.toLowerCase());
@@ -1104,7 +1032,6 @@ export default function IntakeFormClient({
     () => industryExampleLabels(calculatorGuidance.tradeLabel),
     [calculatorGuidance.tradeLabel]
   );
-  /** Static catalog + EXTRA_INDUSTRY_OPTIONS + any DB-stored custom industries. */
   const allIndustryOptions = useMemo(
     () => Array.from(new Set([...INDUSTRY_OPTIONS, ...customIndustryLabels])).sort((a, b) => a.localeCompare(b)),
     [customIndustryLabels]
@@ -1117,26 +1044,12 @@ export default function IntakeFormClient({
       ''
     );
   }, [form.industry, allIndustryOptions]);
-  // Whether the "Other (enter custom industry)" option is active. This is a
-  // dedicated flag (not purely derived from form.industry) because deriving
-  // it from text alone breaks the very first click: form.industry starts
-  // empty, so "selecting Other" had no text to fall back on and the <select>
-  // silently snapped back to the "Select your industry…" placeholder,
-  // never revealing the free-text input.
   const [customIndustryMode, setCustomIndustryMode] = useState(false);
   const selectedIndustryValue =
     customIndustryMode || (form.industry.trim() && !matchedIndustryOption)
       ? CUSTOM_INDUSTRY_VALUE
       : matchedIndustryOption || '';
 
-  /**
-   * Resolves a contractor-typed custom industry (the "Other" free-text
-   * option) via /api/intake/[token]/resolve-custom-industry: reuses an
-   * existing catalog/custom match when possible, otherwise generates + saves
-   * a brand-new industry definition (services, keywords, theme/layout pool,
-   * and a required before/after image category) so it's usable immediately
-   * for THIS contractor's service suggestions and selectable by future ones.
-   */
   const handleCustomIndustryBlur = async () => {
     const industryText = form.industry.trim();
     if (
@@ -1169,7 +1082,6 @@ export default function IntakeFormClient({
       }
       maybeAutoSuggestCustomers(industryText, form.otherServices);
     } catch {
-      // Non-critical — the static catalog examples still show.
     } finally {
       setResolvingCustomIndustry(false);
     }
@@ -1179,7 +1091,7 @@ export default function IntakeFormClient({
     intakeTier !== 'ai_premium' ||
     imageSelectionsComplete(imageSelections, studioServices);
 
-  const submitForm = async (overrides?: { themeOverride: string; layoutOverride: string; themeTokensOverride?: ThemeTokenSelection | null }) => {
+  const submitForm = async (overrides?: { themeOverride: string; layoutOverride: string; themeTokensOverride?: any }) => {
     if (intakeTier === 'ai_premium' && depositRequiredCents > 0 && depositStatus !== 'paid') {
       setError('Pay the 30% deposit before submitting.');
       return;
@@ -1189,7 +1101,6 @@ export default function IntakeFormClient({
       return;
     }
 
-    // Enforce 1,200-word cap client-side
     for (const [slug, content] of Object.entries(form.pageContents)) {
       if (form.pages.includes(slug) && content) {
         const count = content.trim().split(/\s+/).filter(Boolean).length;
@@ -1258,12 +1169,10 @@ export default function IntakeFormClient({
           logoDataUrl: logoDataUrl || undefined,
           logoUrl: selectedGeneratedLogoUrl || undefined,
           ...(overrides ?? {}),
-          galleryImages: form.pages.includes('portfolio')
-            ? galleryImages.slice(0, galleryCount).map(({ dataUrl, url }) => ({
+          galleryImages: galleryImages.slice(0, galleryCount).map(({ dataUrl, url }) => ({
                 ...(dataUrl ? { dataUrl } : {}),
                 ...(url.trim() ? { url: url.trim() } : {}),
-              })).filter((e) => e.dataUrl || e.url)
-            : [],
+              })),
         }),
       });
       const json = await res.json();
@@ -1274,7 +1183,6 @@ export default function IntakeFormClient({
         try {
           window.localStorage.removeItem(draftKey);
         } catch {
-          // Best-effort cleanup.
         }
       }
     } catch (err) {
@@ -1284,10 +1192,6 @@ export default function IntakeFormClient({
     }
   };
 
-  // Guided step wizard — steps are computed dynamically so conditional
-  // sections (page content, AI image studio) only appear as steps when
-  // they're actually applicable. Order matches every section already
-  // rendered below; nothing is removed, only grouped into steps.
   const steps = useMemo(() => {
     const arr: { key: string; title: string }[] = [
       { key: 'business', title: 'Business & contact' },
@@ -1307,31 +1211,25 @@ export default function IntakeFormClient({
     return map;
   }, [steps]);
 
-  // Keep the current position valid if a conditional step disappears (e.g.
-  // the user removes all extra pages, or the tier no longer includes the
-  // image studio) while they're on/past it.
   useEffect(() => {
     setCurrentStepIndex((idx) => Math.min(idx, steps.length - 1));
     setMaxStepIndexVisited((m) => Math.min(m, steps.length - 1));
   }, [steps.length]);
 
-  // Auto-trigger page content generation when the user reaches the step
   useEffect(() => {
     if (currentStepIndex !== stepIdx.pageContent || !stepIdx.pageContent) return;
     if (form.pages.some((slug) => !form.pageContents[slug]?.trim())) {
       void handleGenerateAllPageCopy();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentStepIndex, stepIdx.pageContent]);
-
-
+  }, [currentStepIndex, stepIdx.pageContent, handleGenerateAllPageCopy]);
 
   const businessStepComplete =
     form.businessName.trim().length > 0 &&
     form.contactPhone.trim().length > 0 &&
     form.contactEmail.trim().length > 0;
 
-  const isReviewStep = currentStepIndex === stepIdx.review;
+  const isLastStep = currentStepIndex === steps.length - 1;
+
   const canAdvanceFromCurrentStep =
     currentStepIndex === stepIdx.business ? businessStepComplete : true;
 
@@ -1444,12 +1342,6 @@ export default function IntakeFormClient({
   return (
     <div className="min-h-screen bg-[#0a0a0a] px-4 py-6 text-white sm:py-10">
       <div className="mx-auto max-w-3xl">
-        {/* Setup package decision only matters on the first step — once the
-            contractor has moved on, don't keep re-showing it on every
-            subsequent screen. Also skipped entirely when the tier was
-            already chosen before they got here (get-started flow or a
-            tier-specific email link) — showing the picker again is
-            confusing and makes the form feel less clean. */}
         {currentStepIndex === stepIdx.business && tierCatalog.length > 0 && !tierAlreadySelected && (
           <div className="mb-8">
             <TierPicker
@@ -1489,7 +1381,7 @@ export default function IntakeFormClient({
           onSelect={goToStep}
         />
 
-        {error && !previewResult && (
+        {error && (
           <div className="mb-5 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700 sm:mb-6">{error}</div>
         )}
 
@@ -1548,9 +1440,6 @@ export default function IntakeFormClient({
                     }
                     setCustomIndustryMode(false);
                     set('industry', value);
-                    // Picked a real (catalog or previously-saved custom)
-                    // option directly — any stale AI-resolved suggestion from
-                    // a prior free-text attempt no longer applies.
                     setCustomIndustryServices(null);
                     lastResolvedIndustryText.current = '';
                     maybeAutoSuggestCustomers(value, form.otherServices);
@@ -1660,7 +1549,6 @@ export default function IntakeFormClient({
                     className="group relative mt-2 inline-block"
                     title="Click to preview larger"
                   >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={logoDataUrl} alt="Logo preview" className="h-12 object-contain" />
                     <span className="pointer-events-none absolute inset-0 flex items-center justify-center rounded bg-black/0 text-[10px] font-semibold text-white opacity-0 transition group-hover:bg-black/40 group-hover:opacity-100">
                       Enlarge
@@ -1707,7 +1595,6 @@ export default function IntakeFormClient({
                                   className={`w-full rounded-md border p-1 ${selected ? 'border-indigo-400 ring-2 ring-indigo-300/50' : 'border-white/[0.18]'}`}
                                   title="Select this logo"
                                 >
-                                  {/* eslint-disable-next-line @next/next/no-img-element */}
                                   <img src={url} alt="Generated logo option" className="h-16 w-full rounded object-contain bg-white" />
                                 </button>
                                 {i === 0 && (
@@ -2041,9 +1928,6 @@ export default function IntakeFormClient({
           </section>
           </div>
 
-
-
-          {/* Gallery images — shown when Portfolio / Gallery page is selected */}
           {form.pages.includes('portfolio') && (
             <div className={currentStepIndex === stepIdx.services ? '' : 'hidden'}>
             <section className={sectionClass}>
@@ -2056,7 +1940,6 @@ export default function IntakeFormClient({
                 cannot configure the Portfolio page.
               </p>
 
-              {/* Count selector */}
               <div className="mb-4 sm:mb-5">
                 <label className={label}>How many gallery images would you like to include?</label>
                 <select
@@ -2073,7 +1956,6 @@ export default function IntakeFormClient({
                 </select>
               </div>
 
-              {/* Bulk upload — select all files at once instead of one slot at a time */}
               {galleryCount > 0 && (
                 <div className="mb-4 sm:mb-5">
                   <input
@@ -2099,23 +1981,21 @@ export default function IntakeFormClient({
                 </div>
               )}
 
-              {/* Per-image upload / URL inputs */}
               {galleryCount > 0 ? (
-              <div className="space-y-3 sm:space-y-4">
-                {Array.from({ length: galleryCount }, (_, i) => {
-                  const entry = galleryImages[i] ?? { dataUrl: '', url: '' };
-                  const hasContent = !!(entry.dataUrl || entry.url.trim());
-                  return (
-                    <div key={i} className={`rounded-lg border p-4 ${hasContent ? 'border-indigo-300 bg-indigo-500/10' : 'border-white/[0.14] bg-white/[0.01]'}`}>
-                      <p className="mb-3 text-sm font-medium text-zinc-200">
-                        Image {i + 1}
-                        {hasContent && (
-                          <span className="ml-2 text-xs font-normal text-indigo-300">✓ Ready</span>
-                        )}
-                      </p>
-                      <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2">
-                        <div>
-                          <label className="mb-1 block text-xs text-zinc-500">Upload a file</label>
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3">
+                  {Array.from({ length: galleryCount }).map((_, i) => {
+                    const entry = galleryImages[i] ?? { dataUrl: '', url: '' };
+                    const hasContent = !!(entry.dataUrl || entry.url.trim());
+                    return (
+                      <div key={i} className={`rounded-lg border p-4 ${hasContent ? 'border-indigo-300 bg-indigo-500/10' : 'border-white/[0.14] bg-white/[0.01]'}`}>
+                        <p className="mb-3 text-sm font-medium text-zinc-200">
+                          Image {i + 1}
+                          {hasContent && (
+                            <span className="ml-2 text-xs font-normal text-indigo-300">✓ Ready</span>
+                          )}
+                        </p>
+                        <div className="flex flex-col gap-3">
                           <input
                             ref={(el) => { galleryInputRefs.current[i] = el; }}
                             type="file"
@@ -2126,50 +2006,34 @@ export default function IntakeFormClient({
                           <button
                             type="button"
                             onClick={() => galleryInputRefs.current[i]?.click()}
-                            className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg border-2 border-dashed border-white/[0.16] bg-white/[0.02] px-3 py-2.5 text-sm font-medium text-zinc-300 transition-colors hover:border-indigo-300/60 hover:bg-indigo-500/10 hover:text-indigo-100"
+                            className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg border-2 border-dashed border-white/[0.16] bg-white/[0.02] px-3 py-2 text-xs font-medium text-zinc-300 transition-colors hover:border-indigo-300/60 hover:bg-indigo-500/10"
                           >
-                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
-                            {entry.dataUrl ? 'Change Image' : 'Upload Image'}
+                            Upload
                           </button>
-                          {entry.dataUrl && (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img
-                              src={entry.dataUrl}
-                              alt={`Gallery preview ${i + 1}`}
-                              className="mt-2 h-20 w-full object-cover rounded"
-                            />
-                          )}
-                        </div>
-                        <div>
-                          <label className="mb-1 block text-xs text-zinc-500">
-                            Or paste an image URL
-                          </label>
                           <input
                             className={input}
                             type="url"
-                            placeholder="https://example.com/photo.jpg"
+                            placeholder="Image URL"
                             value={entry.url}
                             disabled={!!entry.dataUrl}
                             onChange={(e) =>
                               setGalleryEntry(i, { url: e.target.value, dataUrl: '' })
                             }
                           />
-                          {entry.url.trim() && !entry.dataUrl && (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img
-                              src={entry.url.trim()}
-                              alt={`Gallery preview ${i + 1}`}
-                              className="mt-2 h-20 w-full object-cover rounded"
-                              onError={(e) => {
-                                (e.currentTarget as HTMLImageElement).style.display = 'none';
-                              }}
-                            />
+                          {(entry.dataUrl || entry.url) && (
+                            <div className="relative h-32 w-full">
+                              <img
+                                src={entry.dataUrl || entry.url}
+                                alt={`Gallery ${i + 1}`}
+                                className="h-full w-full rounded object-cover"
+                              />
+                            </div>
                           )}
                         </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
               </div>
               ) : (
                 <p className="rounded-md border border-white/[0.14] bg-white/[0.02] px-3 py-2 text-sm text-zinc-400">
@@ -2177,7 +2041,6 @@ export default function IntakeFormClient({
                 </p>
               )}
 
-              {/* Warning if no images provided */}
               {galleryCount > 0 && galleryImages.slice(0, galleryCount).every((e) => !e.dataUrl && !e.url.trim()) && (
                 <p className="mt-4 rounded-md border border-amber-300/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
                   No gallery images added yet. If you don&apos;t upload any photos we won&apos;t be
@@ -2198,7 +2061,6 @@ export default function IntakeFormClient({
                 Review and customize the sales copy for each of your selected pages. You can write your own or let the AI draft a bespoke version based on your intake information. Each page is limited to 1,200 words.
               </p>
 
-              {/* Bulk AI generation button */}
               {form.pages.some((slug) => !form.pageContents[slug]?.trim()) && (
                 <div className="mb-4">
                   <button
@@ -2249,8 +2111,8 @@ export default function IntakeFormClient({
               <div className="space-y-4">
                 {form.pages.map((slug) => {
                   const opt = SITE_PAGE_OPTIONS.find((p) => p.slug === slug);
-                  const label = opt?.label || slug;
-                  const desc = opt?.description || '';
+                  const label = opt?.label || slug.split('-').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+                  const desc = opt?.description || `Specific information regarding ${label.toLowerCase()}.`;
                   const content = form.pageContents[slug] || '';
                   const wordCount = content.trim().split(/\s+/).filter(Boolean).length;
                   const isExpanded = expandedPage === slug;
@@ -2371,81 +2233,49 @@ export default function IntakeFormClient({
             </div>
           )}
 
-          <div className={isReviewStep ? '' : 'hidden'}>
-          {intakeTier === 'ai_premium' && canUseImageStudio && !premiumImagesReady && (
-            <p className="text-sm text-amber-800 rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
-              Complete the AI image studio (hero + each service) before submitting.
-            </p>
-          )}
+          <div className="">
+            {intakeTier === 'ai_premium' && canUseImageStudio && !premiumImagesReady && (
+              <p className="text-sm text-amber-800 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 mb-4">
+                Complete the AI image studio (hero + each service) before submitting.
+              </p>
+            )}
 
-          {error && <div className="rounded-md bg-red-50 border border-red-200 p-3 text-sm text-red-700">{error}</div>}
+            {error && (
+              <div className="mb-4 rounded-md bg-red-50 border border-red-200 p-3 text-sm text-red-700">
+                {error}
+              </div>
+            )}
 
-          {/* Step 1: Review & Submit button — opens the presentation review panel */}
-          {!previewResult && (
-            <button
-              type="button"
-              disabled={submitting || (intakeTier === 'ai_premium' && !premiumImagesReady)}
-              onClick={() => void handleReviewClick()}
-              className="w-full rounded-xl bg-white px-5 py-3 font-bold text-black hover:bg-slate-200 disabled:opacity-50 sm:px-6"
-            >
-              {submitting ? 'Previewing…' : 'Review & Submit →'}
-            </button>
-          )}
-
-          {/* Step 2: Presentation review panel */}
-          {previewResult && (
-            <div ref={reviewRef}>
-              <PresentationReviewStep
-                aiTheme={previewResult.theme}
-                aiLayout={previewResult.layoutStyle}
-                selectedTheme={pendingTheme}
-                selectedLayout={pendingLayout}
-                allowedThemes={previewResult.allowedThemes}
-                allowedLayouts={previewResult.allowedLayouts}
-                themeTokens={previewResult.themeTokens}
-                isSynthesized={!!previewResult.isSynthesized}
-                isAdmin={isAdmin}
-                onThemeChange={setPendingTheme}
-                onLayoutChange={setPendingLayout}
-                onBack={() => { setPreviewResult(null); setError(''); }}
-                onConfirm={() => void submitForm({
-                  themeOverride: pendingTheme,
-                  layoutOverride: pendingLayout,
-                  // Only carry the synthesized look forward if the user kept
-                  // the AI-suggested theme; picking a different real theme
-                  // means they want that theme's authentic hand-tuned style.
-                  themeTokensOverride:
-                    previewResult.isSynthesized && pendingTheme === previewResult.theme
-                      ? previewResult.themeTokens
-                      : undefined,
-                })}
-                submitting={submitting}
-                error={error}
-              />
-            </div>
-          )}
+            {isLastStep ? (
+              <button
+                type="button"
+                disabled={submitting || (intakeTier === 'ai_premium' && !premiumImagesReady)}
+                onClick={() => void handleReviewClick()}
+                className="w-full rounded-xl bg-white px-5 py-3 font-bold text-black hover:bg-slate-200 disabled:opacity-50 sm:px-6"
+              >
+                {submitting ? 'Submitting…' : 'Submit →'}
+              </button>
+            ) : (
+              <div className="flex items-center justify-between gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={goBack}
+                  disabled={currentStepIndex === 0}
+                  className="rounded-xl border border-white/[0.14] px-5 py-3 text-sm font-semibold text-zinc-300 transition hover:bg-white/[0.04] disabled:cursor-not-allowed disabled:opacity-40 sm:px-6"
+                >
+                  ← Back
+                </button>
+                <button
+                  type="button"
+                  onClick={goNext}
+                  disabled={!canAdvanceFromCurrentStep}
+                  className="rounded-xl bg-white px-5 py-3 text-sm font-bold text-black transition hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-50 sm:px-6"
+                >
+                  Continue →
+                </button>
+              </div>
+            )}
           </div>
-
-          {!isReviewStep && (
-            <div className="flex items-center justify-between gap-3 pt-2">
-              <button
-                type="button"
-                onClick={goBack}
-                disabled={currentStepIndex === 0}
-                className="rounded-xl border border-white/[0.14] px-5 py-3 text-sm font-semibold text-zinc-300 transition hover:bg-white/[0.04] disabled:cursor-not-allowed disabled:opacity-40 sm:px-6"
-              >
-                ← Back
-              </button>
-              <button
-                type="button"
-                onClick={goNext}
-                disabled={!canAdvanceFromCurrentStep}
-                className="rounded-xl bg-white px-5 py-3 text-sm font-bold text-black transition hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-50 sm:px-6"
-              >
-                Continue →
-              </button>
-            </div>
-          )}
         </div>
       </div>
 

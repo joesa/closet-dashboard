@@ -30,7 +30,6 @@ export default async function IntakePage({
 
   return (
     <IntakeFormClient
-      isAdmin={isAdmin}
       token={token}
       businessName={row.business_name ?? ''}
       prospectEmail={row.contact_email || row.verification_email || ''}
@@ -49,6 +48,7 @@ export default async function IntakePage({
       widgetConfigHints={row.widget_config_hints ?? null}
       imageSelections={parseImageSelections(row.image_selections)}
       pageContents={row.page_contents ?? {}}
+      initialGalleryImages={row.gallery_images ?? []}
       initialTierFromQuery={
         sp.tier === 'ai_premium' || sp.tier === 'standard' ? sp.tier : undefined
       }

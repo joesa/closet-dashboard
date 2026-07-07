@@ -1,12 +1,10 @@
 import { NextResponse } from 'next/server'
 import * as cheerio from 'cheerio'
-import { GoogleGenerativeAI, type GenerationConfig } from '@google/generative-ai'
+import { generateTextWithFallback } from '@/lib/ai/aiTextProvider'
 import { getCurrentAdmin } from '@/lib/admin'
 
 export const maxDuration = 60
 export const runtime = 'nodejs'
-
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '')
 
 function extractTextFromHtml(html: string): string {
   const $ = cheerio.load(html)
@@ -61,26 +59,23 @@ export async function POST(req: Request) {
       }
     }
 
-    const model = genAI.getGenerativeModel({
-      model: 'gemini-2.5-flash',
-      generationConfig: {
-        responseMimeType: "application/json",
-        temperature: 0.5,
-        // Disable "thinking" to keep latency low and avoid 60s timeouts.
-        thinkingConfig: { thinkingBudget: 0 },
-      } as GenerationConfig
-    })
-
-    const prompt = `System: You are an expert web strategist. Based on the business description provided, suggest a sitemap of exactly ${requestedPages} pages. 
+    const systemPrompt = `You are an expert web strategist. Based on the business description provided, suggest a sitemap of exactly ${requestedPages} pages. 
 The first page MUST always be "Home". 
-Return a JSON object with a single property 'pages' which is an array of strings representing the page titles.
+Return a JSON object with a single property 'pages' which is an array of strings representing the page titles.`
 
-User: Business Information:
+    const prompt = `Business Information:
 
 ${scrapedText}`
 
-    const result_ai = await model.generateContent(prompt)
-    const result = JSON.parse(result_ai.response.text() || '{"pages": ["Home"]}')
+    const { text } = await generateTextWithFallback({
+      prompt,
+      systemPrompt,
+      jsonMode: true,
+      temperature: 0.5,
+      maxOutputTokens: 1024,
+    })
+    
+    const result = JSON.parse(text || '{"pages": ["Home"]}')
 
     // Enforce constraints just in case
     let pages = Array.isArray(result.pages) ? result.pages : ["Home"]

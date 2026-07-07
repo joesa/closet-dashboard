@@ -112,8 +112,9 @@ export function sanitizePageSlugs(input: unknown): string[] {
   if (!Array.isArray(input)) return []
   const seen = new Set<string>()
   const out: string[] = []
+  const slugRegex = /^[a-z0-9-]+$/;
   for (const v of input) {
-    if (typeof v === 'string' && SLUG_TO_LABEL.has(v) && !seen.has(v)) {
+    if (typeof v === 'string' && v.trim().length > 0 && slugRegex.test(v) && !seen.has(v)) {
       seen.add(v)
       out.push(v)
     }
@@ -204,14 +205,14 @@ export function injectGalleryImagesIntoPages(
 export function buildBasicPagesConfig(slugs: string[], pageContents?: Record<string, string>): BasicPageConfig[] {
   return sanitizePageSlugs(slugs).map((slug) => {
     const opt = SLUG_TO_OPTION.get(slug)
-    const title = opt?.label ?? slug
+    const title = opt?.label ?? slug.split('-').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
     const customText = pageContents?.[slug]
     return {
       slug: `/${slug}`,
       title,
       hero: { headline: title, subheadline: opt?.description ?? '' },
       content_blocks: [
-        { type: 'text', heading: title, body: customText || opt?.description || '' },
+        { type: 'text', heading: title, body: customText || opt?.description || `Detailed information about ${title.toLowerCase()}.` },
       ],
     }
   })
@@ -229,6 +230,8 @@ function matchKnownSlug(rawSlug: unknown, rawTitle: unknown): string | null {
   for (const opt of SITE_PAGE_OPTIONS) {
     if (norm(opt.label) === titleGuess || norm(opt.label) === slugGuess) return opt.slug
   }
+  // Allow custom slugs if they passed previous checks and reached here
+  if (slugGuess) return slugGuess;
   return null
 }
 
@@ -260,7 +263,7 @@ export function normalizeAiPagesConfig(
   }
   return slugs.map((slug) => {
     const opt = SLUG_TO_OPTION.get(slug)
-    const title = opt?.label ?? slug
+    const title = opt?.label ?? slug.split('-').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
     const ai = bySlug.get(slug)
     const heroHeadline =
       ai && typeof (ai.hero as { headline?: unknown })?.headline === 'string'

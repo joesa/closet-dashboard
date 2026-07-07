@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI, type GenerationConfig } from '@google/generative-ai'
+import { generateTextWithFallback } from '@/lib/ai/aiTextProvider'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { validateTenantSite, saveValidationReport, type ValidationReport } from '@/lib/validation/siteValidator'
 import { THEME_LAYOUT_AFFINITY, type ThemeSlug, type LayoutSlug } from '@/lib/catalog/sitePresentationCatalog'
@@ -36,7 +36,7 @@ export async function autoFixTenantSite(tenantId: string): Promise<AutoFixResult
 
   const { data: tenant } = await supabase
     .from('tenants')
-    .select('id, widget_id, site_configs ( theme, layout_style, design_variant, nav_links, hero_config, before_after_config, products_config, brand_name, engagement_model )')
+    .select('id, widget_id, business_name, site_configs ( theme, layout_style, design_variant, nav_links, hero_config, before_after_config, products_config, brand_name, engagement_model, process_config )')
     .eq('id', tenantId)
     .maybeSingle()
 
@@ -51,6 +51,11 @@ export async function autoFixTenantSite(tenantId: string): Promise<AutoFixResult
         products_config?: { image?: string }[] | null
         brand_name?: string | null
         engagement_model?: string | null
+        process_config?: {
+          title?: string
+          subtitle?: string
+          steps?: { number?: string; title?: string; description?: string }[]
+        } | null
       } | null)
     : null
 
@@ -78,7 +83,11 @@ export async function autoFixTenantSite(tenantId: string): Promise<AutoFixResult
       }
 
       case 'missing_nav_links': {
-        const ctaLabel = config?.engagement_model === 'order' ? 'Order' : 'Get Quote'
+        const em = config?.engagement_model
+        const ctaLabel = em === 'order' ? 'Order'
+          : em === 'booking' ? 'Book Now'
+          : em === 'ticket' ? 'Get Tickets'
+          : 'Get Quote'
         updates.nav_links = DEFAULT_ANCHOR_NAV(ctaLabel)
         fixesApplied.push(`Added a default in-page anchor nav (Home / About / Our Work / ${ctaLabel}) so the themed Navbar now renders.`)
         break
@@ -136,6 +145,15 @@ export async function autoFixTenantSite(tenantId: string): Promise<AutoFixResult
         break
       }
 
+      case 'invalid_process_steps': {
+        const brandName = config?.brand_name || tenant?.business_name || 'Your Business'
+        const currentProcess = config?.process_config || {}
+        const fixedProcess = await fixProcessStepsWithAi(tenantId, brandName, currentProcess)
+        updates.process_config = fixedProcess
+        fixesApplied.push('Regenerated and correctly numbered the process steps using AI to form a complete 3-step sequence starting with 01.')
+        break
+      }
+
       default:
         unfixedIssues.push(issue.message)
     }
@@ -170,15 +188,6 @@ async function summarizeFixes(input: { fixesApplied: string[]; remainingIssues: 
   if (!process.env.GEMINI_API_KEY) return fallback
 
   try {
-    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
-    const model = genAI.getGenerativeModel({
-      model: 'gemini-2.5-flash',
-      generationConfig: {
-        temperature: 0.3,
-        maxOutputTokens: 300,
-        thinkingConfig: { thinkingBudget: 0 },
-      } as GenerationConfig,
-    })
     const prompt = `You are a QA assistant summarizing an automated website-fix run for a non-technical admin reviewing a contractor's marketing site before approving it live.
 
 Fixes just applied:
@@ -188,10 +197,100 @@ Remaining issues after re-validation:
 ${input.remainingIssues.length > 0 ? input.remainingIssues.map((i) => `- ${i}`).join('\n') : '(none — all checks pass)'}
 
 Write a short (2-4 sentence) plain-English summary for the admin: what was fixed, and what (if anything) still needs their attention. No markdown, no headers.`
-    const result = await model.generateContent(prompt)
-    const text = result.response.text().trim()
-    return text || fallback
+
+    const { text } = await generateTextWithFallback({
+      prompt,
+      jsonMode: false,
+      temperature: 0.3,
+      maxOutputTokens: 300,
+    })
+    return text.trim() || fallback
   } catch {
     return fallback
+  }
+}
+
+async function fixProcessStepsWithAi(
+  tenantId: string,
+  brandName: string,
+  currentProcess: any
+): Promise<any> {
+  const supabase = getSupabaseAdmin()
+  const { data: intake } = await supabase
+    .from('prospect_intakes')
+    .select('industry, services')
+    .eq('provisioned_contractor_id', tenantId)
+    .maybeSingle()
+
+  const industry = intake?.industry || 'home services'
+  const services = Array.isArray(intake?.services) ? intake.services.join(', ') : ''
+
+  if (!process.env.GEMINI_API_KEY) {
+    const steps = currentProcess?.steps || []
+    const padded = [...steps]
+    while (padded.length < 3) {
+      padded.unshift({ number: '01', title: 'Consultation', description: 'Schedule a consultation.' })
+    }
+    const fixed = padded.slice(0, 3).map((s, i) => ({
+      ...s,
+      number: `0${i + 1}`,
+      title: s.title || (i === 0 ? 'Consultation' : i === 1 ? 'Design' : 'Install'),
+      description: s.description || (i === 0 ? 'We meet with you.' : i === 1 ? 'We design it.' : 'We build it.'),
+    }))
+    return {
+      ...currentProcess,
+      steps: fixed,
+    }
+  }
+
+  try {
+    const prompt = `You are a premium visual director and copywriter.
+We have a local service business with the brand name "${brandName}", operating in the industry/services: "${industry} / ${services}".
+The process section on their homepage must have exactly 3 steps.
+Currently, the process config is invalid or incomplete:
+${JSON.stringify(currentProcess || {})}
+
+Please output a corrected, premium 3-step process configuration as a valid JSON object matching this schema:
+{
+  "title": "string",
+  "subtitle": "string",
+  "steps": [
+    { "number": "01", "title": "string", "description": "string" },
+    { "number": "02", "title": "string", "description": "string" },
+    { "number": "03", "title": "string", "description": "string" }
+  ]
+}
+
+Ensure the steps are exactly numbered '01', '02', '03' in that order. Keep the copy premium, specific to their trade (e.g. beauty/grooming vs HVAC vs construction), and consistent with any existing valid steps.
+Only output JSON.`
+
+    const { text } = await generateTextWithFallback({
+      prompt,
+      jsonMode: true,
+      temperature: 0.3,
+      maxOutputTokens: 500,
+    })
+    const parsed = JSON.parse(text)
+    if (parsed && Array.isArray(parsed.steps) && parsed.steps.length === 3) {
+      return parsed
+    }
+  } catch (err) {
+    console.error('Error in fixProcessStepsWithAi:', err)
+  }
+
+  const steps = currentProcess?.steps || []
+  const padded = [...steps]
+  while (padded.length < 3) {
+    padded.unshift({ number: '01', title: 'Consultation', description: 'Schedule a consultation.' })
+  }
+  return {
+    title: currentProcess?.title || 'Our Process',
+    subtitle: currentProcess?.subtitle || 'How we work',
+    steps: padded.slice(0, 3).map((s, i) => ({
+      ...s,
+      number: `0${i + 1}`,
+      title: s.title || (i === 0 ? 'Consultation' : i === 1 ? 'Design' : 'Install'),
+      description: s.description || (i === 0 ? 'We meet with you.' : i === 1 ? 'We design it.' : 'We build it.'),
+    }))
   }
 }

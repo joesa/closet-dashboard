@@ -9,7 +9,10 @@ export const dynamic = 'force-dynamic'
  * Ensures the signed-in user has a contractor_settings row with an active trial.
  * Called right after signup before redirecting to /dashboard (middleware entitlement).
  */
-export async function POST() {
+export async function POST(req: Request) {
+  const body = await req.json().catch(() => ({}))
+  const forceNewSite = body.forceNewSite === true
+
   const supabase = await getSupabaseServer()
   const {
     data: { user },
@@ -20,18 +23,23 @@ export async function POST() {
   }
 
   const admin = getSupabaseAdmin()
-  const { data: existing } = await admin
-    .from('contractor_settings')
-    .select('id, subscription_status, trial_ends_at')
-    .eq('user_id', user.id)
-    .maybeSingle()
 
-  if (existing) {
-    return NextResponse.json({
-      ok: true,
-      contractorId: existing.id,
-      created: false,
-    })
+  if (!forceNewSite) {
+    const { data: existingList } = await admin
+      .from('contractor_settings')
+      .select('id, subscription_status, trial_ends_at')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
+      .limit(1)
+
+    const existing = existingList?.[0]
+    if (existing) {
+      return NextResponse.json({
+        ok: true,
+        contractorId: existing.id,
+        created: false,
+      })
+    }
   }
 
   const trialEnds = new Date()

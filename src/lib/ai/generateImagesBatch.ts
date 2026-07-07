@@ -21,7 +21,7 @@ export function describeImageError(error: unknown): { status: number; message: s
   if (err?.status === 403) {
     return {
       status: 403,
-      message: 'OpenAI rejected gpt-image-1 (403). Verify org access for this model.',
+      message: 'OpenAI rejected gpt-image-2 (403). Verify org access for this model.',
     }
   }
   if (err?.status === 429) {

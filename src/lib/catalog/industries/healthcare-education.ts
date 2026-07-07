@@ -64,6 +64,7 @@ export const ENRICHMENT_EDUCATION_SERVICES: ServiceDef[] = [
 
 export const MEDICAL_CLINIC_INDUSTRY: IndustryDef = {
   slug: 'medical-clinic', label: 'Medical Care',
+  engagementModel: 'booking',
   keywords: ['hospital', 'urgent care', 'family clinic', 'dental office', 'medical clinic'],
   serviceGroups: ['Urgent Care', 'Family Medicine', 'Dental', 'Hospital'],
   defaultThemes: [...MED_T],
@@ -73,6 +74,7 @@ export const MEDICAL_CLINIC_INDUSTRY: IndustryDef = {
 
 export const THERAPY_REHAB_INDUSTRY: IndustryDef = {
   slug: 'therapy-rehab', label: 'Therapy & Rehabilitation',
+  engagementModel: 'booking',
   keywords: ['physical therapy', 'speech therapy', 'mental health counseling', 'rehab clinic', 'therapist'],
   serviceGroups: ['Physical Therapy', 'Speech Therapy', 'Mental Health'],
   defaultThemes: [...THER_T],
@@ -82,6 +84,7 @@ export const THERAPY_REHAB_INDUSTRY: IndustryDef = {
 
 export const SENIOR_CARE_INDUSTRY: IndustryDef = {
   slug: 'senior-care', label: 'Elderly & Social Care',
+  engagementModel: 'booking',
   keywords: ['nursing home', 'assisted living', 'daycare', 'foster care', 'senior care'],
   serviceGroups: ['Nursing Home', 'Assisted Living', 'Daycare', 'Foster Care'],
   defaultThemes: [...SENIOR_T],
@@ -91,6 +94,7 @@ export const SENIOR_CARE_INDUSTRY: IndustryDef = {
 
 export const EDUCATION_FORMAL_INDUSTRY: IndustryDef = {
   slug: 'education-formal', label: 'Formal Education',
+  engagementModel: 'booking',
   keywords: ['university', 'college', 'k-12 school', 'vocational school', 'trade college'],
   serviceGroups: ['Higher Education', 'K-12', 'Vocational'],
   defaultThemes: [...EDU_T],
@@ -100,6 +104,7 @@ export const EDUCATION_FORMAL_INDUSTRY: IndustryDef = {
 
 export const ENRICHMENT_EDUCATION_INDUSTRY: IndustryDef = {
   slug: 'enrichment-education', label: 'Enrichment Education',
+  engagementModel: 'booking',
   keywords: ['language school', 'music lessons', 'driving school', 'enrichment program'],
   serviceGroups: ['Tutoring', 'Language', 'Music', 'Driving'],
   defaultThemes: [...ENR_T],

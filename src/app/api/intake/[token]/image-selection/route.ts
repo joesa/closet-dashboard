@@ -4,8 +4,53 @@ import { getIntakeByToken } from '@/lib/intake/getIntakeByToken'
 import { assertDraftIntake, assertDepositPaid } from '@/lib/intake/intakeTierGates'
 import { resolveStudioServiceNames } from '@/lib/intake/studioServiceNames'
 import { parseImageSelections, syncProductSlots } from '@/lib/intake/imageSelections'
+import { persistImageSelections } from '@/lib/images/persistImageSelections'
 
 export const runtime = 'nodejs'
+
+async function loadDraftIntake(token: string) {
+  const row = await getIntakeByToken(token)
+  if (!row) return { error: NextResponse.json({ error: 'Intake not found' }, { status: 404 }) }
+  const draftErr = assertDraftIntake(row)
+  if (draftErr) return { error: NextResponse.json({ error: draftErr }, { status: 410 }) }
+  const depositErr = assertDepositPaid(row)
+  if (depositErr) return { error: NextResponse.json({ error: depositErr }, { status: 403 }) }
+  return { row }
+}
+
+export async function POST(
+  req: Request,
+  { params }: { params: Promise<{ token: string }> }
+) {
+  try {
+    const { token } = await params
+    const loaded = await loadDraftIntake(token)
+    if ('error' in loaded) return loaded.error
+    const { row } = loaded
+
+    const body = await req.json()
+    const selections = syncProductSlots(
+      parseImageSelections(body),
+      resolveStudioServiceNames(row, body.serviceNames)
+    )
+
+    const persisted = await persistImageSelections(token, selections)
+    const admin = getSupabaseAdmin()
+    await admin
+      .from('prospect_intakes')
+      .update({
+        image_selections: persisted,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', row.id)
+
+    return NextResponse.json({ success: true, imageSelections: persisted })
+  } catch (error) {
+    console.error('intake image-selection POST error:', error)
+    const message = error instanceof Error ? error.message : 'Failed to save selections'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
 
 export async function PATCH(
   req: Request,
@@ -13,20 +58,9 @@ export async function PATCH(
 ) {
   try {
     const { token } = await params
-    const row = await getIntakeByToken(token)
-    if (!row) {
-      return NextResponse.json({ error: 'Intake not found' }, { status: 404 })
-    }
-
-    const draftErr = assertDraftIntake(row)
-    if (draftErr) {
-      return NextResponse.json({ error: draftErr }, { status: 410 })
-    }
-
-    const depositErr = assertDepositPaid(row)
-    if (depositErr) {
-      return NextResponse.json({ error: depositErr }, { status: 403 })
-    }
+    const loaded = await loadDraftIntake(token)
+    if ('error' in loaded) return loaded.error
+    const { row } = loaded
 
     const body = await req.json()
     const slot = body.slot === 'product' ? 'product' : body.slot === 'hero' ? 'hero' : null

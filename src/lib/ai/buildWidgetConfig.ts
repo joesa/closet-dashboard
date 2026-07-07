@@ -1,4 +1,6 @@
-import { GoogleGenerativeAI } from '@google/generative-ai'
+import { generateTextWithFallback } from '@/lib/ai/aiTextProvider'
+import { resolveIndustrySlug } from '@/lib/catalog/serviceCatalog'
+import { getEngineProfile } from '@/lib/catalog/engineProfiles'
 
 /**
  * Widget configuration hints gathered during the DitchTheForm Pro intake
@@ -104,14 +106,30 @@ export async function buildWidgetConfig(
   }
 
   try {
-    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' })
-
     const noRoomServices = hints.services.length === 0
     const industry = hints.industry?.trim() || 'Custom Closets / Storage'
-    const seedPricingStr = hints.seedPricing
+    
+    const slug = resolveIndustrySlug({
+      industry: hints.industry,
+      services: hints.services,
+      other_services: hints.otherServices,
+    })
+    const engineProfile = getEngineProfile(slug)
+    
+    let seedPricingStr = hints.seedPricing
       ? `Basic ≈ $${hints.seedPricing.basic ?? '?'}, Standard ≈ $${hints.seedPricing.standard ?? '?'}, Premium ≈ $${hints.seedPricing.premium ?? '?'}`
-      : `No seed pricing provided — use industry-standard estimates for a premium ${industry} business.`
+      : ''
+      
+    if (!hints.seedPricing && engineProfile?.serviceDefaults?.length > 0) {
+      const def = engineProfile.serviceDefaults[0]
+      if (def?.tiers?.length > 0) {
+        seedPricingStr = def.tiers.map((t) => `${t.name}: $${Math.floor(t.priceHint * 0.8)}–$${Math.floor(t.priceHint * 1.4)}`).join(', ')
+      }
+    }
+
+    if (!seedPricingStr) {
+      seedPricingStr = `No seed pricing provided — use industry-standard estimates for a premium ${industry} business.`
+    }
 
     const prompt = `
 You are configuring a real-time pricing calculator ("instant quote widget") for a ${industry} business.
@@ -156,16 +174,21 @@ RULES:
 4. customFinishes: Only populate if hasFinishes=true. Use the contractor's finish labels. Assign appropriate swatch hex colors. Map to tiers logically (entry=basic, mid=standard, premium=premium).
 5. disabledDefaultRooms: List the default rooms they DON'T offer so we can hide them from their widget.
 6. disableDefaultFinishes: true if they have custom finishes that fully replace the defaults, false otherwise.
-7. Keep prices realistic for a premium custom storage company in the US. Per-foot: basic $35-60, standard $60-100, premium $100-180.
+7. Keep prices realistic for a premium ${industry} company in the US. You MUST use your best knowledge of the ${industry} industry to provide sensible, specific starting prices (e.g. $127, $389, $1140) rather than generic round numbers ($100, $200). Do NOT output $0 or null for ANY prices.
 8. Use CALCULATOR-SPECIFIC NOTES as a strong signal for what should affect price, which services should be flat-rate vs measured, and which upgrades deserve add-on cards.
 9. Return ONLY valid JSON — no markdown, no explanation.
 `
 
-    const result = await model.generateContent(prompt)
-    const text = result.response.text().trim()
+    const { text } = await generateTextWithFallback({
+      prompt,
+      jsonMode: true,
+      temperature: 0.5,
+      maxOutputTokens: 2048,
+    })
+    const textTrimmed = text.trim()
 
     // Strip markdown code fences if present
-    const jsonStr = text.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim()
+    const jsonStr = textTrimmed.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim()
     const parsed = JSON.parse(jsonStr) as GeneratedWidgetConfig
     return parsed
   } catch (err) {

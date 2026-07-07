@@ -153,6 +153,32 @@ export type ServiceDef = {
  */
 export type EngagementModel = 'quote' | 'order' | 'booking' | 'ticket'
 
+export type ServiceDefaultTier = {
+  tier: 'basic' | 'standard' | 'premium'
+  name: string
+  priceHint: number
+  description: string
+  popular?: boolean
+}
+
+export type ServiceDefault = {
+  name: string
+  unitLabel: string
+  tiers: ServiceDefaultTier[]
+  addons?: { name: string; priceHint: number }[]
+}
+
+export type EngineProfile = {
+  engagementModel: EngagementModel
+  ctaVerb: string
+  widgetSectionTitle: string
+  widgetSubtitle: string
+  dashboardLabel: string
+  dashboardIcon: string
+  dashboardHelpText: string
+  serviceDefaults: ServiceDefault[]
+}
+
 export type IndustryDef = {
   slug: IndustrySlug
   label: string
@@ -172,4 +198,5 @@ export type IndustryDef = {
    * table if it grows past ~10 industries.
    */
   engagementModel?: EngagementModel
+  engineProfile?: EngineProfile
 }

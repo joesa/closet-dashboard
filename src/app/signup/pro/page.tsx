@@ -342,14 +342,14 @@ async function ensureProAccount(
   email: string,
   password: string,
   businessName: string
-): Promise<void> {
+): Promise<{ isNewAccount: boolean }> {
   const { data: authData, error: authErr } = await supabaseBrowser.auth.signUp({
     email,
     password,
     options: { data: { company_name: businessName } },
   })
 
-  if (!authErr && authData.user) return
+  if (!authErr && authData.user) return { isNewAccount: true }
 
   if (authErr && isAlreadyRegisteredError(authErr.message)) {
     const { error: signInErr } = await supabaseBrowser.auth.signInWithPassword({
@@ -361,7 +361,7 @@ async function ensureProAccount(
         'This email is already registered. Enter your account password to continue, or sign in first.'
       )
     }
-    return
+    return { isNewAccount: false }
   }
 
   if (authErr) throw new Error(authErr.message)
@@ -433,13 +433,20 @@ function ProSignupWizard() {
 
     try {
       // 1. Create auth account (or sign in if email already registered)
-      await ensureProAccount(form.email, form.password, form.businessName)
+      const { isNewAccount } = await ensureProAccount(form.email, form.password, form.businessName)
 
-      const bootstrap = await fetch('/api/contractor/bootstrap', { method: 'POST' })
-      if (!bootstrap.ok) {
-        const json = (await bootstrap.json().catch(() => ({}))) as { error?: string }
-        throw new Error(json.error || 'Could not set up your account. Please try again.')
+      const bootstrapRes = await fetch('/api/contractor/bootstrap', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ forceNewSite: !isNewAccount }),
+      })
+      
+      const bootstrapJson = (await bootstrapRes.json().catch(() => ({}))) as { error?: string, contractorId?: string }
+      if (!bootstrapRes.ok || !bootstrapJson.contractorId) {
+        throw new Error(bootstrapJson.error || 'Could not set up your account. Please try again.')
       }
+      
+      const contractorId = bootstrapJson.contractorId
 
       // 2. Build widget_config_hints payload
       const serviceList = form.otherServices
@@ -466,6 +473,7 @@ function ProSignupWizard() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          contractorId, // Pass the explicit ID instead of relying on contact_email uniqueness
           email: form.email,
           businessName: form.businessName,
           phone: form.phone,

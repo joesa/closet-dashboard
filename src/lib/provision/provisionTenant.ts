@@ -7,6 +7,7 @@ import {
   parseImageSelections,
   syncProductSlots,
 } from '@/lib/intake/imageSelections'
+import { persistImageSelections } from '@/lib/images/persistImageSelections'
 import { generateBeforeImage, getBeforeAfterCategory } from '@/lib/openai-images'
 import { provisionServiceLabels } from '@/lib/intake/provisionServiceLabels'
 import {
@@ -166,6 +167,8 @@ export async function provisionTenant(
 
   const resolvedEngagementModel = engagementModel || (aiSiteConfig?.engagementModel as string) || getIndustry(beforeAfterContext.industry)?.engagementModel || 'quote';
   const isOrderBusiness = resolvedEngagementModel === 'order';
+  const isBookingBusiness = resolvedEngagementModel === 'booking';
+  const isTicketBusiness = resolvedEngagementModel === 'ticket';
 
   // We explicitly log to let us trace tenant creation in edge logs.
   // Some businesses have no physical "before" state at all (order/direct-
@@ -379,16 +382,21 @@ export async function provisionTenant(
       const { data: intakeForImages } = await supabase
         .from('prospect_intakes')
         .select(
-          'services, other_services, image_selections, requested_pages, intake_tier, gallery_images, page_contents'
+          'token, services, other_services, image_selections, requested_pages, intake_tier, gallery_images, page_contents'
         )
         .eq('id', intakeId)
         .maybeSingle()
       if (intakeForImages) {
         const labels = provisionServiceLabels(intakeForImages)
-        const sel = syncProductSlots(
+        let sel = syncProductSlots(
           parseImageSelections(intakeForImages.image_selections),
           labels
         )
+        // Legacy rows may still carry inline data: URLs — persist optimized copies
+        // before we wire them into the live site config.
+        if (intakeForImages.token) {
+          sel = await persistImageSelections(intakeForImages.token, sel)
+        }
         heroSelectedUrl = sel.hero.selectedUrl || null
         for (const p of sel.products) {
           if (p.selectedUrl) pickedImages.push({ name: p.serviceName, url: p.selectedUrl })
@@ -669,6 +677,7 @@ export async function provisionTenant(
         type PageConfig = {
           slug: string
           title: string
+          is_active?: boolean
           hero?: Record<string, unknown>
           content_blocks?: Array<{ type?: string; image?: string }>
         }
@@ -693,7 +702,9 @@ export async function provisionTenant(
         siteConfigData.pages_config = sanitizedPages
         const navLinks = [{ label: 'Home', slug: '/' }]
         sanitizedPages.forEach((page) => {
-          navLinks.push({ label: page.title, slug: page.slug })
+          if (page.is_active !== false) {
+            navLinks.push({ label: page.title, slug: page.slug })
+          }
         })
         siteConfigData.nav_links = navLinks
       }
@@ -729,11 +740,15 @@ export async function provisionTenant(
       (!siteConfigData.nav_links || (siteConfigData.nav_links as unknown[]).length === 0) &&
       !(MINIMAL_LAYOUTS_WITHOUT_ANCHOR_SECTIONS as Set<string>).has(String(siteConfigData.layout_style))
     ) {
+      const navCtaLabel = resolvedEngagementModel === 'order' ? 'Order'
+        : resolvedEngagementModel === 'booking' ? 'Book Now'
+        : resolvedEngagementModel === 'ticket' ? 'Get Tickets'
+        : 'Get Quote'
       siteConfigData.nav_links = [
         { label: 'Home', slug: '/' },
         { label: 'About', slug: '/#about' },
         { label: 'Our Work', slug: '/#portfolio' },
-        { label: engagementModel === 'order' ? 'Order' : 'Get Quote', slug: '/#quote' },
+        { label: navCtaLabel, slug: '/#quote' },
       ]
     }
 
@@ -823,6 +838,48 @@ export async function provisionTenant(
           sort_order: i,
         }))
       )
+    }
+  } else if (isBookingBusiness) {
+    // Seed booking services from AI customRooms
+    if (mergedCustomRooms.length) {
+      await supabase.from('service_catalog').insert(
+        mergedCustomRooms.map((r, i) => ({
+          contractor_id: tenantId,
+          name: r.name,
+          duration_minutes: 60,
+          price_cents: (r.standard || r.basic || 50) * 100, // custom rooms are in dollars
+          sort_order: i,
+        }))
+      )
+    }
+    // Seed default availability (Mon-Fri 9-5)
+    await supabase.from('booking_availability').insert(
+      [1, 2, 3, 4, 5].map(day => ({
+        contractor_id: tenantId,
+        day_of_week: day,
+        start_time: '09:00',
+        end_time: '17:00',
+        slot_duration_minutes: 60
+      }))
+    )
+  } else if (isTicketBusiness) {
+    // Seed a default event
+    if (mergedCustomRooms.length) {
+      const mainService = mergedCustomRooms[0];
+      const nextMonth = new Date();
+      nextMonth.setMonth(nextMonth.getMonth() + 1);
+      
+      await supabase.from('ticket_events').insert({
+        contractor_id: tenantId,
+        name: mainService.name,
+        description: 'Join us for this exciting event.',
+        event_date: nextMonth.toISOString().split('T')[0],
+        event_time: '19:00',
+        venue: 'Main Venue',
+        capacity: 100,
+        price_cents: (mainService.standard || mainService.basic || 25) * 100,
+        is_active: true
+      })
     }
   } else {
     // Quote-industry businesses — seed into contractor_rooms

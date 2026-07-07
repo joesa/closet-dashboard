@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI, type GenerationConfig } from '@google/generative-ai'
+import { generateTextWithFallback } from '@/lib/ai/aiTextProvider'
 
 export type QuizOption = { id: string; label: string }
 export type QuizQuestionConfig = { id: 'frustration' | 'style' | 'timeline'; title: string; options: QuizOption[] }
@@ -75,7 +75,7 @@ function sanitizeOptions(raw: unknown): QuizOption[] {
 export async function generateQuizConfig(
   input: GenerateQuizConfigInput,
   opts?: { useGemini?: boolean }
-): Promise<{ config: QuizConfig; source: 'gemini' | 'fallback' }> {
+): Promise<{ config: QuizConfig; source: 'openai' | 'gemini' | 'fallback' }> {
   const useGemini = opts?.useGemini !== false && !!process.env.GEMINI_API_KEY
   const industry = (input.industry || '').trim()
   const services = (input.services ?? []).filter((s) => s && s.trim().length > 0)
@@ -84,17 +84,6 @@ export async function generateQuizConfig(
   if (!useGemini || (!industry && services.length === 0 && !other)) {
     return { config: DEFAULT_QUIZ_CONFIG, source: 'fallback' }
   }
-
-  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '')
-  const model = genAI.getGenerativeModel({
-    model: 'gemini-2.5-flash',
-    generationConfig: {
-      responseMimeType: 'application/json',
-      temperature: 0.5,
-      maxOutputTokens: 1024,
-      thinkingConfig: { thinkingBudget: 0 },
-    } as GenerationConfig,
-  })
 
   const prompt = `A contractor's marketing website has a short "3-question quiz" widget that qualifies a visitor before they request a quote. Write industry-specific copy for it — a prospect in THIS exact trade should recognize every option as something they'd actually pick (avoid generic filler, and never reuse closet/storage-organization wording unless the trade genuinely is that).
 
@@ -115,8 +104,13 @@ Services offered: ${services.length > 0 ? services.join(', ') : '(not specified)
 ${other ? `Other/custom services: ${other}\n` : ''}${input.business_name ? `Business name: ${input.business_name}\n` : ''}`
 
   try {
-    const result = await model.generateContent(prompt)
-    const parsed = JSON.parse(result.response.text()) as {
+    const { text, provider } = await generateTextWithFallback({
+      prompt,
+      jsonMode: true,
+      temperature: 0.5,
+      maxOutputTokens: 1024,
+    })
+    const parsed = JSON.parse(text) as {
       eyebrow?: unknown
       headline?: unknown
       questions?: unknown
@@ -146,7 +140,7 @@ ${other ? `Other/custom services: ${other}\n` : ''}${input.business_name ? `Busi
       }
     })
 
-    return { config: { eyebrow, headline, questions }, source: 'gemini' }
+    return { config: { eyebrow, headline, questions }, source: provider }
   } catch {
     return { config: DEFAULT_QUIZ_CONFIG, source: 'fallback' }
   }

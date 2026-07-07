@@ -114,7 +114,7 @@ export async function validateTenantSite(tenantId: string): Promise<ValidationRe
       `
       id, business_name, owner_email, widget_id,
       domains ( hostname ),
-      site_configs ( theme, layout_style, design_variant, nav_links, hero_config, before_after_config, products_config, logo_url, brand_name )
+      site_configs ( theme, layout_style, design_variant, nav_links, hero_config, before_after_config, products_config, logo_url, brand_name, process_config )
     `
     )
     .eq('id', tenantId)
@@ -148,6 +148,11 @@ export async function validateTenantSite(tenantId: string): Promise<ValidationRe
         products_config?: { image?: string; title?: string }[] | null
         logo_url?: string | null
         brand_name?: string | null
+        process_config?: {
+          title?: string
+          subtitle?: string
+          steps?: { number?: string; title?: string; description?: string }[]
+        } | null
       }
     | null
 
@@ -198,6 +203,24 @@ export async function validateTenantSite(tenantId: string): Promise<ValidationRe
       fixable: true,
       meta: { layoutStyle },
     })
+  }
+
+  // ── 3.5. Process steps validation ──
+  const processConfig = config.process_config
+  if (processConfig) {
+    const steps = processConfig.steps || []
+    const hasThreeSteps = steps.length === 3
+    const startsWithOne = steps[0]?.number === '01'
+    const isOrdered = steps[0]?.number === '01' && steps[1]?.number === '02' && steps[2]?.number === '03'
+    if (!hasThreeSteps || !startsWithOne || !isOrdered) {
+      issues.push({
+        code: 'invalid_process_steps',
+        severity: 'warning',
+        message: `Process section has invalid steps. It must have exactly 3 steps numbered '01', '02', '03' in order. Currently has: ${steps.map(s => s.number || '(none)').join(', ')}.`,
+        fixable: true,
+        meta: { stepsCount: steps.length },
+      })
+    }
   }
 
   // ── 4. Bespoke/duplicate-design safety net ──

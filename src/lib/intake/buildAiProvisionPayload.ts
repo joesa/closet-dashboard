@@ -109,6 +109,7 @@ export async function buildAiProvisionPayload(
     ...site,
     theme,
     layoutStyle,
+    designVariant: resolved.designVariantOverride || (site as { designVariant?: string }).designVariant,
     products,
     // The model returns pagesConfig at the TOP level of ai_site_config (sibling
     // of siteConfig), so it must be lifted in here — otherwise provisioning

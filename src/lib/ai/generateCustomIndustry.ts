@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI, type GenerationConfig } from '@google/generative-ai'
+import { generateTextWithFallback } from '@/lib/ai/aiTextProvider'
 import { THEME_SLUGS, LAYOUT_SLUGS } from '@/lib/catalog/sitePresentationCatalog'
 import type { CustomIndustryRecord, CustomIndustryService } from '@/lib/catalog/customIndustries'
 import type { BeforeAfterCategory } from '@/lib/openai-images'
@@ -61,16 +61,6 @@ export async function generateCustomIndustry(
   const useGemini = opts?.useGemini !== false && !!process.env.GEMINI_API_KEY
   if (!industryText || !useGemini) return { def: fallback, source: 'fallback' }
 
-  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '')
-  const model = genAI.getGenerativeModel({
-    model: 'gemini-2.5-flash',
-    generationConfig: {
-      responseMimeType: 'application/json',
-      temperature: 0.4,
-      maxOutputTokens: 1024,
-    } as GenerationConfig,
-  })
-
   const prompt = `A contractor is signing up for a website + instant-quote-widget builder and typed an industry/trade that isn't in our catalog yet. Generate a starting definition for this NEW industry so the product can support it well immediately, and so other contractors in the same trade can reuse it later.
 
 Return JSON only, no markdown, with this EXACT shape:
@@ -104,8 +94,13 @@ Trade/industry as typed by the contractor: "${industryText}"
 ${input.businessName ? `Business name: ${input.businessName}\n` : ''}${input.otherServices ? `Services they already described: ${input.otherServices}\n` : ''}`
 
   try {
-    const result = await model.generateContent(prompt)
-    const parsed = JSON.parse(result.response.text()) as {
+    const { text, provider } = await generateTextWithFallback({
+      prompt,
+      jsonMode: true,
+      temperature: 0.4,
+      maxOutputTokens: 1024,
+    })
+    const parsed = JSON.parse(text) as {
       label?: unknown
       keywords?: unknown
       services?: unknown
@@ -184,7 +179,7 @@ ${input.businessName ? `Business name: ${input.businessName}\n` : ''}${input.oth
         beforeAfterCategory,
         engagementModel,
       },
-      source: 'gemini',
+      source: provider as any,
     }
   } catch {
     return { def: fallback, source: 'fallback' }

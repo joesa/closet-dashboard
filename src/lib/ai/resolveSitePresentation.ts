@@ -21,7 +21,7 @@ import {
 import type { IndustrySlug, EngagementModel } from '@/lib/catalog/types'
 import { buildIntakeBrief } from '@/lib/intake/buildIntakeBrief'
 import type { ProspectIntakeRow } from '@/lib/intake/getIntakeByToken'
-import { GoogleGenerativeAI, type GenerationConfig } from '@google/generative-ai'
+import { generateTextWithFallback } from '@/lib/ai/aiTextProvider'
 import { synthesizeThemeTokens, type ThemeTokenSelection } from '@/lib/ai/synthesizeThemeTokens'
 import { findCustomIndustryByLabel } from '@/lib/catalog/customIndustries'
 import type { BeforeAfterCategory } from '@/lib/openai-images'
@@ -65,6 +65,11 @@ export type SitePresentationResult = {
    */
   themeTokens?: ThemeTokenSelection
   themeTokensSource?: 'gemini' | 'fallback'
+  /**
+   * Optional override for the design variant (structural composition),
+   * determined by AI when the business heavily relies on visual showcase.
+   */
+  designVariantOverride?: string
   /**
    * Before/after image subject category from a matching contractor-created
    * custom industry (see @/lib/catalog/customIndustries), when one was found.
@@ -207,22 +212,13 @@ export async function resolveSitePresentation(
   const themeLayouts = layoutsForTheme(rules.theme, layouts)
 
   const brief = buildIntakeBrief(input as ProspectIntakeRow)
-  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '')
-  const model = genAI.getGenerativeModel({
-    model: 'gemini-2.5-flash',
-    generationConfig: {
-      responseMimeType: 'application/json',
-      temperature: 0.4,
-      maxOutputTokens: 1024,
-    } as GenerationConfig,
-  })
-
   const prompt = `Pick the best marketing site theme and page layout for this contractor business.
-Return JSON only: { "theme": string, "layoutStyle": string, "defaultRoom": string, "rationale": string }
+Return JSON only: { "theme": string, "layoutStyle": string, "defaultRoom": string, "isCinematicHero": boolean, "rationale": string }
 Industry context: ${industry}
 theme MUST be one of: ${themes.join(', ')}
 layoutStyle MUST be one of: ${themeLayouts.join(', ')}
 defaultRoom should be a short primary service/category label for the quote widget.
+isCinematicHero should be true ONLY if the business relies heavily on high-end visual showcase (e.g. luxury remodels, landscaping, architecture, events) where a full-screen background image is the best way to sell the service.
 
 Business brief:
 ${brief}
@@ -231,12 +227,17 @@ ${input.other_services?.trim() ? `\nCustom services (Other): ${input.other_servi
 Rules suggestion (use unless clearly wrong): theme=${rules.theme}, layout=${rules.layoutStyle}, room=${rules.defaultRoom}`
 
   try {
-    const result = await model.generateContent(prompt)
-    const raw = result.response.text()
+    const { text: raw, provider } = await generateTextWithFallback({
+      prompt,
+      jsonMode: true,
+      temperature: 0.4,
+      maxOutputTokens: 1024,
+    })
     const parsed = JSON.parse(raw) as {
       theme?: string
       layoutStyle?: string
       defaultRoom?: string
+      isCinematicHero?: boolean
       rationale?: string
     }
     const theme = coerceThemeSlug(
@@ -266,11 +267,14 @@ Rules suggestion (use unless clearly wrong): theme=${rules.theme}, layout=${rule
       theme,
       layoutStyle,
       defaultRoom: parsed.defaultRoom?.trim() || rules.defaultRoom,
-      rationale: parsed.rationale?.trim() || rules.rationale,
+      rationale: parsed.rationale
+        ? `Gemini: ${parsed.rationale}`
+        : `Gemini resolved theme=${theme}, layout=${layoutStyle}, room=${parsed.defaultRoom || rules.defaultRoom}`,
       source: 'gemini',
       themeTokens,
       themeTokensSource,
       engagementModel: rules.engagementModel,
+      designVariantOverride: parsed.isCinematicHero ? 'atelier' : undefined,
     }
   } catch {
     return { ...rules, themeTokens, themeTokensSource }

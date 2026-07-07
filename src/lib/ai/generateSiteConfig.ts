@@ -1,8 +1,6 @@
 import * as cheerio from 'cheerio'
-import { GoogleGenerativeAI, type GenerationConfig } from '@google/generative-ai'
+import { generateTextWithFallback } from '@/lib/ai/aiTextProvider'
 import { LAYOUT_SLUGS, THEME_SLUGS } from '@/lib/catalog/sitePresentationCatalog'
-
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '')
 
 export const GENERATE_SITE_JSON_SCHEMA = {
   name: 'generate_site_config',
@@ -163,6 +161,7 @@ export const GENERATE_SITE_JSON_SCHEMA = {
           properties: {
             slug: { type: 'string' },
             title: { type: 'string' },
+            is_active: { type: 'boolean' },
             hero: {
               type: 'object',
               properties: { headline: { type: 'string' } },
@@ -195,7 +194,7 @@ export const GENERATE_SITE_JSON_SCHEMA = {
               },
             },
           },
-          required: ['slug', 'title', 'hero', 'content_blocks'],
+          required: ['slug', 'title', 'is_active', 'hero', 'content_blocks'],
         },
       },
       upsellPitch: { type: 'string' },
@@ -272,7 +271,7 @@ function describeFromUrl(rawUrl: string): string {
 
 export type GenerateSiteConfigResult = {
   data: Record<string, unknown>
-  source: 'text' | 'url' | 'url-fallback'
+  source: 'openai' | 'gemini' | 'url' | 'url-fallback'
   scraped: boolean
 }
 
@@ -380,7 +379,7 @@ Use this structure (adapt to the actual trade — replace "installation" with th
 showing [real finished work, specific trade materials, tools, or equipment]. Shot on a
 full-frame DSLR with a 24mm lens in natural light, photorealistic, 8k resolution, crisp focus,
 clean composition, wide 16:9 ratio, NOT a 3D render, NOT CGI, not digital art, no
-plastic surfaces, no text, no people, no logos."
+plastic surfaces, no text, no logos."
 
 PRODUCT IMAGES (products[].imagePrompt) — TIGHT MACRO close-ups that prove craftsmanship. NEVER reuse
 the hero room angle. Rotate the focus across products so the grid feels curated, cycling through:
@@ -394,14 +393,14 @@ the hero room angle. Rotate the focus across products so the grid feels curated,
 Every product prompt MUST end with: "Macro interior photography, close-up shot, shot on a full-frame
 DSLR with a 50mm macro lens in natural light, crisp real textures with subtle imperfections,
 photorealistic, 8k resolution, wide 16:9 composition, NOT a 3D render, NOT CGI, not digital art, no
-plastic surfaces, no text, no people."
+plastic surfaces, no text."
 Match each product to a real service from the business information.
 
 === PREMIUM COPYWRITING ===
 - hero.headline: a punchy headline (about 5 words) that highlights the core value this ${tradeNoun} delivers. Make it outcome-driven and specific to the trade — NOT generic, NOT about architecture unless this IS an architecture/design firm.
 - hero.subheadline: ONE supporting sentence (12-22 words) that sits under the headline. Add concrete substance — what is delivered, for whom, and a real proof point or differentiator from the brief (e.g. years in business, area served, materials, guarantee). Specific to this trade; no filler, no repeating the headline.
 - about.description: a compelling 3-sentence brand narrative about quality, expertise, and reliability written for a ${tradeNoun}. Make it specific to this trade and brand. Do NOT use architectural, closet, or home-storage language unless those ARE the actual services listed.
-- process: a 3-step how-it-works section. The title and subtitle MUST reflect the actual trade — do NOT use "Our Architectural Process" or "From Vision to Flawless Reality" unless the business is literally an architecture or design firm. Example adaptations: drain cleaning → "Book → Diagnose → Fix"; HVAC → "Assess → Recommend → Install"; roofing → "Inspect → Estimate → Install"; closets → "Design → Build → Install". Each step is a vivid one-sentence description.
+- process: a 3-step how-it-works section. The steps array MUST contain exactly 3 steps, numbered '01', '02', '03' in that exact sequence. The title and subtitle MUST reflect the actual trade — do NOT use "Our Architectural Process" or "From Vision to Flawless Reality" unless the business is literally an architecture or design firm. Example adaptations: drain cleaning → "Book → Diagnose → Fix"; HVAC → "Assess → Recommend → Install"; roofing → "Inspect → Estimate → Install"; closets → "Design → Build → Install". Each step is a vivid one-sentence description.
 - CRITICAL — products[]: Generate EXACTLY ONE product entry for EACH service listed in the "Services offered" field of the business brief. The title MUST be that exact service name — do NOT add, remove, rename, or substitute services. If the brief lists "drain cleaning", the product title is "drain cleaning". If the brief lists 1 service, generate 1 product. The AI MUST NOT invent new services or replace the listed ones with anything else.
 - products[].description: 2 sentences about what this specific service involves and who needs it.
 - products[].details.subtitle: a quality/tier label appropriate to the trade (for luxury closets: "Signature Collection"; for drain/plumbing: "Professional Grade"; for HVAC: "Certified Service"; for roofing: "Expert Install" — match the actual trade).
@@ -411,10 +410,8 @@ Match each product to a real service from the business information.
 - theme: infer exactly one of the allowed theme slugs that best fits this specific industry and trade.
 - layoutStyle: infer exactly one of the allowed layout styles that best fits this specific industry and trade.`
 
-  if (sitemap && sitemap.length > 1) {
-    systemPrompt += `\n\n=== MULTI-PAGE SITEMAP (CRITICAL) ===
-The customer chose these pages: ${JSON.stringify(sitemap)}.
-Generate a "pagesConfig" array with ONE entry for EVERY page in the sitemap EXCEPT "Home"
+  systemPrompt += `\n\n=== MULTI-PAGE SITEMAP (CRITICAL) ===
+Generate a comprehensive "pagesConfig" array containing 8 to 12 pages for this business. This is a library of pages; you must generate the core pages AND all logical optional pages (e.g. FAQ, Service Areas, Financing, Gallery, specific services, About, Process, Contact, Testimonials, etc).
 (Home is rendered separately — do NOT include it in pagesConfig).
 
 For each page:
@@ -424,6 +421,7 @@ For each page:
   "Our Process" -> "/process", "Contact" -> "/contact", "FAQ" -> "/faq",
   "Financing" -> "/financing", "Services" -> "/services").
 - "title": the page title.
+- "is_active": boolean. Set to true if the page is essential for the initial site launch (e.g., About Us, Services, Contact), or false if it is an optional page that the Admin can enable later. ${sitemap && sitemap.length > 1 ? `The customer specifically requested these pages, so ensure they are included and set is_active to true for them: ${JSON.stringify(sitemap)}.` : ''}
 - "hero.headline": a punchy headline specific to that page.
 - "content_blocks": 2 to 4 blocks of RICH, SPECIFIC, PERSUASIVE selling copy tailored to this exact
   business and niche — NEVER generic placeholders like "List the cities you serve". Write real
@@ -436,11 +434,11 @@ For each page:
   Testimonials -> grid of quotes; Service Areas -> grid of cities + a text intro; About/Process ->
   text + image blocks. Fill every field with concrete, on-brand content. No lorem ipsum, no
   "describe your..." instructions, no empty bodies.`
-  }
 
   if (pageContents && Object.keys(pageContents).length > 0) {
     systemPrompt += `\n\n=== USER-CUSTOMIZED PAGE COPY (NON-NEGOTIABLE) ===
-The user has provided custom copy for the following pages. You MUST use this copy verbatim as the main content/body of the corresponding page's content_blocks. Do NOT generate new copy or paraphrase it.
+The user has provided custom copy for the following pages. You MUST incorporate the full substance and exact phrasing of this copy into the page's content_blocks. 
+CRITICAL: Do NOT just dump the entire text into a single "text" block. You MUST break the copy apart into 4 to 8 beautifully structured "content_blocks" utilizing rich layouts (image_left, image_right, grid, and text). Use implied sections in the copy as block "heading"s, and distribute the paragraphs into the "body" or "items" fields of the blocks to create a dynamic, premium layout.
 ${Object.entries(pageContents)
   .map(([slug, text]) => `- Page "/${slug.replace(/^\//, '')}": "${text.replace(/"/g, '\\"')}"`)
   .join('\n')}`
@@ -448,50 +446,27 @@ ${Object.entries(pageContents)
 
   systemPrompt += `\n\nOUTPUT: valid JSON only:\n${JSON.stringify(GENERATE_SITE_JSON_SCHEMA.parameters, null, 2)}`
 
-  const model = genAI.getGenerativeModel({
-    model: 'gemini-2.5-flash',
-    generationConfig: {
-      responseMimeType: 'application/json',
-      temperature: 0.7,
-      maxOutputTokens: 32768,
-      thinkingConfig: { thinkingBudget: 0 },
-    } as GenerationConfig,
+  const { text: rawText, provider } = await generateTextWithFallback({
+    prompt: `User: Business Information:\n\n${scrapedText}`,
+    systemPrompt,
+    jsonMode: true,
+    temperature: 0.7,
+    maxOutputTokens: 32768,
   })
-
-  const result_ai = await model.generateContent(
-    `System: ${systemPrompt}\n\nUser: Business Information:\n\n${scrapedText}`
-  )
-
-  const candidate = result_ai.response?.candidates?.[0]
-  const finishReason = candidate?.finishReason
-  let rawText = ''
-  try {
-    rawText = result_ai.response.text()
-  } catch {
-    rawText =
-      candidate?.content?.parts?.map((p) => ('text' in p ? p.text : '')).join('') ?? ''
-  }
-
-  if (!rawText.trim()) {
-    throw new Error(
-      `AI returned no content${finishReason ? ` (${finishReason})` : ''}`
-    )
-  }
 
   let aiData: Record<string, unknown>
   try {
     aiData = JSON.parse(sanitizeJsonString(extractJson(rawText))) as Record<string, unknown>
   } catch {
+    console.error('RAW TEXT:', rawText);
     throw new Error(
-      finishReason === 'MAX_TOKENS'
-        ? 'AI response truncated — try a shorter description.'
-        : 'AI did not return valid JSON.'
+      'AI did not return valid JSON.'
     )
   }
 
   return {
     data: aiData,
-    source: isUrl ? (scrapeOk ? 'url' : 'url-fallback') : 'text',
+    source: isUrl ? (scrapeOk ? 'url' : 'url-fallback') : provider,
     scraped: scrapeOk,
   }
 }

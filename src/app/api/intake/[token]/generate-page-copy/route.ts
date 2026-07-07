@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { GoogleGenerativeAI, type GenerationConfig } from '@google/generative-ai'
+import { generateTextWithFallback } from '@/lib/ai/aiTextProvider'
 import { getIntakeByToken } from '@/lib/intake/getIntakeByToken'
 import { assertDraftIntake, assertDepositPaid } from '@/lib/intake/intakeTierGates'
 import { checkRateLimit, hashRateKey } from '@/lib/rateLimit'
@@ -45,8 +45,6 @@ function sanitizeJsonString(json: string): string {
 export const maxDuration = 30
 export const runtime = 'nodejs'
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '')
-
 const VALID_SLUGS = new Set(SITE_PAGE_OPTIONS.map((p) => p.slug))
 const SLUG_TO_LABEL = new Map(SITE_PAGE_OPTIONS.map((p) => [p.slug, p.label]))
 const SLUG_TO_DESC = new Map(SITE_PAGE_OPTIONS.map((p) => [p.slug, p.description]))
@@ -64,44 +62,40 @@ function parsePlainTextContent(rawText: string): string {
 }
 
 async function generatePageCopy(prompt: string): Promise<string> {
-  // Primary path: structured JSON output on newest model.
+  // Primary path: structured JSON output via unified fallback provider
   try {
-    const primaryModel = genAI.getGenerativeModel({
-      model: 'gemini-2.5-flash',
-      generationConfig: {
-        responseMimeType: 'application/json',
-        temperature: 0.75,
-        maxOutputTokens: 4096,
-        thinkingConfig: { thinkingBudget: 0 },
-      } as GenerationConfig,
+    const { text: primaryText } = await generateTextWithFallback({
+      prompt,
+      jsonMode: true,
+      temperature: 0.75,
+      maxOutputTokens: 4096,
     })
-
-    const primary = await primaryModel.generateContent(prompt)
-    const primaryText = primary.response.text()
     const content = parseJsonContent(primaryText)
     if (content) return content
     throw new Error('AI returned empty JSON content')
-  } catch {
-    // Fallback path: plain text output on a broadly available model.
+  } catch (error) {
+    console.error('generatePageCopy JSON mode failed:', error)
+    // Fallback path: plain text output via unified fallback provider
     const fallbackPrompt =
       `${prompt}\n\n` +
       'Fallback mode: if JSON output is unavailable, return only raw page body text (no JSON, no markdown, no headings).'
 
-    const fallbackModel = genAI.getGenerativeModel({
-      model: 'gemini-2.0-flash',
-      generationConfig: {
+    try {
+      const { text: fallbackText } = await generateTextWithFallback({
+        prompt: fallbackPrompt,
+        jsonMode: false,
         temperature: 0.75,
         maxOutputTokens: 4096,
-      } as GenerationConfig,
-    })
-
-    const fallback = await fallbackModel.generateContent(fallbackPrompt)
-    const fallbackText = fallback.response.text()
-    const content = parsePlainTextContent(fallbackText)
-    if (!content) {
-      throw new Error('AI returned empty content')
+      })
+      const content = parsePlainTextContent(fallbackText)
+      if (!content) {
+        throw new Error('AI returned empty content')
+      }
+      return content
+    } catch (fallbackError) {
+      console.error('generatePageCopy fallback mode also failed:', fallbackError)
+      throw fallbackError
     }
-    return content
   }
 }
 
@@ -146,9 +140,9 @@ export async function POST(
   { params }: { params: Promise<{ token: string }> }
 ) {
   try {
-    if (!process.env.GEMINI_API_KEY) {
+    if (!process.env.OPENAI_API_KEY && !process.env.GEMINI_API_KEY) {
       return NextResponse.json(
-        { error: 'GEMINI_API_KEY is not configured.' },
+        { error: 'API keys are not configured.' },
         { status: 500 }
       )
     }
@@ -190,7 +184,7 @@ export async function POST(
     }
 
     const slug = typeof body?.slug === 'string' ? body.slug.trim() : ''
-    if (!slug || !VALID_SLUGS.has(slug)) {
+    if (!slug || !/^[a-z0-9-]+$/.test(slug)) {
       return NextResponse.json(
         { error: 'Invalid page slug.' },
         { status: 400 }
@@ -267,8 +261,8 @@ export async function POST(
       )
     }
 
-    const label = SLUG_TO_LABEL.get(slug) || slug
-    const desc = SLUG_TO_DESC.get(slug) || ''
+    const label = SLUG_TO_LABEL.get(slug) || slug.split('-').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
+    const desc = SLUG_TO_DESC.get(slug) || `Detailed information about ${label.toLowerCase()}`
     const directive = pageDirective(slug, label)
 
     const prompt = `System: You are an elite direct-response copywriter specializing in high-converting websites for local service businesses and contractors across any trade (e.g. plumbing, towing, HVAC, electrical, landscaping, custom closets & storage). Infer the specific trade from the business brief.

@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI, type GenerationConfig } from '@google/generative-ai'
+import { generateTextWithFallback } from '@/lib/ai/aiTextProvider'
 
 export type SuggestIdealCustomersInput = {
   industry?: string | null
@@ -10,7 +10,7 @@ export type SuggestIdealCustomersInput = {
 
 export type SuggestIdealCustomersResult = {
   options: string[]
-  source: 'default' | 'gemini'
+  source: 'default' | 'openai' | 'gemini'
 }
 
 /** Static fallback — used when Gemini is unavailable, fails, or input is too sparse. */
@@ -65,15 +65,6 @@ export async function suggestIdealCustomers(
     return { options: DEFAULT_CUSTOMER_OPTIONS, source: 'default' }
   }
 
-  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '')
-  const model = genAI.getGenerativeModel({
-    model: 'gemini-2.5-flash',
-    generationConfig: {
-      temperature: 0.5,
-      maxOutputTokens: 1024,
-    } as GenerationConfig,
-  })
-
   const prompt = `A contractor is filling out a form to build their marketing website and must choose their "ideal customer" from a dropdown menu.
 Based on their industry and services, suggest 4-5 short, specific ideal-customer segment labels (2-5 words each) that someone in this exact trade would actually recognize and pick from. Avoid generic filler — tailor to the trade (e.g. a towing company's segments differ completely from a custom closet company's).
 Always include one broad catch-all option worded close to "A mix of everyone".
@@ -84,16 +75,20 @@ Services offered: ${services.length > 0 ? services.join(', ') : '(not specified)
 ${other ? `Other/custom services: ${other}\n` : ''}${input.business_name ? `Business name: ${input.business_name}\n` : ''}${input.differentiators?.length ? `Differentiators: ${input.differentiators.join(', ')}\n` : ''}`
 
   try {
-    const result = await model.generateContent(prompt)
-    const rawText = result.response.text()
-    console.log("suggestIdealCustomers: Raw text returned by Gemini:", JSON.stringify(rawText))
+    const { text: rawText, provider } = await generateTextWithFallback({
+      prompt,
+      jsonMode: false,
+      temperature: 0.5,
+      maxOutputTokens: 1024,
+    })
+    console.log("suggestIdealCustomers: Raw text returned:", JSON.stringify(rawText))
     const text = rawText.replace(/```json/gi, '').replace(/```/g, '').trim()
     const parsed = JSON.parse(text) as { options?: unknown }
     const options = sanitizeOptions(parsed.options)
     console.log("suggestIdealCustomers: parsed options length:", options.length);
     if (options.length < 3) return { options: DEFAULT_CUSTOMER_OPTIONS, source: 'default' }
     if (!options.some((o) => o.toLowerCase().includes('mix'))) options.push(CATCH_ALL_OPTION)
-    return { options, source: 'gemini' }
+    return { options, source: provider }
   } catch (err) {
     console.error("suggestIdealCustomers AI Error:", err)
     return { options: DEFAULT_CUSTOMER_OPTIONS, source: 'default' }

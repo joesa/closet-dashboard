@@ -68,7 +68,7 @@ function defaultProductPrompt(serviceName: string): string {
       `lived-in imperfections. Shot on a full-frame DSLR with a 35mm lens, ` +
       `natural window light, photorealistic, 8k, crisp textures, wide 16:9 composition. NOT a 3D render, ` +
       `NOT CGI, not digital art — avoid plastic/glossy surfaces, waxy textures, and uncanny symmetry. ` +
-      `No text, no people, no logos.`
+      `No text, no logos.`
     );
   }
 
@@ -79,7 +79,7 @@ function defaultProductPrompt(serviceName: string): string {
     `well-executed result shown in a true-to-life setting with realistic detail and natural wear. ` +
     `Shot on a full-frame DSLR with a 35mm lens, natural light, photorealistic, 8k, crisp textures, ` +
     `wide 16:9 composition. NOT a 3D render, NOT CGI, not digital art — avoid plastic/glossy surfaces, ` +
-    `waxy textures, and uncanny symmetry. No text, no people, no logos.`
+    `waxy textures, and uncanny symmetry. No text, no logos.`
   );
 }
 
@@ -95,7 +95,7 @@ function defaultHeroPrompt(serviceName: string): string {
       `natural window light with soft realistic shadows, photorealistic, 8k, crisp focus, clean lines, ` +
       `clutter-free, wide 16:9 composition. NOT a 3D render, NOT CGI, not digital art — avoid ` +
       `plastic/glossy surfaces, waxy textures, warped geometry, and uncanny perfect symmetry. ` +
-      `No text, no people, no logos.`
+      `No text, no logos.`
     );
   }
 
@@ -106,7 +106,7 @@ function defaultHeroPrompt(serviceName: string): string {
     `real-world scene that conveys quality, craftsmanship, and trust. Shot on a full-frame DSLR ` +
     `with a 24mm lens, natural light with soft realistic shadows, photorealistic, 8k, crisp focus, ` +
     `clean composition, wide 16:9. NOT a 3D render, NOT CGI, not digital art — avoid plastic/glossy ` +
-    `surfaces, waxy textures, warped geometry, and uncanny perfect symmetry. No text, no people, no logos.`
+    `surfaces, waxy textures, warped geometry, and uncanny perfect symmetry. No text, no logos.`
   );
 }
 
@@ -391,11 +391,16 @@ export default function IntakeImageStudio({
       onUpdate(newSelections, siteConfig);
 
       try {
-        await fetch(`/api/intake/${token}/image-selection`, {
+        const res = await fetch(`/api/intake/${token}/image-selection`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(newSelections),
+          body: JSON.stringify({ ...newSelections, serviceNames: services }),
         });
+        const json = await res.json();
+        if (res.ok && json.imageSelections) {
+          setSelections(json.imageSelections);
+          onUpdate(json.imageSelections, siteConfig);
+        }
       } catch (err) {
         console.error('Failed to save custom upload to server', err);
       }
@@ -441,12 +446,19 @@ export default function IntakeImageStudio({
               : 'Generate 3 options'}
           </button>
           
-          <label className="cursor-pointer rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50">
+          <label
+            className={`rounded-md border border-gray-300 px-3 py-1.5 text-xs font-semibold ${
+              !!genLoading
+                ? 'cursor-not-allowed bg-gray-100 text-gray-400 opacity-50'
+                : 'cursor-pointer bg-white text-gray-700 hover:bg-gray-50'
+            }`}
+          >
             Upload own image
             <input
               type="file"
               accept="image/*"
               className="sr-only"
+              disabled={!!genLoading}
               onChange={(e) => handleFileUpload(e, slot, productIndex)}
             />
           </label>

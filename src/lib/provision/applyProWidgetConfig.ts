@@ -14,6 +14,7 @@ import {
   type PricingModel,
 } from '@/lib/rooms'
 import { resolveIndustrySlug, INDUSTRY_CONFIGS } from '@/lib/catalog/serviceCatalog'
+import { getEngineProfile } from '@/lib/catalog/engineProfiles'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 
 function defaultTierNames(hints: WidgetConfigHints) {
@@ -63,11 +64,26 @@ function buildDomainConfigFromHints(hints: WidgetConfigHints): DomainConfig {
 }
 
 
+function getDefaultPricing(hints: WidgetConfigHints) {
+  const slug = resolveIndustrySlug({
+    industry: hints.industry,
+    services: hints.services,
+    other_services: hints.otherServices,
+  })
+  const profile = getEngineProfile(slug)
+  const defaultTier = profile?.serviceDefaults?.[0]?.tiers
+  return {
+    basic: defaultTier?.[0]?.priceHint ?? 45,
+    standard: defaultTier?.[1]?.priceHint ?? 65,
+    premium: defaultTier?.[2]?.priceHint ?? 110,
+  }
+}
+
 /** Seed room_pricing for default rooms the contractor selected in intake. */
 export function buildRoomPricingFromHints(hints: WidgetConfigHints): RoomPricing {
   const pricing = cloneDefaultRoomPricing()
   const seed = hints.seedPricing
-  const defaults = { basic: 45, standard: 65, premium: 110 }
+  const defaults = getDefaultPricing(hints)
 
   for (const service of hints.services ?? []) {
     if (!isRoomType(service)) continue
@@ -105,7 +121,7 @@ function mergeGeneratedConfig(
   const other = hints.otherServices?.trim()
   if (other && !customRooms.some((r) => r.name.toLowerCase() === other.toLowerCase())) {
     const seed = hints.seedPricing
-    const defaults = { basic: 45, standard: 65, premium: 110 }
+    const defaults = getDefaultPricing(hints)
     customRooms.push({
       name: other,
       basic: hints.pricingModel === 'fixed' ? (seed?.basic ?? 0) : (seed?.basic ?? defaults.basic),

@@ -7,6 +7,12 @@ import Script from 'next/script'
 import { supabaseBrowser, getBrowserUser } from '@/lib/supabase-browser'
 import { DEMO_CONTRACTOR_ID, DEMO_RESET_NOTICE } from '@/lib/demo'
 import { WIDGET_CDN_URL } from '@/lib/urls'
+import { resolveIndustrySlug } from '@/lib/catalog/serviceCatalog'
+import { getEngineProfile } from '@/lib/catalog/engineProfiles'
+import OrderEditor from './components/OrderEditor'
+import PageManager from './components/PageManager'
+import BookingEditor from './components/BookingEditor'
+import TicketEditor from './components/TicketEditor'
 import {
   ROOM_TYPES,
   PRICING_TIERS,
@@ -37,6 +43,7 @@ export type ContractorAddon = {
 export type ContractorSettings = {
   id: string
   user_id?: string
+  industry?: string
   company_name: string
   primary_color_hex: string
   contact_email: string
@@ -777,6 +784,23 @@ export default function DashboardPage() {
           {/* Divider */}
           <div className="mb-8 border-t border-white/[0.04]" />
 
+          {(() => {
+            const slug = resolveIndustrySlug({ industry: form.industry })
+            const profile = getEngineProfile(slug)
+            const model = profile?.engagementModel || 'quote'
+
+            if (model === 'order') {
+              return <OrderEditor form={form} setForm={setForm} onSave={handleSave} saving={saving} />
+            }
+            if (model === 'booking') {
+              return <BookingEditor form={form} setForm={setForm} onSave={handleSave} saving={saving} />
+            }
+            if (model === 'ticket') {
+              return <TicketEditor form={form} setForm={setForm} onSave={handleSave} saving={saving} />
+            }
+            
+            return (
+              <>
           {/* Pricing — collapsible */}
           <button
             type="button"
@@ -1292,6 +1316,12 @@ export default function DashboardPage() {
             )}
           </div>
           )}
+          </>
+            )
+          })()}
+
+          {/* Website Pages Manager */}
+          <PageManager contractorId={form.id} />
 
           {/* Save */}
           <div className="flex items-center gap-4">

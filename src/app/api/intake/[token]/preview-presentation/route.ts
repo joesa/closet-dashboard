@@ -75,6 +75,7 @@ export async function POST(
   return NextResponse.json({
     theme: result.theme,
     layoutStyle: result.layoutStyle,
+    designVariantOverride: result.designVariantOverride,
     allowedThemes,
     allowedLayouts,
     themeTokens: themeTokens ?? null,
