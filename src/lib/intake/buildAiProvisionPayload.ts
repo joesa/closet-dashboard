@@ -12,6 +12,7 @@ import {
   parseImageSelections,
   syncProductSlots,
 } from '@/lib/intake/imageSelections'
+import { mergeProspectImageSelections } from '@/lib/intake/mergeProspectImages'
 import { provisionServiceLabels } from '@/lib/intake/provisionServiceLabels'
 import { normalizeAiPagesConfig } from '@/lib/catalog/sitePages'
 import type { ProvisionTenantInput } from '@/lib/provision/types'
@@ -95,22 +96,13 @@ export async function buildAiProvisionPayload(
   const services = provisionServiceLabels(row)
   const selections = syncProductSlots(parseImageSelections(row.image_selections), services)
 
-  const products = (site.products ?? []).map((p, i) => {
-    const sel = selections.products.find(
-      (s) => s.productIndex === i || s.serviceName === p.title
-    )
-    return {
-      ...p,
-      image: sel?.selectedUrl || p.image,
-    }
-  })
+  const { config: mergedSite } = mergeProspectImageSelections(site, selections)
 
   const aiSiteConfig = {
-    ...site,
+    ...mergedSite,
     theme,
     layoutStyle,
     designVariant: resolved.designVariantOverride || (site as { designVariant?: string }).designVariant,
-    products,
     // The model returns pagesConfig at the TOP level of ai_site_config (sibling
     // of siteConfig), so it must be lifted in here — otherwise provisioning
     // never sees it and falls back to empty placeholder pages. Reconcile slugs

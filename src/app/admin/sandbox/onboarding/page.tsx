@@ -4,6 +4,12 @@ import React, { useEffect, useMemo, useState } from 'react';
 import GuidedBuilder, { type GuidedResult } from './GuidedBuilder';
 import { SITE_PAGE_OPTIONS } from '@/lib/catalog/sitePages';
 import { listIndustries, resolveIndustrySlug, servicesForIndustry } from '@/lib/catalog/serviceCatalog';
+import {
+  extractProspectSiteConfig,
+  mergeProspectImageSelections,
+  type ProspectSiteConfig,
+} from '@/lib/intake/mergeProspectImages';
+import type { IntakeImageSelections } from '@/lib/intake/imageSelections';
 
 const SANDBOX_INDUSTRY_OPTIONS = listIndustries()
   .map((industry) => industry.label)
@@ -112,14 +118,7 @@ type AiProduct = {
   [key: string]: unknown;
 };
 
-type AiSiteConfig = {
-  theme?: string;
-  hero?: { headline?: string; imagePrompt?: string; image?: string };
-  about?: { description?: string };
-  products?: AiProduct[];
-  pagesConfig?: unknown[];
-  [key: string]: unknown;
-};
+type AiSiteConfig = ProspectSiteConfig;
 
 type GeneratedImages = {
   hero?: string;
@@ -132,79 +131,6 @@ type AiWidgetConfig = {
   customFinishes?: unknown[];
   [key: string]: unknown;
 };
-
-// Shape of the prospect's saved image selections (intake studio output).
-type IntakeImageSelections = {
-  hero?: { selectedUrl?: string };
-  products?: { serviceName?: string; selectedUrl?: string }[];
-};
-
-const normLabel = (s: string) =>
-  s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\b(\w+?)s\b/g, '$1').trim();
-
-// Score how well a service label matches an AI product title by shared word stems.
-function labelMatchScore(serviceName: string, title: string): number {
-  const a = new Set(normLabel(serviceName).split(' ').filter((w) => w.length > 2));
-  const b = new Set(normLabel(title).split(' ').filter((w) => w.length > 2));
-  let score = 0;
-  for (const w of a) if (b.has(w)) score++;
-  return score;
-}
-
-/**
- * Merge a prospect's selected studio images onto their AI site config so the
- * build deploys the images they actually generated + picked. Product slots in
- * the studio are keyed by service label; AI products use curated titles, so we
- * match by shared word stems and fall back to positional assignment for any
- * product the AI titled differently.
- */
-function applyProspectImages(
-  config: AiSiteConfig,
-  selections: IntakeImageSelections
-): { config: AiSiteConfig; generated: GeneratedImages } {
-  const heroUrl = selections.hero?.selectedUrl || undefined;
-  const selected = (selections.products ?? []).filter((p) => !!p.selectedUrl);
-
-  const used = new Set<number>();
-  const pickFor = (title: string): string | undefined => {
-    let bestIdx = -1;
-    let bestScore = 0;
-    selected.forEach((s, i) => {
-      if (used.has(i)) return;
-      const score = labelMatchScore(s.serviceName ?? '', title);
-      if (score > bestScore) {
-        bestScore = score;
-        bestIdx = i;
-      }
-    });
-    if (bestIdx < 0) bestIdx = selected.findIndex((_, i) => !used.has(i));
-    if (bestIdx < 0) return undefined;
-    used.add(bestIdx);
-    return selected[bestIdx].selectedUrl || undefined;
-  };
-
-  const products: AiProduct[] = Array.isArray(config.products) ? [...config.products] : [];
-  const generatedProducts: GeneratedImages['products'] = [];
-  const nextProducts = products.map((p, i) => {
-    if (p.image) {
-      generatedProducts.push({ index: i, title: p.title, image: p.image });
-      return p;
-    }
-    const url = pickFor(p.title ?? '');
-    if (url) {
-      generatedProducts.push({ index: i, title: p.title, image: url });
-      return { ...p, image: url };
-    }
-    return p;
-  });
-
-  const nextConfig: AiSiteConfig = {
-    ...config,
-    products: nextProducts,
-    hero: { ...config.hero, ...(heroUrl ? { image: heroUrl } : {}) },
-  };
-  return { config: nextConfig, generated: { hero: heroUrl, products: generatedProducts } };
-}
 
 export default function SandboxOnboarding() {
   const [loading, setLoading] = useState(false);
@@ -339,10 +265,11 @@ export default function SandboxOnboarding() {
           // AI Premium prospects already generated their site + picked images in
           // the intake studio. Reuse that work so the operator deploys exactly
           // what the customer paid for instead of a blank/default build.
-          const aiRaw = it.ai_site_config as { siteConfig?: AiSiteConfig } | AiSiteConfig | null;
-          const prospectConfig = (aiRaw && typeof aiRaw === 'object' && 'siteConfig' in aiRaw
-            ? (aiRaw as { siteConfig?: AiSiteConfig }).siteConfig
-            : (aiRaw as AiSiteConfig | null)) ?? null;
+          const prospectConfig = extractProspectSiteConfig(it.ai_site_config);
+          const selections = (it.image_selections as IntakeImageSelections | null) ?? {
+            hero: { attemptsUsed: 0, history: [] },
+            products: [],
+          };
 
             // Reflect the prospect's chosen pages in the sitemap UI so the
             // operator sees all N pages (Home + selected), not a default of 1.
@@ -357,17 +284,22 @@ export default function SandboxOnboarding() {
               setIsSitemapGenerated(true);
             }
 
-          if (prospectConfig) {
-            const selections = (it.image_selections as IntakeImageSelections | null) ?? {};
-            const { config: mergedConfig, generated } = applyProspectImages(prospectConfig, selections);
+          const hasSelectedImages =
+            !!selections.hero?.selectedUrl ||
+            (selections.products ?? []).some((p) => !!p.selectedUrl);
+
+          if (prospectConfig || hasSelectedImages) {
+            const { config: mergedConfig, generated } = mergeProspectImageSelections(
+              prospectConfig ?? {},
+              selections
+            );
 
             // pagesConfig lives at the TOP level of ai_site_config (sibling of
             // siteConfig), so it isn't part of prospectConfig. Lift it in so the
             // operator deploys the prospect's multi-page build, not just Home.
+            const aiRaw = it.ai_site_config as { pagesConfig?: unknown[] } | null;
             const topLevelPages =
-              aiRaw && typeof aiRaw === 'object'
-                ? (aiRaw as { pagesConfig?: unknown[] }).pagesConfig
-                : undefined;
+              aiRaw && typeof aiRaw === 'object' ? aiRaw.pagesConfig : undefined;
             if (Array.isArray(topLevelPages) && topLevelPages.length > 0) {
               mergedConfig.pagesConfig = topLevelPages;
             }
@@ -387,7 +319,9 @@ export default function SandboxOnboarding() {
               heroImage: generated.hero || prev.heroImage,
             }));
             setIntakeBanner(
-              `Loaded ${it.business_name || 'prospect'}'s AI Premium build — their generated site + ${generated.products.length} product image${generated.products.length === 1 ? '' : 's'}${generated.hero ? ' and hero' : ''} are pre-filled. Review and deploy.`
+              prospectConfig
+                ? `Loaded ${it.business_name || 'prospect'}'s AI Premium build — their generated site + ${generated.products.length} product image${generated.products.length === 1 ? '' : 's'}${generated.hero ? ' and hero' : ''} are pre-filled. Review and deploy.`
+                : `Loaded ${it.business_name || 'prospect'}'s intake images — ${generated.products.length} product image${generated.products.length === 1 ? '' : 's'}${generated.hero ? ' and hero' : ''} are pre-filled. Generate or review the site brief, then deploy.`
             );
           } else {
             setIntakeBanner(`Loaded intake for ${it.business_name || 'prospect'}. Review the brief below, generate, then deploy.`);
