@@ -32,6 +32,8 @@ import {
   getIndustry,
   resolveIndustrySlug,
 } from '@/lib/catalog/serviceCatalog'
+import { getEngineProfile } from '@/lib/catalog/engineProfiles'
+import type { IndustrySlug } from '@/lib/catalog/types'
 import {
   DEFAULT_DOMAIN_CONFIG,
   ROOM_TYPES,
@@ -64,6 +66,35 @@ function inferDisabledDefaultRooms(services: string[] | null | undefined): strin
 
 type CustomRoomInput = { name: string; basic?: number; standard?: number; premium?: number }
 
+type TierDefaults = { basic: number; standard: number; premium: number }
+
+// Sensible starting prices for a business's industry, sourced from the engine
+// profile's serviceDefaults priceHints (engineProfiles.ts). Used whenever no
+// AI/user-supplied pricing is available so the quote/booking/ticket/order
+// calculator never ships all-$0 tiers. Falls back to generic trade prices when
+// a profile omits a given tier.
+function getEngineTierDefaults(slug: IndustrySlug): TierDefaults {
+  const tiers = getEngineProfile(slug)?.serviceDefaults?.[0]?.tiers ?? []
+  const hintFor = (tier: 'basic' | 'standard' | 'premium') =>
+    tiers.find((t) => t.tier === tier)?.priceHint
+  const standard = hintFor('standard') ?? tiers[0]?.priceHint ?? 65
+  const basic = hintFor('basic') ?? Math.max(1, Math.round(standard * 0.7))
+  const premium = hintFor('premium') ?? Math.round(standard * 1.6)
+  return { basic, standard, premium }
+}
+
+// A room is effectively unpriced when every tier is missing or 0. (A flat_tiered
+// room legitimately has basic=0 but a non-zero standard/premium, so we only
+// treat the room as unpriced when the whole thing sums to 0.)
+function roomIsUnpriced(room: CustomRoomInput): boolean {
+  return (
+    (Number(room.basic) || 0) +
+      (Number(room.standard) || 0) +
+      (Number(room.premium) || 0) ===
+    0
+  )
+}
+
 // The admin's "Services Offered" checkboxes (or, for a prospect intake, the
 // customer's own selected services) are the authoritative list of what the
 // business actually sells. The AI widget generation only sees a snapshot of
@@ -74,27 +105,38 @@ type CustomRoomInput = { name: string; basic?: number; standard?: number; premiu
 // matches the selected services list.
 function mergeCustomRoomsWithServices(
   customRooms: CustomRoomInput[],
-  services: string[] | null | undefined
+  services: string[] | null | undefined,
+  engineDefaults: TierDefaults
 ): CustomRoomInput[] {
-  const existingNames = new Set(customRooms.map((r) => r.name.toLowerCase().trim()))
-  const missing = (services || []).filter(
-    (s) => s.trim() && !existingNames.has(s.toLowerCase().trim())
-  )
-  if (missing.length === 0) return customRooms
-
-  // Default new services to the average pricing of whatever the AI already
-  // generated (if any) instead of leaving them at $0, while still keeping it
-  // easy to spot in the dashboard that their pricing needs a review.
+  // Prefer the average of whatever pricing the AI already generated so newly
+  // added services stay in the same ballpark; if nothing is priced yet, fall
+  // back to the industry's engine-profile defaults so we never seed all-$0.
   const avg = (key: 'basic' | 'standard' | 'premium') => {
     const values = customRooms
       .map((r) => r[key])
       .filter((v): v is number => typeof v === 'number' && v > 0)
-    if (values.length === 0) return 0
+    if (values.length === 0) return engineDefaults[key]
     return Math.round(values.reduce((sum, v) => sum + v, 0) / values.length)
   }
-  const defaults = { basic: avg('basic'), standard: avg('standard'), premium: avg('premium') }
+  const defaults: TierDefaults = {
+    basic: avg('basic'),
+    standard: avg('standard'),
+    premium: avg('premium'),
+  }
 
-  return [...customRooms, ...missing.map((name) => ({ name, ...defaults }))]
+  const existingNames = new Set(customRooms.map((r) => r.name.toLowerCase().trim()))
+  const missing = (services || []).filter(
+    (s) => s.trim() && !existingNames.has(s.toLowerCase().trim())
+  )
+
+  // Backfill sensible prices onto any AI/user room that came through entirely
+  // unpriced (the root cause of the all-$0 calculator), then append rooms for
+  // every selected service the AI never generated.
+  const priced = customRooms.map((r) =>
+    roomIsUnpriced(r) ? { ...r, ...defaults } : r
+  )
+
+  return [...priced, ...missing.map((name) => ({ name, ...defaults }))]
 }
 
 function isMissingDesignVariantColumn(error: unknown): boolean {
@@ -814,7 +856,12 @@ export async function provisionTenant(
 
   const aiCustomRooms =
     (aiWidgetConfig as { customRooms?: CustomRoomInput[] } | null)?.customRooms ?? []
-  const mergedCustomRooms = mergeCustomRoomsWithServices(aiCustomRooms, services)
+  const engineTierDefaults = getEngineTierDefaults(beforeAfterContext.industry)
+  const mergedCustomRooms = mergeCustomRoomsWithServices(
+    aiCustomRooms,
+    services,
+    engineTierDefaults
+  )
   if (isOrderBusiness) {
     // Order-industry businesses (see EngagementModel) — seed the menu/catalog
     // items into the menu_items table. If the AI sandbox generated customRooms,
@@ -823,7 +870,7 @@ export async function provisionTenant(
     if (finalMenuItems.length === 0 && mergedCustomRooms.length > 0) {
       finalMenuItems = mergedCustomRooms.map(r => ({
         name: r.name,
-        price: r.standard || r.basic || 10,
+        price: r.standard || r.basic || engineTierDefaults.standard,
         category: 'Menu'
       }))
     }
@@ -847,7 +894,7 @@ export async function provisionTenant(
           contractor_id: tenantId,
           name: r.name,
           duration_minutes: 60,
-          price_cents: (r.standard || r.basic || 50) * 100, // custom rooms are in dollars
+          price_cents: (r.standard || r.basic || engineTierDefaults.standard) * 100, // custom rooms are in dollars
           sort_order: i,
         }))
       )
@@ -877,7 +924,7 @@ export async function provisionTenant(
         event_time: '19:00',
         venue: 'Main Venue',
         capacity: 100,
-        price_cents: (mainService.standard || mainService.basic || 25) * 100,
+        price_cents: (mainService.standard || mainService.basic || engineTierDefaults.standard) * 100,
         is_active: true
       })
     }
