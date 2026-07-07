@@ -756,9 +756,13 @@ export async function provisionTenant(
     // the intake form so the admin never guesses the sitemap. AI Premium
     // builds already set pages_config above from the art-directed pagesConfig.
     if (!siteConfigData.pages_config && requestedPageSlugs.length > 0) {
+      const stdImagePool = ((siteConfigData.products_config as Array<{ image?: string }>) || [])
+        .map((p) => p?.image)
+        .filter((u): u is string => typeof u === 'string' && u.length > 0)
       const basicPages = buildBasicPagesConfig(
         clampPagesForTier(requestedPageSlugs, intakeTierForPages),
-        pageContents
+        pageContents,
+        stdImagePool.length > 0 ? stdImagePool : PRODUCT_IMAGE_POOL
       )
       if (basicPages.length > 0) {
         siteConfigData.pages_config = basicPages
@@ -794,15 +798,23 @@ export async function provisionTenant(
       ]
     }
 
+    // Populate the Portfolio/Gallery page. Prefer the prospect's uploaded
+    // project photos; when none were uploaded, fall back to the product/service
+    // images so the gallery is never empty.
     if (
-      galleryUrls.length > 0 &&
       Array.isArray(siteConfigData.pages_config) &&
       (siteConfigData.pages_config as BasicPageConfig[]).length > 0
     ) {
-      siteConfigData.pages_config = injectGalleryImagesIntoPages(
-        siteConfigData.pages_config as BasicPageConfig[],
-        galleryUrls
-      )
+      const productImagePool = ((siteConfigData.products_config as Array<{ image?: string }>) || [])
+        .map((p) => p?.image)
+        .filter((u): u is string => typeof u === 'string' && u.length > 0)
+      const galleryImages = galleryUrls.length > 0 ? galleryUrls : productImagePool
+      if (galleryImages.length > 0) {
+        siteConfigData.pages_config = injectGalleryImagesIntoPages(
+          siteConfigData.pages_config as BasicPageConfig[],
+          galleryImages
+        )
+      }
     }
 
     // Deterministically pick this site's design. Unless the admin forced a

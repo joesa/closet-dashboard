@@ -1221,7 +1221,8 @@ export default function IntakeFormClient({
     if (form.pages.some((slug) => !form.pageContents[slug]?.trim())) {
       void handleGenerateAllPageCopy();
     }
-  }, [currentStepIndex, stepIdx.pageContent, handleGenerateAllPageCopy]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentStepIndex, stepIdx.pageContent]);
 
   const businessStepComplete =
     form.businessName.trim().length > 0 &&

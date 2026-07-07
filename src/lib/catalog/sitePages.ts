@@ -163,6 +163,100 @@ function portfolioSlug(slug: string): boolean {
 }
 
 /**
+ * Page copy is sometimes stored as the raw AI response — a JSON string like
+ * `{ "content": "..." }` — instead of the parsed body. Recover the actual copy
+ * so it never renders as literal JSON to a visitor.
+ */
+export function parsePageCopy(raw: unknown): string {
+  if (typeof raw !== 'string') return ''
+  const t = raw.trim()
+  if (!t) return ''
+  if (t.startsWith('{') && t.includes('"content"')) {
+    try {
+      const obj = JSON.parse(t) as { content?: unknown }
+      if (typeof obj.content === 'string') return obj.content.trim()
+    } catch {
+      // Truncated / not-quite-valid JSON: pull the content value heuristically.
+      // Handles the case where the closing quote/brace was cut off entirely.
+      const m = t.match(/"content"\s*:\s*"([\s\S]*)$/)
+      if (m) {
+        return m[1]
+          .replace(/"\s*}?\s*$/, '')
+          .replace(/\\n/g, '\n')
+          .replace(/\\"/g, '"')
+          .replace(/\\t/g, ' ')
+          .trim()
+      }
+    }
+  }
+  return t
+}
+
+/** Split a copy blob into trimmed paragraphs (any run of newlines separates). */
+export function splitParagraphs(text: string): string[] {
+  return text
+    .split(/\n+/)
+    .map((p) => p.trim())
+    .filter(Boolean)
+}
+
+/**
+ * Turn a flat page-copy blob into structured content blocks so pages get real
+ * layout (intro + alternating image/text sections) instead of one wall of
+ * text. When `images` are supplied they're woven into image_left/image_right
+ * sections; otherwise the copy is still broken into separate text blocks.
+ * Continuation blocks carry an empty heading (the renderer omits empty ones).
+ */
+export function contentToBlocks(
+  rawContent: unknown,
+  title: string,
+  images: string[] = []
+): PageContentBlock[] {
+  const content = parsePageCopy(rawContent)
+  const paras = splitParagraphs(content)
+  if (paras.length === 0) {
+    return [
+      {
+        type: 'text',
+        heading: title,
+        body: content || `Detailed information about ${title.toLowerCase()}.`,
+      },
+    ]
+  }
+
+  const imgs = images.filter((u) => typeof u === 'string' && u.trim().length > 0)
+  const blocks: PageContentBlock[] = [
+    { type: 'text', heading: title, body: paras[0] },
+  ]
+
+  const rest = paras.slice(1)
+  if (rest.length === 0) return blocks
+
+  // Group the remaining paragraphs so each image section holds ~1-2 paragraphs
+  // (keeps text/image sections balanced rather than one image per sentence).
+  const perGroup = rest.length > 4 ? 2 : 1
+  const groups: string[] = []
+  for (let i = 0; i < rest.length; i += perGroup) {
+    groups.push(rest.slice(i, i + perGroup).join('\n\n'))
+  }
+
+  // Always emit image_left/image_right section types (alternating) so the
+  // provisioning pipeline can fill their images from the product/hero pool
+  // even when no images were passed here. The renderer degrades gracefully to
+  // full-width text when a section ends up without an image.
+  groups.forEach((body, i) => {
+    blocks.push({
+      type: i % 2 === 0 ? 'image_left' : 'image_right',
+      heading: '',
+      body,
+      ...(imgs.length > 0 ? { image: imgs[i % imgs.length] } : {}),
+    })
+  })
+
+  return blocks
+}
+
+/**
  * Attach intake gallery uploads to the Portfolio page so /portfolio shows real
  * customer photos instead of text-only AI placeholders.
  */
@@ -202,18 +296,29 @@ export function injectGalleryImagesIntoPages(
  * customer picked instead of the admin guessing. AI Premium builds replace
  * these with art-directed pagesConfig from the model.
  */
-export function buildBasicPagesConfig(slugs: string[], pageContents?: Record<string, string>): BasicPageConfig[] {
+export function buildBasicPagesConfig(
+  slugs: string[],
+  pageContents?: Record<string, string>,
+  images: string[] = []
+): BasicPageConfig[] {
   return sanitizePageSlugs(slugs).map((slug) => {
     const opt = SLUG_TO_OPTION.get(slug)
     const title = opt?.label ?? slug.split('-').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
     const customText = pageContents?.[slug]
+    const content_blocks = customText
+      ? contentToBlocks(customText, title, images)
+      : [
+          {
+            type: 'text',
+            heading: title,
+            body: opt?.description || `Detailed information about ${title.toLowerCase()}.`,
+          } as PageContentBlock,
+        ]
     return {
       slug: `/${slug}`,
       title,
       hero: { headline: title, subheadline: opt?.description ?? '' },
-      content_blocks: [
-        { type: 'text', heading: title, body: customText || opt?.description || `Detailed information about ${title.toLowerCase()}.` },
-      ],
+      content_blocks,
     }
   })
 }
@@ -270,18 +375,8 @@ export function normalizeAiPagesConfig(
         ? ((ai.hero as { headline: string }).headline)
         : title
 
-    // Use custom page contents if the prospect provided it.
-    if (pageContents && pageContents[slug]) {
-      return {
-        slug: `/${slug}`,
-        title,
-        hero: { headline: heroHeadline, subheadline: opt?.description ?? '' },
-        content_blocks: [
-          { type: 'text', heading: title, body: pageContents[slug] },
-        ],
-      }
-    }
-
+    // Prefer the model's structured content blocks (real layout: image/text
+    // sections, grids, galleries) when it produced them for this page.
     const blocks = Array.isArray(ai?.content_blocks) ? (ai!.content_blocks as BasicPageConfig['content_blocks']) : null
     if (blocks && blocks.length > 0) {
       return {
@@ -289,6 +384,18 @@ export function normalizeAiPagesConfig(
         title,
         hero: { headline: heroHeadline, subheadline: opt?.description ?? '' },
         content_blocks: blocks,
+      }
+    }
+
+    // Otherwise fall back to the prospect's page copy — but split it into
+    // structured blocks (intro + alternating image/text) instead of dumping
+    // the whole thing into a single text block with no layout.
+    if (pageContents && pageContents[slug]) {
+      return {
+        slug: `/${slug}`,
+        title,
+        hero: { headline: heroHeadline, subheadline: opt?.description ?? '' },
+        content_blocks: contentToBlocks(pageContents[slug], title),
       }
     }
     // Gap filler: model omitted this page — ship a basic scaffold so it exists.
