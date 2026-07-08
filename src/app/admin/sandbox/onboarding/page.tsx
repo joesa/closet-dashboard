@@ -3,6 +3,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import GuidedBuilder, { type GuidedResult } from './GuidedBuilder';
 import { pageSlugsToSitemap } from '@/lib/catalog/sitePages';
+import {
+  LAYOUT_SLUGS,
+  THEME_SLUGS,
+} from '@/lib/catalog/sitePresentationCatalog';
 import { listIndustries, resolveIndustrySlug, servicesForIndustry } from '@/lib/catalog/serviceCatalog';
 import {
   extractProspectSiteConfig,
@@ -10,6 +14,13 @@ import {
   type ProspectSiteConfig,
 } from '@/lib/intake/mergeProspectImages';
 import type { IntakeImageSelections } from '@/lib/intake/imageSelections';
+
+function formatSlugLabel(slug: string): string {
+  return slug
+    .split('-')
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ');
+}
 
 const SANDBOX_INDUSTRY_OPTIONS = listIndustries()
   .map((industry) => industry.label)
@@ -127,6 +138,17 @@ type GeneratedImages = {
   products: { index: number; title?: string; image: string }[];
 };
 
+type ParsedBrief = {
+  industryLabel: string;
+  businessName: string;
+  services: string[];
+  serviceArea?: string;
+  theme: string;
+  layoutStyle: string;
+  suggestedPageCount: number;
+  description: string;
+};
+
 type AiWidgetConfig = {
   customRooms?: { name?: string }[];
   customAddOns?: { name?: string }[];
@@ -137,6 +159,7 @@ type AiWidgetConfig = {
 export default function SandboxOnboarding() {
   const [loading, setLoading] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
+  const [aiPhase, setAiPhase] = useState('');
   const [resultUrl, setResultUrl] = useState('');
   const [tempPassword, setTempPassword] = useState('');
   const [loginEmail, setLoginEmail] = useState('');
@@ -466,115 +489,105 @@ export default function SandboxOnboarding() {
     }
   };
 
-  const handleGenerateSitemap = async () => {
-    if (!aiInput.trim()) {
-      setError('Please enter a URL or business description.');
-      return;
-    }
-    
-    if (pageCount === 1 || siteMode === 'widget') {
-      // Single-page sites (and all widget-only builds) skip sitemap generation.
-      setSitemap(['Home']);
-      setIsSitemapGenerated(true);
-      return;
-    }
+  const resetSmartConfigure = () => {
+    setIsSitemapGenerated(false);
+    setSitemap([]);
+    setAiWidgetConfig(null);
+    setAiSiteConfig(null);
+    setAiUpsellPitch('');
+    setGeneratedImages(null);
+    setAiPhase('');
+  };
 
-    setAiLoading(true);
-    setError('');
-    try {
-      const res = await fetch('/api/ai/generate-sitemap', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ input: aiInput, pageCount })
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || 'Sitemap Generation failed');
-      
-      setSitemap(json.data.pages);
-      setIsSitemapGenerated(true);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Sitemap Generation failed');
-    } finally {
-      setAiLoading(false);
+  const applyParsedBrief = (parsed: ParsedBrief) => {
+    setSelectedIndustry(parsed.industryLabel);
+    setRecommendedTheme(parsed.theme);
+    setIntakeSetup((prev) => ({
+      ...prev,
+      industry: parsed.industryLabel,
+      serviceArea: parsed.serviceArea,
+    }));
+    setFormData((prev) => ({
+      ...prev,
+      businessName: parsed.businessName || prev.businessName,
+      subdomain: slugify(parsed.businessName || prev.businessName),
+      theme: parsed.theme || prev.theme,
+      layoutStyle: parsed.layoutStyle || prev.layoutStyle,
+      services: parsed.services.length > 0 ? parsed.services : prev.services,
+      heroHeadline: parsed.businessName ? `Welcome to ${parsed.businessName}` : prev.heroHeadline,
+      // Drop demo garage placeholders when configuring a different trade.
+      aboutDescription: '',
+      heroImage: '',
+      beforeImage: '',
+    }));
+    if (parsed.suggestedPageCount >= 1 && parsed.suggestedPageCount <= 10) {
+      setPageCount(parsed.suggestedPageCount);
     }
   };
 
-  const handleAIGenerate = async () => {
-    setAiLoading(true);
-    setError('');
-    try {
-      const res = await fetch('/api/ai/generate-site', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ input: aiInput, sitemap })
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || 'AI Generation failed');
-      
-      const { siteConfig, widgetConfig, upsellPitch, pagesConfig } = json.data;
-      
-      if (pagesConfig) {
-        siteConfig.pagesConfig = pagesConfig;
-      }
+  const runSiteGeneration = async (
+    brief: string,
+    pages: string[],
+    servicePool: string[]
+  ) => {
+    setAiPhase('Generating site copy & calculator…');
+    const res = await fetch('/api/ai/generate-site', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ input: brief, sitemap: pages }),
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || 'AI Generation failed');
 
-      setAiSiteConfig(siteConfig);
-      setAiWidgetConfig(widgetConfig);
-      setAiUpsellPitch(upsellPitch);
-      
-      // Map AI-generated products back onto our service checkboxes (fuzzy, plural-insensitive).
-      const products: Array<{ title?: string }> = Array.isArray(siteConfig.products) ? siteConfig.products : [];
-      const norm = (x: string) => x.toLowerCase().replace(/s\b/g, '').trim();
-      const productTitles = products.map(p => norm(p?.title || '')).filter(Boolean);
-      const matchedServices = availableServices.filter(svc => {
-        const s = norm(svc);
-        return productTitles.some(t => t.includes(s) || s.includes(t));
-      });
-
-      const layoutFromAi =
-        typeof siteConfig.layoutStyle === 'string' ? siteConfig.layoutStyle : '';
-
-      // Pre-fill the editable form so the operator reviews/tweaks the AI brief rather than typing it.
-      setFormData(prev => ({
-        ...prev,
-        theme: siteConfig.theme || prev.theme,
-        layoutStyle: layoutFromAi || prev.layoutStyle,
-        // Avoid inheriting the demo garage placeholder for a different business.
-        heroHeadline:
-          siteConfig.hero?.headline ||
-          (prev.businessName ? `Welcome to ${prev.businessName}` : ''),
-        // Use the freshly generated AI copy, else empty — don't fall back to the
-        // sandbox demo's about text for a different business.
-        aboutDescription: siteConfig.about?.description || '',
-        services: matchedServices.length > 0 ? matchedServices : prev.services,
-        subdomain: prev.subdomain || slugify(prev.businessName),
-      }));
-      
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'AI Generation failed');
-    } finally {
-      setAiLoading(false);
+    const { siteConfig, widgetConfig, upsellPitch, pagesConfig } = json.data;
+    if (pagesConfig) {
+      siteConfig.pagesConfig = pagesConfig;
     }
+
+    setAiSiteConfig(siteConfig);
+    setAiWidgetConfig(widgetConfig);
+    setAiUpsellPitch(upsellPitch);
+
+    const products: Array<{ title?: string }> = Array.isArray(siteConfig.products) ? siteConfig.products : [];
+    const norm = (x: string) => x.toLowerCase().replace(/s\b/g, '').trim();
+    const productTitles = products.map((p) => norm(p?.title || '')).filter(Boolean);
+    const matchedServices = servicePool.filter((svc) => {
+      const s = norm(svc);
+      return productTitles.some((t) => t.includes(s) || s.includes(t));
+    });
+
+    const layoutFromAi =
+      typeof siteConfig.layoutStyle === 'string' ? siteConfig.layoutStyle : '';
+
+    setFormData((prev) => ({
+      ...prev,
+      theme: siteConfig.theme || prev.theme,
+      layoutStyle: layoutFromAi || prev.layoutStyle,
+      heroHeadline:
+        siteConfig.hero?.headline ||
+        (prev.businessName ? `Welcome to ${prev.businessName}` : ''),
+      aboutDescription: siteConfig.about?.description || '',
+      services: matchedServices.length > 0 ? matchedServices : prev.services,
+      subdomain: prev.subdomain || slugify(prev.businessName),
+    }));
+
+    return siteConfig as AiSiteConfig;
   };
 
-  // Opt-in bespoke image generation: render the hero + product images from the
-  // AI's art-direction prompts (DALL-E 3), upload them to Supabase Storage,
-  // and patch the permanent URLs back onto the form + aiSiteConfig so provision
-  // persists them instead of the shared Unsplash placeholders.
-  const handleGenerateImages = async () => {
-    if (!aiSiteConfig) return;
+  const runImageGeneration = async (siteConfig: AiSiteConfig, slug: string) => {
+    setAiPhase('Rendering bespoke hero & product images…');
     setImageLoading(true);
-    setError('');
     try {
-      const products = Array.isArray(aiSiteConfig.products)
-        ? aiSiteConfig.products.map((p) => ({ title: p?.title, imagePrompt: p?.imagePrompt }))
+      const products = Array.isArray(siteConfig.products)
+        ? siteConfig.products.map((p) => ({ title: p?.title, imagePrompt: p?.imagePrompt }))
         : [];
 
       const res = await fetch('/api/ai/generate-images', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          slug: formData.subdomain || slugify(formData.businessName),
-          heroImagePrompt: aiSiteConfig.hero?.imagePrompt,
+          slug,
+          heroImagePrompt: siteConfig.hero?.imagePrompt,
           products,
         }),
       });
@@ -584,8 +597,6 @@ export default function SandboxOnboarding() {
       const generatedProducts: { index: number; title?: string; image: string }[] =
         Array.isArray(json.products) ? json.products : [];
 
-      // Patch product image URLs back onto aiSiteConfig by index so provision
-      // keeps them (it preserves any product that already carries an `image`).
       setAiSiteConfig((prev) => {
         if (!prev) return prev;
         const nextProducts: AiProduct[] = Array.isArray(prev.products) ? [...prev.products] : [];
@@ -597,16 +608,137 @@ export default function SandboxOnboarding() {
         return { ...prev, products: nextProducts };
       });
 
-      // A non-default hero URL is honored by provision as the operator's choice.
       if (json.heroImage) {
         setFormData((prev) => ({ ...prev, heroImage: json.heroImage }));
       }
 
       setGeneratedImages({ hero: json.heroImage || undefined, products: generatedProducts });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Image generation failed');
     } finally {
       setImageLoading(false);
+    }
+  };
+
+  const handleGenerateSitemap = async () => {
+    if (!aiInput.trim()) {
+      setError('Please enter a URL or business description.');
+      return;
+    }
+
+    // Widget-only: skip industry detection; jump straight to calculator generation.
+    if (siteMode === 'widget') {
+      setSitemap(['Home']);
+      setIsSitemapGenerated(true);
+      return;
+    }
+
+    setAiLoading(true);
+    setError('');
+    try {
+      // 1. Parse the brief → industry, services, theme, layout, business name…
+      setAiPhase('Analyzing business & detecting industry…');
+      const parseRes = await fetch('/api/ai/parse-business-brief', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ input: aiInput }),
+      });
+      const parseJson = await parseRes.json();
+      if (!parseRes.ok) throw new Error(parseJson.error || 'Could not parse business description');
+      const parsed = parseJson.data as ParsedBrief;
+      applyParsedBrief(parsed);
+
+      const effectivePageCount =
+        pageCount === 1 ? parsed.suggestedPageCount || 1 : pageCount;
+
+      // 2. Sitemap
+      let pages: string[] = ['Home'];
+      if (effectivePageCount === 1) {
+        pages = ['Home'];
+      } else {
+        setAiPhase('Planning site structure…');
+        const res = await fetch('/api/ai/generate-sitemap', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ input: parsed.description || aiInput, pageCount: effectivePageCount }),
+        });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.error || 'Sitemap generation failed');
+        pages = json.data.pages;
+      }
+      setSitemap(pages);
+      setPageCount(effectivePageCount);
+      setIsSitemapGenerated(true);
+
+      // 3. Full site + calculator copy
+      const siteConfig = await runSiteGeneration(
+        parsed.description || aiInput,
+        pages,
+        parsed.services
+      );
+
+      // 4. Bespoke images (hero + products) — the premium end-to-end build.
+      try {
+        await runImageGeneration(siteConfig, slugify(parsed.businessName));
+      } catch (imgErr) {
+        setError(
+          imgErr instanceof Error
+            ? `${imgErr.message} — site copy is ready; retry images below.`
+            : 'Image generation failed — site copy is ready; retry images below.'
+        );
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Smart configuration failed');
+    } finally {
+      setAiLoading(false);
+      setAiPhase('');
+    }
+  };
+
+  const handleAIGenerate = async () => {
+    setAiLoading(true);
+    setError('');
+    try {
+      const siteConfig = await runSiteGeneration(
+        aiInput,
+        sitemap.length > 0 ? sitemap : ['Home'],
+        formData.services
+      );
+
+      if (siteMode === 'full') {
+        try {
+          await runImageGeneration(
+            siteConfig,
+            formData.subdomain || slugify(formData.businessName)
+          );
+        } catch (imgErr) {
+          setError(
+            imgErr instanceof Error
+              ? `${imgErr.message} — site copy is ready; retry images below.`
+              : 'Image generation failed — site copy is ready; retry images below.'
+          );
+        }
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'AI Generation failed');
+    } finally {
+      setAiLoading(false);
+      setAiPhase('');
+    }
+  };
+
+  // Opt-in bespoke image generation: render the hero + product images from the
+  // AI's art-direction prompts (DALL-E 3), upload them to Supabase Storage,
+  // and patch the permanent URLs back onto the form + aiSiteConfig so provision
+  // persists them instead of the shared Unsplash placeholders.
+  const handleGenerateImages = async () => {
+    if (!aiSiteConfig) return;
+    setError('');
+    try {
+      await runImageGeneration(
+        aiSiteConfig,
+        formData.subdomain || slugify(formData.businessName)
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Image generation failed');
     }
   };
 
@@ -665,7 +797,7 @@ export default function SandboxOnboarding() {
             <p className="text-sm text-indigo-200/70 mb-4">
               {siteMode === 'widget'
                 ? 'Paste their website URL or a description of their services. The AI will generate a tailored Quote Calculator (custom rooms, add-ons, and finishes) to embed on their existing site.'
-                : 'A full build is for prospects with no website yet. Describe the business and what you want on the site — or use the guided builder to answer a few quick questions and we\u2019ll write the brief for you.'}
+                : 'Describe the business and what you want on the site. On Next, AI detects industry, services, theme, and layout from your brief, generates the full site + calculator, and renders bespoke hero & product images. Or use the guided builder for closet/storage trades.'}
             </p>
             <div className="flex flex-col gap-4">
               {siteMode === 'full' ? (
@@ -727,12 +859,41 @@ export default function SandboxOnboarding() {
                     disabled={aiLoading || !aiInput}
                     className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-3 rounded-md font-bold transition-colors disabled:opacity-50"
                   >
-                    {aiLoading ? 'Thinking...' : 'Next'}
+                    {aiLoading ? (aiPhase || 'Building…') : 'Next'}
                   </button>
                 )}
               </div>
 
-              {isSitemapGenerated && !aiWidgetConfig && (
+              {aiLoading && aiPhase && (
+                <p className="text-xs text-indigo-300 animate-pulse">{aiPhase}</p>
+              )}
+
+              {isSitemapGenerated && !aiWidgetConfig && siteMode === 'full' && (
+                <div className="mt-4 p-4 bg-indigo-950/50 border border-indigo-500/30 rounded-lg">
+                  <p className="text-xs text-indigo-200/70 mb-4">
+                    Industry and sitemap are ready. Finish generating the site copy and calculator.
+                  </p>
+                  <div className="flex gap-3">
+                    <button
+                      type="button"
+                      onClick={resetSmartConfigure}
+                      className="bg-transparent border border-neutral-600 hover:border-neutral-500 text-white px-4 py-2 rounded-md font-bold transition-colors"
+                    >
+                      Back
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleAIGenerate}
+                      disabled={aiLoading}
+                      className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-2 rounded-md font-bold transition-colors disabled:opacity-50"
+                    >
+                      {aiLoading ? 'Generating Full Site…' : 'Generate Site & Calculator'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {isSitemapGenerated && !aiWidgetConfig && siteMode === 'widget' && (
                 <div className="mt-4 p-4 bg-indigo-950/50 border border-indigo-500/30 rounded-lg">
                   <h3 className="text-sm font-bold text-indigo-300 mb-3">Proposed Sitemap</h3>
                   {pageCount === 1 ? (
@@ -761,7 +922,7 @@ export default function SandboxOnboarding() {
                   <div className="flex gap-3">
                     <button 
                       type="button"
-                      onClick={() => setIsSitemapGenerated(false)}
+                      onClick={resetSmartConfigure}
                       className="bg-transparent border border-neutral-600 hover:border-neutral-500 text-white px-4 py-2 rounded-md font-bold transition-colors"
                     >
                       Back
@@ -777,6 +938,26 @@ export default function SandboxOnboarding() {
                         : (siteMode === 'widget' ? 'Generate Quote Calculator' : 'Generate Site & Calculator')}
                     </button>
                   </div>
+                </div>
+              )}
+
+              {siteMode === 'full' && isSitemapGenerated && aiWidgetConfig && sitemap.length > 0 && (
+                <div className="mt-4 p-4 bg-indigo-950/50 border border-indigo-500/30 rounded-lg">
+                  <div className="flex items-center justify-between gap-3 mb-2">
+                    <h3 className="text-sm font-bold text-indigo-300">Site structure</h3>
+                    <button
+                      type="button"
+                      onClick={resetSmartConfigure}
+                      className="text-xs text-indigo-300 hover:text-indigo-100 underline"
+                    >
+                      Start over
+                    </button>
+                  </div>
+                  <p className="text-xs text-indigo-200/70">
+                    {sitemap.length === 1
+                      ? 'Single landing page'
+                      : sitemap.join(' → ')}
+                  </p>
                 </div>
               )}
             </div>
@@ -812,7 +993,9 @@ export default function SandboxOnboarding() {
                   </button>
                 </div>
                 <p className="text-xs text-neutral-400 mb-3">
-                  Render a unique hero + product images from the AI&apos;s art-direction prompts (DALL-E 3, 16:9). Takes ~30-60s and costs a few cents. The permanent URLs replace the stock placeholders on deploy.
+                  {generatedImages
+                    ? 'Bespoke hero and product images are ready for deploy. Regenerate anytime if you want a fresh look.'
+                    : 'Full builds auto-generate bespoke hero + product images on Next. Retry here if generation was skipped or failed.'}
                 </p>
                 {imageLoading && (
                   <p className="text-xs text-purple-300 animate-pulse">Generating bespoke imagery… keep this tab open.</p>
@@ -910,23 +1093,11 @@ export default function SandboxOnboarding() {
                 onChange={(e) => setFormData({...formData, theme: e.target.value})}
                 className="w-full bg-neutral-900 border border-neutral-700 rounded-md p-2 text-white"
               >
-                <optgroup label="Original 3">
-                  <option value="luxury-minimal">Luxury Minimal (Lumina)</option>
-                  <option value="brutalist">Brutalist (Ironclad)</option>
-                  <option value="classic-warm">Classic Warm (Hearth)</option>
-                </optgroup>
-                <optgroup label="New Extended 10">
-                  <option value="modern-office">Modern Office</option>
-                  <option value="playful-kids">Playful Kids Space</option>
-                  <option value="rustic-pantry">Rustic Pantry</option>
-                  <option value="sleek-entertainment">Sleek Entertainment</option>
-                  <option value="elegant-dressing">Elegant Dressing Room</option>
-                  <option value="functional-utility">Functional Utility</option>
-                  <option value="creative-craft">Creative Craft Room</option>
-                  <option value="sophisticated-wine">Sophisticated Wine Cellar</option>
-                  <option value="cozy-library">Cozy Home Library</option>
-                  <option value="minimalist-zen">Minimalist Zen</option>
-                </optgroup>
+                {THEME_SLUGS.map((theme) => (
+                  <option key={theme} value={theme}>
+                    {formatSlugLabel(theme)}
+                  </option>
+                ))}
               </select>
             </div>
 
@@ -937,19 +1108,18 @@ export default function SandboxOnboarding() {
                 onChange={(e) => setFormData({...formData, layoutStyle: e.target.value})}
                 className="w-full bg-neutral-900 border border-neutral-700 rounded-md p-2 text-white"
               >
-                <option value="standard">Standard (Balanced Flow)</option>
-                <option value="portfolio-first">Portfolio First (Visual Heavy)</option>
-                <option value="conversion-focus">Conversion Focus (Calculator First)</option>
-                <option value="storyteller">Storyteller (Narrative & Quiz First)</option>
-                <option value="minimalist-lead">Minimalist Lead (Extremely Short)</option>
-                <option value="visual-impact">Visual Impact (Images Only, No Text)</option>
+                {LAYOUT_SLUGS.map((layout) => (
+                  <option key={layout} value={layout}>
+                    {formatSlugLabel(layout)}
+                  </option>
+                ))}
               </select>
             </div>
           </div>
 
           <div className="border-t border-neutral-700 pt-4 mt-4">
             <h3 className="text-sm font-bold text-neutral-400 uppercase tracking-widest mb-1">Content Customization</h3>
-            <p className="text-xs text-neutral-500 mb-4">Auto-filled from your description / guided builder after generating. Edit anything below before deploying.</p>
+            <p className="text-xs text-neutral-500 mb-4">Auto-filled from your description after Next — industry, services, theme, layout, copy, and images. Edit anything below before deploying.</p>
             
             <div className="space-y-4">
               <div>
