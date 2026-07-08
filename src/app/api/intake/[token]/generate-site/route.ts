@@ -107,7 +107,8 @@ export async function POST(
     // pages not present in the submitted body is preserved.
     let effectivePageContents = row.page_contents as Record<string, string> | null
     if (body.pageContents && typeof body.pageContents === 'object' && !Array.isArray(body.pageContents)) {
-      const validSlugs = new Set(SITE_PAGE_SLUGS)
+      // Standard catalog pages + AI-suggested / custom pages the prospect chose.
+      const validSlugs = new Set([...SITE_PAGE_SLUGS, ...pageSlugs])
       const sanitized: Record<string, string> = {}
       for (const [slug, raw] of Object.entries(body.pageContents)) {
         if (!validSlugs.has(slug)) continue

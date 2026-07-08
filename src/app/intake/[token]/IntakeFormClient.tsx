@@ -823,9 +823,10 @@ export default function IntakeFormClient({
     setBulkGenerating(false);
   }, [form, token, handleGeneratePageCopy]);
 
-  const handleSuggestPages = async () => {
+  const handleSuggestPages = async (opts?: { silent?: boolean }) => {
+    const silent = opts?.silent === true;
     setSuggestingPages(true);
-    setError('');
+    if (!silent) setError('');
     try {
       const res = await fetch(`/api/intake/${token}/suggest-pages`, {
         method: 'POST',
@@ -845,15 +846,22 @@ export default function IntakeFormClient({
         setSuggestedPages(json.suggestions);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to suggest pages');
+      // Auto-fetch failures stay quiet — the prospect can still pick pages
+      // manually and hit "Suggest pages" to retry.
+      if (!silent) setError(err instanceof Error ? err.message : 'Failed to suggest pages');
     } finally {
       setSuggestingPages(false);
     }
   };
 
+  const pageCap = maxAdditionalPagesForTier(
+    intakeTier === 'ai_premium' ? 'ai_premium' : 'standard'
+  );
+
   const handleAddSuggestedPage = (slug: string) => {
     setForm((f) => {
       if (f.pages.includes(slug)) return f;
+      if (f.pages.length >= pageCap) return f;
       return { ...f, pages: [...f.pages, slug] };
     });
     setSuggestedPages((prev) => prev.filter((p) => p.slug !== slug));
@@ -861,6 +869,17 @@ export default function IntakeFormClient({
 
   const handleRemovePage = (slug: string) => {
     setForm((f) => ({ ...f, pages: f.pages.filter((p) => p !== slug) }));
+  };
+
+  // Toggle a standard catalog page on/off, respecting the tier's page cap.
+  const handleTogglePage = (slug: string) => {
+    setForm((f) => {
+      if (f.pages.includes(slug)) {
+        return { ...f, pages: f.pages.filter((p) => p !== slug) };
+      }
+      if (f.pages.length >= pageCap) return f;
+      return { ...f, pages: [...f.pages, slug] };
+    });
   };
 
   const handleReviewClick = async () => {
@@ -1221,6 +1240,19 @@ export default function IntakeFormClient({
     if (form.pages.some((slug) => !form.pageContents[slug]?.trim())) {
       void handleGenerateAllPageCopy();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentStepIndex, stepIdx.pageContent]);
+
+  // Auto-load trade-specific page suggestions the first time the prospect lands
+  // on the Page Content step so they always see AI recommendations (not just the
+  // default pages), tailored to their industry/services.
+  const pageSuggestFetchedRef = useRef(false);
+  useEffect(() => {
+    if (currentStepIndex !== stepIdx.pageContent || !stepIdx.pageContent) return;
+    if (pageSuggestFetchedRef.current) return;
+    if (!form.industry && form.services.length === 0) return;
+    pageSuggestFetchedRef.current = true;
+    void handleSuggestPages({ silent: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentStepIndex, stepIdx.pageContent]);
 
@@ -2055,6 +2087,115 @@ export default function IntakeFormClient({
           {form.pages.length > 0 && (
             <div className={currentStepIndex === stepIdx.pageContent ? '' : 'hidden'}>
             <section className={sectionClass}>
+              <h2 className={sectionTitle}>Choose Your Pages</h2>
+              <p className="mb-3 text-sm text-zinc-400">
+                Pick the pages your site should include. We recommend a strong starter set, and our
+                AI suggests extra pages tailored to your specific trade so your site doesn&apos;t look
+                like everyone else&apos;s.
+              </p>
+              <p className="mb-3 text-xs font-medium text-zinc-500">
+                {form.pages.length} of {pageCap} pages selected
+              </p>
+
+              <div className="flex flex-wrap gap-2">
+                {SITE_PAGE_OPTIONS.map((opt) => {
+                  const selected = form.pages.includes(opt.slug);
+                  const atCap = !selected && form.pages.length >= pageCap;
+                  return (
+                    <button
+                      key={opt.slug}
+                      type="button"
+                      onClick={() => handleTogglePage(opt.slug)}
+                      disabled={atCap}
+                      title={opt.description}
+                      className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                        selected
+                          ? 'border-indigo-400 bg-indigo-500/20 text-indigo-100'
+                          : atCap
+                            ? 'cursor-not-allowed border-white/10 text-zinc-600'
+                            : 'border-white/15 text-zinc-300 hover:border-white/30 hover:text-white'
+                      }`}
+                    >
+                      <span aria-hidden>{selected ? '✓' : '+'}</span>
+                      {opt.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="mt-5 rounded-lg border border-white/[0.1] bg-white/[0.02] p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <h3 className="text-sm font-semibold text-white">AI-Recommended Pages</h3>
+                    <p className="text-xs text-zinc-500">
+                      Trade-specific pages tailored to {form.industry || 'your business'}.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void handleSuggestPages()}
+                    disabled={suggestingPages}
+                    className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-white/15 px-3 py-2 text-xs font-semibold text-zinc-200 hover:border-white/30 hover:text-white disabled:opacity-60"
+                  >
+                    {suggestingPages ? (
+                      <>
+                        <svg className="h-3.5 w-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
+                        Suggesting…
+                      </>
+                    ) : (
+                      <>
+                        <span aria-hidden>✨</span>
+                        {suggestedPages.length ? 'Refresh suggestions' : 'Suggest pages'}
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                {suggestedPages.length > 0 ? (
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                    {suggestedPages.map((s) => {
+                      const atCap = form.pages.length >= pageCap;
+                      return (
+                        <div
+                          key={s.slug}
+                          className="flex items-start justify-between gap-3 rounded-lg border border-white/10 bg-white/[0.02] p-3"
+                        >
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold text-zinc-100">{s.label}</p>
+                            <p className="mt-0.5 text-xs text-zinc-500">{s.description}</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleAddSuggestedPage(s.slug)}
+                            disabled={atCap}
+                            className="shrink-0 rounded-md bg-white px-2.5 py-1.5 text-xs font-bold text-black hover:bg-slate-200 disabled:opacity-50"
+                          >
+                            Add
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  !suggestingPages && (
+                    <p className="mt-3 text-xs text-zinc-600">
+                      Click &quot;Suggest pages&quot; to get trade-specific page ideas for your site.
+                    </p>
+                  )
+                )}
+
+                {form.pages.length >= pageCap && (
+                  <p className="mt-3 text-xs text-amber-400/80">
+                    You&apos;ve reached the {pageCap}-page limit for your plan. Remove a page to add another.
+                  </p>
+                )}
+              </div>
+            </section>
+
+            <section className={sectionClass}>
               <h2 className={sectionTitle}>
                 Customize Page Content
               </h2>
@@ -2127,10 +2268,11 @@ export default function IntakeFormClient({
                         isExpanded ? 'border-indigo-400 ring-1 ring-indigo-400 bg-white/[0.04]' : 'border-white/[0.14] bg-white/[0.01]'
                       }`}
                     >
+                      <div className="flex items-center">
                       <button
                         type="button"
                         onClick={() => setExpandedPage(isExpanded ? null : slug)}
-                        className="flex w-full items-center justify-between px-4 py-3 text-left font-medium text-zinc-100 focus:outline-none"
+                        className="flex flex-1 items-center justify-between px-4 py-3 text-left font-medium text-zinc-100 focus:outline-none"
                       >
                         <div className="flex items-center gap-2">
                           <span className="text-sm font-semibold">{label}</span>
@@ -2154,6 +2296,21 @@ export default function IntakeFormClient({
                           </svg>
                         </div>
                       </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          handleRemovePage(slug);
+                          if (isExpanded) setExpandedPage(null);
+                        }}
+                        aria-label={`Remove ${label} page`}
+                        title="Remove this page"
+                        className="px-3 py-3 text-zinc-500 hover:text-red-400 focus:outline-none"
+                      >
+                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M18 6 6 18M6 6l12 12" />
+                        </svg>
+                      </button>
+                      </div>
 
                       {isExpanded && (
                         <div className="border-t border-white/[0.08] px-3.5 pb-3.5 pt-3 sm:px-4 sm:pb-4">

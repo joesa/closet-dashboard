@@ -274,7 +274,12 @@ export async function POST(
       }
     }
     if (body.pageContents && typeof body.pageContents === 'object' && !Array.isArray(body.pageContents)) {
-      const validSlugs = new Set(SITE_PAGE_SLUGS)
+      // Accept the standard catalog pages plus any AI-suggested / custom pages
+      // the prospect actually selected (persisted above in requested_pages).
+      const validSlugs = new Set([
+        ...SITE_PAGE_SLUGS,
+        ...(Array.isArray(update.requested_pages) ? (update.requested_pages as string[]) : []),
+      ])
       const sanitized: Record<string, string> = {}
       for (const [slug, raw] of Object.entries(body.pageContents)) {
         if (!validSlugs.has(slug)) continue

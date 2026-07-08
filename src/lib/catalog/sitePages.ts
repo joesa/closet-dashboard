@@ -133,11 +133,27 @@ export function clampPagesForTier(input: unknown, tier: string | null | undefine
 
 
 /**
+ * Human-readable title for a page slug. Known catalog slugs use their curated
+ * label; AI-suggested / custom slugs (e.g. "emergency-plumbing") are title-cased
+ * from the slug so they never surface as `undefined` downstream.
+ */
+export function slugToLabel(slug: string): string {
+  return (
+    SLUG_TO_LABEL.get(slug) ||
+    slug
+      .split('-')
+      .filter(Boolean)
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(' ')
+  )
+}
+
+/**
  * Build the AI sitemap (page titles) from selected slugs. Always leads with
  * "Home". Returns just ["Home"] when nothing extra is selected.
  */
 export function pageSlugsToSitemap(slugs: string[]): string[] {
-  const titles = sanitizePageSlugs(slugs).map((s) => SLUG_TO_LABEL.get(s) as string)
+  const titles = sanitizePageSlugs(slugs).map(slugToLabel)
   return ['Home', ...titles]
 }
 
