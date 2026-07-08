@@ -200,7 +200,7 @@ export async function buildTemplateProvisionPayload(intake: IntakeRowForProvisio
     beforeAfterCategoryOverride: presentation.beforeAfterCategoryOverride,
     engagementModel: presentation.engagementModel,
     menuItems,
-    ownerEmail: intake.notification_email || intake.contact_email || '',
+    ownerEmail: intake.contact_email || intake.notification_email || '',
     heroHeadline: `Welcome to ${businessName}`,
     aboutDescription: about,
     heroImage,

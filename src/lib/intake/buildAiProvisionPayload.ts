@@ -13,6 +13,8 @@ import {
   syncProductSlots,
 } from '@/lib/intake/imageSelections'
 import { mergeProspectImageSelections } from '@/lib/intake/mergeProspectImages'
+import { extractProspectSiteConfig } from '@/lib/intake/mergeProspectImages'
+import { depositSatisfied, effectiveIntakeTier } from '@/lib/intake/intakeTierGates'
 import { provisionServiceLabels } from '@/lib/intake/provisionServiceLabels'
 import { normalizeAiPagesConfig } from '@/lib/catalog/sitePages'
 import type { ProvisionTenantInput } from '@/lib/provision/types'
@@ -50,13 +52,21 @@ export function parseAiSiteBundle(raw: unknown): AiSiteBundle | null {
   return { siteConfig: o as AiSiteBundle['siteConfig'] }
 }
 
+export function hasProspectPageCopy(row: ProspectIntakeRow): boolean {
+  const pc = row.page_contents
+  if (!pc || typeof pc !== 'object') return false
+  return Object.values(pc).some((v) => typeof v === 'string' && v.trim().length > 80)
+}
+
 export function validateAiPremiumReady(row: ProspectIntakeRow): string | null {
-  if (row.intake_tier !== 'ai_premium') return null
-  if (row.deposit_required_cents > 0 && row.deposit_status !== 'paid') {
+  if (effectiveIntakeTier(row) !== 'ai_premium') return null
+  if (!depositSatisfied(row)) {
     return 'Deposit not paid'
   }
-  const bundle = parseAiSiteBundle(row.ai_site_config)
-  if (!bundle?.siteConfig) return 'AI site config missing — run Generate brief first'
+  const hasBrief = extractProspectSiteConfig(row.ai_site_config) !== null
+  if (!hasBrief && !hasProspectPageCopy(row)) {
+    return 'AI site config missing — run Generate brief or fill in page content first'
+  }
   const services = provisionServiceLabels(row)
   const selections = syncProductSlots(parseImageSelections(row.image_selections), services)
   if (!imageSelectionsComplete(selections, services)) {
@@ -70,9 +80,31 @@ export async function buildAiProvisionPayload(
   loginOrigin: string,
   subdomain: string
 ): Promise<ProvisionTenantInput> {
-  const bundle = parseAiSiteBundle(row.ai_site_config)!
-  const site = bundle.siteConfig!
   const rawConfig = row.ai_site_config as Record<string, unknown> | null
+  const pageContents =
+    row.page_contents && typeof row.page_contents === 'object'
+      ? (row.page_contents as Record<string, string>)
+      : {}
+  const businessName = row.business_name?.trim() || 'Your Business'
+  const prospectSite = extractProspectSiteConfig(rawConfig) ?? {}
+  const bundle = parseAiSiteBundle(row.ai_site_config)
+  const site = {
+    ...prospectSite,
+    hero: {
+      ...prospectSite.hero,
+      headline:
+        prospectSite.hero?.headline ||
+        (bundle?.siteConfig?.hero as { headline?: string } | undefined)?.headline ||
+        `Welcome to ${businessName}`,
+    },
+    about: {
+      description:
+        prospectSite.about?.description ||
+        pageContents.about?.trim() ||
+        '',
+    },
+    products: prospectSite.products ?? bundle?.siteConfig?.products,
+  }
   const storedPres = rawConfig?.presentation as
     | { theme?: string; layoutStyle?: string; resolvedAt?: string }
     | undefined
@@ -110,7 +142,7 @@ export async function buildAiProvisionPayload(
     pagesConfig: normalizeAiPagesConfig(
       rawConfig?.pagesConfig,
       row.requested_pages ?? [],
-      row.intake_tier === 'ai_premium' ? 'ai_premium' : 'standard',
+      effectiveIntakeTier(row),
       row.page_contents
     ),
     presentation: storedPres ?? {
@@ -131,13 +163,13 @@ export async function buildAiProvisionPayload(
     engagementModel,
     menuItems: Array.isArray(row.menu_items) ? row.menu_items : [],
     subdomain,
-    ownerEmail: (row.notification_email || row.contact_email || '').trim(),
+    ownerEmail: (row.contact_email || row.notification_email || '').trim(),
     heroHeadline: site.hero?.headline,
-    aboutDescription: site.about?.description,
+    aboutDescription: site.about?.description || undefined,
     heroImage: selections.hero.selectedUrl,
     services,
     aiSiteConfig: aiSiteConfig as Record<string, unknown>,
-    aiWidgetConfig: bundle.widgetConfig ?? null,
+    aiWidgetConfig: bundle?.widgetConfig ?? null,
     intakeSetup: {
       contactEmail: row.contact_email || undefined,
       contactPhone: row.contact_phone || undefined,

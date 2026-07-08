@@ -4,6 +4,7 @@ import { assertNoDuplicateProvision } from '@/lib/provision/dedupe'
 import { runAutoQaChecks, maybeAutoApproveTenant } from '@/lib/provision/autoQa'
 import { resolveSubdomain } from '@/lib/provision/resolveSubdomain'
 import { provisionTenant } from '@/lib/provision/provisionTenant'
+import { depositSatisfied } from '@/lib/intake/intakeTierGates'
 import {
   buildAiProvisionPayload,
   validateAiPremiumReady,
@@ -113,7 +114,7 @@ export async function provisionFromIntakeJob(
     throw new Error('Business name required')
   }
 
-  const ownerEmail = (row.notification_email || row.contact_email || '').trim()
+  const ownerEmail = (row.contact_email || row.notification_email || '').trim()
   if (!ownerEmail) {
     throw new Error('Contact email required')
   }
@@ -130,7 +131,7 @@ export async function provisionFromIntakeJob(
   if (mode === 'ai_full') {
     const aiErr = validateAiPremiumReady(row)
     if (aiErr) throw new Error(aiErr)
-    if (row.deposit_required_cents > 0 && row.deposit_status !== 'paid') {
+    if (!depositSatisfied(row)) {
       throw new Error('AI Premium deposit not paid')
     }
 

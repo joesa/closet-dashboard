@@ -91,6 +91,7 @@ type IntakeRow = IntakeSetup & {
   ai_site_config?: unknown;
   image_selections?: unknown;
   requested_pages?: string[] | null;
+  page_contents?: Record<string, string> | null;
   intake_tier?: string | null;
 };
 
@@ -288,6 +289,9 @@ export default function SandboxOnboarding() {
           // the intake studio. Reuse that work so the operator deploys exactly
           // what the customer paid for instead of a blank/default build.
           const prospectConfig = extractProspectSiteConfig(it.ai_site_config);
+          const pageContents = it.page_contents ?? {};
+          const aboutFromPages =
+            typeof pageContents.about === 'string' ? pageContents.about.trim() : '';
           const selections = (it.image_selections as IntakeImageSelections | null) ?? {
             hero: { attemptsUsed: 0, history: [] },
             products: [],
@@ -344,19 +348,27 @@ export default function SandboxOnboarding() {
               heroHeadline:
                 mergedConfig.hero?.headline ||
                 (it.business_name ? `Welcome to ${it.business_name}` : ''),
-              // Never inherit the sandbox demo copy/image for a real prospect —
-              // use their AI build, else leave empty so provisioning fills a
-              // trade-neutral default instead of leaking the garage placeholder.
-              aboutDescription: mergedConfig.about?.description || '',
+              aboutDescription: mergedConfig.about?.description || aboutFromPages,
               heroImage: generated.hero || '',
             }));
             setIntakeBanner(
               prospectConfig
                 ? `Loaded ${it.business_name || 'prospect'}'s AI Premium build — their generated site + ${generated.products.length} product image${generated.products.length === 1 ? '' : 's'}${generated.hero ? ' and hero' : ''} are pre-filled. Review and deploy.`
-                : `Loaded ${it.business_name || 'prospect'}'s intake images — ${generated.products.length} product image${generated.products.length === 1 ? '' : 's'}${generated.hero ? ' and hero' : ''} are pre-filled. Generate or review the site brief, then deploy.`
+                : aboutFromPages
+                  ? `Loaded ${it.business_name || 'prospect'}'s intake — page copy and ${generated.products.length} product image${generated.products.length === 1 ? '' : 's'}${generated.hero ? ' and hero' : ''} are pre-filled. Review and deploy.`
+                  : `Loaded ${it.business_name || 'prospect'}'s intake images — ${generated.products.length} product image${generated.products.length === 1 ? '' : 's'}${generated.hero ? ' and hero' : ''} are pre-filled. Generate or review the site brief, then deploy.`
             );
           } else {
-            setIntakeBanner(`Loaded intake for ${it.business_name || 'prospect'}. Review the brief below, generate, then deploy.`);
+            setFormData((prev) => ({
+              ...prev,
+              heroHeadline: it.business_name ? `Welcome to ${it.business_name}` : prev.heroHeadline,
+              aboutDescription: aboutFromPages || prev.aboutDescription,
+            }));
+            setIntakeBanner(
+              aboutFromPages
+                ? `Loaded intake for ${it.business_name || 'prospect'} — their page copy is pre-filled. Review and deploy.`
+                : `Loaded intake for ${it.business_name || 'prospect'}. Review the brief below, generate, then deploy.`
+            );
           }
         } catch (e) {
           setIntakeBanner(

@@ -4,7 +4,8 @@ import { checkRateLimit, hashRateKey } from '@/lib/rateLimit'
 import { enqueueProvisionJob } from '@/lib/provision/enqueueProvisionJob'
 import { getIntakeByToken } from '@/lib/intake/getIntakeByToken'
 import { buildIntakePublicJson } from '@/lib/intake/intakePublicResponse'
-import { healIntakeTierFromPayments } from '@/lib/intake/intakeTierGates'
+import { healIntakeTierFromPayments, effectiveIntakeTier } from '@/lib/intake/intakeTierGates'
+import { kickProvisionAfterSubmit } from '@/lib/provision/kickProvisionAfterSubmit'
 import { validateAiPremiumReady } from '@/lib/intake/buildAiProvisionPayload'
 import { OTHER_SERVICE_LABEL } from '@/lib/catalog/contractorServices'
 import { clampPagesForTier } from '@/lib/catalog/sitePages'
@@ -57,11 +58,13 @@ export async function POST(
     if (!existing) {
       return NextResponse.json({ error: 'Intake not found' }, { status: 404 })
     }
+    const intakeRow = await healIntakeTierFromPayments(existing)
+    const intakeTier = effectiveIntakeTier(intakeRow)
     if (existing.status === 'archived') {
       return NextResponse.json({ error: 'This intake link is no longer active' }, { status: 410 })
     }
 
-    if (existing.source === 'public' && !existing.email_verified_at) {
+    if (intakeRow.source === 'public' && !intakeRow.email_verified_at) {
       return NextResponse.json(
         {
           error:
@@ -116,14 +119,14 @@ export async function POST(
       )
     }
 
-    if (existing.intake_tier === 'ai_premium') {
+    if (intakeTier === 'ai_premium') {
       // Validate image selections against the services being submitted in this
       // request — not the (possibly stale/empty) services stored on the row.
       // The studio keys hero/product selections by the current form's service
       // labels; validating against the old row labels produced a false
       // "Select hero and product images before submitting" failure.
       const aiErr = validateAiPremiumReady({
-        ...existing,
+        ...intakeRow,
         services,
         other_services: hasOther ? otherServices : null,
       })
@@ -231,7 +234,7 @@ export async function POST(
       notes: toStr(body.notes),
       requested_pages: clampPagesForTier(
         body.pages,
-        existing.intake_tier === 'ai_premium' ? 'ai_premium' : 'standard'
+        intakeTier
       ),
       requested_product: requestedProduct,
       gallery_images: galleryUrls,
@@ -241,7 +244,7 @@ export async function POST(
 
     // --- User presentation override (from the review step) ---
     if (typeof body.themeOverride === 'string' && typeof body.layoutOverride === 'string') {
-      const existingAiConfig = (existing.ai_site_config ?? {}) as Record<string, unknown>
+      const existingAiConfig = (intakeRow.ai_site_config ?? {}) as Record<string, unknown>
       const existingPres = (existingAiConfig.presentation ?? {}) as Record<string, unknown>
       // Only trust a client-supplied token selection if every ID is one of
       // the legal pool IDs — otherwise silently drop it (falls back to the
@@ -304,7 +307,7 @@ export async function POST(
     const { error: updateErr } = await supabase
       .from('prospect_intakes')
       .update(update)
-      .eq('id', existing.id)
+      .eq('id', intakeRow.id)
 
     if (updateErr) throw updateErr
 
@@ -314,9 +317,9 @@ export async function POST(
     // deploy. The admin still reviews that gated build and can edit + redeploy.
     // A 'manual' provisioning_mode is only honored for non-AI-Premium tiers.
     const provisionMode =
-      existing.intake_tier === 'ai_premium'
+      intakeTier === 'ai_premium'
         ? 'auto'
-        : existing.provisioning_mode === 'manual'
+        : intakeRow.provisioning_mode === 'manual'
           ? 'manual'
           : 'auto'
     let provisionQueued = false
@@ -324,12 +327,17 @@ export async function POST(
     if (provisionMode === 'auto') {
       let jobMode: 'full' | 'widget' | 'ai_full' =
         requestedProduct === 'widget' ? 'widget' : 'full'
-      if (existing.intake_tier === 'ai_premium' && requestedProduct !== 'widget') {
+      if (intakeTier === 'ai_premium' && requestedProduct !== 'widget') {
         jobMode = 'ai_full'
       }
       try {
-        await enqueueProvisionJob(existing.id, jobMode)
-        provisionQueued = true
+        const enqueue = await enqueueProvisionJob(intakeRow.id, jobMode)
+        provisionQueued = enqueue.queued
+        if (enqueue.queued && !enqueue.duplicate) {
+          kickProvisionAfterSubmit(intakeRow.id)
+        } else if (enqueue.duplicate && enqueue.status === 'pending') {
+          kickProvisionAfterSubmit(intakeRow.id)
+        }
       } catch (enqueueErr) {
         // Intake data is saved — log the enqueue failure but don't surface a 500
         // to the user. An admin can manually re-queue from the dashboard.
