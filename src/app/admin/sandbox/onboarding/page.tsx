@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import GuidedBuilder, { type GuidedResult } from './GuidedBuilder';
-import { SITE_PAGE_OPTIONS } from '@/lib/catalog/sitePages';
+import { pageSlugsToSitemap } from '@/lib/catalog/sitePages';
 import { listIndustries, resolveIndustrySlug, servicesForIndustry } from '@/lib/catalog/serviceCatalog';
 import {
   extractProspectSiteConfig,
@@ -297,10 +297,10 @@ export default function SandboxOnboarding() {
             // operator sees all N pages (Home + selected), not a default of 1.
             const requested = Array.isArray(it.requested_pages) ? it.requested_pages : [];
             if (requested.length > 0) {
-              const labels = requested
-                .map((slug) => SITE_PAGE_OPTIONS.find((o) => o.slug === slug)?.label)
-                .filter((l): l is string => Boolean(l));
-              const fullSitemap = ['Home', ...labels];
+              // Include the prospect's AI-suggested / custom pages too (e.g.
+              // "tree-removal") — pageSlugsToSitemap title-cases any slug that
+              // isn't a standard catalog page, instead of dropping it.
+              const fullSitemap = pageSlugsToSitemap(requested);
               setSitemap(fullSitemap);
               setPageCount(fullSitemap.length);
               setIsSitemapGenerated(true);
