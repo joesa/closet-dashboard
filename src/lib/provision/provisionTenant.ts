@@ -38,8 +38,135 @@ import {
   DEFAULT_DOMAIN_CONFIG,
   ROOM_TYPES,
 } from '@/lib/rooms'
+import { hashSeed } from '@/lib/catalog/designFingerprint'
 
 const DEFAULT_DISABLED_ROOMS = [...ROOM_TYPES]
+
+/**
+ * Trade-neutral, per-business "About" copy used ONLY when the AI didn't
+ * generate an about section (e.g. an intake that shipped images but no full AI
+ * site). Several seeded variants keep two businesses in the same trade from
+ * getting byte-identical copy, and none of them are closet/storage-specific.
+ */
+function buildDefaultAbout(
+  businessName: string,
+  primaryService: string,
+  serviceArea: string | undefined,
+  seed: string
+): { description: string } {
+  const svc = (primaryService || 'quality work').toLowerCase()
+  const area = serviceArea?.trim() || 'the areas we serve'
+  const variants = [
+    `${businessName} delivers dependable, high-quality ${svc} for homeowners and businesses across ${area}. Our experienced team treats every job with care, precision, and respect for your property. We stand behind our work and every result we deliver.`,
+    `For ${area}, ${businessName} is a trusted name in ${svc}. We pair skilled craftsmanship with honest, upfront service, so you always know exactly what to expect. Quality workmanship and customer satisfaction drive everything we do.`,
+    `${businessName} has built its reputation on reliable ${svc} and a genuine customer-first approach. From the first call to the final walkthrough, we focus on doing the job right the first time. Expect clear communication, fair pricing, and lasting results.`,
+  ]
+  return { description: variants[hashSeed(`${seed}:about`) % variants.length] }
+}
+
+type ProcessConfig = {
+  title: string
+  subtitle: string
+  steps: Array<{ number: string; title: string; description: string }>
+}
+
+/**
+ * Trade-aware, per-business default "process" section (used only when the AI
+ * didn't produce one). Steps are chosen by engagement model so a booking or
+ * order business doesn't read like a closet "Design → Install" studio, and a
+ * seeded variant keeps two same-trade sites from sharing identical wording.
+ */
+function buildDefaultProcess(
+  engagementModel: string,
+  primaryService: string,
+  seed: string
+): ProcessConfig {
+  const svc = (primaryService || 'the work').toLowerCase()
+  const byModel: Record<string, ProcessConfig[]> = {
+    booking: [
+      {
+        title: 'How It Works',
+        subtitle: 'Simple from start to finish',
+        steps: [
+          { number: '01', title: 'Book', description: `Pick a time that works for you and request your ${svc}.` },
+          { number: '02', title: 'Confirm', description: 'We confirm the details and arrive on schedule.' },
+          { number: '03', title: 'Done', description: 'We complete the job and make sure you’re happy with it.' },
+        ],
+      },
+      {
+        title: 'Our Process',
+        subtitle: 'Booking made easy',
+        steps: [
+          { number: '01', title: 'Schedule', description: `Choose a convenient appointment for your ${svc}.` },
+          { number: '02', title: 'Service', description: 'Our team shows up prepared and gets to work.' },
+          { number: '03', title: 'Follow Up', description: 'We check in to make sure everything meets your expectations.' },
+        ],
+      },
+    ],
+    order: [
+      {
+        title: 'How It Works',
+        subtitle: 'From order to enjoyment',
+        steps: [
+          { number: '01', title: 'Browse', description: 'Explore our menu and choose what you love.' },
+          { number: '02', title: 'Order', description: 'Place your order in just a few taps.' },
+          { number: '03', title: 'Enjoy', description: 'We prepare it fresh and get it to you fast.' },
+        ],
+      },
+      {
+        title: 'Our Process',
+        subtitle: 'Fresh and simple',
+        steps: [
+          { number: '01', title: 'Choose', description: 'Pick your favorites from our selection.' },
+          { number: '02', title: 'Checkout', description: 'Order online quickly and securely.' },
+          { number: '03', title: 'Delivered', description: 'Made to order and ready when you are.' },
+        ],
+      },
+    ],
+    ticket: [
+      {
+        title: 'How It Works',
+        subtitle: 'Fast, reliable support',
+        steps: [
+          { number: '01', title: 'Reach Out', description: `Tell us what you need help with regarding ${svc}.` },
+          { number: '02', title: 'Diagnose', description: 'We assess the situation and recommend the right fix.' },
+          { number: '03', title: 'Resolve', description: 'We take care of it and confirm everything is working.' },
+        ],
+      },
+      {
+        title: 'Our Process',
+        subtitle: 'Here when you need us',
+        steps: [
+          { number: '01', title: 'Request', description: `Submit your request for ${svc}.` },
+          { number: '02', title: 'Respond', description: 'A specialist reviews and gets back to you quickly.' },
+          { number: '03', title: 'Repair', description: 'We solve the problem and follow up to be sure.' },
+        ],
+      },
+    ],
+    quote: [
+      {
+        title: 'Our Process',
+        subtitle: 'How we work',
+        steps: [
+          { number: '01', title: 'Consult', description: `Tell us about your ${svc} and what you need.` },
+          { number: '02', title: 'Plan', description: 'We provide a clear, upfront quote and a plan of action.' },
+          { number: '03', title: 'Deliver', description: 'Our team completes the job to a high standard.' },
+        ],
+      },
+      {
+        title: 'How It Works',
+        subtitle: 'Straightforward from day one',
+        steps: [
+          { number: '01', title: 'Assess', description: `We review your ${svc} needs and answer your questions.` },
+          { number: '02', title: 'Estimate', description: 'You get a transparent, no-surprises estimate.' },
+          { number: '03', title: 'Complete', description: 'We do the work right and stand behind the results.' },
+        ],
+      },
+    ],
+  }
+  const pool = byModel[engagementModel] || byModel.quote
+  return pool[hashSeed(`${seed}:process`) % pool.length]
+}
 
 function inferWidgetDomainConfig(services: string[] | null | undefined) {
   if (!services || services.length === 0) return null
@@ -509,6 +636,11 @@ export async function provisionTenant(
         : THEME_HERO_IMAGES[theme!] || GENERIC_HERO)
     const resolveDefaultProductImage = makeImageResolver()
 
+    // Stable per-business seed for the fallback About/Process copy so two sites
+    // in the same trade don't get byte-identical sections when the AI didn't
+    // generate them.
+    const copySeed = (businessName || subdomain || tenantId || '').trim()
+
     let siteConfigData: Record<string, unknown> = {
       tenant_id: tenantId,
       brand_name: businessName,
@@ -528,17 +660,18 @@ export async function provisionTenant(
       about_config: {
         description:
           aboutDescription ||
-          `${businessName} provides premium custom storage solutions tailored to your life.`,
+          buildDefaultAbout(
+            businessName,
+            selectedServices[0] || '',
+            setup.serviceArea,
+            copySeed
+          ).description,
       },
-      process_config: {
-        title: 'Our Process',
-        subtitle: 'How we work',
-        steps: [
-          { number: '01', title: 'Consultation', description: 'We meet with you.' },
-          { number: '02', title: 'Design', description: 'We design it.' },
-          { number: '03', title: 'Install', description: 'We build it.' },
-        ],
-      },
+      process_config: buildDefaultProcess(
+        resolvedEngagementModel,
+        selectedServices[0] || '',
+        copySeed
+      ),
       quiz_config: aiSiteConfig?.quiz || null,
       products_config: selectedServices.map((serviceName: string) => {
         const industryDef = getIndustry(beforeAfterContext.industry)

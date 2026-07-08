@@ -236,6 +236,13 @@ export default function SandboxOnboarding() {
           const json = await res.json();
           if (!res.ok) throw new Error(json.error || 'Failed to load intake');
           const it = json.intake as IntakeRow;
+          // Server-recommended, per-business, industry-appropriate theme/layout.
+          // Used as the theme fallback so a prospect never inherits the sandbox
+          // garage demo theme — and two same-trade sites diverge by business.
+          const presentation =
+            (json.presentation as { theme?: string; layoutStyle?: string } | null) ?? null;
+          const recommendedTheme = presentation?.theme || (it.vibe ? VIBE_TO_THEME[it.vibe] : '') || '';
+          const recommendedLayout = presentation?.layoutStyle || '';
 
           setIntakeId(it.id);
           setIntakeIndustry(it.industry?.trim() || '');
@@ -262,7 +269,8 @@ export default function SandboxOnboarding() {
             businessName: it.business_name || prev.businessName,
             subdomain: it.business_name ? slugify(it.business_name) : prev.subdomain,
             ownerEmail: it.contact_email || prev.ownerEmail,
-            theme: (it.vibe && VIBE_TO_THEME[it.vibe]) || prev.theme,
+            theme: recommendedTheme || prev.theme,
+            layoutStyle: recommendedLayout || prev.layoutStyle,
             services: it.services && it.services.length > 0 ? it.services : prev.services,
           }));
 
@@ -315,9 +323,11 @@ export default function SandboxOnboarding() {
 
             setFormData((prev) => ({
               ...prev,
-              theme: mergedConfig.theme || prev.theme,
+              theme: mergedConfig.theme || recommendedTheme || prev.theme,
               layoutStyle:
-                typeof mergedConfig.layoutStyle === 'string' ? mergedConfig.layoutStyle : prev.layoutStyle,
+                typeof mergedConfig.layoutStyle === 'string'
+                  ? mergedConfig.layoutStyle
+                  : recommendedLayout || prev.layoutStyle,
               // Don't inherit the demo placeholder headline (garage copy) when
               // the prospect's AI build has none — fall back to a trade-neutral
               // headline based on their business instead.

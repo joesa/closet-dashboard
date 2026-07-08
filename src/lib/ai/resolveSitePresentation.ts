@@ -274,7 +274,14 @@ Rules suggestion (use unless clearly wrong): theme=${rules.theme}, layout=${rule
       themeTokens,
       themeTokensSource,
       engagementModel: rules.engagementModel,
-      designVariantOverride: parsed.isCinematicHero ? 'atelier' : undefined,
+      // NOTE: we intentionally do NOT force a fixed preset (previously 'atelier')
+      // for visually-driven businesses. Pinning every "cinematic" trade to one
+      // named studio made all of them (tree services, landscapers, remodelers)
+      // render with identical structure. The per-site seeded resolver
+      // (resolveDesignSeed in provisionTenant) already guarantees a unique,
+      // non-duplicate composition per site, and the theme archetype weighting
+      // in designVariants.ts already biases bold/luxe themes toward cinematic
+      // heroes — so variety is preserved without cookie-cutter collisions.
     }
   } catch {
     return { ...rules, themeTokens, themeTokensSource }
