@@ -3,7 +3,9 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import {
   describeImageError,
   generateImageVariants,
+  generateImageEditVariants,
 } from '@/lib/ai/generateImagesBatch'
+import { buildBeforeImagePrompt } from '@/lib/images/beforeAfterPrompt'
 import { getIntakeByToken } from '@/lib/intake/getIntakeByToken'
 import { assertDraftIntake, assertDepositPaid } from '@/lib/intake/intakeTierGates'
 import { resolveStudioServiceNames } from '@/lib/intake/studioServiceNames'
@@ -50,12 +52,19 @@ export async function POST(
     }
 
     const body = await req.json()
-    const slot = body.slot === 'product' ? 'product' : body.slot === 'hero' ? 'hero' : null
+    const slot =
+      body.slot === 'product'
+        ? 'product'
+        : body.slot === 'hero'
+          ? 'hero'
+          : body.slot === 'before'
+            ? 'before'
+            : null
     const prompt = typeof body.prompt === 'string' ? body.prompt.trim() : ''
     const productIndex =
       typeof body.productIndex === 'number' ? body.productIndex : parseInt(body.productIndex, 10)
 
-    if (!slot || !prompt) {
+    if (!slot || (!prompt && slot !== 'before')) {
       return NextResponse.json({ error: 'slot and prompt are required' }, { status: 400 })
     }
 
@@ -65,10 +74,28 @@ export async function POST(
       parseImageSelections(row.image_selections),
       serviceNames
     )
+    const beforeState = selections.beforeAfter ?? { attemptsUsed: 0, history: [] }
+
+    // The "before" shot is derived from the selected hero ("after") image, so
+    // both sides of the transformation slider show the same subject.
+    const afterUrl = selections.hero.selectedUrl
+    if (slot === 'before' && !afterUrl) {
+      return NextResponse.json(
+        { error: 'Select a hero image first — the before photo is derived from it.' },
+        { status: 400 }
+      )
+    }
 
     if (slot === 'hero') {
       if (selections.hero.attemptsUsed >= maxAttempts) {
         return NextResponse.json({ error: 'No hero generation attempts remaining.' }, { status: 400 })
+      }
+    } else if (slot === 'before') {
+      if (beforeState.attemptsUsed >= maxAttempts) {
+        return NextResponse.json(
+          { error: 'No before-image generation attempts remaining.' },
+          { status: 400 }
+        )
       }
     } else {
       const idx = Number.isFinite(productIndex) ? productIndex : -1
@@ -94,20 +121,47 @@ export async function POST(
     const attemptNum =
       slot === 'hero'
         ? selections.hero.attemptsUsed + 1
-        : selections.products[productIndex].attemptsUsed + 1
+        : slot === 'before'
+          ? beforeState.attemptsUsed + 1
+          : selections.products[productIndex].attemptsUsed + 1
     const keyPrefix =
       slot === 'hero'
         ? `hero-a${attemptNum}`
-        : `product-${productIndex + 1}-a${attemptNum}`
+        : slot === 'before'
+          ? `before-a${attemptNum}`
+          : `product-${productIndex + 1}-a${attemptNum}`
 
-    const urls = await generateImageVariants(prompt, storagePrefix, keyPrefix, 3)
+    let urls: string[]
+    let effectivePrompt = prompt
+    if (slot === 'before') {
+      // Default to the trade-aware degradation prompt when the prospect didn't
+      // customize it — same prompt provisioning would use, made visible/editable.
+      effectivePrompt =
+        prompt ||
+        buildBeforeImagePrompt(afterUrl!, {
+          industry: row.industry,
+          services: serviceNames,
+          otherServices: row.other_services,
+        })
+      urls = await generateImageEditVariants(afterUrl!, effectivePrompt, storagePrefix, keyPrefix, 3)
+    } else {
+      urls = await generateImageVariants(prompt, storagePrefix, keyPrefix, 3)
+    }
 
-    const record: ImageAttemptRecord = { attempt: attemptNum, urls, prompt }
+    const record: ImageAttemptRecord = { attempt: attemptNum, urls, prompt: effectivePrompt }
 
     if (slot === 'hero') {
       selections.hero.attemptsUsed = attemptNum
       selections.hero.prompt = prompt
       selections.hero.history = [...selections.hero.history, record]
+    } else if (slot === 'before') {
+      selections.beforeAfter = {
+        ...beforeState,
+        attemptsUsed: attemptNum,
+        prompt: effectivePrompt,
+        afterUrl,
+        history: [...beforeState.history, record],
+      }
     } else {
       const p = selections.products[productIndex]
       p.attemptsUsed = attemptNum

@@ -63,7 +63,14 @@ export async function PATCH(
     const { row } = loaded
 
     const body = await req.json()
-    const slot = body.slot === 'product' ? 'product' : body.slot === 'hero' ? 'hero' : null
+    const slot =
+      body.slot === 'product'
+        ? 'product'
+        : body.slot === 'hero'
+          ? 'hero'
+          : body.slot === 'before'
+            ? 'before'
+            : null
     const selectedUrl = typeof body.selectedUrl === 'string' ? body.selectedUrl.trim() : ''
     const selectedAttempt =
       typeof body.attempt === 'number' ? body.attempt : parseInt(body.attempt, 10)
@@ -86,6 +93,20 @@ export async function PATCH(
       }
       selections.hero.selectedUrl = selectedUrl
       selections.hero.selectedAttempt = Number.isFinite(selectedAttempt) ? selectedAttempt : undefined
+    } else if (slot === 'before') {
+      const beforeState = selections.beforeAfter ?? { attemptsUsed: 0, history: [] }
+      const allowed = beforeState.history.some((h) => h.urls.includes(selectedUrl))
+      if (!allowed) {
+        return NextResponse.json(
+          { error: 'URL not from a generated before-image batch' },
+          { status: 400 }
+        )
+      }
+      selections.beforeAfter = {
+        ...beforeState,
+        selectedUrl,
+        selectedAttempt: Number.isFinite(selectedAttempt) ? selectedAttempt : undefined,
+      }
     } else {
       const idx = Number.isFinite(productIndex) ? productIndex : -1
       const product = selections.products[idx]

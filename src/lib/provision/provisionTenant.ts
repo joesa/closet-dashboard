@@ -584,6 +584,10 @@ export async function provisionTenant(
     // Selections are keyed by service label and always win over catalog/AI
     // defaults, so an AI Premium build deploys exactly what the customer picked.
     let heroSelectedUrl: string | null = null
+    // Prospect-chosen "before" shot from the intake studio (generated from
+    // their hero or uploaded as a real photo). When present, provisioning uses
+    // it verbatim and skips the automatic before-image generation.
+    let beforeSelectedUrl: string | null = null
     const pickedImages: { name: string; url: string }[] = []
     // Prospect-selected pages become the authoritative sitemap — admins never
     // re-guess. Caps: AI Premium 10 total, Standard 5 total (Home included).
@@ -611,6 +615,7 @@ export async function provisionTenant(
           sel = await persistImageSelections(intakeForImages.token, sel)
         }
         heroSelectedUrl = sel.hero.selectedUrl || null
+        beforeSelectedUrl = sel.beforeAfter?.selectedUrl || null
         for (const p of sel.products) {
           if (p.selectedUrl) pickedImages.push({ name: p.serviceName, url: p.selectedUrl })
         }
@@ -757,8 +762,9 @@ export async function provisionTenant(
       },
       before_after_config: beforeAfterApplicable
         ? {
-            // beforeImage resolved below after async generation
-            beforeImage: beforeImage || '/brands/lumina/before.png',
+            // beforeImage resolved below after async generation (unless the
+            // prospect already chose one in the intake studio)
+            beforeImage: beforeSelectedUrl || beforeImage || '/brands/lumina/before.png',
             afterImage: defaultHeroBackground || '/brands/lumina/hero.png',
             title: `The ${businessName} Transformation`,
             subtitle: 'Drag to see',
@@ -771,8 +777,9 @@ export async function provisionTenant(
     // static placeholder so provisioning never hard-fails. Skipped entirely
     // when there's no physical "before" state for this business (see
     // beforeAfterApplicable above) — saves a real AI image-generation call
-    // and avoids rendering a nonsensical before/after slider.
-    if (beforeAfterApplicable && process.env.OPENAI_API_KEY) {
+    // and avoids rendering a nonsensical before/after slider — or when the
+    // prospect already generated/uploaded their own before in the studio.
+    if (beforeAfterApplicable && !beforeSelectedUrl && process.env.OPENAI_API_KEY) {
       const afterUrl = defaultHeroBackground || '/brands/lumina/hero.png'
       const generatedBeforeUrl = await generateBeforeImage(afterUrl, assetSlug, beforeAfterContext).catch((err) => {
         console.warn('[provisionTenant] Before image generation failed, using fallback:', err)
@@ -876,14 +883,15 @@ export async function provisionTenant(
       // Update afterImage to the AI-resolved background.
       // Re-generate the before image against the final after URL so the slider
       // pair always references the same space type. Skipped entirely when
-      // this business has no physical "before" state (beforeAfterApplicable).
+      // this business has no physical "before" state (beforeAfterApplicable)
+      // or the prospect already chose a before image in the intake studio.
       if (beforeAfterApplicable) {
         const aiAfterUrl = backgroundImage
         siteConfigData.before_after_config = {
           ...(siteConfigData.before_after_config as object),
           afterImage: aiAfterUrl,
         }
-        if (process.env.OPENAI_API_KEY) {
+        if (!beforeSelectedUrl && process.env.OPENAI_API_KEY) {
           const regeneratedBeforeUrl = await generateBeforeImage(aiAfterUrl, assetSlug, beforeAfterContext).catch(
             (err) => {
               console.warn('[provisionTenant] AI before image generation failed, using fallback:', err)

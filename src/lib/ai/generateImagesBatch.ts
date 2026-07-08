@@ -1,4 +1,4 @@
-import { generateAndUpload } from '@/lib/openai-images'
+import { generateAndUpload, editImageFromUrl } from '@/lib/openai-images'
 
 export function describeImageError(error: unknown): { status: number; message: string } {
   const err = error as { status?: number; code?: string; message?: string }
@@ -50,6 +50,32 @@ export async function generateImageVariants(
       generateAndUpload(prompt, storagePrefix, `${keyPrefix}-${i + 1}`).then((url) => {
         urls[i] = url
       })
+    )
+  )
+  return urls.filter(Boolean)
+}
+
+/**
+ * Generate `count` image-to-image edit variants of a reference image (e.g.
+ * "before" shots derived from a selected "after" hero photo) and upload them
+ * under storagePrefix. Each variant runs the same edit prompt independently,
+ * so the prospect gets meaningfully different takes to choose from.
+ */
+export async function generateImageEditVariants(
+  referenceUrl: string,
+  prompt: string,
+  storagePrefix: string,
+  keyPrefix: string,
+  count = 3
+): Promise<string[]> {
+  const urls: string[] = []
+  await Promise.all(
+    Array.from({ length: count }, (_, i) =>
+      editImageFromUrl(referenceUrl, prompt, storagePrefix, `${keyPrefix}-${i + 1}`).then(
+        (url) => {
+          urls[i] = url
+        }
+      )
     )
   )
   return urls.filter(Boolean)

@@ -2,6 +2,9 @@
 
 import React, { useMemo, useState } from 'react';
 import type { IntakeImageSelections } from '@/lib/intake/imageSelections';
+import { buildBeforeImagePrompt } from '@/lib/images/beforeAfterPrompt';
+
+type StudioSlot = 'hero' | 'product' | 'before';
 
 type SiteConfigShape = {
   hero?: { imagePrompt?: string; headline?: string };
@@ -169,7 +172,7 @@ export default function IntakeImageStudio({
   const [error, setError] = useState('');
   const [preview, setPreview] = useState<{
     url: string;
-    slot: 'hero' | 'product';
+    slot: StudioSlot;
     attempt: number;
     productIndex?: number;
     isSelected: boolean;
@@ -223,6 +226,20 @@ export default function IntakeImageStudio({
     return defaultHeroPrompt(services[0] ?? '');
   })();
 
+  // Editable art direction for the "before" transformation shot. Defaults to
+  // the same trade-aware degradation prompt provisioning would use, derived
+  // from the selected hero ("after") image.
+  const [beforePromptOverride, setBeforePromptOverride] = useState<string | null>(null);
+  const beforeState = selections.beforeAfter ?? { attemptsUsed: 0, history: [] };
+  const beforePrompt =
+    beforePromptOverride ??
+    beforeState.prompt ??
+    buildBeforeImagePrompt(selections.hero.selectedUrl || '', {
+      industry: (formState?.industry as string) || null,
+      services,
+      otherServices: (formState?.otherServices as string) || null,
+    });
+
   const runBrief = async () => {
     setBriefLoading(true);
     setError('');
@@ -253,11 +270,11 @@ export default function IntakeImageStudio({
   }, [isActive, siteConfig, briefLoading]);
 
   const generateBatch = async (
-    slot: 'hero' | 'product',
+    slot: StudioSlot,
     prompt: string,
     productIndex?: number
   ) => {
-    const key = slot === 'hero' ? 'hero' : `product-${productIndex}`;
+    const key = slot === 'hero' ? 'hero' : slot === 'before' ? 'before' : `product-${productIndex}`;
     setGenLoading(key);
     setError('');
     try {
@@ -313,7 +330,7 @@ export default function IntakeImageStudio({
   }, [isActive, siteConfig, autoGenStarted, selections, products, heroPrompt]);
 
   const selectImage = async (
-    slot: 'hero' | 'product',
+    slot: StudioSlot,
     selectedUrl: string,
     attempt: number,
     productIndex?: number
@@ -329,6 +346,12 @@ export default function IntakeImageStudio({
       if (!res.ok) throw new Error(json.error || 'Failed to save selection');
       setSelections(json.imageSelections);
       onUpdate(json.imageSelections, siteConfig);
+      // First hero pick: kick off the matching "before" batch automatically
+      // (empty prompt = server builds the trade-aware default from the hero).
+      const ba = json.imageSelections?.beforeAfter;
+      if (slot === 'hero' && !ba?.selectedUrl && (ba?.attemptsUsed ?? 0) === 0) {
+        void generateBatch('before', '');
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to save selection');
     }
@@ -336,7 +359,7 @@ export default function IntakeImageStudio({
 
   const handleFileUpload = (
     e: React.ChangeEvent<HTMLInputElement>,
-    slot: 'hero' | 'product',
+    slot: StudioSlot,
     productIndex?: number
   ) => {
     const file = e.target.files?.[0];
@@ -362,6 +385,17 @@ export default function IntakeImageStudio({
             selectedUrl: dataUrl,
             selectedAttempt: attemptRecord.attempt,
             history: [...(selections.hero.history || []), attemptRecord],
+          },
+        };
+      } else if (slot === 'before') {
+        const beforeState = selections.beforeAfter ?? { attemptsUsed: 0, history: [] };
+        newSelections = {
+          ...selections,
+          beforeAfter: {
+            ...beforeState,
+            selectedUrl: dataUrl,
+            selectedAttempt: attemptRecord.attempt,
+            history: [...(beforeState.history || []), attemptRecord],
           },
         };
       } else {
@@ -410,7 +444,7 @@ export default function IntakeImageStudio({
 
   const renderSlot = (
     label: string,
-    slot: 'hero' | 'product',
+    slot: StudioSlot,
     prompt: string,
     onPromptChange: (v: string) => void,
     slotState: IntakeImageSelections['hero'] | IntakeImageSelections['products'][0],
@@ -419,6 +453,12 @@ export default function IntakeImageStudio({
     const attemptsUsed = slotState.attemptsUsed ?? 0;
     const max = 5;
     const lastBatch = slotState.history?.[slotState.history.length - 1];
+    const genKey = slot === 'hero' ? 'hero' : slot === 'before' ? 'before' : `product-${productIndex}`;
+    const generateDisabled =
+      !!genLoading ||
+      !prompt.trim() ||
+      attemptsUsed >= max ||
+      (slot === 'before' && !selections.hero.selectedUrl);
 
     return (
       <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
@@ -437,11 +477,11 @@ export default function IntakeImageStudio({
         <div className="mt-2 flex items-center gap-3">
           <button
             type="button"
-            disabled={!!genLoading || !prompt.trim() || attemptsUsed >= max}
+            disabled={generateDisabled}
             onClick={() => void generateBatch(slot, prompt, productIndex)}
             className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-500 disabled:opacity-50"
           >
-            {genLoading === (slot === 'hero' ? 'hero' : `product-${productIndex}`)
+            {genLoading === genKey
               ? 'Generating 3 options…'
               : 'Generate 3 options'}
           </button>
@@ -465,7 +505,14 @@ export default function IntakeImageStudio({
         </div>
         {attemptsUsed >= max && (
           <p className="mt-2 text-xs text-gray-500">
-            No generations remaining for this {slot === 'hero' ? 'hero image' : 'product'}.
+            No generations remaining for this{' '}
+            {slot === 'hero' ? 'hero image' : slot === 'before' ? 'before image' : 'product'}.
+          </p>
+        )}
+        {slot === 'before' && !selections.hero.selectedUrl && (
+          <p className="mt-2 text-xs text-amber-700">
+            Select a hero image first — the AI derives the “before” photo from it so both sides of
+            the slider show the same scene.
           </p>
         )}
         {slotState.selectedUrl && (
@@ -551,6 +598,39 @@ export default function IntakeImageStudio({
             (v) => setSiteConfig((s) => ({ ...s, hero: { ...s?.hero, imagePrompt: v } })),
             selections.hero
           )}
+
+          <div className="rounded-lg border border-indigo-100 bg-indigo-50/50 p-4">
+            <h4 className="font-medium text-gray-900">Before / after transformation</h4>
+            <p className="mt-1 text-xs text-gray-600">
+              Your site shows a drag-to-compare slider: the “after” side is your selected hero
+              image, and the AI creates the matching “before” photo of the exact same scene in its
+              pre-service state. Generate options below, edit the description first if you like, or
+              upload your own real before photo instead.
+            </p>
+            {selections.hero.selectedUrl && (
+              <div className="mt-3 flex items-center gap-3">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={selections.hero.selectedUrl}
+                  alt="After (hero)"
+                  className="h-16 w-24 rounded border border-gray-300 object-cover"
+                />
+                <span className="text-xs text-gray-600">
+                  “After” side of the slider (your hero image)
+                </span>
+              </div>
+            )}
+            <div className="mt-3">
+              {renderSlot(
+                'Before photo',
+                'before',
+                beforePrompt,
+                (v) => setBeforePromptOverride(v),
+                beforeState
+              )}
+            </div>
+          </div>
+
           {products.map((p) => {
             const slotState =
               selections.products.find((x) => x.serviceName === p.serviceName) ?? {

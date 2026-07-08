@@ -350,6 +350,9 @@ export default function SandboxOnboarding() {
                 (it.business_name ? `Welcome to ${it.business_name}` : ''),
               aboutDescription: mergedConfig.about?.description || aboutFromPages,
               heroImage: generated.hero || '',
+              beforeImage:
+                (it.image_selections as IntakeImageSelections | null)?.beforeAfter?.selectedUrl ||
+                prev.beforeImage,
             }));
             setIntakeBanner(
               prospectConfig

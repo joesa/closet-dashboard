@@ -22,15 +22,33 @@ export type ProductImageSelection = {
   history: ImageAttemptRecord[]
 }
 
+/**
+ * The transformation slider's "before" shot. Generated as an image-to-image
+ * edit of the selected hero ("after") photo so both sides show the same
+ * subject, or uploaded by the prospect as their own real before photo. The
+ * "after" side of the slider is always the selected hero image.
+ */
+export type BeforeImageSelection = {
+  /** Hero URL the last generation batch was derived from (staleness check). */
+  afterUrl?: string
+  selectedUrl?: string
+  selectedAttempt?: number
+  attemptsUsed: number
+  prompt?: string
+  history: ImageAttemptRecord[]
+}
+
 export type IntakeImageSelections = {
   hero: HeroImageSelection
   products: ProductImageSelection[]
+  beforeAfter?: BeforeImageSelection
 }
 
 export function emptyImageSelections(): IntakeImageSelections {
   return {
     hero: { attemptsUsed: 0, history: [] },
     products: [],
+    beforeAfter: { attemptsUsed: 0, history: [] },
   }
 }
 
@@ -46,6 +64,14 @@ export function parseImageSelections(raw: unknown): IntakeImageSelections {
       history: Array.isArray(o.hero?.history) ? o.hero!.history : [],
     },
     products: Array.isArray(o.products) ? o.products : [],
+    beforeAfter: {
+      attemptsUsed: o.beforeAfter?.attemptsUsed ?? 0,
+      afterUrl: o.beforeAfter?.afterUrl,
+      selectedUrl: o.beforeAfter?.selectedUrl,
+      selectedAttempt: o.beforeAfter?.selectedAttempt,
+      prompt: o.beforeAfter?.prompt,
+      history: Array.isArray(o.beforeAfter?.history) ? o.beforeAfter!.history : [],
+    },
   }
 }
 

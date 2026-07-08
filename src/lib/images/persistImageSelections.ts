@@ -19,6 +19,15 @@ export async function persistImageSelections(
       ...p,
       history: p.history.map((batch) => ({ ...batch, urls: [...batch.urls] })),
     })),
+    beforeAfter: selections.beforeAfter
+      ? {
+          ...selections.beforeAfter,
+          history: selections.beforeAfter.history.map((batch) => ({
+            ...batch,
+            urls: [...batch.urls],
+          })),
+        }
+      : undefined,
   }
 
   for (let b = 0; b < next.hero.history.length; b++) {
@@ -55,6 +64,23 @@ export async function persistImageSelections(
         product.selectedUrl,
         `intakes/${token}/products/${slot}/selected`,
         'product'
+      )
+    }
+  }
+
+  if (next.beforeAfter) {
+    for (const batch of next.beforeAfter.history) {
+      batch.urls = await Promise.all(
+        batch.urls.map((url, j) =>
+          persistImageUrl(url, `intakes/${token}/before/custom-a${batch.attempt}-${j + 1}`, 'hero')
+        )
+      )
+    }
+    if (next.beforeAfter.selectedUrl) {
+      next.beforeAfter.selectedUrl = await persistImageUrl(
+        next.beforeAfter.selectedUrl,
+        `intakes/${token}/before/selected`,
+        'hero'
       )
     }
   }
