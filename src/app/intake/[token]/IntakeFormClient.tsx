@@ -1056,6 +1056,16 @@ export default function IntakeFormClient({
     }
   };
 
+  // Tap-to-add a suggested add-on into the comma-separated add-ons field.
+  const toggleAddOn = (addOn: string) => {
+    const current = parseServiceList(form.addOnText);
+    const exists = current.some((s) => s.toLowerCase() === addOn.toLowerCase());
+    const next = exists
+      ? current.filter((s) => s.toLowerCase() !== addOn.toLowerCase())
+      : [...current, addOn];
+    set('addOnText', next.join(', '));
+  };
+
   const industryExamples = useMemo(
     () => industryExampleLabels(calculatorGuidance.tradeLabel),
     [calculatorGuidance.tradeLabel]
@@ -1868,8 +1878,40 @@ export default function IntakeFormClient({
             )}
 
             <label className={label}>Add-ons / upgrades</label>
+            {calculatorGuidance.addOnExamples.length > 0 && (
+              <div className="mb-3 rounded-xl border border-indigo-300/20 bg-indigo-500/10 p-4">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-indigo-300">
+                  AI-suggested add-ons for {calculatorGuidance.tradeLabel}
+                </p>
+                <p className="mt-1 mb-3 text-xs text-indigo-200/80">
+                  Common upsells customers buy in this trade. Tap any to add it to your add-ons below.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {calculatorGuidance.addOnExamples.map((addOn) => {
+                    const active = parseServiceList(form.addOnText).some(
+                      (s) => s.toLowerCase() === addOn.toLowerCase()
+                    );
+                    return (
+                      <button
+                        key={addOn}
+                        type="button"
+                        onClick={() => toggleAddOn(addOn)}
+                        className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+                          active
+                            ? 'border-indigo-300 bg-indigo-500/30 text-white'
+                            : 'border-white/[0.14] bg-white/[0.02] text-zinc-300 hover:border-indigo-300/50 hover:bg-indigo-500/10'
+                        }`}
+                      >
+                        {active ? '✓ ' : '+ '}
+                        {addOn}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
             <textarea className={`${input} min-h-[72px] mb-2`} value={form.addOnText} onChange={(e) => set('addOnText', e.target.value)} placeholder={calculatorGuidance.addOnExamples.join(', ')} />
-            <p className="mb-4 text-xs text-zinc-500">Examples: {calculatorGuidance.addOnExamples.join(' · ')}</p>
+            <p className="mb-4 text-xs text-zinc-500">Tap a suggestion above or type your own, separated by commas.</p>
 
             <label className={label}>How should the quote calculator think about these jobs?</label>
             {calculatorGuidance.quoteVariables.length > 0 && (
