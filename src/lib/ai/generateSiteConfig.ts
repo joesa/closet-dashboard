@@ -422,7 +422,9 @@ For each page:
   "Financing" -> "/financing", "Services" -> "/services").
 - "title": the page title.
 - "is_active": boolean. Set to true if the page is essential for the initial site launch (e.g., About Us, Services, Contact), or false if it is an optional page that the Admin can enable later. ${sitemap && sitemap.length > 1 ? `The customer specifically requested these pages, so ensure they are included and set is_active to true for them: ${JSON.stringify(sitemap)}.` : ''}
-- "hero.headline": a punchy headline specific to that page.
+- "hero.headline": a punchy headline specific to that page. HARD LIMIT: 6 words or fewer — some
+  design variants render headlines at monumental scale, and anything longer overflows the hero
+  and collides with the fixed navigation bar.
 - "content_blocks": 2 to 4 blocks of RICH, SPECIFIC, PERSUASIVE selling copy tailored to this exact
   business and niche — NEVER generic placeholders like "List the cities you serve". Write real
   marketing copy a $200k agency would ship. Vary block types:

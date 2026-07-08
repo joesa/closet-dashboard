@@ -74,25 +74,33 @@ describe('Theme catalog integrity', () => {
 
 describe('Engagement model per industry', () => {
   const allIndustries = listIndustries()
-  const ORDER_INDUSTRIES = ['restaurants-bars'] as const
+
+  // Industries whose engagement model deliberately differs from the default
+  // 'quote' (direct purchase, appointment booking, or ticketed admission).
+  // Any unlisted industry must stay 'quote' — a new non-quote industry needs
+  // an explicit entry here so the change is a conscious decision.
+  const NON_QUOTE_INDUSTRIES: Record<string, string> = {
+    'restaurants-bars': 'order',
+    'food-truck': 'order',
+    'bounce-house': 'ticket',
+    'massage-therapy': 'booking',
+    'medical-clinic': 'booking',
+    'therapy-rehab': 'booking',
+    'senior-care': 'booking',
+    'education-formal': 'booking',
+    'enrichment-education': 'booking',
+  }
 
   it('restaurants-bars is classified as "order"', () => {
     expect(getEngagementModel('restaurants-bars')).toBe('order')
   })
 
-  it('food-truck (events) is classified as "quote"', () => {
-    expect(getEngagementModel('food-truck')).toBe('quote')
-  })
-
-  it('all non-order industries default to "quote"', () => {
+  it('every industry resolves to its intended engagement model', () => {
     const failures: string[] = []
     for (const ind of allIndustries) {
       const model = getEngagementModel(ind.slug)
-      if (ORDER_INDUSTRIES.includes(ind.slug as typeof ORDER_INDUSTRIES[number])) {
-        if (model !== 'order') failures.push(`${ind.slug}: expected order, got ${model}`)
-      } else {
-        if (model !== 'quote') failures.push(`${ind.slug}: expected quote, got ${model}`)
-      }
+      const expected = NON_QUOTE_INDUSTRIES[ind.slug] ?? 'quote'
+      if (model !== expected) failures.push(`${ind.slug}: expected ${expected}, got ${model}`)
     }
     expect(failures).toEqual([])
   })

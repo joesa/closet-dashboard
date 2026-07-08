@@ -5,6 +5,7 @@ import { buildTenantPreviewUrl, getTenantPublicUrl } from '@/lib/admin-preview';
 import { notFound } from 'next/navigation';
 import DeleteTenantDialog from '@/components/DeleteTenantDialog';
 import SiteValidationPanel from '@/components/SiteValidationPanel';
+import AdminSiteChat from '@/components/AdminSiteChat';
 import { DESIGN_VARIANT_OPTIONS } from '@/lib/catalog/designVariantCatalog';
 
 export const dynamic = 'force-dynamic';
@@ -157,6 +158,9 @@ export default async function TenantDetailsPage({ params }: { params: Promise<{ 
           issues={validationIssues}
           validatedAt={tenant.validated_at ?? null}
         />
+
+        {/* AI Site Assistant — conversational edits to this site's config */}
+        <AdminSiteChat tenantId={tenant.id} />
 
         {/* Configuration Inspection */}
         {config ? (

@@ -331,6 +331,21 @@ export async function validateTenantSite(tenantId: string): Promise<ValidationRe
     }
   }
 
+  // Over-long hero headlines overflow the monumental type scales some design
+  // variants use, colliding with the fixed navbar (seen live: a 9-word page
+  // headline under a centered transparent nav). The generator prompt caps
+  // headlines at ~6 words; this is the independent safety net behind it.
+  const heroHeadline = config.hero_config?.headline?.trim()
+  if (heroHeadline && heroHeadline.split(/\s+/).length > 8) {
+    issues.push({
+      code: 'hero_headline_too_long',
+      severity: 'warning',
+      message: `Hero headline is ${heroHeadline.split(/\s+/).length} words — headlines over 8 words can overflow large-type design variants and collide with the fixed nav. Consider shortening: "${heroHeadline.slice(0, 80)}"`,
+      fixable: false,
+      meta: { headline: heroHeadline },
+    })
+  }
+
   // Generic placeholder hero image (never regenerated) is a low-severity
   // "not bespoke enough" signal, not a hard failure.
   if (config.hero_config?.backgroundImage === GENERIC_HERO_URL) {
