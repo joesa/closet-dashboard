@@ -314,7 +314,12 @@ export default function SandboxOnboarding() {
               theme: mergedConfig.theme || prev.theme,
               layoutStyle:
                 typeof mergedConfig.layoutStyle === 'string' ? mergedConfig.layoutStyle : prev.layoutStyle,
-              heroHeadline: mergedConfig.hero?.headline || prev.heroHeadline,
+              // Don't inherit the demo placeholder headline (garage copy) when
+              // the prospect's AI build has none — fall back to a trade-neutral
+              // headline based on their business instead.
+              heroHeadline:
+                mergedConfig.hero?.headline ||
+                (it.business_name ? `Welcome to ${it.business_name}` : ''),
               aboutDescription: mergedConfig.about?.description || prev.aboutDescription,
               heroImage: generated.hero || prev.heroImage,
             }));
@@ -486,7 +491,10 @@ export default function SandboxOnboarding() {
         ...prev,
         theme: siteConfig.theme || prev.theme,
         layoutStyle: layoutFromAi || prev.layoutStyle,
-        heroHeadline: siteConfig.hero?.headline || prev.heroHeadline,
+        // Avoid inheriting the demo garage placeholder for a different business.
+        heroHeadline:
+          siteConfig.hero?.headline ||
+          (prev.businessName ? `Welcome to ${prev.businessName}` : ''),
         aboutDescription: siteConfig.about?.description || prev.aboutDescription,
         services: matchedServices.length > 0 ? matchedServices : prev.services,
         subdomain: prev.subdomain || slugify(prev.businessName),
