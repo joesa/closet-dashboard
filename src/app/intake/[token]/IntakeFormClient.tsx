@@ -635,6 +635,27 @@ export default function IntakeFormClient({
       .catch(() => {});
   }, [initialTierFromQuery, intakeTier, submitted, token]);
 
+  // After email verification (or returning from a verify link), refetch intake
+  // so healed tier/deposit state is applied client-side before AI features run.
+  const intakeRefetchDone = useRef(false);
+  useEffect(() => {
+    if (typeof window === 'undefined' || intakeRefetchDone.current || submitted) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('verified') !== '1') return;
+    intakeRefetchDone.current = true;
+    fetch(`/api/intake/${token}`)
+      .then((r) => r.json())
+      .then((json) => {
+        if (json.error) return;
+        if (json.intakeTier) setIntakeTier(json.intakeTier);
+        if (json.depositStatus) setDepositStatus(json.depositStatus);
+        if (typeof json.canUseImageStudio === 'boolean') {
+          setCanUseImageStudio(json.canUseImageStudio);
+        }
+      })
+      .catch(() => {});
+  }, [submitted, token]);
+
   useEffect(() => {
     if (payAutoDone.current || !payKindFromQuery || !canPayToLaunch) return;
     payAutoDone.current = true;

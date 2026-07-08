@@ -1,11 +1,12 @@
 import type { ProspectIntakeRow } from '@/lib/intake/getIntakeByToken'
-import { canUseImageStudio } from '@/lib/intake/intakeTierGates'
+import { canUseImageStudio, effectiveIntakeTier } from '@/lib/intake/intakeTierGates'
 import { parseImageSelections } from '@/lib/intake/imageSelections'
 import {
+  depositStatusForTier,
+  formatUsd,
+  getSiteMaintenancePricing,
   getTierCatalog,
   getTierEntry,
-  getSiteMaintenancePricing,
-  formatUsd,
 } from '@/lib/intake/tiers'
 import {
   getIntakePaymentSummary,
@@ -13,8 +14,14 @@ import {
 } from '@/lib/intake/intakePaymentStage'
 
 export function buildIntakePublicJson(row: ProspectIntakeRow) {
-  const tierEntry = getTierEntry(
-    row.intake_tier === 'ai_premium' ? 'ai_premium' : 'standard'
+  const tier = effectiveIntakeTier(row)
+  const tierEntry = getTierEntry(tier)
+  const depositRequiredCents = tierEntry?.depositCents ?? row.deposit_required_cents
+  const tierTotalCents = tierEntry?.totalCents ?? row.tier_total_cents
+  const depositStatus = depositStatusForTier(
+    tier,
+    row.deposit_paid_cents,
+    depositRequiredCents
   )
   const selections = parseImageSelections(row.image_selections)
   const aiRaw = row.ai_site_config as Record<string, unknown> | null
@@ -36,21 +43,21 @@ export function buildIntakePublicJson(row: ProspectIntakeRow) {
     emailVerified: !!row.email_verified_at,
     requestedProduct: row.requested_product,
     provisioningMode: row.provisioning_mode,
-    intakeTier: row.intake_tier,
-    tierTotalCents: row.tier_total_cents,
-    depositRequiredCents: row.deposit_required_cents,
+    intakeTier: tier,
+    tierTotalCents,
+    depositRequiredCents,
     depositPaidCents: row.deposit_paid_cents,
-    depositStatus: row.deposit_status,
+    depositStatus,
     // True once the contractor has already made an explicit Standard vs AI
     // Premium choice before reaching the form (get-started flow, or a
     // tier-specific email link) — used to hide the redundant TierPicker.
     tierSelected: !!row.tier_selected_at,
     tierLabel: tierEntry?.label,
-    depositDisplay: formatUsd(row.deposit_required_cents),
-    totalDisplay: formatUsd(row.tier_total_cents),
-    remainderCents: Math.max(0, row.tier_total_cents - row.deposit_required_cents),
+    depositDisplay: formatUsd(depositRequiredCents),
+    totalDisplay: formatUsd(tierTotalCents),
+    remainderCents: Math.max(0, tierTotalCents - depositRequiredCents),
     remainderDisplay: formatUsd(
-      Math.max(0, row.tier_total_cents - row.deposit_required_cents)
+      Math.max(0, tierTotalCents - depositRequiredCents)
     ),
     canUseImageStudio: canUseImageStudio(row),
     tierCatalog: getTierCatalog(),

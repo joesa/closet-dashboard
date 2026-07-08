@@ -4,6 +4,7 @@ import { getIntakeByToken } from '@/lib/intake/getIntakeByToken'
 import { buildIntakePublicJson } from '@/lib/intake/intakePublicResponse'
 import { applyIntakeCheckoutSession } from '@/lib/intake/applyIntakeCheckoutSession'
 import { resolveIntakeLaunchUrls } from '@/lib/intake/intakeLaunchUrls'
+import { healIntakeTierFromPayments } from '@/lib/intake/intakeTierGates'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -47,7 +48,7 @@ export async function POST(
     }
 
     const fresh = await getIntakeByToken(token)
-    const intakeRow = fresh ?? row
+    const intakeRow = fresh ? await healIntakeTierFromPayments(fresh) : await healIntakeTierFromPayments(row)
     const urls = await resolveIntakeLaunchUrls(intakeRow)
     return NextResponse.json({
       ...buildIntakePublicJson(intakeRow),

@@ -4,6 +4,7 @@ import { checkRateLimit, hashRateKey } from '@/lib/rateLimit'
 import { enqueueProvisionJob } from '@/lib/provision/enqueueProvisionJob'
 import { getIntakeByToken } from '@/lib/intake/getIntakeByToken'
 import { buildIntakePublicJson } from '@/lib/intake/intakePublicResponse'
+import { healIntakeTierFromPayments } from '@/lib/intake/intakeTierGates'
 import { validateAiPremiumReady } from '@/lib/intake/buildAiProvisionPayload'
 import { OTHER_SERVICE_LABEL } from '@/lib/catalog/contractorServices'
 import { clampPagesForTier } from '@/lib/catalog/sitePages'
@@ -29,7 +30,9 @@ export async function GET(
     return NextResponse.json({ error: 'This intake link is no longer active' }, { status: 410 })
   }
 
-  return NextResponse.json(buildIntakePublicJson(row))
+  const healed = await healIntakeTierFromPayments(row)
+
+  return NextResponse.json(buildIntakePublicJson(healed))
 }
 
 export async function POST(

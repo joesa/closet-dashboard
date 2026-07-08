@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { getIntakeByToken } from '@/lib/intake/getIntakeByToken'
-import { assertDraftIntake, canUseImageStudio } from '@/lib/intake/intakeTierGates'
+import { assertDraftIntake, canUseImageStudio, hasPaidPremiumDeposit } from '@/lib/intake/intakeTierGates'
 import {
   depositStatusForTier,
   getTierEntry,
@@ -31,6 +31,22 @@ export async function PATCH(
       body.tier === 'ai_premium' ? 'ai_premium' : body.tier === 'standard' ? 'standard' : null
     if (!tier) {
       return NextResponse.json({ error: 'tier must be standard or ai_premium' }, { status: 400 })
+    }
+
+    if (tier === 'standard' && hasPaidPremiumDeposit(row)) {
+      const entry = getTierEntry('ai_premium')
+      const depositStatus = entry
+        ? depositStatusForTier('ai_premium', row.deposit_paid_cents, entry.depositCents)
+        : row.deposit_status
+      return NextResponse.json({
+        success: true,
+        tier: 'ai_premium',
+        tierTotalCents: entry?.totalCents ?? row.tier_total_cents,
+        depositRequiredCents: entry?.depositCents ?? row.deposit_required_cents,
+        depositStatus,
+        canUseImageStudio: canUseImageStudio(row),
+        catalog: entry,
+      })
     }
 
     const entry = getTierEntry(tier as IntakeTierSlug)

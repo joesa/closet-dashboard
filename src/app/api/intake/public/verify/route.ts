@@ -7,6 +7,7 @@ import {
   getTierEntry,
   type IntakeTierSlug,
 } from '@/lib/intake/tiers'
+import { hasPaidPremiumDeposit } from '@/lib/intake/intakeTierGates'
 
 export const runtime = 'nodejs'
 
@@ -52,10 +53,14 @@ export async function GET(req: Request) {
   // requested tier happens to match that default.
   let updatedRow: ProspectIntakeRow = { ...row, email_verified_at: patch.email_verified_at as string }
   if (tier) {
-    const entry = getTierEntry(tier)
+    // Never downgrade to Standard once the prospect has paid the AI Premium
+    // deposit — re-clicking a generic verify link must not revoke AI access.
+    const effectiveTier: IntakeTierSlug =
+      tier === 'standard' && hasPaidPremiumDeposit(row) ? 'ai_premium' : tier
+    const entry = getTierEntry(effectiveTier)
     if (entry) {
-      const depositStatus = depositStatusForTier(tier, row.deposit_paid_cents, entry.depositCents)
-      patch.intake_tier = tier
+      const depositStatus = depositStatusForTier(effectiveTier, row.deposit_paid_cents, entry.depositCents)
+      patch.intake_tier = effectiveTier
       patch.tier_total_cents = entry.totalCents
       patch.deposit_required_cents = entry.depositCents
       patch.deposit_status = depositStatus
@@ -64,7 +69,7 @@ export async function GET(req: Request) {
       patch.tier_selected_at = row.tier_selected_at || nowIso
       updatedRow = {
         ...updatedRow,
-        intake_tier: tier,
+        intake_tier: effectiveTier,
         tier_total_cents: entry.totalCents,
         deposit_required_cents: entry.depositCents,
         deposit_status: depositStatus,
@@ -99,7 +104,9 @@ export async function GET(req: Request) {
     }
   }
 
-  const tierQuery = tier ? `&tier=${tier}` : ''
+  const tierQuery = tier
+    ? `&tier=${tier === 'standard' && hasPaidPremiumDeposit(row) ? 'ai_premium' : tier}`
+    : ''
   return NextResponse.redirect(`${origin}/intake/${token}?verified=1${tierQuery}`)
 }
 
