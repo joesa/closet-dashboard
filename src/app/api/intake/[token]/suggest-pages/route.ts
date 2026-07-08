@@ -3,6 +3,8 @@ import { generateTextWithFallback } from '@/lib/ai/aiTextProvider';
 import { getIntakeByToken } from '@/lib/intake/getIntakeByToken';
 import { assertDraftIntake, assertDepositPaid } from '@/lib/intake/intakeTierGates';
 import { checkRateLimit, hashRateKey } from '@/lib/rateLimit';
+import { buildIntakeBrief } from '@/lib/intake/buildIntakeBrief';
+import { SITE_PAGE_OPTIONS } from '@/lib/catalog/sitePages';
 
 export const maxDuration = 30;
 export const runtime = 'nodejs';
@@ -82,34 +84,69 @@ export async function POST(
       // Empty body
     }
 
-    const { industry = '', services = [], otherServices = '', businessName = '', existingPages = [] } = body;
+    const { existingPages = [] } = body;
 
-    const systemPrompt = `You are an expert digital marketing strategist for local service businesses and contractors. Your job is to suggest exactly 5 highly-specific, conversion-optimized website pages that this business should add to their site.
-    
-    Do NOT suggest generic pages like "Home", "About", "Contact", "Services", "Portfolio", "FAQ", "Testimonials", "Process", or "Financing".
-    Instead, suggest highly specific service pages based on what the business does. 
-    For example: 
-    - If it's a Landscaping business, suggest: "Hardscaping & Patios", "Lawn Care & Maintenance", "Snow Removal", "Retaining Walls".
-    - If it's a Plumbing business, suggest: "Emergency Plumbing", "Water Heater Repair", "Drain Cleaning", "Pipe Leak Repair".
-    
+    // Merge any fresh, not-yet-saved form values from the request onto the
+    // persisted intake so suggestions reflect the prospect's LATEST context —
+    // industry, every service, differentiators, ideal customers, tone/vibe,
+    // pricing, service area, experience, etc. (no DB write; in-memory only).
+    const toStr = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : undefined);
+    const toArr = (v: unknown) =>
+      Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : undefined;
+    const merged = { ...row };
+    const apply = <K extends keyof typeof merged>(key: K, value: (typeof merged)[K] | undefined) => {
+      if (value !== undefined) merged[key] = value;
+    };
+    apply('business_name', toStr(body.businessName));
+    apply('industry', toStr(body.industry));
+    apply('service_area', toStr(body.serviceArea));
+    apply('vibe', toStr(body.vibe));
+    apply('tone', toStr(body.tone));
+    apply('customers', toStr(body.customers));
+    apply('experience', toStr(body.experience));
+    apply('primary_cta', toStr(body.primaryCta));
+    apply('pricing_notes', toStr(body.pricingNotes));
+    apply('notes', toStr(body.notes));
+    apply('services', toArr(body.services));
+    apply('other_services', toStr(body.otherServices));
+    apply('differentiators', toArr(body.differentiators));
+
+    const brief = buildIntakeBrief(merged);
+
+    // Standard catalog pages the picker already offers — the AI must not
+    // duplicate these; it should propose *additional* trade-specific pages.
+    const standardLabels = SITE_PAGE_OPTIONS.map((p) => p.label).join(', ');
+    const existing = Array.isArray(existingPages) ? existingPages : [];
+
+    const systemPrompt = `You are an expert digital marketing strategist for local service businesses and contractors. Your job is to suggest exactly 5 highly-specific, conversion-optimized website pages this business should add, derived DIRECTLY from the full business brief provided (industry, every listed service, differentiators, ideal customers, tone/vibe, pricing, and service area).
+
+    Rules:
+    - Every suggestion MUST be grounded in the brief — reflect the actual services, specialties, customers, and location described. Do not invent services the business didn't mention.
+    - Prefer dedicated pages for the specific services/specialties listed, plus locally-relevant or customer-segment pages when the brief supports them (e.g. a service-area/city page when a service area is given, or a commercial-vs-residential page when both customer types appear).
+    - Do NOT suggest generic pages already available in the builder: ${standardLabels} (nor Home).
+    - Match the brand's tone/vibe from the brief in each label and description.
+
+    Examples of the specificity expected:
+    - Landscaping (offers patios, lawn care, snow): "Hardscaping & Patios", "Lawn Care & Maintenance", "Seasonal Snow Removal".
+    - Plumbing (offers emergency work, water heaters): "24/7 Emergency Plumbing", "Water Heater Installation & Repair", "Drain Cleaning".
+
     Return the response as valid JSON in this exact format:
     {
       "suggestions": [
         {
           "slug": "url-friendly-slug-with-dashes",
           "label": "Human Readable Title",
-          "description": "A very short 1-sentence description of what this page will cover."
+          "description": "A very short 1-sentence description of what this page will cover, referencing this specific business."
         }
       ]
     }`;
 
-    const userPrompt = `Business Name: ${businessName}
-Industry: ${industry}
-Primary Services: ${Array.isArray(services) ? services.join(', ') : services}
-Other Services: ${otherServices}
-Existing/Already Selected Pages: ${Array.isArray(existingPages) ? existingPages.join(', ') : existingPages}
+    const userPrompt = `Business Brief:
+${brief}
 
-Provide 5 specific service-level page suggestions tailored to this exact business. Do NOT suggest any of the existing/already selected pages.`;
+Already-selected pages (do NOT suggest these): ${existing.length ? existing.join(', ') : '(none yet)'}
+
+Provide exactly 5 specific page suggestions tailored to THIS business's brief above. Do not repeat any standard builder page or already-selected page.`;
 
     const { text } = await generateTextWithFallback({
       prompt: userPrompt,
