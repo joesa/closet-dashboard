@@ -47,6 +47,40 @@ function extractJson(text: string): string {
   return t;
 }
 
+type RawSuggestion = { slug?: unknown; label?: unknown; description?: unknown };
+
+/**
+ * Parse the model's suggestions, tolerating malformed/truncated JSON. LLMs
+ * occasionally return an unterminated string or cut off mid-array (especially
+ * near the token limit), which made a strict JSON.parse throw a 500 on what is
+ * a best-effort, silently-auto-fetched enhancement. First try a normal parse;
+ * on failure, salvage every COMPLETE `{...}` object that carries a "slug" (a
+ * truncated trailing object simply won't match and is dropped).
+ */
+function parseSuggestions(text: string): RawSuggestion[] {
+  const json = sanitizeJsonString(extractJson(text));
+  try {
+    const parsed = JSON.parse(json) as { suggestions?: unknown };
+    if (parsed && Array.isArray(parsed.suggestions)) {
+      return parsed.suggestions as RawSuggestion[];
+    }
+  } catch {
+    /* fall through to salvage */
+  }
+  const salvaged: RawSuggestion[] = [];
+  // Suggestion objects are flat (no nested braces), so a non-greedy object
+  // match is sufficient to recover the complete ones.
+  const objects = json.match(/\{[^{}]*?"slug"[^{}]*?\}/g) || [];
+  for (const obj of objects) {
+    try {
+      salvaged.push(JSON.parse(obj) as RawSuggestion);
+    } catch {
+      /* skip an unrecoverable fragment */
+    }
+  }
+  return salvaged;
+}
+
 export async function POST(
   req: Request,
   { params }: { params: Promise<{ token: string }> }
@@ -153,21 +187,32 @@ Provide exactly 5 specific page suggestions tailored to THIS business's brief ab
       systemPrompt: systemPrompt,
       jsonMode: true,
       temperature: 0.7,
-      maxOutputTokens: 1024,
+      // Roomier budget so 5 full suggestions don't get truncated mid-JSON.
+      maxOutputTokens: 2048,
     });
 
-    const parsed = JSON.parse(sanitizeJsonString(extractJson(text)));
-    if (!parsed || !Array.isArray(parsed.suggestions)) {
-      throw new Error('AI returned invalid JSON structure');
-    }
+    const suggestions = parseSuggestions(text);
 
-    const filtered = parsed.suggestions.filter((s: any) => {
-      const slug = String(s.slug || '').trim().toLowerCase().replace(/[^a-z0-9-]+/g, '');
-      return slug && slug !== 'home' && slug !== 'about' && slug !== 'contact' && !existingPages.includes(slug);
-    }).slice(0, 5);
+    const filtered = suggestions
+      .filter((s) => {
+        const slug = String(s.slug || '').trim().toLowerCase().replace(/[^a-z0-9-]+/g, '');
+        return (
+          slug &&
+          slug !== 'home' &&
+          slug !== 'about' &&
+          slug !== 'contact' &&
+          !existing.includes(slug)
+        );
+      })
+      .slice(0, 5);
 
+    // Best-effort feature: return whatever we could salvage (possibly empty)
+    // with a 200 so the intake UI just shows no AI suggestions instead of
+    // surfacing a 500 for a malformed model response.
     return NextResponse.json({ suggestions: filtered });
   } catch (error) {
+    // Reaching here means a real failure (network/config/etc.), not just a
+    // malformed model response (which parseSuggestions handles gracefully).
     console.error('suggest-pages error:', error);
     const message = error instanceof Error ? error.message : 'Failed to suggest pages';
     return NextResponse.json({ error: message }, { status: 500 });
