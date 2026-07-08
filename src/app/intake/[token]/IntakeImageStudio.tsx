@@ -2,7 +2,8 @@
 
 import React, { useMemo, useState } from 'react';
 import type { IntakeImageSelections } from '@/lib/intake/imageSelections';
-import { buildBeforeImagePrompt } from '@/lib/images/beforeAfterPrompt';
+import { buildBeforeImagePrompt, getBeforeAfterCategory } from '@/lib/images/beforeAfterPrompt';
+import { resolveIndustrySlug } from '@/lib/catalog/serviceCatalog';
 
 type StudioSlot = 'hero' | 'product' | 'before';
 
@@ -231,6 +232,25 @@ export default function IntakeImageStudio({
   // from the selected hero ("after") image.
   const [beforePromptOverride, setBeforePromptOverride] = useState<string | null>(null);
   const beforeState = selections.beforeAfter ?? { attemptsUsed: 0, history: [] };
+
+  // Not every business has a physical "before" state (restaurants, legal,
+  // medical, booking businesses…) — for those the site never renders a
+  // transformation slider, so the whole before/after section is hidden. The
+  // server's answer (which also knows about contractor-created custom
+  // industries in the DB) arrives with the AI brief; until then fall back to
+  // the same static catalog classification computed client-side.
+  const [serverBeforeAfterApplicable, setServerBeforeAfterApplicable] = useState<boolean | null>(
+    null
+  );
+  const beforeAfterApplicable =
+    serverBeforeAfterApplicable ??
+    getBeforeAfterCategory(
+      resolveIndustrySlug({
+        industry: (formState?.industry as string) || null,
+        services,
+        other_services: (formState?.otherServices as string) || null,
+      })
+    ) !== 'not-applicable';
   const beforePrompt =
     beforePromptOverride ??
     beforeState.prompt ??
@@ -253,6 +273,9 @@ export default function IntakeImageStudio({
       if (!res.ok) throw new Error(json.error || 'Brief generation failed');
       const sc = (json.data?.siteConfig ?? json.data) as SiteConfigShape;
       setSiteConfig(sc);
+      if (typeof json.beforeAfterApplicable === 'boolean') {
+        setServerBeforeAfterApplicable(json.beforeAfterApplicable);
+      }
       onUpdate(selections, sc);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Brief generation failed');
@@ -599,6 +622,7 @@ export default function IntakeImageStudio({
             selections.hero
           )}
 
+          {beforeAfterApplicable && (
           <div className="rounded-lg border border-indigo-100 bg-indigo-50/50 p-4">
             <h4 className="font-medium text-gray-900">Before / after transformation</h4>
             <p className="mt-1 text-xs text-gray-600">
@@ -630,6 +654,7 @@ export default function IntakeImageStudio({
               )}
             </div>
           </div>
+          )}
 
           {products.map((p) => {
             const slotState =

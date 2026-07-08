@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { generateSiteConfigFromInput } from '@/lib/ai/generateSiteConfig'
 import { mergeAiSiteConfigWithPresentation } from '@/lib/ai/mergeAiSitePresentation'
 import { buildIntakeBrief } from '@/lib/intake/buildIntakeBrief'
+import { resolveIntakeBeforeAfterCategory } from '@/lib/intake/intakeBeforeAfter'
 import { getIntakeByToken } from '@/lib/intake/getIntakeByToken'
 import { assertDraftIntake, assertDepositPaid } from '@/lib/intake/intakeTierGates'
 import { checkRateLimit, hashRateKey } from '@/lib/rateLimit'
@@ -158,6 +159,17 @@ export async function POST(
       intakeIndustry
     )
     const merged = await mergeAiSiteConfigWithPresentation(row, result.data)
+
+    // Decide up front whether this business even has a physical "before"
+    // state (same logic provisioning uses, including contractor-created
+    // custom-industry overrides in the DB). The studio uses this to show or
+    // hide the before/after generation section entirely.
+    const beforeAfterCategory = await resolveIntakeBeforeAfterCategory({
+      industry: row.industry,
+      services: row.services,
+      other_services: row.other_services,
+    })
+
     const admin = getSupabaseAdmin()
     await admin
       .from('prospect_intakes')
@@ -172,6 +184,7 @@ export async function POST(
       success: true,
       source: result.source,
       data: merged,
+      beforeAfterApplicable: beforeAfterCategory !== 'not-applicable',
     })
   } catch (error) {
     console.error('intake generate-site error:', error)

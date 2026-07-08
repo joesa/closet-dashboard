@@ -6,6 +6,7 @@ import {
   generateImageEditVariants,
 } from '@/lib/ai/generateImagesBatch'
 import { buildBeforeImagePrompt } from '@/lib/images/beforeAfterPrompt'
+import { resolveIntakeBeforeAfterCategory } from '@/lib/intake/intakeBeforeAfter'
 import { getIntakeByToken } from '@/lib/intake/getIntakeByToken'
 import { assertDraftIntake, assertDepositPaid } from '@/lib/intake/intakeTierGates'
 import { resolveStudioServiceNames } from '@/lib/intake/studioServiceNames'
@@ -79,11 +80,30 @@ export async function POST(
     // The "before" shot is derived from the selected hero ("after") image, so
     // both sides of the transformation slider show the same subject.
     const afterUrl = selections.hero.selectedUrl
-    if (slot === 'before' && !afterUrl) {
-      return NextResponse.json(
-        { error: 'Select a hero image first — the before photo is derived from it.' },
-        { status: 400 }
-      )
+    if (slot === 'before') {
+      if (!afterUrl) {
+        return NextResponse.json(
+          { error: 'Select a hero image first — the before photo is derived from it.' },
+          { status: 400 }
+        )
+      }
+      // Not every business has a physical "before" state (restaurants, legal,
+      // medical, booking…) — the site won't render a transformation slider for
+      // these, so don't burn generation attempts on one.
+      const category = await resolveIntakeBeforeAfterCategory({
+        industry: row.industry,
+        services: serviceNames,
+        other_services: row.other_services,
+      })
+      if (category === 'not-applicable') {
+        return NextResponse.json(
+          {
+            error:
+              'A before/after transformation section does not apply to this type of business, so no before image is needed.',
+          },
+          { status: 400 }
+        )
+      }
     }
 
     if (slot === 'hero') {
