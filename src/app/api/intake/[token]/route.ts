@@ -305,7 +305,17 @@ export async function POST(
 
     if (updateErr) throw updateErr
 
-    const provisionMode = existing.provisioning_mode === 'manual' ? 'manual' : 'auto'
+    // AI-Premium always auto-deploys the initial build: the AI picks theme/
+    // layout, builds the full content, the validator repairs it, and provisioning
+    // deploys a gated `pending_approval` site — no admin hand-off for the first
+    // deploy. The admin still reviews that gated build and can edit + redeploy.
+    // A 'manual' provisioning_mode is only honored for non-AI-Premium tiers.
+    const provisionMode =
+      existing.intake_tier === 'ai_premium'
+        ? 'auto'
+        : existing.provisioning_mode === 'manual'
+          ? 'manual'
+          : 'auto'
     let provisionQueued = false
 
     if (provisionMode === 'auto') {

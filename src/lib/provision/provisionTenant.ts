@@ -26,7 +26,7 @@ import { resolveDesignSeed } from '@/lib/provision/resolveDesignSeed'
 import { isForcedPreset } from '@/lib/catalog/designVariantCatalog'
 import { syncTenantLaunchAccess } from '@/lib/intake/syncTenantLaunchAccess'
 import { MINIMAL_LAYOUTS_WITHOUT_ANCHOR_SECTIONS } from '@/lib/catalog/sitePresentationCatalog'
-import { validateTenantSite, saveValidationReport } from '@/lib/validation/siteValidator'
+import { autoFixTenantSite } from '@/lib/validation/autoFixSiteIssues'
 import {
   INDUSTRY_CONFIGS,
   getIndustry,
@@ -1336,10 +1336,17 @@ export async function provisionTenant(
   // admin to re-run manually from /admin/sites/[id].
   if (!isWidgetOnly) {
     try {
-      const report = await validateTenantSite(tenantId)
-      await saveValidationReport(tenantId, report)
+      // Run the validator AND its deterministic auto-fixer before the site is
+      // handed off — for the AI's initial auto-deploy AND any admin (re)deploy,
+      // since both paths funnel through provisionTenant. autoFixTenantSite
+      // validates, repairs every fixable issue (invalid theme/layout pairing,
+      // missing nav, duplicate/non-bespoke design fingerprint, broken images,
+      // malformed process steps), re-validates, and persists the report. This
+      // guarantees the deployed (still gated `pending_approval`) build is valid
+      // and bespoke before the admin reviews it — without them lifting a finger.
+      await autoFixTenantSite(tenantId)
     } catch (err) {
-      console.error('Site validation failed to run:', err)
+      console.error('Site validation/auto-fix failed to run:', err)
       try {
         await supabase.from('tenants').update({ validation_status: 'pending' }).eq('id', tenantId)
       } catch {
