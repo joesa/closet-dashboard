@@ -146,11 +146,15 @@ async function generateImageWithGemini(prompt: string, shape: ImageShape): Promi
     .split(',')
     .map((m) => m.trim())
     .filter(Boolean)
+  // NOTE: Imagen models (imagen-*) are only served via the `:predict` endpoint
+  // and 404 on `:generateContent`. The models below are the image-capable
+  // Gemini models that DO support `:generateContent` with an IMAGE modality.
   const modelCandidates =
     configured.length > 0
       ? configured
       : [
-          'imagen-4.0-generate-001',
+          'gemini-2.5-flash-image',
+          'gemini-2.0-flash-preview-image-generation',
         ]
 
   const body = {
@@ -315,11 +319,15 @@ async function generateImageEditWithGemini(
     .split(',')
     .map((m) => m.trim())
     .filter(Boolean)
+  // NOTE: Imagen models (imagen-*) are only served via the `:predict` endpoint
+  // and 404 on `:generateContent`. The models below are the image-capable
+  // Gemini models that DO support `:generateContent` with an IMAGE modality.
   const modelCandidates =
     configured.length > 0
       ? configured
       : [
-          'imagen-4.0-generate-001',
+          'gemini-2.5-flash-image',
+          'gemini-2.0-flash-preview-image-generation',
         ]
 
   const body = {
