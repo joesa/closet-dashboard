@@ -671,7 +671,13 @@ export async function provisionTenant(
         theme: finalTheme,
         default_room: (aiSiteConfig.defaultRoom as string) || siteConfigData.default_room,
         hero_config: {
+          // The caller-supplied headline wins when present: for a prospect build
+          // it carries the AI-generated hero, and in the admin sandbox it carries
+          // either the loaded AI value or a deliberate admin edit. Only if it's
+          // empty do we fall back to the AI blob, then the neutral default —
+          // never a sandbox demo placeholder.
           headline:
+            (typeof heroHeadline === 'string' && heroHeadline.trim()) ||
             (aiSiteConfig.hero as { headline?: string })?.headline ||
             (siteConfigData.hero_config as { headline: string }).headline,
           subheadline:
@@ -680,7 +686,10 @@ export async function provisionTenant(
             null,
           backgroundImage,
         },
-        about_config: aiSiteConfig.about || siteConfigData.about_config,
+        about_config:
+          (typeof aboutDescription === 'string' && aboutDescription.trim())
+            ? { description: aboutDescription.trim() }
+            : aiSiteConfig.about || siteConfigData.about_config,
         process_config: aiSiteConfig.process || siteConfigData.process_config,
         quiz_config: aiSiteConfig.quiz || siteConfigData.quiz_config,
         engagement_model: (aiSiteConfig.engagementModel as string) || siteConfigData.engagement_model,

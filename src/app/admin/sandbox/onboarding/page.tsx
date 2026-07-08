@@ -157,8 +157,12 @@ export default function SandboxOnboarding() {
       subdomain: result.businessName ? slugify(result.businessName) : prev.subdomain,
       theme: result.theme || prev.theme,
       layoutStyle: result.layoutStyle || prev.layoutStyle,
-      heroHeadline: result.heroHeadline || prev.heroHeadline,
-      aboutDescription: result.aboutDescription || prev.aboutDescription,
+      // Don't let the garage demo copy ride along when the guide is used for a
+      // different business — fall back to the business name / empty instead.
+      heroHeadline:
+        result.heroHeadline ||
+        (result.businessName ? `Welcome to ${result.businessName}` : ''),
+      aboutDescription: result.aboutDescription || '',
       services: result.services && result.services.length > 0 ? result.services : prev.services,
     }));
     setShowGuide(false);
@@ -320,8 +324,11 @@ export default function SandboxOnboarding() {
               heroHeadline:
                 mergedConfig.hero?.headline ||
                 (it.business_name ? `Welcome to ${it.business_name}` : ''),
-              aboutDescription: mergedConfig.about?.description || prev.aboutDescription,
-              heroImage: generated.hero || prev.heroImage,
+              // Never inherit the sandbox demo copy/image for a real prospect —
+              // use their AI build, else leave empty so provisioning fills a
+              // trade-neutral default instead of leaking the garage placeholder.
+              aboutDescription: mergedConfig.about?.description || '',
+              heroImage: generated.hero || '',
             }));
             setIntakeBanner(
               prospectConfig
@@ -495,7 +502,9 @@ export default function SandboxOnboarding() {
         heroHeadline:
           siteConfig.hero?.headline ||
           (prev.businessName ? `Welcome to ${prev.businessName}` : ''),
-        aboutDescription: siteConfig.about?.description || prev.aboutDescription,
+        // Use the freshly generated AI copy, else empty — don't fall back to the
+        // sandbox demo's about text for a different business.
+        aboutDescription: siteConfig.about?.description || '',
         services: matchedServices.length > 0 ? matchedServices : prev.services,
         subdomain: prev.subdomain || slugify(prev.businessName),
       }));
