@@ -124,6 +124,10 @@ export async function buildAiProvisionPayload(
     businessName: row.business_name?.trim() || 'Your Business',
     theme,
     layoutStyle,
+    // The theme is a deliberate choice only when the AI actually produced one;
+    // otherwise it came from rules resolution and provisioning may rebalance it
+    // across the industry pool so same-trade prospects don't collide.
+    themeAutoResolved: !site.theme,
     engagementModel,
     menuItems: Array.isArray(row.menu_items) ? row.menu_items : [],
     subdomain,

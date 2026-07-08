@@ -7,9 +7,12 @@ import {
   resolveSitePresentationRules,
 } from '@/lib/ai/resolveSitePresentation'
 import type { ProspectIntakeRow } from '@/lib/intake/getIntakeByToken'
-import { collectThemeLayoutPools, layoutsForTheme } from '@/lib/catalog/serviceCatalog'
+import {
+  collectThemeLayoutPools,
+  layoutsForTheme,
+  pickBestLayout,
+} from '@/lib/catalog/serviceCatalog'
 import { pickDiverseTheme } from '@/lib/provision/pickDiverseTheme'
-import { pickBestLayout } from '@/lib/catalog/serviceCatalog'
 import { CTA_TO_LAYOUT } from '@/lib/catalog/sitePresentationCatalog'
 
 export const runtime = 'nodejs'

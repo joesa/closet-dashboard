@@ -50,6 +50,14 @@ export type ProvisionTenantInput = {
   theme?: string
   layoutStyle?: string
   /**
+   * True when `theme` was auto-resolved (rules/AI recommendation kept as-is)
+   * rather than deliberately chosen by an operator. When set, provisioning may
+   * rebalance the theme across the industry pool to guarantee two same-trade
+   * sites don't collide — even if both are created before either deploys. A
+   * deliberate admin/AI theme choice (flag false/absent) is always respected.
+   */
+  themeAutoResolved?: boolean
+  /**
    * Optional synthesized "last-resort" theme look (surface/shape/voice/swatch
    * IDs). When present, the renderer composes styling from these tokens
    * instead of `theme`'s hand-tuned definition. See ThemeTokenSelection in

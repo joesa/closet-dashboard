@@ -31,7 +31,10 @@ import {
   INDUSTRY_CONFIGS,
   getIndustry,
   resolveIndustrySlug,
+  collectThemeLayoutPools,
+  layoutsForTheme,
 } from '@/lib/catalog/serviceCatalog'
+import { pickDiverseTheme } from '@/lib/provision/pickDiverseTheme'
 import { getEngineProfile } from '@/lib/catalog/engineProfiles'
 import type { IndustrySlug } from '@/lib/catalog/types'
 import {
@@ -287,8 +290,9 @@ export async function provisionTenant(
 ): Promise<ProvisionTenantResult> {
   const {
     businessName,
-    theme,
-    layoutStyle,
+    theme: themeInput,
+    layoutStyle: layoutInput,
+    themeAutoResolved,
     themeTokens,
     beforeAfterCategoryOverride,
     engagementModel,
@@ -308,6 +312,12 @@ export async function provisionTenant(
     loginOrigin,
     sendWelcomeEmail = true,
   } = body
+
+  // Mutable so provisioning can rebalance an auto-resolved theme/layout across
+  // the industry pool (see the diversification step after the Supabase client is
+  // created). A deliberate operator/AI choice is left untouched.
+  let theme = themeInput
+  let layoutStyle = layoutInput
 
   const setup = intakeSetup || {}
   // Industry/services context for before-image generation so the AI "before"
@@ -359,6 +369,40 @@ export async function provisionTenant(
   }
 
   const supabase = getSupabaseAdmin()
+
+  // Guarantee same-trade sites don't collide on a theme — even when two are
+  // created before either deploys (the load-time recommendation can't see a
+  // sibling that isn't provisioned yet). Only runs when the theme was
+  // auto-resolved; a deliberate operator/AI theme is always respected.
+  if (themeAutoResolved && theme) {
+    try {
+      const { themes, layouts } = collectThemeLayoutPools({
+        industry: aiWidgetIndustryText,
+        services: services && services.length > 0 ? services : undefined,
+      })
+      if (themes.includes(theme as never) && themes.length > 1) {
+        const diverse = await pickDiverseTheme({
+          supabase,
+          pool: themes,
+          seed: (businessName || subdomain || '').trim(),
+          fallback: theme,
+        })
+        if (diverse && diverse !== theme) {
+          theme = diverse
+          // Keep the layout valid for the newly chosen theme.
+          const themeLayouts = layoutsForTheme(theme as never, layouts)
+          if (
+            themeLayouts.length > 0 &&
+            (!layoutStyle || !themeLayouts.includes(layoutStyle as never))
+          ) {
+            layoutStyle = themeLayouts[0]
+          }
+        }
+      }
+    } catch {
+      /* non-fatal — keep the resolved theme as-is */
+    }
+  }
 
   const { data: existingTenant } = await supabase
     .from('tenants')

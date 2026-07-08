@@ -18,6 +18,7 @@ export async function POST(req: Request) {
       businessName: body.businessName,
       theme: body.theme,
       layoutStyle: body.layoutStyle,
+      themeAutoResolved: body.themeAutoResolved === true,
       subdomain: body.subdomain,
       ownerEmail: body.ownerEmail,
       heroHeadline: body.heroHeadline,

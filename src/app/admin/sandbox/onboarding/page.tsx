@@ -45,6 +45,7 @@ const VIBE_TO_THEME: Record<string, string> = {
 // The setup/contact fields a prospect intake provides that aren't part of the
 // creative brief but are required to actually launch + route leads.
 type IntakeSetup = {
+  industry?: string;
   contactEmail?: string;
   contactPhone?: string;
   notificationEmail?: string;
@@ -180,6 +181,11 @@ export default function SandboxOnboarding() {
   // Setup/contact details sourced from a prospect intake (threaded into provision).
   const [intakeSetup, setIntakeSetup] = useState<IntakeSetup | null>(null);
   const [intakeId, setIntakeId] = useState<string | null>(null);
+  // The server's auto-recommended theme for a loaded intake. When the operator
+  // deploys without changing it, provisioning is told the theme was
+  // auto-resolved and may rebalance it across the trade's pool so two same-trade
+  // sites never collide (even if created before either deploys).
+  const [recommendedTheme, setRecommendedTheme] = useState('');
   const [intakeBanner, setIntakeBanner] = useState('');
   const [intakeIndustry, setIntakeIndustry] = useState('');
   const [selectedIndustry, setSelectedIndustry] = useState('');
@@ -243,6 +249,9 @@ export default function SandboxOnboarding() {
             (json.presentation as { theme?: string; layoutStyle?: string } | null) ?? null;
           const recommendedTheme = presentation?.theme || (it.vibe ? VIBE_TO_THEME[it.vibe] : '') || '';
           const recommendedLayout = presentation?.layoutStyle || '';
+          // Remember the server recommendation so deploy can tell provisioning
+          // whether the theme is still auto-resolved (untouched by the operator).
+          setRecommendedTheme(presentation?.theme || '');
 
           setIntakeId(it.id);
           setIntakeIndustry(it.industry?.trim() || '');
@@ -250,6 +259,7 @@ export default function SandboxOnboarding() {
           setSiteMode('full');
           setAiInput(intakeToDescription(it));
           setIntakeSetup({
+            industry: it.industry ?? undefined,
             contactEmail: it.contact_email ?? undefined,
             contactPhone: it.contact_phone ?? undefined,
             notificationEmail: it.notification_email ?? undefined,
@@ -409,6 +419,11 @@ export default function SandboxOnboarding() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...formData,
+          // Let provisioning rebalance the theme across the trade's pool only
+          // when the operator kept the server recommendation as-is (a manual
+          // theme pick differs from it and is always respected).
+          themeAutoResolved:
+            !!recommendedTheme && formData.theme === recommendedTheme,
           mode: siteMode,
           // Widget-only builds don't use the AI site content, only widget config.
           aiSiteConfig: siteMode === 'widget' ? null : aiSiteConfig,
