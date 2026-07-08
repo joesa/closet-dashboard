@@ -19,7 +19,23 @@ import { validateTenantSite, saveValidationReport } from '@/lib/validation/siteV
  * background re-validation so the admin's validation panel stays honest.
  */
 
-export type ChatMessage = { role: 'admin' | 'assistant'; content: string }
+export type ChatMessage = {
+  role: 'admin' | 'assistant'
+  content: string
+  /** Optional attached images as `data:image/...;base64,...` URLs (screenshots
+   *  of the site, reference designs, etc.) — forwarded to the model. */
+  images?: string[]
+}
+
+/** Max images forwarded to the model per request (newest messages win). */
+const MAX_IMAGES = 4
+
+/** Parse a data URL into Gemini inline-data parts; returns null if invalid. */
+function parseImageDataUrl(url: string): { mimeType: string; data: string } | null {
+  const m = /^data:(image\/(?:png|jpeg|jpg|webp|gif));base64,([A-Za-z0-9+/=]+)$/.exec(url)
+  if (!m) return null
+  return { mimeType: m[1], data: m[2] }
+}
 
 export type SiteChatResult = {
   reply: string
@@ -149,7 +165,7 @@ const EDITABLE_COLUMNS: Record<
 
 const SYSTEM_PROMPT_INTRO = `You are the site-editing assistant inside the admin dashboard of a website platform for local service businesses. The admin chats with you about a specific tenant's live website. You can BOTH answer questions about the site AND directly change it.
 
-You will receive the tenant's current site configuration as JSON (the "site_configs" database row) and the conversation so far.
+You will receive the tenant's current site configuration as JSON (the "site_configs" database row) and the conversation so far. The admin may also attach images — screenshots of the live site showing a problem, reference designs to imitate, or photos to describe what they want. Messages with attachments are tagged like "[attached image #1]" and the images follow the text in the same order. Analyze attached images carefully to understand the visual context of the request (e.g. which section a screenshot shows, what copy is wrong, what an overlap or layout issue implies) before deciding what to change. You cannot save or reuse attached images as site assets — if the admin wants an attached photo ON the site, explain that images are uploaded/generated through the image tools, not chat.
 
 Respond with ONLY a JSON object of this exact shape:
 {
@@ -204,9 +220,35 @@ export async function runAdminSiteChat(
     if (col in config) visibleConfig[col] = config[col]
   }
 
-  const transcript = messages
-    .slice(-MAX_HISTORY)
-    .map((m) => `${m.role === 'admin' ? 'Admin' : 'Assistant'}: ${m.content}`)
+  // Collect attached images newest-first (the latest screenshot is almost
+  // always the one the admin is talking about), capped to keep the request
+  // within the model's inline-data budget. Each image is referenced in the
+  // transcript so the model knows which message it belongs to.
+  const recent = messages.slice(-MAX_HISTORY)
+  const images: Array<{ mimeType: string; data: string }> = []
+  const imageIndexByMessage = new Map<ChatMessage, number[]>()
+  for (let i = recent.length - 1; i >= 0 && images.length < MAX_IMAGES; i--) {
+    const msg = recent[i]
+    if (!msg.images?.length) continue
+    const indices: number[] = []
+    for (const url of msg.images) {
+      if (images.length >= MAX_IMAGES) break
+      const parsed = parseImageDataUrl(url)
+      if (!parsed) continue
+      images.push(parsed)
+      indices.push(images.length) // 1-based, in the order attached to the request
+    }
+    if (indices.length) imageIndexByMessage.set(msg, indices)
+  }
+
+  const transcript = recent
+    .map((m) => {
+      const indices = imageIndexByMessage.get(m)
+      const tag = indices?.length
+        ? ` [attached image${indices.length > 1 ? 's' : ''} ${indices.map((n) => `#${n}`).join(', ')}]`
+        : ''
+      return `${m.role === 'admin' ? 'Admin' : 'Assistant'}${tag}: ${m.content}`
+    })
     .join('\n\n')
 
   const { text } = await generateTextWithFallback({
@@ -215,6 +257,7 @@ export async function runAdminSiteChat(
     jsonMode: true,
     temperature: 0.4,
     maxOutputTokens: 32768,
+    images,
   })
 
   let parsed: { reply?: unknown; changes?: unknown }

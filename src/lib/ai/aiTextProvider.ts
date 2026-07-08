@@ -17,6 +17,11 @@ export type TextGenerationOpts = {
   temperature?: number
   /** Maximum output tokens (default 2048). */
   maxOutputTokens?: number
+  /**
+   * Optional inline images for multimodal prompts (e.g. admin-attached
+   * screenshots). `data` is raw base64 WITHOUT the `data:...;base64,` prefix.
+   */
+  images?: Array<{ mimeType: string; data: string }>
 }
 
 export type TextGenerationResult = {
@@ -50,7 +55,14 @@ async function generateWithGemini(opts: TextGenerationOpts): Promise<string> {
     ? `System: ${opts.systemPrompt}\n\nUser: ${opts.prompt}`
     : opts.prompt
 
-  const result = await model.generateContent(fullPrompt)
+  const parts: Array<
+    { text: string } | { inlineData: { mimeType: string; data: string } }
+  > = [{ text: fullPrompt }]
+  for (const img of opts.images ?? []) {
+    parts.push({ inlineData: { mimeType: img.mimeType, data: img.data } })
+  }
+
+  const result = await model.generateContent(parts)
 
   // Try the standard accessor first; fall back to raw part extraction
   // (handles edge cases where .text() throws on certain finish reasons).
