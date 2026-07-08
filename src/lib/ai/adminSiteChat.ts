@@ -185,6 +185,7 @@ RULES for "changes":
 - When adding a page to pages_config, also add a matching entry to nav_links if it should be reachable from the nav.
 - Keep copy quality high: specific to this business and trade, no lorem ipsum, no placeholders.
 - If the request is unsafe, out of scope (billing, deleting the site, custom code), or you cannot do it with the columns below, say so in "reply" and make no changes.
+- IMPORTANT — some visible site text is NOT stored in the config; it is rendered from code and derived from "engagement_model". This includes: the nav CTA button ("Get Quote"/"Order Now"/"Book Now"/"Get Tickets"), the hero CTA label, the quote-section heading ("Get an Instant Quote"/"Order Online"/"Book Now"/"Get Tickets") and its intro sentence, and the quiz finish-screen CTA ("Get Your Instant Quote"/"Book Your Appointment"/"Order Now"/"Get Tickets"). To change these, set engagement_model to the right value for the business (medical/appointments -> 'booking', food/direct purchase -> 'order', events/admission -> 'ticket', estimates/leads -> 'quote'). If the admin asks to change text that does not appear anywhere in the config JSON and is not engagement-model-derived, say plainly that it is template copy requiring a code change — NEVER edit unrelated fields or claim success you cannot deliver.
 
 Columns you may change (with required shapes):`
 
