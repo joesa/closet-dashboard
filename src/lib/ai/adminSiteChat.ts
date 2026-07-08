@@ -8,6 +8,7 @@ import {
 } from '@/lib/catalog/sitePresentationCatalog'
 import { isForcedPreset } from '@/lib/catalog/designVariantCatalog'
 import { validateTenantSite, saveValidationReport } from '@/lib/validation/siteValidator'
+import { revalidateTenantSiteCache } from '@/lib/tenants/revalidateTenantSite'
 
 /**
  * Admin AI site chat: the admin describes a change to a provisioned tenant
@@ -43,6 +44,9 @@ export type SiteChatResult = {
   applied: string[]
   /** Changes the model proposed but we rejected, with reasons (for the UI). */
   rejected: Array<{ column: string; reason: string }>
+  /** True when the tenant site's config cache was successfully busted, i.e.
+   *  the change is visible on the live site right now (not within ≤60s). */
+  liveNow: boolean
 }
 
 /** Columns the chat is allowed to modify, with a human shape description the
@@ -294,6 +298,7 @@ export async function runAdminSiteChat(
     applied.push(column)
   }
 
+  let liveNow = false
   if (applied.length > 0) {
     update.updated_at = new Date().toISOString()
     const { error: updateErr } = await supabase
@@ -304,6 +309,11 @@ export async function runAdminSiteChat(
       throw new Error(`Failed to save changes: ${updateErr.message}`)
     }
 
+    // Bust the tenant site's per-hostname config cache so the change is
+    // visible on the very next page load, not after the ≤60s revalidation
+    // window. Best-effort — the site self-heals within 60s either way.
+    liveNow = await revalidateTenantSiteCache(tenantId)
+
     // Re-validate in the background so the admin's validation panel reflects
     // the new config without making the chat wait on a live crawl.
     void validateTenantSite(tenantId)
@@ -311,5 +321,5 @@ export async function runAdminSiteChat(
       .catch((err) => console.warn('[adminSiteChat] post-change validation failed:', err))
   }
 
-  return { reply, applied, rejected }
+  return { reply, applied, rejected, liveNow }
 }

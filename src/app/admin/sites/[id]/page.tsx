@@ -160,7 +160,7 @@ export default async function TenantDetailsPage({ params }: { params: Promise<{ 
         />
 
         {/* AI Site Assistant — conversational edits to this site's config */}
-        <AdminSiteChat tenantId={tenant.id} />
+        <AdminSiteChat tenantId={tenant.id} previewUrl={previewUrl} />
 
         {/* Configuration Inspection */}
         {config ? (

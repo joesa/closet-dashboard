@@ -11,6 +11,8 @@ type Message = {
   /** site_configs columns the assistant changed with this reply. */
   applied?: string[];
   rejected?: Array<{ column: string; reason: string }>;
+  /** Whether the live site's cache was busted (change visible right now). */
+  liveNow?: boolean;
 };
 
 const MAX_ATTACHMENTS = 4;
@@ -42,7 +44,14 @@ async function fileToDataUrl(file: File): Promise<string> {
  * FAQ page about pricing", "switch the theme to brutalist") and the AI
  * applies them directly to this tenant's live site config.
  */
-export default function AdminSiteChat({ tenantId }: { tenantId: string }) {
+export default function AdminSiteChat({
+  tenantId,
+  previewUrl,
+}: {
+  tenantId: string;
+  /** Admin-bypass preview URL for the tenant site, when available. */
+  previewUrl?: string | null;
+}) {
   const router = useRouter();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
@@ -105,6 +114,7 @@ export default function AdminSiteChat({ tenantId }: { tenantId: string }) {
           content: json.reply || 'Done.',
           applied: json.applied || [],
           rejected: json.rejected || [],
+          liveNow: json.liveNow === true,
         },
       ]);
       if (Array.isArray(json.applied) && json.applied.length > 0) {
@@ -177,6 +187,24 @@ export default function AdminSiteChat({ tenantId }: { tenantId: string }) {
                         ✓ {col}
                       </span>
                     ))}
+                  </div>
+                )}
+                {m.applied && m.applied.length > 0 && (
+                  <div className="mt-2 text-xs text-neutral-400">
+                    {m.liveNow ? 'Live on the site now' : 'Live on the site within ~1 minute'}
+                    {previewUrl && (
+                      <>
+                        {' · '}
+                        <a
+                          href={previewUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-blue-400 underline hover:text-blue-300"
+                        >
+                          View site
+                        </a>
+                      </>
+                    )}
                   </div>
                 )}
                 {m.rejected && m.rejected.length > 0 && (

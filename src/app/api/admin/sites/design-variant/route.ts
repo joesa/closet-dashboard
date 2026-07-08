@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { requireAdmin, logAdminAction } from '@/lib/admin'
 import { coerceDesignVariant } from '@/lib/catalog/designVariantCatalog'
+import { revalidateTenantSiteCache } from '@/lib/tenants/revalidateTenantSite'
 
 /**
  * Admin override for a site's design variant ("studio style").
@@ -30,6 +31,10 @@ export async function POST(req: Request) {
       .eq('tenant_id', tenantId)
 
     if (error) throw error
+
+    // Make the new studio style visible on the tenant site immediately
+    // (best-effort; the site's config cache self-heals within 60s anyway).
+    await revalidateTenantSiteCache(tenantId)
 
     await logAdminAction({
       actor: admin,

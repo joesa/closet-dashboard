@@ -4,6 +4,7 @@ import { validateTenantSite, saveValidationReport, type ValidationReport } from 
 import { THEME_LAYOUT_AFFINITY, type ThemeSlug, type LayoutSlug } from '@/lib/catalog/sitePresentationCatalog'
 import { resolveDesignSeed } from '@/lib/provision/resolveDesignSeed'
 import { themeHeroUrl } from '@/lib/provision/buildTemplateSiteConfig'
+import { revalidateTenantSiteCache } from '@/lib/tenants/revalidateTenantSite'
 
 export type AutoFixResult = {
   report: ValidationReport
@@ -161,6 +162,10 @@ export async function autoFixTenantSite(tenantId: string): Promise<AutoFixResult
 
   if (Object.keys(updates).length > 0) {
     await supabase.from('site_configs').update(updates).eq('tenant_id', tenantId)
+    // Bust the tenant site's config cache so the fixes are live immediately
+    // (and so the re-validation crawl below sees the fixed site, not a stale
+    // cached render of the broken one).
+    await revalidateTenantSiteCache(tenantId)
   }
 
   const after = await validateTenantSite(tenantId)
