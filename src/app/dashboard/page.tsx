@@ -13,6 +13,7 @@ import OrderEditor from './components/OrderEditor'
 import PageManager from './components/PageManager'
 import BookingEditor from './components/BookingEditor'
 import TicketEditor from './components/TicketEditor'
+import DomainManager from '@/components/DomainManager'
 import {
   ROOM_TYPES,
   PRICING_TIERS,
@@ -1322,6 +1323,9 @@ export default function DashboardPage() {
 
           {/* Website Pages Manager */}
           <PageManager contractorId={form.id} />
+
+          {/* Custom / purchased domains for the hosted site */}
+          <DomainManager variant="dashboard" />
 
           {/* Save */}
           <div className="flex items-center gap-4">

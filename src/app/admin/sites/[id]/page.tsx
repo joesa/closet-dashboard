@@ -6,7 +6,9 @@ import { notFound } from 'next/navigation';
 import DeleteTenantDialog from '@/components/DeleteTenantDialog';
 import SiteValidationPanel from '@/components/SiteValidationPanel';
 import AdminSiteChat from '@/components/AdminSiteChat';
+import DomainManager from '@/components/DomainManager';
 import { DESIGN_VARIANT_OPTIONS } from '@/lib/catalog/designVariantCatalog';
+import { formatUsdCents } from '@/lib/domains/types';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,6 +20,16 @@ type SiteConfigShape = {
   hero_config?: { headline?: string; backgroundImage?: string } & Record<string, unknown>;
   about_config?: { description?: string } & Record<string, unknown>;
   products_config?: { image?: string; title?: string; description?: string }[];
+};
+
+type DomainShape = {
+  hostname?: string;
+  is_primary?: boolean;
+  source?: string;
+  ssl_status?: string;
+  purchase_price_cents?: number | null;
+  registrar_order_id?: string | null;
+  expires_at?: string | null;
 };
 
 export default async function TenantDetailsPage({ params }: { params: Promise<{ id: string }> }) {
@@ -36,7 +48,15 @@ export default async function TenantDetailsPage({ params }: { params: Promise<{ 
       validation_status,
       validation_report,
       validated_at,
-      domains ( hostname ),
+      domains (
+        hostname,
+        is_primary,
+        source,
+        ssl_status,
+        purchase_price_cents,
+        registrar_order_id,
+        expires_at
+      ),
       site_configs (
         theme,
         default_room,
@@ -55,11 +75,17 @@ export default async function TenantDetailsPage({ params }: { params: Promise<{ 
     notFound();
   }
 
-  const domain = Array.isArray(tenant.domains) && tenant.domains.length > 0 
-    ? tenant.domains[0].hostname 
-    : (tenant.domains as unknown as { hostname?: string } | null)?.hostname;
+  const domainRows: DomainShape[] = Array.isArray(tenant.domains)
+    ? (tenant.domains as DomainShape[])
+    : tenant.domains
+      ? [tenant.domains as DomainShape]
+      : [];
+  const primaryDomain =
+    domainRows.find((d) => d.is_primary)?.hostname ||
+    domainRows[0]?.hostname;
+  const purchased = domainRows.filter((d) => d.source === 'purchased');
     
-  const siteUrl = domain ? getTenantPublicUrl(domain) : '#';
+  const siteUrl = primaryDomain ? getTenantPublicUrl(primaryDomain) : '#';
   const previewUrl = buildTenantPreviewUrl(siteUrl);
 
   const config = (Array.isArray(tenant.site_configs) && tenant.site_configs.length > 0 
@@ -83,10 +109,21 @@ export default async function TenantDetailsPage({ params }: { params: Promise<{ 
             <div>
               <h1 className="text-3xl font-bold">{tenant.business_name}</h1>
               <div className="text-neutral-400 mt-1 flex items-center gap-3">
-                <span>{domain || 'No Domain Assigned'}</span>
+                <span>{primaryDomain || 'No Domain Assigned'}</span>
                 <span>•</span>
                 <span>{tenant.owner_email}</span>
               </div>
+              {purchased.length > 0 && (
+                <p className="text-xs text-amber-200/80 mt-2">
+                  Purchased domain cost (platform / maintenance fold-in):{' '}
+                  {purchased
+                    .map(
+                      (d) =>
+                        `${d.hostname} ${formatUsdCents(d.purchase_price_cents)}/yr`
+                    )
+                    .join(' · ')}
+                </p>
+              )}
             </div>
             
             <div className="flex items-center gap-3">
@@ -161,6 +198,9 @@ export default async function TenantDetailsPage({ params }: { params: Promise<{ 
 
         {/* AI Site Assistant — conversational edits to this site's config */}
         <AdminSiteChat tenantId={tenant.id} previewUrl={previewUrl} />
+
+        {/* Domain management — BYO + Vercel purchase (admin override) */}
+        <DomainManager tenantId={tenant.id} showAdminCost variant="admin" />
 
         {/* Configuration Inspection */}
         {config ? (

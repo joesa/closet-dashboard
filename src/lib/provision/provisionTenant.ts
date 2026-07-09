@@ -480,17 +480,34 @@ export async function provisionTenant(
       hostname: platformHost,
       is_primary: !customHost,
       ssl_status: 'active',
+      source: 'platform_subdomain',
+      vercel_verified: true,
+      status_message: 'Platform subdomain',
     })
     if (domainError) throw domainError
 
     domainResult = { platformHost, customHost: null, vercel: null }
 
     if (customHost) {
+      let vercelResult = null
+      if (!isLocalBase) {
+        vercelResult = await attachVercelDomain(customHost)
+      }
+      const verified = vercelResult?.verified === true
       const { error: customDomainError } = await supabase.from('domains').insert({
         tenant_id: tenantId,
         hostname: customHost,
         is_primary: true,
-        ssl_status: 'pending',
+        ssl_status: verified ? 'active' : 'pending',
+        source: 'byo',
+        vercel_verified: verified,
+        verification_records: vercelResult?.verification ?? null,
+        status_message: verified
+          ? 'Verified'
+          : vercelResult?.ok
+            ? 'Attached — awaiting DNS verification'
+            : vercelResult?.error || 'Pending DNS',
+        last_checked_at: new Date().toISOString(),
       })
       if (customDomainError) {
         console.error('Custom domain insert failed:', customDomainError)
@@ -501,9 +518,7 @@ export async function provisionTenant(
           .eq('hostname', platformHost)
       } else {
         domainResult.customHost = customHost
-        if (!isLocalBase) {
-          domainResult.vercel = await attachVercelDomain(customHost)
-        }
+        domainResult.vercel = vercelResult
       }
     }
 

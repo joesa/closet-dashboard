@@ -25,7 +25,7 @@ The widget APIs (`/api/calculate`, `/api/send-lead`, `/api/settings`) all key of
 The newer multi-tenant website model (consumed by `custom-closets-websites`):
 
 - `tenants` — business tenant, `site_status`, `widget_id`, Stripe.
-- `domains` — `hostname` -> `tenant_id` routing.
+- `domains` — `hostname` -> `tenant_id` routing. Extended for BYO + Vercel Registrar purchase: `source` (`platform_subdomain` | `byo` | `purchased`), `vercel_verified`, `verification_records`, `nameservers`, `registrar_order_id`, `purchase_price_cents`, `expires_at`, `auto_renew`, `last_checked_at`, `status_message`. Platform cost for purchased domains is folded into hosting/maintenance (no Stripe domain checkout).
 - `site_configs` — JSONB site content (hero, products, theme, layout, pages).
 
 ## The bridge: `tenants.widget_id`
