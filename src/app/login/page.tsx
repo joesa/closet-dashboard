@@ -1,9 +1,9 @@
 'use client'
 
-import { useState, Suspense } from 'react'
+import { useState, Suspense, useEffect } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { supabaseBrowser } from '@/lib/supabase-browser'
+import { getBrowserUser, supabaseBrowser } from '@/lib/supabase-browser'
 
 export default function LoginPage() {
   return (
@@ -31,6 +31,12 @@ function LoginForm() {
   const [loading, setLoading] = useState(false)
   const [failedAttempts, setFailedAttempts] = useState(0)
   const [resetSent, setResetSent] = useState(false)
+
+  // Clear revoked refresh cookies before attempting a new login so the
+  // AuthApiError doesn't fire again mid-submit.
+  useEffect(() => {
+    void getBrowserUser()
+  }, [])
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()

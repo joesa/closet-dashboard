@@ -18,7 +18,7 @@ export const supabaseBrowser = createBrowserClient(
 
 function isStaleRefreshError(message: string | undefined): boolean {
   if (!message) return false
-  return /refresh token/i.test(message)
+  return /refresh token|session.*not found|invalid.*jwt/i.test(message)
 }
 
 /** Clear broken auth cookies after a revoked/missing refresh token. */
@@ -26,7 +26,7 @@ export async function clearStaleBrowserAuth(): Promise<void> {
   try {
     await supabaseBrowser.auth.signOut({ scope: 'local' })
   } catch {
-    /* ignore */
+    /* ignore — cookies may already be gone */
   }
 }
 

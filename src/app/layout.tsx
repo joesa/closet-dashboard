@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import AuthSessionRecovery from "@/components/AuthSessionRecovery";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -34,6 +35,7 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full`}
     >
       <body className={`${geistSans.className} min-h-full flex flex-col antialiased`}>
+        <AuthSessionRecovery />
         {children}
       </body>
     </html>

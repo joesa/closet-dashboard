@@ -40,13 +40,14 @@ export async function proxy(req: NextRequest) {
   try {
     const { data, error } = await supabase.auth.getUser()
     if (error) {
-      await supabase.auth.signOut()
+      // Local scope only — don't hit the Auth API again with a dead refresh token.
+      await supabase.auth.signOut({ scope: 'local' })
     } else {
       user = data.user
     }
   } catch {
     try {
-      await supabase.auth.signOut()
+      await supabase.auth.signOut({ scope: 'local' })
     } catch {
       /* ignore */
     }
