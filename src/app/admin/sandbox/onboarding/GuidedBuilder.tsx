@@ -1,9 +1,18 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
-import { listIndustries, resolveIndustrySlug, servicesForIndustry } from '@/lib/catalog/serviceCatalog';
+import React, { useEffect, useMemo, useState } from 'react';
+import {
+  layoutsForTheme,
+  listIndustries,
+  pickBestLayout,
+  pickBestTheme,
+  resolveIndustrySlug,
+  servicesForIndustry,
+} from '@/lib/catalog/serviceCatalog';
 import { resolveSitePresentationRules } from '@/lib/ai/resolveSitePresentation';
 import { CTA_TO_LAYOUT, VIBE_TO_THEME } from '@/lib/catalog/sitePresentationCatalog';
+import type { LayoutSlug, ThemeSlug } from '@/lib/catalog/sitePresentationCatalog';
+import type { EngagementModel } from '@/lib/catalog/types';
 
 export type GuidedResult = {
   description: string;
@@ -17,11 +26,29 @@ export type GuidedResult = {
   heroHeadline?: string;
   aboutDescription?: string;
   suggestedPageCount: number;
+  isCustomIndustry?: boolean;
 };
 
-const INDUSTRY_OPTIONS = listIndustries()
+type IndustryResolveData = {
+  source: string;
+  industrySlug: string | null;
+  label: string;
+  services: string[];
+  defaultThemes: ThemeSlug[];
+  defaultLayouts: LayoutSlug[];
+  engagementModel: EngagementModel;
+  isCustom: boolean;
+};
+
+const CATALOG_INDUSTRY_OPTIONS = listIndustries()
   .map((i) => i.label)
   .sort((a, b) => a.localeCompare(b));
+
+const CATALOG_LABEL_SET = new Set(CATALOG_INDUSTRY_OPTIONS.map((l) => l.toLowerCase()));
+
+function isCatalogIndustry(label: string): boolean {
+  return CATALOG_LABEL_SET.has(label.trim().toLowerCase());
+}
 
 const VIBE_OPTIONS = Object.keys(VIBE_TO_THEME);
 const TONE_OPTIONS = [
@@ -76,6 +103,17 @@ function str(answers: Record<string, string | string[]>, id: string): string {
 function arr(answers: Record<string, string | string[]>, id: string): string[] {
   const v = answers[id];
   return Array.isArray(v) ? v.filter((x) => typeof x === 'string' && x.trim()) : [];
+}
+
+function serviceOptionsForAnswers(answers: Record<string, string | string[]>): string[] {
+  const resolved = answers.industryServices;
+  if (Array.isArray(resolved) && resolved.length > 0) {
+    return resolved.filter((s): s is string => typeof s === 'string');
+  }
+  const industryLabel = str(answers, 'industry');
+  if (!industryLabel) return [];
+  const slug = resolveIndustrySlug({ industry: industryLabel });
+  return servicesForIndustry(slug).map((s) => s.label);
 }
 
 function buildDescription(answers: Record<string, string | string[]>): string {
@@ -162,8 +200,7 @@ function suggestedPageCount(answers: Record<string, string | string[]>): number 
 
 function buildSteps(answers: Record<string, string | string[]>): Step[] {
   const industryLabel = str(answers, 'industry');
-  const industrySlug = resolveIndustrySlug({ industry: industryLabel || undefined });
-  const serviceOptions = servicesForIndustry(industrySlug).map((s) => s.label);
+  const serviceOptions = serviceOptionsForAnswers(answers);
 
   return [
     {
@@ -176,7 +213,7 @@ function buildSteps(answers: Record<string, string | string[]>): Step[] {
       id: 'industry',
       type: 'industry',
       question: 'What industry or trade is this?',
-      help: 'Pick the closest catalog match — it drives services, theme, and the quote calculator.',
+      help: 'Pick from the catalog, choose a community-added trade, or type a new one — new trades are saved for everyone.',
     },
     {
       id: 'services',
@@ -265,6 +302,41 @@ export default function GuidedBuilder({
   const [stepIndex, setStepIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string | string[]>>({});
   const [industryQuery, setIndustryQuery] = useState('');
+  const [customIndustryLabels, setCustomIndustryLabels] = useState<string[]>([]);
+  const [industryResolve, setIndustryResolve] = useState<IndustryResolveData | null>(null);
+  const [resolvingIndustry, setResolvingIndustry] = useState(false);
+  const [industryResolveError, setIndustryResolveError] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/catalog/custom-industries');
+        if (!res.ok) return;
+        const json = await res.json();
+        if (!cancelled && Array.isArray(json.industries)) {
+          setCustomIndustryLabels(
+            json.industries
+              .map((row: { label?: string }) => row.label)
+              .filter((label: string | undefined): label is string => !!label)
+          );
+        }
+      } catch {
+        // Non-fatal — catalog industries still work.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const allIndustryOptions = useMemo(
+    () =>
+      Array.from(new Set([...CATALOG_INDUSTRY_OPTIONS, ...customIndustryLabels])).sort((a, b) =>
+        a.localeCompare(b)
+      ),
+    [customIndustryLabels]
+  );
 
   const steps = useMemo(() => buildSteps(answers), [answers]);
   const step = steps[stepIndex];
@@ -273,28 +345,89 @@ export default function GuidedBuilder({
 
   const filteredIndustries = useMemo(() => {
     const q = industryQuery.trim().toLowerCase();
-    if (!q) return INDUSTRY_OPTIONS;
-    return INDUSTRY_OPTIONS.filter((label) => label.toLowerCase().includes(q));
-  }, [industryQuery]);
+    if (!q) return allIndustryOptions;
+    return allIndustryOptions.filter((label) => label.toLowerCase().includes(q));
+  }, [industryQuery, allIndustryOptions]);
+
+  const customQuery = industryQuery.trim();
+  const canAddCustomIndustry =
+    customQuery.length >= 3 &&
+    !allIndustryOptions.some((o) => o.toLowerCase() === customQuery.toLowerCase());
 
   const isAnswered =
     step.type === 'industry'
-      ? !!str(answers, 'industry')
+      ? !!str(answers, 'industry') && !resolvingIndustry
       : 'optional' in step && step.optional
         ? true
         : step.type === 'multi'
           ? Array.isArray(current) && current.length > 0
           : !!(typeof current === 'string' && current.trim());
 
-  const setSingle = (value: string) => {
+  const selectCatalogIndustry = (label: string) => {
+    setIndustryResolve(null);
+    setIndustryResolveError('');
     setAnswers((a) => {
-      const next = { ...a, [step.id]: value };
-      if (step.id === 'industry') {
-        delete next.services;
-        setIndustryQuery('');
-      }
+      const next: Record<string, string | string[]> = { ...a, industry: label };
+      delete next.industryServices;
+      delete next.services;
       return next;
     });
+    setIndustryQuery('');
+  };
+
+  const resolveAndSelectIndustry = async (industryText: string) => {
+    const trimmed = industryText.trim();
+    if (!trimmed) return;
+
+    if (isCatalogIndustry(trimmed)) {
+      selectCatalogIndustry(
+        CATALOG_INDUSTRY_OPTIONS.find((l) => l.toLowerCase() === trimmed.toLowerCase()) || trimmed
+      );
+      return;
+    }
+
+    setResolvingIndustry(true);
+    setIndustryResolveError('');
+    try {
+      const res = await fetch('/api/admin/resolve-custom-industry', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          industry: trimmed,
+          businessName: str(answers, 'businessName') || undefined,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Could not configure this industry');
+
+      const data = json.data as IndustryResolveData;
+      setIndustryResolve(data);
+      setAnswers((a) => {
+        const next: Record<string, string | string[]> = {
+          ...a,
+          industry: data.label,
+          industryServices: data.services,
+        };
+        delete next.services;
+        return next;
+      });
+
+      if (
+        data.isCustom &&
+        !customIndustryLabels.some((l) => l.toLowerCase() === data.label.toLowerCase())
+      ) {
+        setCustomIndustryLabels((prev) => [...prev, data.label].sort((a, b) => a.localeCompare(b)));
+      }
+      setIndustryQuery('');
+    } catch (err) {
+      setIndustryResolveError(err instanceof Error ? err.message : 'Industry setup failed');
+    } finally {
+      setResolvingIndustry(false);
+    }
+  };
+
+  const setSingle = (value: string) => {
+    setAnswers((a) => ({ ...a, [step.id]: value }));
   };
 
   const toggleMulti = (value: string) =>
@@ -310,26 +443,50 @@ export default function GuidedBuilder({
     const industryLabel = str(answers, 'industry');
     const services = arr(answers, 'services');
     const otherServices = str(answers, 'otherServices');
-    const presentation = resolveSitePresentationRules({
-      industry: industryLabel,
-      business_name: str(answers, 'businessName'),
-      services,
-      other_services: otherServices || undefined,
-      service_area: str(answers, 'serviceArea') || undefined,
-      vibe: str(answers, 'vibe') || undefined,
-      tone: str(answers, 'tone') || undefined,
-      customers: str(answers, 'customers') || undefined,
-      experience: str(answers, 'experience') || undefined,
-      differentiators: arr(answers, 'differentiators'),
-      primary_cta: str(answers, 'primaryCta') || undefined,
-      notes: str(answers, 'notes') || undefined,
-    });
+
+    let theme: string;
+    let layoutStyle: string;
+
+    if (industryResolve?.isCustom) {
+      const seed = str(answers, 'businessName') || str(answers, 'serviceArea') || null;
+      theme = pickBestTheme(
+        industryResolve.defaultThemes,
+        str(answers, 'vibe') || undefined,
+        VIBE_TO_THEME,
+        seed
+      );
+      const themeLayouts = layoutsForTheme(theme as ThemeSlug, industryResolve.defaultLayouts);
+      layoutStyle = pickBestLayout(
+        themeLayouts,
+        theme as ThemeSlug,
+        str(answers, 'primaryCta') || undefined,
+        CTA_TO_LAYOUT,
+        seed
+      );
+    } else {
+      const presentation = resolveSitePresentationRules({
+        industry: industryLabel,
+        business_name: str(answers, 'businessName'),
+        services,
+        other_services: otherServices || undefined,
+        service_area: str(answers, 'serviceArea') || undefined,
+        vibe: str(answers, 'vibe') || undefined,
+        tone: str(answers, 'tone') || undefined,
+        customers: str(answers, 'customers') || undefined,
+        experience: str(answers, 'experience') || undefined,
+        differentiators: arr(answers, 'differentiators'),
+        primary_cta: str(answers, 'primaryCta') || undefined,
+        notes: str(answers, 'notes') || undefined,
+      });
+      theme = presentation.theme;
+      layoutStyle = presentation.layoutStyle;
+    }
 
     onComplete({
       description: buildDescription(answers),
       industryLabel,
-      theme: presentation.theme,
-      layoutStyle: presentation.layoutStyle,
+      theme,
+      layoutStyle,
       services,
       otherServices: otherServices || undefined,
       businessName: str(answers, 'businessName') || undefined,
@@ -337,6 +494,7 @@ export default function GuidedBuilder({
       heroHeadline: buildHeroHeadline(answers, industryLabel),
       aboutDescription: buildAboutDescription(answers, industryLabel),
       suggestedPageCount: suggestedPageCount(answers),
+      isCustomIndustry: industryResolve?.isCustom ?? false,
     });
   };
 
@@ -386,28 +544,81 @@ export default function GuidedBuilder({
                 type="search"
                 value={industryQuery}
                 onChange={(e) => setIndustryQuery(e.target.value)}
-                placeholder="Search industries… e.g. concrete, plumbing, medical"
+                placeholder="Search or type a new trade… e.g. mobile dog grooming"
                 className="w-full bg-neutral-900 border border-neutral-700 rounded-md p-3 text-white text-sm"
                 autoFocus
               />
-              <div className="max-h-64 overflow-y-auto flex flex-col gap-1.5 pr-1">
-                {filteredIndustries.length === 0 ? (
-                  <p className="text-xs text-neutral-500 px-2">No industries match that search.</p>
+
+              {str(answers, 'industry') && (
+                <div className="rounded-md border border-emerald-500/40 bg-emerald-900/20 px-3 py-2 text-sm text-emerald-200">
+                  Selected: <strong>{str(answers, 'industry')}</strong>
+                  {industryResolve?.isCustom && (
+                    <span className="ml-2 text-xs text-emerald-300/80">
+                      {industryResolve.source === 'custom-new' ||
+                      industryResolve.source === 'custom-new-fallback'
+                        ? '— new trade template saved for future use'
+                        : '— community trade template'}
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {resolvingIndustry && (
+                <p className="text-xs text-indigo-300 animate-pulse">
+                  Configuring trade template — services, themes, layouts, and engagement engine…
+                </p>
+              )}
+              {industryResolveError && (
+                <p className="text-xs text-red-300">{industryResolveError}</p>
+              )}
+
+              {canAddCustomIndustry && (
+                <button
+                  type="button"
+                  onClick={() => resolveAndSelectIndustry(customQuery)}
+                  disabled={resolvingIndustry}
+                  className="w-full text-left px-4 py-3 rounded-md border border-dashed border-indigo-500/60 bg-indigo-900/20 text-indigo-200 text-sm hover:bg-indigo-900/40 transition-colors disabled:opacity-50"
+                >
+                  <span className="font-bold">Add new trade:</span> &ldquo;{customQuery}&rdquo;
+                  <span className="block text-xs text-indigo-300/80 mt-1">
+                    AI will generate services, site templates, and an engagement engine — saved for
+                    others to select later.
+                  </span>
+                </button>
+              )}
+
+              <div className="max-h-52 overflow-y-auto flex flex-col gap-1.5 pr-1">
+                {filteredIndustries.length === 0 && !canAddCustomIndustry ? (
+                  <p className="text-xs text-neutral-500 px-2">
+                    No matches — type at least 3 characters to add a new trade.
+                  </p>
                 ) : (
-                  filteredIndustries.map((label) => (
-                    <button
-                      key={label}
-                      type="button"
-                      onClick={() => setSingle(label)}
-                      className={`text-left px-4 py-2.5 rounded-md border transition-colors text-sm ${
-                        current === label
-                          ? 'border-indigo-500 bg-indigo-900/40 text-white'
-                          : 'border-neutral-700 bg-neutral-900 text-neutral-300 hover:border-neutral-500'
-                      }`}
-                    >
-                      {label}
-                    </button>
-                  ))
+                  filteredIndustries.map((label) => {
+                    const isCustom = !isCatalogIndustry(label);
+                    const selected = str(answers, 'industry').toLowerCase() === label.toLowerCase();
+                    return (
+                      <button
+                        key={label}
+                        type="button"
+                        onClick={() =>
+                          isCustom ? resolveAndSelectIndustry(label) : selectCatalogIndustry(label)
+                        }
+                        disabled={resolvingIndustry}
+                        className={`text-left px-4 py-2.5 rounded-md border transition-colors text-sm disabled:opacity-50 ${
+                          selected
+                            ? 'border-indigo-500 bg-indigo-900/40 text-white'
+                            : 'border-neutral-700 bg-neutral-900 text-neutral-300 hover:border-neutral-500'
+                        }`}
+                      >
+                        {label}
+                        {isCustom && (
+                          <span className="ml-2 text-[10px] uppercase tracking-wide text-indigo-300/70">
+                            Community
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })
                 )}
               </div>
             </div>
@@ -435,7 +646,11 @@ export default function GuidedBuilder({
           {step.type === 'multi' && (
             <>
               {step.options.length === 0 ? (
-                <p className="text-sm text-neutral-400">Select an industry on the previous step first.</p>
+                <p className="text-sm text-neutral-400">
+                  {resolvingIndustry
+                    ? 'Loading services for this trade…'
+                    : 'Select an industry on the previous step first.'}
+                </p>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-72 overflow-y-auto">
                   {step.options.map((opt) => {

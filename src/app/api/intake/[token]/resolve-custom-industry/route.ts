@@ -1,11 +1,6 @@
 import { NextResponse } from 'next/server'
 import { checkRateLimit, hashRateKey } from '@/lib/rateLimit'
-import { isLowConfidenceResolution, resolveIndustrySlug, getIndustry } from '@/lib/catalog/serviceCatalog'
-import {
-  findCustomIndustryByLabel,
-  createCustomIndustry,
-} from '@/lib/catalog/customIndustries'
-import { generateCustomIndustry } from '@/lib/ai/generateCustomIndustry'
+import { resolveIndustryForSetup } from '@/lib/catalog/resolveIndustryForSetup'
 
 export const maxDuration = 30
 export const runtime = 'nodejs'
@@ -50,54 +45,21 @@ export async function POST(
     return NextResponse.json({ error: 'industry is required' }, { status: 400 })
   }
 
-  // 1. Confident match against the existing static catalog — reuse it.
-  const lowConfidence = isLowConfidenceResolution({ industry: industryText })
-  if (!lowConfidence) {
-    const slug = resolveIndustrySlug({ industry: industryText })
-    const industry = getIndustry(slug)
-    return NextResponse.json({
-      source: 'catalog',
-      industrySlug: slug,
-      label: industry.label,
-      services: industry.services.map((s) => s.label),
-    })
-  }
-
-  // 2. Already-created custom industry with the same label — reuse it.
-  const existing = await findCustomIndustryByLabel(industryText)
-  if (existing) {
-    return NextResponse.json({
-      source: 'custom-existing',
-      industrySlug: existing.slug,
-      label: existing.label,
-      services: existing.services.map((s) => s.label),
-    })
-  }
-
-  // 3. Genuinely new — generate + persist so it's selectable in the future.
-  const generated = await generateCustomIndustry({
+  const result = await resolveIndustryForSetup({
     industryText,
     businessName,
     otherServices,
+    sourceIntakeId: undefined,
   })
 
-  try {
-    const created = await createCustomIndustry({ ...generated.def, sourceIntakeId: undefined })
-    return NextResponse.json({
-      source: generated.source === 'gemini' ? 'custom-new' : 'custom-new-fallback',
-      industrySlug: created.slug,
-      label: created.label,
-      services: created.services.map((s) => s.label),
-    })
-  } catch (error) {
-    console.error('Failed to persist custom industry:', error)
-    // Still return the generated services so this contractor isn't blocked,
-    // even though it couldn't be saved for future reuse.
-    return NextResponse.json({
-      source: 'custom-new-unsaved',
-      industrySlug: null,
-      label: generated.def.label,
-      services: generated.def.services.map((s) => s.label),
-    })
-  }
+  return NextResponse.json({
+    source: result.source,
+    industrySlug: result.industrySlug,
+    label: result.label,
+    services: result.services,
+    defaultThemes: result.defaultThemes,
+    defaultLayouts: result.defaultLayouts,
+    engagementModel: result.engagementModel,
+    isCustom: result.isCustom,
+  })
 }

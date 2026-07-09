@@ -825,7 +825,7 @@ export default function SandboxOnboarding() {
             <p className="text-sm text-indigo-200/70 mb-4">
               {siteMode === 'widget'
                 ? 'Paste their website URL or a description of their services. The AI will generate a tailored Quote Calculator (custom rooms, add-ons, and finishes) to embed on their existing site.'
-                : 'Use the guided setup to pick industry, services, and business details — we build a structured brief and configure the site + engagement engine. Or write your own brief free-form.'}
+                : 'Use the guided setup to pick industry, services, and business details — including new trades not in the catalog (saved for everyone). Or write your own brief free-form.'}
             </p>
 
             {siteMode === 'full' && (
@@ -862,7 +862,7 @@ export default function SandboxOnboarding() {
                 <div className="rounded-lg border border-indigo-500/30 bg-neutral-900/60 p-5 text-center">
                   <p className="text-sm text-indigo-100/80 mb-4">
                     Step through industry, services, service area, vibe, differentiators, and site scope.
-                    The system builds a top-notch brief for AI configuration.
+                    New trades are AI-configured and saved for future admins and contractors.
                   </p>
                   <button
                     type="button"
