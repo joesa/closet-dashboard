@@ -11,6 +11,7 @@ import {
   refundDepositAction,
 } from './actions'
 import IntakeAdminAlerts from './IntakeAdminAlerts'
+import IntakeDomainPurchase from '@/components/IntakeDomainPurchase'
 
 export const dynamic = 'force-dynamic'
 
@@ -35,7 +36,7 @@ export default async function IntakeDetailPage({
        intake_tier, tier_total_cents, deposit_status, deposit_paid_cents,
        build_paid_at, balance_paid_at, maintenance_plan, preview_approved_at,
        site_live_at, maintenance_started_at, provisioned_contractor_id, submitted_at,
-       ai_site_config`
+       ai_site_config, desired_domain`
     )
     .eq('id', id)
     .maybeSingle()
@@ -254,6 +255,14 @@ export default async function IntakeDetailPage({
             </Link>
           )}
         </div>
+      </div>
+
+      <div className="mt-6">
+        <IntakeDomainPurchase
+          intakeId={data.id}
+          desiredDomain={data.desired_domain ?? null}
+          tenantId={data.provisioned_contractor_id ?? null}
+        />
       </div>
 
       {data.provisioned_contractor_id && (

@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import GuidedBuilder, { type GuidedResult } from './GuidedBuilder';
+import DomainSuggestPicker from '@/components/DomainSuggestPicker';
 import { pageSlugsToSitemap } from '@/lib/catalog/sitePages';
 import {
   LAYOUT_SLUGS,
@@ -494,6 +495,35 @@ export default function SandboxOnboarding() {
       setLoginUrl(data.loginUrl || '');
       setEmbedSnippet(data.embedSnippet || '');
       setResultMode(data.mode === 'widget' ? 'widget' : 'full');
+
+      // If admin selected an available domain to buy, purchase + attach after provision.
+      const buyDomain = intakeSetup?.desiredDomain?.trim();
+      const newTenantId = typeof data.tenantId === 'string' ? data.tenantId : null;
+      if (siteMode === 'full' && buyDomain && newTenantId) {
+        try {
+          const buyRes = await fetch('/api/domains/purchase', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ domain: buyDomain, tenantId: newTenantId }),
+          });
+          const buyJson = await buyRes.json();
+          if (!buyRes.ok) {
+            setError(
+              `Site provisioned, but domain purchase failed: ${buyJson.error || 'unknown error'}. Purchase from the site detail page.`
+            );
+          } else if (buyJson.domain?.hostname) {
+            setResultUrl(
+              typeof window !== 'undefined' && buyJson.domain.hostname.endsWith('.localhost')
+                ? `http://${buyJson.domain.hostname}:3000`
+                : `https://${buyJson.domain.hostname}`
+            );
+          }
+        } catch (buyErr) {
+          setError(
+            `Site provisioned, but domain purchase failed: ${buyErr instanceof Error ? buyErr.message : 'unknown error'}`
+          );
+        }
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to provision');
     } finally {
@@ -1158,6 +1188,32 @@ export default function SandboxOnboarding() {
             </div>
             )}
           </div>
+
+          {siteMode === 'full' && (
+            <div className="rounded-lg border border-neutral-700 bg-neutral-900/50 p-4 space-y-3">
+              <div>
+                <label className="block text-sm font-medium mb-1 text-neutral-300">
+                  Custom domain (optional)
+                </label>
+                <p className="text-xs text-neutral-500 mb-3">
+                  Check live Vercel availability for .com / .net / .io. Selecting a domain saves it
+                  for purchase after provision (or attach as BYO if they already own it).
+                </p>
+                <DomainSuggestPicker
+                  mode="admin"
+                  variant="dark"
+                  businessNameHint={formData.businessName}
+                  value={intakeSetup?.desiredDomain || ''}
+                  onChange={(domain) =>
+                    setIntakeSetup((prev) => ({
+                      ...(prev || {}),
+                      desiredDomain: domain || undefined,
+                    }))
+                  }
+                />
+              </div>
+            </div>
+          )}
 
           <div>
             <label className="block text-sm font-medium mb-1 text-neutral-300">Owner Login Email</label>

@@ -13,6 +13,7 @@ import TierPicker from './TierPicker';
 import DepositCTA from './DepositCTA';
 import PayToLaunchBlock from './PayToLaunchBlock';
 import IntakeImageStudio from './IntakeImageStudio';
+import DomainSuggestPicker from '@/components/DomainSuggestPicker';
 
 import { inferQuoteCalculatorGuidance } from '@/lib/quoteCalculatorGuidance';
 import {
@@ -1254,6 +1255,7 @@ export default function IntakeFormClient({
   const steps = useMemo(() => {
     const arr: { key: string; title: string }[] = [
       { key: 'business', title: 'Business & contact' },
+      { key: 'domain', title: 'Website domain' },
       { key: 'services', title: 'Services & pricing' },
     ];
     if (form.pages.length > 0) arr.push({ key: 'pageContent', title: 'Page content' });
@@ -1705,6 +1707,37 @@ export default function IntakeFormClient({
               </div>
             </div>
           </section>
+          </div>
+
+          <div className={currentStepIndex === stepIdx.domain ? '' : 'hidden'}>
+            <section className={sectionClass}>
+              <h2 className={sectionTitle}>Website domain</h2>
+              <p className="mb-3 text-sm text-zinc-400">
+                Already have a domain? Enter it below. Need one? We&apos;ll check live availability
+                for .com / .net / .io and save your pick — our team registers it when your site
+                goes live (included with hosting).
+              </p>
+              <div className="mb-4">
+                <label className={label}>I already own this domain</label>
+                <input
+                  className={input}
+                  placeholder="example.com"
+                  value={form.desiredDomain}
+                  onChange={(e) => set('desiredDomain', e.target.value.trim().toLowerCase())}
+                />
+              </div>
+              <div>
+                <label className={label}>Or find an available domain</label>
+                <DomainSuggestPicker
+                  mode="intake"
+                  intakeToken={token}
+                  businessNameHint={form.businessName}
+                  value={form.desiredDomain}
+                  onChange={(domain) => set('desiredDomain', domain)}
+                  variant="light"
+                />
+              </div>
+            </section>
           </div>
 
           <div className={currentStepIndex === stepIdx.services ? '' : 'hidden'}>

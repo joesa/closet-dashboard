@@ -39,6 +39,7 @@ export async function POST(req: Request) {
     return NextResponse.json({
       success: true,
       mode: result.mode,
+      tenantId: result.tenantId,
       url: result.url,
       domain: result.domain,
       widgetId: result.widgetId,
