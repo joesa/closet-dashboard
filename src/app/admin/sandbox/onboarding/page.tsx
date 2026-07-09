@@ -683,14 +683,36 @@ export default function SandboxOnboarding() {
         pages = ['Home'];
       } else {
         setAiPhase('Planning site structure…');
-        const res = await fetch('/api/ai/generate-sitemap', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ input: parsed.description || aiInput, pageCount: effectivePageCount }),
-        });
-        const json = await res.json();
-        if (!res.ok) throw new Error(json.error || 'Sitemap generation failed');
-        pages = json.data.pages;
+        try {
+          const res = await fetch('/api/ai/generate-sitemap', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              input: parsed.description || aiInput,
+              pageCount: effectivePageCount,
+            }),
+          });
+          const json = await res.json();
+          if (!res.ok || !Array.isArray(json?.data?.pages)) {
+            throw new Error(json.error || 'Sitemap generation failed');
+          }
+          pages = json.data.pages;
+        } catch (sitemapErr) {
+          console.warn('Sitemap AI failed, using default pages:', sitemapErr);
+          const defaults = [
+            'Home',
+            'Services',
+            'About Us',
+            'Portfolio',
+            'Contact',
+            'FAQ',
+            'Service Areas',
+            'Our Process',
+            'Reviews',
+            'Financing',
+          ];
+          pages = defaults.slice(0, effectivePageCount);
+        }
       }
       setSitemap(pages);
       setPageCount(effectivePageCount);
