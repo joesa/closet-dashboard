@@ -169,27 +169,39 @@ export default function SandboxOnboarding() {
   // 'full' = Pipeline B (website + calculator). 'widget' = Pipeline A (calculator
   // widget only, for an existing site — this is where we upsell the full build).
   const [siteMode, setSiteMode] = useState<'full' | 'widget'>('full');
+  const [briefMode, setBriefMode] = useState<'guided' | 'freetext'>('guided');
   const [showGuide, setShowGuide] = useState(false);
+  const [guideComplete, setGuideComplete] = useState(false);
 
-  // Guided builder finished: turn the answers into an AI brief and pre-fill the
-  // theme/services the operator can still tweak before generating.
+  // Guided builder finished: structured brief → pre-fill industry, services, theme, layout.
   const handleGuideComplete = (result: GuidedResult) => {
     setAiInput(result.description);
+    setSelectedIndustry(result.industryLabel);
+    setRecommendedTheme(result.theme || '');
+    setIntakeSetup((prev) => ({
+      ...prev,
+      industry: result.industryLabel,
+      serviceArea: result.serviceArea,
+    }));
+    if (result.suggestedPageCount >= 1 && result.suggestedPageCount <= 10) {
+      setPageCount(result.suggestedPageCount);
+    }
     setFormData((prev) => ({
       ...prev,
       businessName: result.businessName || prev.businessName,
-      // Auto-derive the subdomain from the business name (operator can edit).
       subdomain: result.businessName ? slugify(result.businessName) : prev.subdomain,
       theme: result.theme || prev.theme,
       layoutStyle: result.layoutStyle || prev.layoutStyle,
-      // Don't let the garage demo copy ride along when the guide is used for a
-      // different business — fall back to the business name / empty instead.
       heroHeadline:
         result.heroHeadline ||
         (result.businessName ? `Welcome to ${result.businessName}` : ''),
       aboutDescription: result.aboutDescription || '',
-      services: result.services && result.services.length > 0 ? result.services : prev.services,
+      services: result.services.length > 0 ? result.services : prev.services,
+      heroImage: '',
+      beforeImage: '',
     }));
+    setGuideComplete(true);
+    setBriefMode('freetext');
     setShowGuide(false);
   };
   const [error, setError] = useState('');
@@ -497,6 +509,7 @@ export default function SandboxOnboarding() {
     setAiUpsellPitch('');
     setGeneratedImages(null);
     setAiPhase('');
+    setGuideComplete(false);
   };
 
   const applyParsedBrief = (parsed: ParsedBrief) => {
@@ -634,17 +647,32 @@ export default function SandboxOnboarding() {
     setAiLoading(true);
     setError('');
     try {
-      // 1. Parse the brief → industry, services, theme, layout, business name…
-      setAiPhase('Analyzing business & detecting industry…');
-      const parseRes = await fetch('/api/ai/parse-business-brief', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ input: aiInput }),
-      });
-      const parseJson = await parseRes.json();
-      if (!parseRes.ok) throw new Error(parseJson.error || 'Could not parse business description');
-      const parsed = parseJson.data as ParsedBrief;
-      applyParsedBrief(parsed);
+      let parsed: ParsedBrief;
+
+      // Guided setup already collected structured fields — skip re-parsing.
+      if (guideComplete && selectedIndustry && formData.services.length > 0) {
+        parsed = {
+          industryLabel: selectedIndustry,
+          businessName: formData.businessName,
+          services: formData.services,
+          serviceArea: intakeSetup?.serviceArea,
+          theme: formData.theme,
+          layoutStyle: formData.layoutStyle,
+          suggestedPageCount: pageCount,
+          description: aiInput,
+        };
+      } else {
+        setAiPhase('Analyzing business & detecting industry…');
+        const parseRes = await fetch('/api/ai/parse-business-brief', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ input: aiInput }),
+        });
+        const parseJson = await parseRes.json();
+        if (!parseRes.ok) throw new Error(parseJson.error || 'Could not parse business description');
+        parsed = parseJson.data as ParsedBrief;
+        applyParsedBrief(parsed);
+      }
 
       const effectivePageCount =
         pageCount === 1 ? parsed.suggestedPageCount || 1 : pageCount;
@@ -797,30 +825,85 @@ export default function SandboxOnboarding() {
             <p className="text-sm text-indigo-200/70 mb-4">
               {siteMode === 'widget'
                 ? 'Paste their website URL or a description of their services. The AI will generate a tailored Quote Calculator (custom rooms, add-ons, and finishes) to embed on their existing site.'
-                : 'Describe the business and what you want on the site. On Next, AI detects industry, services, theme, and layout from your brief, generates the full site + calculator, and renders bespoke hero & product images. Or use the guided builder for closet/storage trades.'}
+                : 'Use the guided setup to pick industry, services, and business details — we build a structured brief and configure the site + engagement engine. Or write your own brief free-form.'}
             </p>
+
+            {siteMode === 'full' && (
+              <div className="flex gap-2 mb-4">
+                <button
+                  type="button"
+                  onClick={() => setBriefMode('guided')}
+                  disabled={aiLoading || isSitemapGenerated}
+                  className={`flex-1 px-4 py-2 rounded-md text-sm font-bold border transition-colors ${
+                    briefMode === 'guided'
+                      ? 'border-indigo-500 bg-indigo-900/40 text-white'
+                      : 'border-neutral-700 bg-neutral-900 text-neutral-400 hover:border-neutral-500'
+                  }`}
+                >
+                  Guided setup
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBriefMode('freetext')}
+                  disabled={aiLoading || isSitemapGenerated}
+                  className={`flex-1 px-4 py-2 rounded-md text-sm font-bold border transition-colors ${
+                    briefMode === 'freetext'
+                      ? 'border-indigo-500 bg-indigo-900/40 text-white'
+                      : 'border-neutral-700 bg-neutral-900 text-neutral-400 hover:border-neutral-500'
+                  }`}
+                >
+                  Write your own brief
+                </button>
+              </div>
+            )}
+
             <div className="flex flex-col gap-4">
-              {siteMode === 'full' ? (
+              {siteMode === 'full' && briefMode === 'guided' && !guideComplete ? (
+                <div className="rounded-lg border border-indigo-500/30 bg-neutral-900/60 p-5 text-center">
+                  <p className="text-sm text-indigo-100/80 mb-4">
+                    Step through industry, services, service area, vibe, differentiators, and site scope.
+                    The system builds a top-notch brief for AI configuration.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setShowGuide(true)}
+                    disabled={aiLoading || isSitemapGenerated}
+                    className="bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-3 rounded-md font-bold transition-colors disabled:opacity-50"
+                  >
+                    Start guided setup
+                  </button>
+                </div>
+              ) : siteMode === 'full' ? (
                 <>
                   <div className="flex items-center justify-between gap-3">
-                    <label className="text-sm font-medium text-indigo-200">Describe the business &amp; what to build</label>
+                    <label className="text-sm font-medium text-indigo-200">
+                      {guideComplete ? 'Generated configuration brief' : 'Describe the business & what to build'}
+                    </label>
                     <button
                       type="button"
-                      onClick={() => setShowGuide(true)}
+                      onClick={() => {
+                        setGuideComplete(false);
+                        setShowGuide(true);
+                      }}
                       disabled={aiLoading || isSitemapGenerated}
                       className="shrink-0 text-xs font-bold bg-neutral-800 hover:bg-neutral-700 border border-indigo-500/40 text-indigo-200 px-3 py-2 rounded-md transition-colors disabled:opacity-50"
                     >
-                      Not sure? Use the guided builder
+                      {guideComplete ? 'Edit in guided setup' : 'Use guided setup'}
                     </button>
                   </div>
                   <textarea
                     value={aiInput}
                     onChange={(e) => setAiInput(e.target.value)}
                     placeholder="e.g. Family-owned custom closet company serving Nashville. Services: walk-in closets, garages, pantries. Luxury, modern feel. 15 years in business, lifetime warranty, free in-home consultation. Goal: book consultations."
-                    rows={4}
-                    className="w-full bg-neutral-900 border border-neutral-700 rounded-md p-3 text-white"
+                    rows={guideComplete ? 8 : 4}
+                    className="w-full bg-neutral-900 border border-neutral-700 rounded-md p-3 text-white font-mono text-sm"
                     disabled={aiLoading || isSitemapGenerated}
                   />
+                  {guideComplete && (
+                    <p className="text-xs text-emerald-300/90">
+                      Brief ready — industry, services, theme, and layout are pre-filled below. Click Next to generate the site.
+                    </p>
+                  )}
                 </>
               ) : (
                 <input 
