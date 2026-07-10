@@ -786,8 +786,12 @@ const INDUSTRY_PROFILES: Partial<Record<IndustrySlug, BaseQuoteCalculatorGuidanc
   ),
 }
 
-function withTerminology(slug: IndustrySlug | null, base: BaseQuoteCalculatorGuidance): QuoteCalculatorGuidance {
-  const model = slug ? getEngagementModel(slug) : 'quote'
+function withTerminology(
+  slug: IndustrySlug | null,
+  base: BaseQuoteCalculatorGuidance,
+  engagementOverride?: 'quote' | 'order' | 'booking' | 'ticket' | null
+): QuoteCalculatorGuidance {
+  const model = engagementOverride || (slug ? getEngagementModel(slug) : 'quote')
   const isOrder = model === 'order'
   const isBooking = model === 'booking'
   const isTicket = model === 'ticket'
@@ -856,4 +860,67 @@ export function inferQuoteCalculatorGuidance(input: {
     ...profile,
     serviceExamples: serviceExamples.length > 0 ? serviceExamples : profile.serviceExamples,
   })
+}
+
+/**
+ * Build calculator/services guidance for a contractor-contributed custom
+ * industry (not in the static catalog). Used when the intake form selects
+ * or resolves a custom_industries row so we never fall back to closets.
+ */
+export function guidanceFromCustomIndustry(input: {
+  label: string
+  services?: string[] | null
+  engagementModel?: 'quote' | 'order' | 'booking' | 'ticket' | null
+}): QuoteCalculatorGuidance {
+  const label = (input.label || 'service business').trim() || 'service business'
+  const services = (input.services || []).map((s) => s.trim()).filter(Boolean)
+  const engagement = input.engagementModel || 'quote'
+  const tradeLabel = label.toLowerCase()
+
+  const recommendedPricingModel: SuggestedPricingModel =
+    engagement === 'ticket' || engagement === 'booking' || engagement === 'order'
+      ? 'fixed'
+      : 'fixed'
+
+  const base: BaseQuoteCalculatorGuidance = {
+    tradeLabel,
+    recommendedPricingModel,
+    recommendationReason:
+      engagement === 'order'
+        ? `Most ${tradeLabel} businesses sell priced menu/catalog items rather than measured project quotes.`
+        : engagement === 'booking'
+          ? `Most ${tradeLabel} businesses price by session or appointment.`
+          : engagement === 'ticket'
+            ? `Most ${tradeLabel} businesses price per ticket or admission.`
+            : `Quotes for ${tradeLabel} usually start as a flat job or package, then adjust for scope and options.`,
+    quoteVariables:
+      engagement === 'order'
+        ? ['item selection', 'quantity', 'add-ons or customizations']
+        : engagement === 'booking'
+          ? ['service type', 'duration / session length', 'provider or room']
+          : engagement === 'ticket'
+            ? ['event or show', 'ticket type', 'party size']
+            : ['project scope', 'material or package tier', 'urgency or access'],
+    serviceExamples:
+      services.slice(0, 3).length > 0
+        ? services.slice(0, 3)
+        : [`${label} service`, `${label} package`, `${label} specialty job`],
+    pricingExamples: [
+      `$199+ starter ${tradeLabel} job`,
+      `$750+ mid-tier package`,
+      `$1,500+ premium / complex work`,
+    ],
+    tierExamples:
+      engagement === 'ticket'
+        ? ['General', 'Preferred', 'VIP']
+        : engagement === 'booking'
+          ? ['Standard', 'Extended', 'Premium']
+          : ['Basic', 'Standard', 'Premium'],
+    addOnExamples: ['Rush / priority', 'Premium materials or package', 'Extended support / warranty'],
+    finishExamples: ['Standard package', 'Upgraded package', 'Premium package'],
+    calculatorNotesPrompt: `What details make a ${tradeLabel} quote go up or down?`,
+    calculatorNotesExample: `Example: Customers pick the exact ${tradeLabel} service first, then optional upgrades. Price should feel like how your team quotes jobs today.`,
+  }
+
+  return withTerminology(null, base, engagement)
 }

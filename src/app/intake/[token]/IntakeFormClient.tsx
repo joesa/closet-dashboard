@@ -15,7 +15,8 @@ import PayToLaunchBlock from './PayToLaunchBlock';
 import IntakeImageStudio from './IntakeImageStudio';
 import DomainSuggestPicker from '@/components/DomainSuggestPicker';
 
-import { inferQuoteCalculatorGuidance } from '@/lib/quoteCalculatorGuidance';
+import { guidanceFromCustomIndustry, inferQuoteCalculatorGuidance } from '@/lib/quoteCalculatorGuidance';
+import type { QuoteCalculatorGuidance } from '@/lib/quoteCalculatorGuidance';
 import {
   SITE_PAGE_OPTIONS,
   RECOMMENDED_PAGE_SLUGS,
@@ -400,6 +401,10 @@ export default function IntakeFormClient({
   const [customerOptionsSource, setCustomerOptionsSource] = useState<'default' | 'gemini'>('default');
   const [customIndustryLabels, setCustomIndustryLabels] = useState<string[]>([]);
   const [customIndustryServices, setCustomIndustryServices] = useState<string[] | null>(null);
+  const [customIndustryGuidance, setCustomIndustryGuidance] = useState<QuoteCalculatorGuidance | null>(null);
+  const [customIndustryEngagement, setCustomIndustryEngagement] = useState<
+    'quote' | 'order' | 'booking' | 'ticket' | null
+  >(null);
   const [resolvingCustomIndustry, setResolvingCustomIndustry] = useState(false);
   const lastResolvedIndustryText = useRef<string>('');
   const lastSuggestedCustomersKey = useRef<string>('');
@@ -940,39 +945,47 @@ export default function IntakeFormClient({
     void submitForm();
   };
 
-  const studioServices = useMemo(() => {
+  /** Real services the contractor listed — never invent the industry name as a
+   *  service (that made "Entertainment" match closet "Entertainment & Media Centers"). */
+  const listedServices = useMemo(() => {
     const fromOther = parseServiceList(form.otherServices);
     const fromCheckboxes = form.services || [];
-    const merged = [...fromCheckboxes, ...fromOther];
-    if (merged.length === 0 && form.industry.trim()) {
-      return [form.industry.trim()];
-    }
-    return merged;
-  }, [form.services, form.otherServices, form.industry]);
+    return [...fromCheckboxes, ...fromOther];
+  }, [form.services, form.otherServices]);
+
+  /** Image studio still needs at least one label when services are empty. */
+  const studioServices = useMemo(() => {
+    if (listedServices.length > 0) return listedServices;
+    if (form.industry.trim()) return [form.industry.trim()];
+    return [];
+  }, [listedServices, form.industry]);
 
   const isOrderBusiness = useMemo(() => {
+    if (customIndustryEngagement) return customIndustryEngagement === 'order';
     const industryText =
       form.industry.trim() || (widgetConfigHints as WidgetHintsSnapshot | null)?.industry || '';
-    if (!industryText.trim() && studioServices.length === 0) return false;
-    const slug = resolveIndustrySlug({ industry: industryText, services: studioServices });
+    if (!industryText.trim() && listedServices.length === 0) return false;
+    const slug = resolveIndustrySlug({ industry: industryText, services: listedServices });
     return getEngagementModel(slug) === 'order';
-  }, [form.industry, studioServices, widgetConfigHints]);
+  }, [form.industry, listedServices, widgetConfigHints, customIndustryEngagement]);
 
   const isBookingBusiness = useMemo(() => {
+    if (customIndustryEngagement) return customIndustryEngagement === 'booking';
     const industryText =
       form.industry.trim() || (widgetConfigHints as WidgetHintsSnapshot | null)?.industry || '';
-    if (!industryText.trim() && studioServices.length === 0) return false;
-    const slug = resolveIndustrySlug({ industry: industryText, services: studioServices });
+    if (!industryText.trim() && listedServices.length === 0) return false;
+    const slug = resolveIndustrySlug({ industry: industryText, services: listedServices });
     return getEngagementModel(slug) === 'booking';
-  }, [form.industry, studioServices, widgetConfigHints]);
+  }, [form.industry, listedServices, widgetConfigHints, customIndustryEngagement]);
 
   const isTicketBusiness = useMemo(() => {
+    if (customIndustryEngagement) return customIndustryEngagement === 'ticket';
     const industryText =
       form.industry.trim() || (widgetConfigHints as WidgetHintsSnapshot | null)?.industry || '';
-    if (!industryText.trim() && studioServices.length === 0) return false;
-    const slug = resolveIndustrySlug({ industry: industryText, services: studioServices });
+    if (!industryText.trim() && listedServices.length === 0) return false;
+    const slug = resolveIndustrySlug({ industry: industryText, services: listedServices });
     return getEngagementModel(slug) === 'ticket';
-  }, [form.industry, studioServices, widgetConfigHints]);
+  }, [form.industry, listedServices, widgetConfigHints, customIndustryEngagement]);
 
   const addMenuItem = () => {
     set('menuItems', [
@@ -990,17 +1003,22 @@ export default function IntakeFormClient({
     set('menuItems', form.menuItems.filter((item) => item.id !== id));
   };
 
-  const calculatorGuidance = useMemo(
-    () =>
-      inferQuoteCalculatorGuidance({
-        industry:
-          form.industry ||
-          (widgetConfigHints as WidgetHintsSnapshot | null)?.industry,
-        servicesText: form.otherServices,
-        services: studioServices,
-      }),
-    [form.industry, form.otherServices, studioServices, widgetConfigHints]
-  );
+  const calculatorGuidance = useMemo(() => {
+    if (customIndustryGuidance) return customIndustryGuidance;
+    return inferQuoteCalculatorGuidance({
+      industry:
+        form.industry ||
+        (widgetConfigHints as WidgetHintsSnapshot | null)?.industry,
+      servicesText: form.otherServices,
+      services: listedServices,
+    });
+  }, [
+    customIndustryGuidance,
+    form.industry,
+    form.otherServices,
+    listedServices,
+    widgetConfigHints,
+  ]);
 
   const applyServicesGuidance = (servicesText: string) => {
     const industry = form.industry.trim();
@@ -1008,6 +1026,14 @@ export default function IntakeFormClient({
     const services = parseServiceList(servicesText);
     if (!industry || services.length === 0) {
       setServicesBlurGuidance(null);
+      return;
+    }
+    if (customIndustryGuidance) {
+      setServicesBlurGuidance(customIndustryGuidance);
+      set(
+        'pricingModel',
+        customIndustryGuidance.recommendedPricingModel === 'linear_ft' ? 'linear_ft' : 'fixed'
+      );
       return;
     }
     const guidance = inferQuoteCalculatorGuidance({
@@ -1113,42 +1139,112 @@ export default function IntakeFormClient({
       ? CUSTOM_INDUSTRY_VALUE
       : matchedIndustryOption || '';
 
-  const handleCustomIndustryBlur = async () => {
-    const industryText = form.industry.trim();
-    if (
-      !industryText ||
-      industryText.length < 3 ||
-      industryText === lastResolvedIndustryText.current ||
-      matchedIndustryOption
-    ) {
-      return;
+  const applyResolvedCustomIndustry = (json: {
+    label?: string
+    services?: string[]
+    engagementModel?: string
+    isCustom?: boolean
+  }) => {
+    const services = Array.isArray(json.services) ? json.services.filter(Boolean) : []
+    if (services.length > 0) setCustomIndustryServices(services)
+    const engagement =
+      json.engagementModel === 'order' ||
+      json.engagementModel === 'booking' ||
+      json.engagementModel === 'ticket' ||
+      json.engagementModel === 'quote'
+        ? json.engagementModel
+        : 'quote'
+    if (json.isCustom) {
+      setCustomIndustryEngagement(engagement)
+      const guidance = guidanceFromCustomIndustry({
+        label: json.label || form.industry,
+        services,
+        engagementModel: engagement,
+      })
+      setCustomIndustryGuidance(guidance)
+      setServicesBlurGuidance(guidance)
+      set(
+        'pricingModel',
+        guidance.recommendedPricingModel === 'linear_ft' ? 'linear_ft' : 'fixed'
+      )
+    } else {
+      setCustomIndustryEngagement(null)
+      setCustomIndustryGuidance(null)
+      if (services.length === 0) setCustomIndustryServices(null)
     }
-    lastResolvedIndustryText.current = industryText;
-    setResolvingCustomIndustry(true);
+    if (json.label) {
+      setCustomIndustryLabels((prev) =>
+        prev.some((o) => o.toLowerCase() === json.label!.toLowerCase())
+          ? prev
+          : [...prev, json.label!]
+      )
+    }
+  }
+
+  const resolveIndustryForGuidance = async (industryText: string) => {
+    const trimmed = industryText.trim()
+    if (!trimmed || trimmed.length < 3) return
+    if (trimmed === lastResolvedIndustryText.current) return
+    lastResolvedIndustryText.current = trimmed
+    setResolvingCustomIndustry(true)
     try {
       const res = await fetch(`/api/intake/${token}/resolve-custom-industry`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          industry: industryText,
+          industry: trimmed,
           businessName: form.businessName,
           otherServices: form.otherServices,
         }),
-      });
-      if (!res.ok) return;
-      const json = await res.json() as { label?: string; services?: string[] };
-      if (Array.isArray(json.services) && json.services.length > 0) {
-        setCustomIndustryServices(json.services);
+      })
+      if (!res.ok) return
+      const json = (await res.json()) as {
+        label?: string
+        services?: string[]
+        engagementModel?: string
+        isCustom?: boolean
+        source?: string
       }
-      if (json.label && !allIndustryOptions.some((o) => o.toLowerCase() === json.label!.toLowerCase())) {
-        setCustomIndustryLabels((prev) => [...prev, json.label!]);
+      // Catalog hits still return services — use them, but don't keep a custom override.
+      if (json.isCustom) {
+        applyResolvedCustomIndustry({ ...json, isCustom: true })
+      } else {
+        setCustomIndustryGuidance(null)
+        setCustomIndustryEngagement(null)
+        if (Array.isArray(json.services) && json.services.length > 0) {
+          setCustomIndustryServices(json.services)
+        } else {
+          setCustomIndustryServices(null)
+        }
       }
-      maybeAutoSuggestCustomers(industryText, form.otherServices);
+      maybeAutoSuggestCustomers(trimmed, form.otherServices)
     } catch {
+      /* ignore */
     } finally {
-      setResolvingCustomIndustry(false);
+      setResolvingCustomIndustry(false)
     }
+  }
+
+  const handleCustomIndustryBlur = async () => {
+    const industryText = form.industry.trim();
+    if (!industryText || industryText.length < 3) return;
+    // Always resolve — including when the label already appears in the dropdown
+    // (prior custom industries). Skipping matched labels left guidance stuck on
+    // closets defaults.
+    await resolveIndustryForGuidance(industryText);
   };
+
+  // When industry is chosen from the dropdown (including prior custom labels),
+  // resolve guidance. Free-text "Other" typing resolves on blur only — avoid
+  // calling Gemini on every keystroke.
+  useEffect(() => {
+    const industryText = form.industry.trim();
+    if (!industryText || industryText.length < 3) return;
+    if (customIndustryMode) return;
+    if (industryText === lastResolvedIndustryText.current) return;
+    void resolveIndustryForGuidance(industryText);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- industry / mode only
+  }, [form.industry, customIndustryMode]);
 
   const premiumImagesReady =
     intakeTier !== 'ai_premium' ||
@@ -1514,13 +1610,21 @@ export default function IntakeFormClient({
                     if (value === CUSTOM_INDUSTRY_VALUE) {
                       setCustomIndustryMode(true);
                       if (matchedIndustryOption) set('industry', '');
+                      setCustomIndustryServices(null);
+                      setCustomIndustryGuidance(null);
+                      setCustomIndustryEngagement(null);
+                      lastResolvedIndustryText.current = '';
                       return;
                     }
                     setCustomIndustryMode(false);
                     set('industry', value);
                     setCustomIndustryServices(null);
+                    setCustomIndustryGuidance(null);
+                    setCustomIndustryEngagement(null);
+                    setServicesBlurGuidance(null);
                     lastResolvedIndustryText.current = '';
                     maybeAutoSuggestCustomers(value, form.otherServices);
+                    void resolveIndustryForGuidance(value);
                   }}
                 >
                   <option value="" className={selectOption}>
@@ -1557,8 +1661,8 @@ export default function IntakeFormClient({
                   </>
                 )}
                 <p className="mt-1 text-xs text-zinc-500">
-                  {studioServices.length > 0 ? 'Based on your listed services: ' : 'Examples: '}
-                  {studioServices.length > 0 ? studioServices.join(' · ') : industryExamples.join(' · ')}
+                  {listedServices.length > 0 ? 'Based on your listed services: ' : 'Examples: '}
+                  {listedServices.length > 0 ? listedServices.join(' · ') : industryExamples.join(' · ')}
                 </p>
               </div>
               <div className="sm:col-span-2">

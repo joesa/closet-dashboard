@@ -31,13 +31,21 @@ function scoreServiceMatch(input: string, def: ServiceDef): number {
   let score = 0
 
   if (norm === label) score += 20
-  else if (norm.includes(label) || label.includes(norm)) score += 10
+  else if (norm.includes(label)) score += 10
+  else if (label.includes(norm) && norm.length >= Math.ceil(label.length * 0.75)) {
+    // Reverse containment only when the input is nearly the full label —
+    // blocks "Entertainment" → "Entertainment & Media Centers".
+    score += 10
+  }
 
   for (const kw of def.keywords) {
     const k = normalizeCatalogText(kw)
     if (!k) continue
     if (norm === k) score += 12
     else if (norm.includes(k)) score += 6
+    else if (k.includes(norm) && norm.length >= Math.ceil(k.length * 0.75)) {
+      score += 6
+    }
   }
 
   return score
