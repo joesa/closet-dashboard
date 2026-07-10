@@ -569,9 +569,13 @@ export async function provisionTenant(
     // defaults, so an AI Premium build deploys exactly what the customer picked.
     let heroSelectedUrl: string | null = null
     // Prospect-chosen "before" shot from the intake studio (generated from
-    // their hero or uploaded as a real photo). When present, provisioning uses
-    // it verbatim and skips the automatic before-image generation.
+    // their after photo or uploaded). When present, provisioning uses it
+    // verbatim and skips automatic before-image generation.
     let beforeSelectedUrl: string | null = null
+    // Explicit after for the slider (upload_both / dedicated after); else hero.
+    let afterSelectedUrl: string | null = null
+    // null = not answered (use industry default); true/false = prospect choice.
+    let prospectBeforeAfterEnabled: boolean | null = null
     const pickedImages: { name: string; url: string }[] = []
     // Prospect-selected pages become the authoritative sitemap — admins never
     // re-guess. Caps: AI Premium 10 total, Standard 5 total (Home included).
@@ -600,6 +604,10 @@ export async function provisionTenant(
         }
         heroSelectedUrl = sel.hero.selectedUrl || null
         beforeSelectedUrl = sel.beforeAfter?.selectedUrl || null
+        afterSelectedUrl = sel.beforeAfter?.afterSelectedUrl || null
+        if (typeof sel.beforeAfter?.enabled === 'boolean') {
+          prospectBeforeAfterEnabled = sel.beforeAfter.enabled
+        }
         for (const p of sel.products) {
           if (p.selectedUrl) pickedImages.push({ name: p.serviceName, url: p.selectedUrl })
         }
@@ -744,16 +752,26 @@ export async function provisionTenant(
         postalCode: setup.postalCode || '10001',
         geo: { latitude: '40.7128', longitude: '-74.0060' },
       },
-      before_after_config: beforeAfterApplicable
-        ? {
-            // beforeImage resolved below after async generation (unless the
-            // prospect already chose one in the intake studio)
-            beforeImage: beforeSelectedUrl || beforeImage || '/brands/lumina/before.png',
-            afterImage: defaultHeroBackground || '/brands/lumina/hero.png',
-            title: `The ${businessName} Transformation`,
-            subtitle: 'Drag to see',
-          }
-        : null,
+      before_after_config: (() => {
+        // Prospect opt-out wins; opt-in forces slider on; otherwise industry default.
+        const include =
+          prospectBeforeAfterEnabled === false
+            ? false
+            : prospectBeforeAfterEnabled === true
+              ? true
+              : beforeAfterApplicable
+        if (!include) return null
+        const afterImage =
+          afterSelectedUrl || defaultHeroBackground || '/brands/lumina/hero.png'
+        return {
+          // beforeImage resolved below after async generation (unless the
+          // prospect already chose one in the intake studio)
+          beforeImage: beforeSelectedUrl || beforeImage || '/brands/lumina/before.png',
+          afterImage,
+          title: `The ${businessName} Transformation`,
+          subtitle: 'Drag to see',
+        }
+      })(),
     }
 
     // Generate a unique messy "before" image anchored to this site's after
@@ -763,8 +781,10 @@ export async function provisionTenant(
     // beforeAfterApplicable above) — saves a real AI image-generation call
     // and avoids rendering a nonsensical before/after slider — or when the
     // prospect already generated/uploaded their own before in the studio.
-    if (beforeAfterApplicable && !beforeSelectedUrl && process.env.OPENAI_API_KEY) {
-      const afterUrl = defaultHeroBackground || '/brands/lumina/hero.png'
+    const includeBeforeAfter = siteConfigData.before_after_config != null
+    if (includeBeforeAfter && !beforeSelectedUrl && process.env.OPENAI_API_KEY) {
+      const afterUrl =
+        afterSelectedUrl || defaultHeroBackground || '/brands/lumina/hero.png'
       const generatedBeforeUrl = await generateBeforeImage(afterUrl, assetSlug, beforeAfterContext).catch((err) => {
         console.warn('[provisionTenant] Before image generation failed, using fallback:', err)
         return null
@@ -867,10 +887,10 @@ export async function provisionTenant(
       // Update afterImage to the AI-resolved background.
       // Re-generate the before image against the final after URL so the slider
       // pair always references the same space type. Skipped entirely when
-      // this business has no physical "before" state (beforeAfterApplicable)
+      // this business has no physical "before" state / prospect opted out,
       // or the prospect already chose a before image in the intake studio.
-      if (beforeAfterApplicable) {
-        const aiAfterUrl = backgroundImage
+      if (includeBeforeAfter) {
+        const aiAfterUrl = afterSelectedUrl || backgroundImage
         siteConfigData.before_after_config = {
           ...(siteConfigData.before_after_config as object),
           afterImage: aiAfterUrl,
@@ -887,6 +907,8 @@ export async function provisionTenant(
               regeneratedBeforeUrl
           }
         }
+      } else {
+        siteConfigData.before_after_config = null
       }
 
       if (aiSiteConfig.pagesConfig && Array.isArray(aiSiteConfig.pagesConfig)) {

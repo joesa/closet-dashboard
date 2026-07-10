@@ -104,6 +104,8 @@ export async function PATCH(
       }
       selections.beforeAfter = {
         ...beforeState,
+        enabled: true,
+        mode: beforeState.mode ?? 'ai_from_after',
         selectedUrl,
         selectedAttempt: Number.isFinite(selectedAttempt) ? selectedAttempt : undefined,
       }

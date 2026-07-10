@@ -77,13 +77,17 @@ export async function POST(
     )
     const beforeState = selections.beforeAfter ?? { attemptsUsed: 0, history: [] }
 
-    // The "before" shot is derived from the selected hero ("after") image, so
-    // both sides of the transformation slider show the same subject.
-    const afterUrl = selections.hero.selectedUrl
+    // The "before" shot is derived from an "after" image (dedicated upload or
+    // selected hero), so both sides of the transformation slider match.
+    const afterUrl =
+      selections.beforeAfter?.afterSelectedUrl || selections.hero.selectedUrl
     if (slot === 'before') {
       if (!afterUrl) {
         return NextResponse.json(
-          { error: 'Select a hero image first — the before photo is derived from it.' },
+          {
+            error:
+              'Select or upload an after photo first — the before photo is derived from it.',
+          },
           { status: 400 }
         )
       }
@@ -177,6 +181,8 @@ export async function POST(
     } else if (slot === 'before') {
       selections.beforeAfter = {
         ...beforeState,
+        enabled: true,
+        mode: beforeState.mode ?? 'ai_from_after',
         attemptsUsed: attemptNum,
         prompt: effectivePrompt,
         afterUrl,

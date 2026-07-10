@@ -83,6 +83,20 @@ export async function persistImageSelections(
         'hero'
       )
     }
+    if (next.beforeAfter.afterSelectedUrl) {
+      next.beforeAfter.afterSelectedUrl = await persistImageUrl(
+        next.beforeAfter.afterSelectedUrl,
+        `intakes/${token}/before/after-selected`,
+        'hero'
+      )
+    }
+    if (next.beforeAfter.afterUrl?.startsWith('data:')) {
+      next.beforeAfter.afterUrl = await persistImageUrl(
+        next.beforeAfter.afterUrl,
+        `intakes/${token}/before/after-source`,
+        'hero'
+      )
+    }
   }
 
   return next

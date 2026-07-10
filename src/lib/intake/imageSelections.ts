@@ -22,15 +22,26 @@ export type ProductImageSelection = {
   history: ImageAttemptRecord[]
 }
 
+/** How the prospect wants to supply before/after photos. */
+export type BeforeAfterMode = 'upload_both' | 'ai_from_after'
+
 /**
- * The transformation slider's "before" shot. Generated as an image-to-image
- * edit of the selected hero ("after") photo so both sides show the same
- * subject, or uploaded by the prospect as their own real before photo. The
- * "after" side of the slider is always the selected hero image.
+ * Transformation slider photos. Opt-in via `enabled`.
+ * - upload_both: prospect uploads before + after from disk
+ * - ai_from_after: prospect picks/uploads an "after" image; AI generates before
+ *
+ * When `afterSelectedUrl` is set it is the slider's after side; otherwise the
+ * selected hero image is used (legacy / ai_from_after default).
  */
 export type BeforeImageSelection = {
-  /** Hero URL the last generation batch was derived from (staleness check). */
+  /** null/undefined = not answered yet; true = include slider; false = skip */
+  enabled?: boolean | null
+  mode?: BeforeAfterMode | null
+  /** Explicit after photo (upload_both, or dedicated after for AI). */
+  afterSelectedUrl?: string
+  /** Hero/after URL the last AI before batch was derived from (staleness). */
   afterUrl?: string
+  /** Selected before photo URL. */
   selectedUrl?: string
   selectedAttempt?: number
   attemptsUsed: number
@@ -48,13 +59,14 @@ export function emptyImageSelections(): IntakeImageSelections {
   return {
     hero: { attemptsUsed: 0, history: [] },
     products: [],
-    beforeAfter: { attemptsUsed: 0, history: [] },
+    beforeAfter: { attemptsUsed: 0, history: [], enabled: null, mode: null },
   }
 }
 
 export function parseImageSelections(raw: unknown): IntakeImageSelections {
   if (!raw || typeof raw !== 'object') return emptyImageSelections()
   const o = raw as Partial<IntakeImageSelections>
+  const ba = o.beforeAfter
   return {
     hero: {
       attemptsUsed: o.hero?.attemptsUsed ?? 0,
@@ -65,12 +77,16 @@ export function parseImageSelections(raw: unknown): IntakeImageSelections {
     },
     products: Array.isArray(o.products) ? o.products : [],
     beforeAfter: {
-      attemptsUsed: o.beforeAfter?.attemptsUsed ?? 0,
-      afterUrl: o.beforeAfter?.afterUrl,
-      selectedUrl: o.beforeAfter?.selectedUrl,
-      selectedAttempt: o.beforeAfter?.selectedAttempt,
-      prompt: o.beforeAfter?.prompt,
-      history: Array.isArray(o.beforeAfter?.history) ? o.beforeAfter!.history : [],
+      attemptsUsed: ba?.attemptsUsed ?? 0,
+      enabled: typeof ba?.enabled === 'boolean' ? ba.enabled : ba?.enabled === null ? null : null,
+      mode:
+        ba?.mode === 'upload_both' || ba?.mode === 'ai_from_after' ? ba.mode : null,
+      afterSelectedUrl: ba?.afterSelectedUrl,
+      afterUrl: ba?.afterUrl,
+      selectedUrl: ba?.selectedUrl,
+      selectedAttempt: ba?.selectedAttempt,
+      prompt: ba?.prompt,
+      history: Array.isArray(ba?.history) ? ba!.history : [],
     },
   }
 }
@@ -105,4 +121,31 @@ export function imageSelectionsComplete(
   const synced = syncProductSlots(selections, serviceNames)
   if (serviceNames.length === 0) return true
   return synced.products.every((p) => !!p.selectedUrl)
+}
+
+/** After image used for the transformation slider (explicit upload or hero). */
+export function resolveBeforeAfterAfterUrl(selections: IntakeImageSelections): string | null {
+  const ba = selections.beforeAfter
+  return ba?.afterSelectedUrl || selections.hero.selectedUrl || null
+}
+
+/**
+ * When before/after applies to the industry, the prospect must answer yes/no.
+ * If yes, they must finish their chosen mode (upload both, or AI before from after).
+ */
+export function beforeAfterSelectionComplete(
+  selections: IntakeImageSelections,
+  applicable: boolean
+): boolean {
+  if (!applicable) return true
+  const ba = selections.beforeAfter
+  if (ba?.enabled === false) return true
+  if (ba?.enabled !== true) return false
+  if (ba.mode === 'upload_both') {
+    return !!(ba.selectedUrl && ba.afterSelectedUrl)
+  }
+  if (ba.mode === 'ai_from_after') {
+    return !!(resolveBeforeAfterAfterUrl(selections) && ba.selectedUrl)
+  }
+  return false
 }

@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
-import type { IntakeImageSelections } from '@/lib/intake/imageSelections';
+import type { BeforeAfterMode, IntakeImageSelections } from '@/lib/intake/imageSelections';
+import { resolveBeforeAfterAfterUrl } from '@/lib/intake/imageSelections';
 import { buildBeforeImagePrompt, getBeforeAfterCategory } from '@/lib/images/beforeAfterPrompt';
 import { resolveIndustrySlug } from '@/lib/catalog/serviceCatalog';
 
@@ -254,7 +255,7 @@ export default function IntakeImageStudio({
   const beforePrompt =
     beforePromptOverride ??
     beforeState.prompt ??
-    buildBeforeImagePrompt(selections.hero.selectedUrl || '', {
+    buildBeforeImagePrompt(resolveBeforeAfterAfterUrl(selections) || '', {
       industry: (formState?.industry as string) || null,
       services,
       otherServices: (formState?.otherServices as string) || null,
@@ -369,12 +370,6 @@ export default function IntakeImageStudio({
       if (!res.ok) throw new Error(json.error || 'Failed to save selection');
       setSelections(json.imageSelections);
       onUpdate(json.imageSelections, siteConfig);
-      // First hero pick: kick off the matching "before" batch automatically
-      // (empty prompt = server builds the trade-aware default from the hero).
-      const ba = json.imageSelections?.beforeAfter;
-      if (slot === 'hero' && !ba?.selectedUrl && (ba?.attemptsUsed ?? 0) === 0) {
-        void generateBatch('before', '');
-      }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to save selection');
     }
@@ -416,6 +411,7 @@ export default function IntakeImageStudio({
           ...selections,
           beforeAfter: {
             ...beforeState,
+            enabled: true,
             selectedUrl: dataUrl,
             selectedAttempt: attemptRecord.attempt,
             history: [...(beforeState.history || []), attemptRecord],
@@ -463,6 +459,100 @@ export default function IntakeImageStudio({
       }
     };
     reader.readAsDataURL(file);
+  };
+
+  const persistSelections = async (next: IntakeImageSelections) => {
+    setSelections(next);
+    onUpdate(next, siteConfig);
+    try {
+      const res = await fetch(`/api/intake/${token}/image-selection`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...next, serviceNames: services }),
+      });
+      const json = await res.json();
+      if (res.ok && json.imageSelections) {
+        setSelections(json.imageSelections);
+        onUpdate(json.imageSelections, siteConfig);
+        return json.imageSelections as IntakeImageSelections;
+      }
+    } catch (err) {
+      console.error('Failed to save image selections', err);
+    }
+    return next;
+  };
+
+  const patchBeforeAfter = async (
+    patch: Partial<NonNullable<IntakeImageSelections['beforeAfter']>>
+  ) => {
+    const beforeState = selections.beforeAfter ?? { attemptsUsed: 0, history: [] };
+    const next: IntakeImageSelections = {
+      ...selections,
+      beforeAfter: { ...beforeState, ...patch },
+    };
+    return persistSelections(next);
+  };
+
+  const uploadBeforeAfterSide = (
+    e: React.ChangeEvent<HTMLInputElement>,
+    side: 'before' | 'after'
+  ) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      const dataUrl = event.target?.result as string;
+      if (!dataUrl) return;
+      const beforeState = selections.beforeAfter ?? { attemptsUsed: 0, history: [] };
+      if (side === 'after') {
+        const next = await patchBeforeAfter({
+          enabled: true,
+          afterSelectedUrl: dataUrl,
+          afterUrl: dataUrl,
+        });
+        const ba = next.beforeAfter;
+        if (
+          ba?.mode === 'ai_from_after' &&
+          !ba.selectedUrl &&
+          (ba.attemptsUsed ?? 0) === 0
+        ) {
+          void generateBatch('before', '');
+        }
+      } else {
+        const attemptRecord = {
+          attempt: Date.now() % 1000000,
+          urls: [dataUrl],
+          prompt: 'Custom user upload',
+        };
+        await patchBeforeAfter({
+          enabled: true,
+          selectedUrl: dataUrl,
+          selectedAttempt: attemptRecord.attempt,
+          history: [...(beforeState.history || []), attemptRecord],
+        });
+      }
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  const setBeforeAfterEnabled = async (enabled: boolean) => {
+    await patchBeforeAfter({
+      enabled,
+      mode: enabled ? selections.beforeAfter?.mode ?? null : null,
+    });
+  };
+
+  const setBeforeAfterMode = async (mode: BeforeAfterMode) => {
+    const next = await patchBeforeAfter({ enabled: true, mode });
+    // AI path: if we already have an after (dedicated or hero), offer generation.
+    if (mode === 'ai_from_after') {
+      const after = resolveBeforeAfterAfterUrl(next);
+      const ba = next.beforeAfter;
+      if (after && !ba?.selectedUrl && (ba?.attemptsUsed ?? 0) === 0) {
+        void generateBatch('before', '');
+      }
+    }
   };
 
   const renderSlot = (
@@ -623,37 +713,167 @@ export default function IntakeImageStudio({
           )}
 
           {beforeAfterApplicable && (
-          <div className="rounded-lg border border-indigo-100 bg-indigo-50/50 p-4">
-            <h4 className="font-medium text-gray-900">Before / after transformation</h4>
-            <p className="mt-1 text-xs text-gray-600">
-              Your site shows a drag-to-compare slider: the “after” side is your selected hero
-              image, and the AI creates the matching “before” photo of the exact same scene in its
-              pre-service state. Generate options below, edit the description first if you like, or
-              upload your own real before photo instead.
-            </p>
-            {selections.hero.selectedUrl && (
-              <div className="mt-3 flex items-center gap-3">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={selections.hero.selectedUrl}
-                  alt="After (hero)"
-                  className="h-16 w-24 rounded border border-gray-300 object-cover"
-                />
-                <span className="text-xs text-gray-600">
-                  “After” side of the slider (your hero image)
-                </span>
+            <div className="rounded-lg border border-indigo-100 bg-indigo-50/50 p-4 space-y-4">
+              <div>
+                <h4 className="font-medium text-gray-900">Before / after photos</h4>
+                <p className="mt-1 text-xs text-gray-600">
+                  Some sites include a drag-to-compare slider showing a space before and after your
+                  work. Do you want that on your site?
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void setBeforeAfterEnabled(true)}
+                    className={`rounded-md px-3 py-1.5 text-sm font-semibold ${
+                      beforeState.enabled === true
+                        ? 'bg-indigo-600 text-white'
+                        : 'border border-gray-300 bg-white text-gray-800 hover:bg-gray-50'
+                    }`}
+                  >
+                    Yes, include before/after
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void setBeforeAfterEnabled(false)}
+                    className={`rounded-md px-3 py-1.5 text-sm font-semibold ${
+                      beforeState.enabled === false
+                        ? 'bg-indigo-600 text-white'
+                        : 'border border-gray-300 bg-white text-gray-800 hover:bg-gray-50'
+                    }`}
+                  >
+                    No, skip this
+                  </button>
+                </div>
               </div>
-            )}
-            <div className="mt-3">
-              {renderSlot(
-                'Before photo',
-                'before',
-                beforePrompt,
-                (v) => setBeforePromptOverride(v),
-                beforeState
+
+              {beforeState.enabled === true && (
+                <>
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">How do you want to provide the photos?</p>
+                    <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+                      <button
+                        type="button"
+                        onClick={() => void setBeforeAfterMode('upload_both')}
+                        className={`rounded-md px-3 py-2 text-left text-sm ${
+                          beforeState.mode === 'upload_both'
+                            ? 'border-2 border-indigo-600 bg-white text-gray-900'
+                            : 'border border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
+                        }`}
+                      >
+                        <span className="font-semibold">Upload both</span>
+                        <span className="mt-0.5 block text-xs text-gray-500">
+                          Choose before and after images from your computer
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void setBeforeAfterMode('ai_from_after')}
+                        className={`rounded-md px-3 py-2 text-left text-sm ${
+                          beforeState.mode === 'ai_from_after'
+                            ? 'border-2 border-indigo-600 bg-white text-gray-900'
+                            : 'border border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
+                        }`}
+                      >
+                        <span className="font-semibold">AI from an after photo</span>
+                        <span className="mt-0.5 block text-xs text-gray-500">
+                          Pick a finished photo; AI creates the matching before
+                        </span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {beforeState.mode === 'upload_both' && (
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <label className="block rounded-md border border-dashed border-gray-300 bg-white p-3">
+                        <span className="text-sm font-medium text-gray-900">Before photo</span>
+                        <span className="mt-0.5 block text-xs text-gray-500">The space before your work</span>
+                        {beforeState.selectedUrl && (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={beforeState.selectedUrl}
+                            alt="Before"
+                            className="mt-2 h-28 w-full rounded object-cover"
+                          />
+                        )}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="mt-2 block w-full text-xs"
+                          onChange={(e) => uploadBeforeAfterSide(e, 'before')}
+                        />
+                      </label>
+                      <label className="block rounded-md border border-dashed border-gray-300 bg-white p-3">
+                        <span className="text-sm font-medium text-gray-900">After photo</span>
+                        <span className="mt-0.5 block text-xs text-gray-500">The finished result</span>
+                        {beforeState.afterSelectedUrl && (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={beforeState.afterSelectedUrl}
+                            alt="After"
+                            className="mt-2 h-28 w-full rounded object-cover"
+                          />
+                        )}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="mt-2 block w-full text-xs"
+                          onChange={(e) => uploadBeforeAfterSide(e, 'after')}
+                        />
+                      </label>
+                    </div>
+                  )}
+
+                  {beforeState.mode === 'ai_from_after' && (
+                    <div className="space-y-3">
+                      <div className="rounded-md border border-dashed border-gray-300 bg-white p-3">
+                        <p className="text-sm font-medium text-gray-900">After photo for AI</p>
+                        <p className="mt-0.5 text-xs text-gray-500">
+                          Upload a finished photo, or use your selected hero image below.
+                        </p>
+                        {(beforeState.afterSelectedUrl || selections.hero.selectedUrl) && (
+                          <div className="mt-2 flex items-center gap-3">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={
+                                beforeState.afterSelectedUrl || selections.hero.selectedUrl || ''
+                              }
+                              alt="After source"
+                              className="h-16 w-24 rounded border border-gray-300 object-cover"
+                            />
+                            <span className="text-xs text-gray-600">
+                              {beforeState.afterSelectedUrl
+                                ? 'Using your uploaded after photo'
+                                : 'Using your hero image as the after'}
+                            </span>
+                          </div>
+                        )}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="mt-2 block w-full text-xs"
+                          onChange={(e) => uploadBeforeAfterSide(e, 'after')}
+                        />
+                      </div>
+                      {resolveBeforeAfterAfterUrl(selections) ? (
+                        <div>
+                          {renderSlot(
+                            'Before photo (AI)',
+                            'before',
+                            beforePrompt,
+                            (v) => setBeforePromptOverride(v),
+                            beforeState
+                          )}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-amber-800 rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
+                          Select a hero image or upload an after photo first, then generate the before.
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </>
               )}
             </div>
-          </div>
           )}
 
           {products.map((p) => {
