@@ -926,11 +926,31 @@ export default function IntakeFormClient({
     });
   };
 
+  const collectServicesForSubmit = (): string[] => {
+    const fromOther = parseServiceList(form.otherServices);
+    const fromCheckboxes = form.services || [];
+    const listed = [...fromCheckboxes, ...fromOther];
+    if (listed.length > 0) return listed;
+    // Custom industry catalog services (e.g. "Entertainment Service") when the
+    // prospect never typed into the free-text field but the industry is known.
+    if (customIndustryServices && customIndustryServices.length > 0) {
+      return customIndustryServices;
+    }
+    return [];
+  };
+
   const handleReviewClick = async () => {
-    const serviceList = parseServiceList(form.otherServices);
+    const serviceList = collectServicesForSubmit();
     if (serviceList.length === 0) {
       setError('List at least one service or job you offer.');
+      if (stepIdx.services >= 0) {
+        setCurrentStepIndex(stepIdx.services);
+        setMaxStepIndexVisited((m) => Math.max(m, stepIdx.services));
+      }
       return;
+    }
+    if (!form.otherServices.trim() && serviceList.length > 0) {
+      set('otherServices', serviceList.join(', '));
     }
     if (intakeTier === 'ai_premium' && depositRequiredCents > 0 && depositStatus !== 'paid') {
       setError('Pay the 30% deposit before submitting.');
@@ -1077,6 +1097,19 @@ export default function IntakeFormClient({
     }
     return labels;
   }, [form.industry, widgetConfigHints, customIndustryServices]);
+
+  // When a custom industry resolves with catalog services and the prospect left
+  // the free-text field empty, seed it so submit/studio stay in sync.
+  const seededCustomServicesRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!customIndustryServices || customIndustryServices.length === 0) return;
+    if (form.otherServices.trim() || (form.services || []).length > 0) return;
+    const key = `${form.industry}::${customIndustryServices.join('|')}`;
+    if (seededCustomServicesRef.current === key) return;
+    seededCustomServicesRef.current = key;
+    set('otherServices', customIndustryServices.join(', '));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- seed once per industry/services pair
+  }, [customIndustryServices, form.industry, form.otherServices, form.services]);
 
   const selectedServiceLabels = useMemo(
     () => new Set(studioServices.map((s) => s.toLowerCase())),
@@ -1293,10 +1326,17 @@ export default function IntakeFormClient({
       }
     }
 
-    const serviceList = parseServiceList(form.otherServices);
+    const serviceList = collectServicesForSubmit();
     if (serviceList.length === 0) {
       setError('List at least one service or job you offer.');
+      if (stepIdx.services >= 0) {
+        setCurrentStepIndex(stepIdx.services);
+        setMaxStepIndexVisited((m) => Math.max(m, stepIdx.services));
+      }
       return;
+    }
+    if (!form.otherServices.trim()) {
+      set('otherServices', serviceList.join(', '));
     }
     const finishLabels = [
       form.finish1Label && { label: form.finish1Label, swatchHex: form.finish1Color },
@@ -1436,6 +1476,17 @@ export default function IntakeFormClient({
   };
   const goNext = () => {
     if (!canAdvanceFromCurrentStep) return;
+    if (currentStepIndex === stepIdx.services) {
+      const serviceList = collectServicesForSubmit();
+      if (serviceList.length === 0) {
+        setError('List at least one service or job you offer.');
+        return;
+      }
+      if (!form.otherServices.trim()) {
+        set('otherServices', serviceList.join(', '));
+      }
+    }
+    setError('');
     setCurrentStepIndex((idx) => {
       const next = Math.min(idx + 1, steps.length - 1);
       setMaxStepIndexVisited((m) => Math.max(m, next));
@@ -1444,6 +1495,7 @@ export default function IntakeFormClient({
     if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' });
   };
   const goBack = () => {
+    setError('');
     setCurrentStepIndex((idx) => Math.max(idx - 1, 0));
     if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -1920,7 +1972,10 @@ export default function IntakeFormClient({
             <textarea
               className={`${input} min-h-[80px] mb-4`}
               value={form.otherServices}
-              onChange={(e) => set('otherServices', e.target.value)}
+              onChange={(e) => {
+                setError('');
+                set('otherServices', e.target.value);
+              }}
               onBlur={handleServicesBlur}
               placeholder="e.g. Drain cleaning, Water heater install, Leak repair — or Light towing, Winch-out, Jump start — or Walk-in closets, Garages, Pantries"
             />
