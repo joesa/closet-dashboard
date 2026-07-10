@@ -100,16 +100,24 @@ export async function purchaseDomainForTenant(opts: {
 
   const admin = getSupabaseAdmin()
   const existing = await listDomainsForTenant(opts.tenantId)
-  if (existing.some((d) => d.hostname === hostname)) {
-    throw new Error('This domain is already connected to your site.')
+  const sameTenantRow = existing.find((d) => d.hostname === hostname)
+  if (sameTenantRow?.source === 'purchased') {
+    throw new Error('This domain is already purchased for your site.')
   }
+  if (sameTenantRow?.source === 'platform_subdomain') {
+    throw new Error('That hostname is the platform subdomain and cannot be purchased.')
+  }
+  // source === 'byo' (or any other non-purchased row): upgrade in place after buy.
+  // Older provision paths inserted desired_domain as byo before purchase.
 
   const { data: taken } = await admin
     .from('domains')
     .select('id, tenant_id')
     .eq('hostname', hostname)
     .maybeSingle()
-  if (taken) throw new Error('This domain is already connected to another site.')
+  if (taken && taken.tenant_id !== opts.tenantId) {
+    throw new Error('This domain is already connected to another site.')
+  }
 
   const avail = await checkDomainAvailability(hostname)
   if (!avail.attempted) {
@@ -166,33 +174,50 @@ export async function purchaseDomainForTenant(opts: {
   const expiresAt = new Date(purchasedAt)
   expiresAt.setFullYear(expiresAt.getFullYear() + 1)
 
-  const { data, error } = await admin
-    .from('domains')
-    .insert({
-      tenant_id: opts.tenantId,
-      hostname,
-      source: 'purchased',
-      is_primary: true,
-      ...patch,
-      registrar_order_id: buy.orderId || null,
-      purchase_price_cents: wholesaleCents,
-      purchase_currency: 'usd',
-      purchased_at: purchasedAt.toISOString(),
-      expires_at: expiresAt.toISOString(),
-      auto_renew: true,
-      nameservers: ns.nameservers.length > 0 ? ns.nameservers : null,
-      last_checked_at: purchasedAt.toISOString(),
-      status_message: patch.status_message || 'Purchased — configuring DNS',
-    })
-    .select(
-      'id, tenant_id, hostname, is_primary, ssl_status, source, vercel_verified, verification_records, nameservers, registrar_order_id, purchase_price_cents, purchase_currency, purchased_at, expires_at, auto_renew, last_checked_at, status_message, created_at'
-    )
-    .single()
+  const purchasedFields = {
+    source: 'purchased' as const,
+    is_primary: true,
+    ...patch,
+    registrar_order_id: buy.orderId || null,
+    purchase_price_cents: wholesaleCents,
+    purchase_currency: 'usd',
+    purchased_at: purchasedAt.toISOString(),
+    expires_at: expiresAt.toISOString(),
+    auto_renew: true,
+    nameservers: ns.nameservers.length > 0 ? ns.nameservers : null,
+    last_checked_at: purchasedAt.toISOString(),
+    status_message: patch.status_message || 'Purchased — configuring DNS',
+  }
 
-  if (error) throw error
+  const selectCols =
+    'id, tenant_id, hostname, is_primary, ssl_status, source, vercel_verified, verification_records, nameservers, registrar_order_id, purchase_price_cents, purchase_currency, purchased_at, expires_at, auto_renew, last_checked_at, status_message, created_at'
+
+  let data: DomainRow
+  if (sameTenantRow) {
+    const { data: updated, error } = await admin
+      .from('domains')
+      .update(purchasedFields)
+      .eq('id', sameTenantRow.id)
+      .select(selectCols)
+      .single()
+    if (error) throw error
+    data = updated as DomainRow
+  } else {
+    const { data: inserted, error } = await admin
+      .from('domains')
+      .insert({
+        tenant_id: opts.tenantId,
+        hostname,
+        ...purchasedFields,
+      })
+      .select(selectCols)
+      .single()
+    if (error) throw error
+    data = inserted as DomainRow
+  }
 
   return {
-    domain: data as DomainRow,
+    domain: data,
     orderId: buy.orderId,
     wholesaleCents,
     nameservers: ns.nameservers,

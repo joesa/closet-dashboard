@@ -2,20 +2,37 @@
 
 import React, { useState } from 'react'
 
+export type DesiredDomainStatus = {
+  hostname: string
+  source: string
+  isPrimary: boolean
+  vercelVerified: boolean
+  registrarOrderId: string | null
+  purchasePriceCents: number | null
+} | null
+
 type Props = {
   intakeId: string
   desiredDomain: string | null
   tenantId: string | null
+  /** Existing domains row for this hostname on the tenant, if any. */
+  existingDomain: DesiredDomainStatus
 }
 
 /**
  * Admin intake detail: show prospect-selected domain and purchase via Vercel
  * after the site tenant exists.
  */
-export default function IntakeDomainPurchase({ intakeId, desiredDomain, tenantId }: Props) {
+export default function IntakeDomainPurchase({
+  intakeId,
+  desiredDomain,
+  tenantId,
+  existingDomain,
+}: Props) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
+  const [purchased, setPurchased] = useState(existingDomain?.source === 'purchased')
 
   if (!desiredDomain) {
     return (
@@ -30,6 +47,10 @@ export default function IntakeDomainPurchase({ intakeId, desiredDomain, tenantId
       </div>
     )
   }
+
+  const alreadyPurchased = purchased || existingDomain?.source === 'purchased'
+  // Legacy: provision used to insert desired_domain as byo before purchase.
+  const legacyPlaceholder = existingDomain?.source === 'byo' && !existingDomain.registrarOrderId
 
   const purchase = async () => {
     if (!tenantId) {
@@ -47,6 +68,7 @@ export default function IntakeDomainPurchase({ intakeId, desiredDomain, tenantId
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error || 'Purchase failed')
+      setPurchased(true)
       setSuccess(
         `Registered ${json.domain?.hostname || desiredDomain}. ${json.billingNote || 'Included with hosting.'}`
       )
@@ -72,15 +94,31 @@ export default function IntakeDomainPurchase({ intakeId, desiredDomain, tenantId
           Site not provisioned yet — open onboarding / build first, then return here to purchase.
         </p>
       )}
+      {alreadyPurchased && (
+        <p className="text-sm text-emerald-800 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2">
+          Domain is purchased and connected
+          {existingDomain?.registrarOrderId ? ` (order ${existingDomain.registrarOrderId})` : ''}.
+        </p>
+      )}
+      {legacyPlaceholder && !alreadyPurchased && (
+        <p className="text-sm text-amber-800 rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
+          A placeholder row exists from an earlier provision step (not purchased yet). Purchase will
+          register it with Vercel and upgrade that connection.
+        </p>
+      )}
       {error && <p className="text-sm text-red-600">{error}</p>}
       {success && <p className="text-sm text-green-700">{success}</p>}
       <button
         type="button"
-        disabled={busy || !tenantId}
+        disabled={busy || !tenantId || alreadyPurchased}
         onClick={() => void purchase()}
         className="w-full rounded-md bg-violet-700 px-4 py-2 text-sm font-medium text-white hover:bg-violet-600 disabled:opacity-50"
       >
-        {busy ? 'Purchasing…' : `Purchase ${desiredDomain}`}
+        {busy
+          ? 'Purchasing…'
+          : alreadyPurchased
+            ? 'Already purchased'
+            : `Purchase ${desiredDomain}`}
       </button>
       <p className="text-[11px] text-gray-400">Intake id: {intakeId}</p>
     </div>

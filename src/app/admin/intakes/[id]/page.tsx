@@ -59,6 +59,14 @@ export default async function IntakeDetailPage({
   let tenantValidationStatus: string | null = null
   let tenantValidationReport: Array<{code: string; severity: string; message: string; fixable: boolean}> = []
   let tenantValidatedAt: string | null = null
+  let domainRows: Array<{
+    hostname: string
+    source: string
+    is_primary: boolean
+    vercel_verified?: boolean
+    registrar_order_id?: string | null
+    purchase_price_cents?: number | null
+  }> = []
   if (data.provisioned_contractor_id) {
     const synced = await syncTenantLaunchAccess({
       tenantId: data.provisioned_contractor_id,
@@ -66,12 +74,14 @@ export default async function IntakeDetailPage({
     })
     tenantSiteStatus = synced.siteStatus
 
-    const { data: domainRows } = await admin
+    const { data: domainData } = await admin
       .from('domains')
-      .select('hostname, source, is_primary')
+      .select(
+        'hostname, source, is_primary, vercel_verified, registrar_order_id, purchase_price_cents'
+      )
       .eq('tenant_id', data.provisioned_contractor_id)
-    const rows = Array.isArray(domainRows) ? domainRows : []
-    const url = getTenantPreviewSiteUrl(rows)
+    domainRows = Array.isArray(domainData) ? domainData : []
+    const url = getTenantPreviewSiteUrl(domainRows)
     tenantSiteUrl = url !== '#' ? url : null
 
     const { data: tenantRow } = await admin
@@ -83,6 +93,21 @@ export default async function IntakeDetailPage({
     tenantValidationReport = Array.isArray(tenantRow?.validation_report) ? tenantRow.validation_report : []
     tenantValidatedAt = tenantRow?.validated_at ?? null
   }
+
+  const desiredHost = (data.desired_domain || '').trim().toLowerCase()
+  const existingDesired = desiredHost
+    ? domainRows.find((d) => d.hostname === desiredHost) || null
+    : null
+  const existingDomainStatus = existingDesired
+    ? {
+        hostname: existingDesired.hostname,
+        source: existingDesired.source,
+        isPrimary: existingDesired.is_primary,
+        vercelVerified: Boolean(existingDesired.vercel_verified),
+        registrarOrderId: existingDesired.registrar_order_id ?? null,
+        purchasePriceCents: existingDesired.purchase_price_cents ?? null,
+      }
+    : null
 
   const needsPublish =
     launchPaid &&
@@ -261,6 +286,7 @@ export default async function IntakeDetailPage({
           intakeId={data.id}
           desiredDomain={data.desired_domain ?? null}
           tenantId={data.provisioned_contractor_id ?? null}
+          existingDomain={existingDomainStatus}
         />
       </div>
 

@@ -2,7 +2,6 @@ import { v4 as uuidv4 } from 'uuid'
 import { Resend } from 'resend'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { widgetEmbedSnippet } from '@/lib/urls'
-import { normalizeDomain, attachVercelDomain } from '@/lib/vercel-domains'
 import {
   parseImageSelections,
   syncProductSlots,
@@ -467,7 +466,8 @@ export async function provisionTenant(
     const baseDomain = (process.env.TENANT_BASE_DOMAIN || 'localhost').replace(/^\.+|\.+$/g, '')
     const isLocalBase = baseDomain === 'localhost' || baseDomain.endsWith('.localhost')
     const platformHost = `${subdomain}.${baseDomain}`
-    const customHost = normalizeDomain(setup.desiredDomain)
+    // desiredDomain is a purchase intent (or later BYO via DomainManager) — do not
+    // insert it as byo here. Premature byo rows block /api/domains/purchase.
     // Slug used for all site-assets storage paths (hero, products, before).
     const assetSlug = (subdomain || tenantId)
       .toLowerCase()
@@ -478,7 +478,7 @@ export async function provisionTenant(
     const { error: domainError } = await supabase.from('domains').insert({
       tenant_id: tenantId,
       hostname: platformHost,
-      is_primary: !customHost,
+      is_primary: true,
       ssl_status: 'active',
       source: 'platform_subdomain',
       vercel_verified: true,
@@ -488,41 +488,7 @@ export async function provisionTenant(
 
     domainResult = { platformHost, customHost: null, vercel: null }
 
-    if (customHost) {
-      let vercelResult = null
-      if (!isLocalBase) {
-        vercelResult = await attachVercelDomain(customHost)
-      }
-      const verified = vercelResult?.verified === true
-      const { error: customDomainError } = await supabase.from('domains').insert({
-        tenant_id: tenantId,
-        hostname: customHost,
-        is_primary: true,
-        ssl_status: verified ? 'active' : 'pending',
-        source: 'byo',
-        vercel_verified: verified,
-        verification_records: vercelResult?.verification ?? null,
-        status_message: verified
-          ? 'Verified'
-          : vercelResult?.ok
-            ? 'Attached — awaiting DNS verification'
-            : vercelResult?.error || 'Pending DNS',
-        last_checked_at: new Date().toISOString(),
-      })
-      if (customDomainError) {
-        console.error('Custom domain insert failed:', customDomainError)
-        await supabase
-          .from('domains')
-          .update({ is_primary: true })
-          .eq('tenant_id', tenantId)
-          .eq('hostname', platformHost)
-      } else {
-        domainResult.customHost = customHost
-        domainResult.vercel = vercelResult
-      }
-    }
-
-    const primaryHost = domainResult.customHost || domainResult.platformHost
+    const primaryHost = domainResult.platformHost
     // Locally, always expose the platform *.localhost URL — custom/desired
     // domains are not in DNS yet and would NXDOMAIN admin preview links.
     const reachableHost = isLocalBase ? domainResult.platformHost : primaryHost
