@@ -19,6 +19,8 @@ type Props = {
   pages?: string[];
   aiSiteConfig: SiteConfigShape | null;
   imageSelections: IntakeImageSelections;
+  /** Server-resolved applicability; when set, wins over client catalog guess. */
+  beforeAfterApplicable?: boolean;
   onUpdate: (selections: IntakeImageSelections, siteConfig: SiteConfigShape | null) => void;
   formState?: any;
   isActive?: boolean;
@@ -163,6 +165,7 @@ export default function IntakeImageStudio({
   pages = [],
   aiSiteConfig: initialSite,
   imageSelections: initialSelections,
+  beforeAfterApplicable: initialBeforeAfterApplicable,
   onUpdate,
   formState,
   isActive,
@@ -241,17 +244,18 @@ export default function IntakeImageStudio({
   // industries in the DB) arrives with the AI brief; until then fall back to
   // the same static catalog classification computed client-side.
   const [serverBeforeAfterApplicable, setServerBeforeAfterApplicable] = useState<boolean | null>(
-    null
+    typeof initialBeforeAfterApplicable === 'boolean' ? initialBeforeAfterApplicable : null
   );
   const beforeAfterApplicable =
-    serverBeforeAfterApplicable ??
-    getBeforeAfterCategory(
-      resolveIndustrySlug({
-        industry: (formState?.industry as string) || null,
-        services,
-        other_services: (formState?.otherServices as string) || null,
-      })
-    ) !== 'not-applicable';
+    (serverBeforeAfterApplicable ??
+      getBeforeAfterCategory(
+        resolveIndustrySlug({
+          industry: (formState?.industry as string) || null,
+          services,
+          other_services: (formState?.otherServices as string) || null,
+        })
+      ) !== 'not-applicable') ||
+    beforeState.enabled === true;
   const beforePrompt =
     beforePromptOverride ??
     beforeState.prompt ??

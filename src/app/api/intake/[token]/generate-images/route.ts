@@ -99,7 +99,10 @@ export async function POST(
         services: serviceNames,
         other_services: row.other_services,
       })
-      if (category === 'not-applicable') {
+      // Prospect opt-in wins: if they asked for before/after, generate even when
+      // the industry catalog marks the trade as not-applicable (common for vague
+      // custom industries like "Entertainment" that the client still surfaces).
+      if (category === 'not-applicable' && beforeState.enabled !== true) {
         return NextResponse.json(
           {
             error:

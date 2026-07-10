@@ -231,6 +231,8 @@ export type IntakeFormClientProps = {
   aiSiteConfig?: Record<string, unknown> | null;
   widgetConfigHints?: Record<string, unknown> | null;
   imageSelections?: IntakeImageSelections;
+  /** Server-resolved (includes custom industries). Prefer over client catalog guess. */
+  beforeAfterApplicable?: boolean;
   pageContents?: Record<string, string>;
   initialGalleryImages?: string[];
   initialTierFromQuery?: string;
@@ -369,6 +371,7 @@ export default function IntakeFormClient({
   aiSiteConfig: initialAiSite = null,
   widgetConfigHints = null,
   imageSelections: initialSelections,
+  beforeAfterApplicable: initialBeforeAfterApplicable,
   pageContents,
   initialGalleryImages,
   initialTierFromQuery,
@@ -1249,18 +1252,25 @@ export default function IntakeFormClient({
   }, [form.industry, customIndustryMode]);
 
   const beforeAfterApplicableForSubmit =
-    getBeforeAfterCategory(
-      resolveIndustrySlug({
-        industry: form.industry || null,
-        services: studioServices,
-        other_services: form.otherServices || null,
-      })
-    ) !== 'not-applicable';
+    typeof initialBeforeAfterApplicable === 'boolean'
+      ? initialBeforeAfterApplicable
+      : getBeforeAfterCategory(
+          resolveIndustrySlug({
+            industry: form.industry || null,
+            services: studioServices,
+            other_services: form.otherServices || null,
+          })
+        ) !== 'not-applicable';
+
+  // If they already opted in, require completion even when the industry catalog
+  // says not-applicable (custom-industry mismatch / explicit yes).
+  const beforeAfterRequired =
+    beforeAfterApplicableForSubmit || imageSelections.beforeAfter?.enabled === true;
 
   const premiumImagesReady =
     intakeTier !== 'ai_premium' ||
     (imageSelectionsComplete(imageSelections, studioServices) &&
-      beforeAfterSelectionComplete(imageSelections, beforeAfterApplicableForSubmit));
+      beforeAfterSelectionComplete(imageSelections, beforeAfterRequired));
 
   const submitForm = async (overrides?: { themeOverride: string; layoutOverride: string; themeTokensOverride?: any }) => {
     if (intakeTier === 'ai_premium' && depositRequiredCents > 0 && depositStatus !== 'paid') {
@@ -2648,6 +2658,7 @@ export default function IntakeFormClient({
               pages={form.pages}
               aiSiteConfig={aiSiteConfig as { hero?: { imagePrompt?: string }; products?: Array<{ title?: string; imagePrompt?: string }> } | null}
               imageSelections={imageSelections}
+              beforeAfterApplicable={initialBeforeAfterApplicable}
               onUpdate={(sel, site) => {
                 setImageSelections(sel);
                 if (site) setAiSiteConfig(site as Record<string, unknown>);
@@ -2662,7 +2673,7 @@ export default function IntakeFormClient({
             {intakeTier === 'ai_premium' && canUseImageStudio && !premiumImagesReady && (
               <p className="text-sm text-amber-800 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 mb-4">
                 Complete the AI image studio (hero + each service
-                {beforeAfterApplicableForSubmit ? ' + before/after choice' : ''}) before submitting.
+                {beforeAfterRequired ? ' + before/after choice' : ''}) before submitting.
               </p>
             )}
 

@@ -33,7 +33,7 @@ export async function GET(
 
   const healed = await healIntakeTierFromPayments(row)
 
-  return NextResponse.json(buildIntakePublicJson(healed))
+  return NextResponse.json(await buildIntakePublicJson(healed))
 }
 
 export async function POST(

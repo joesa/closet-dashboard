@@ -51,7 +51,7 @@ export async function POST(
     const intakeRow = fresh ? await healIntakeTierFromPayments(fresh) : await healIntakeTierFromPayments(row)
     const urls = await resolveIntakeLaunchUrls(intakeRow)
     return NextResponse.json({
-      ...buildIntakePublicJson(intakeRow),
+      ...(await buildIntakePublicJson(intakeRow)),
       ...urls,
       paymentConfirmed: !!paymentKind,
       paymentKind,

@@ -4,7 +4,6 @@ import { healIntakeTierFromPayments } from '@/lib/intake/intakeTierGates'
 import { parseImageSelections } from '@/lib/intake/imageSelections'
 import { getTierCatalog } from '@/lib/intake/tiers'
 import IntakeFormClient from './IntakeFormClient'
-import { getCurrentAdmin } from '@/lib/admin'
 
 export const dynamic = 'force-dynamic'
 
@@ -24,11 +23,8 @@ export default async function IntakePage({
   }
 
   const healed = await healIntakeTierFromPayments(row)
-  const pub = buildIntakePublicJson(healed)
+  const pub = await buildIntakePublicJson(healed)
   const aiRaw = healed.ai_site_config as Record<string, unknown> | null
-
-  const adminUser = await getCurrentAdmin()
-  const isAdmin = adminUser !== null
 
   return (
     <IntakeFormClient
@@ -49,6 +45,7 @@ export default async function IntakePage({
       aiSiteConfig={(aiRaw?.siteConfig ?? aiRaw) as Record<string, unknown> | null}
       widgetConfigHints={healed.widget_config_hints ?? null}
       imageSelections={parseImageSelections(healed.image_selections)}
+      beforeAfterApplicable={pub.beforeAfterApplicable}
       pageContents={healed.page_contents ?? {}}
       initialGalleryImages={healed.gallery_images ?? []}
       initialTierFromQuery={

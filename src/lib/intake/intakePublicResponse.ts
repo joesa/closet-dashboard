@@ -1,6 +1,7 @@
 import type { ProspectIntakeRow } from '@/lib/intake/getIntakeByToken'
 import { canUseImageStudio, effectiveIntakeTier } from '@/lib/intake/intakeTierGates'
 import { parseImageSelections } from '@/lib/intake/imageSelections'
+import { resolveIntakeBeforeAfterCategory } from '@/lib/intake/intakeBeforeAfter'
 import {
   depositStatusForTier,
   formatUsd,
@@ -13,7 +14,7 @@ import {
   isLaunchBuildPaid,
 } from '@/lib/intake/intakePaymentStage'
 
-export function buildIntakePublicJson(row: ProspectIntakeRow) {
+export async function buildIntakePublicJson(row: ProspectIntakeRow) {
   const tier = effectiveIntakeTier(row)
   const tierEntry = getTierEntry(tier)
   const depositRequiredCents = tierEntry?.depositCents ?? row.deposit_required_cents
@@ -34,6 +35,12 @@ export function buildIntakePublicJson(row: ProspectIntakeRow) {
   if (row.industry && !widgetConfigHints.industry) {
     widgetConfigHints.industry = row.industry
   }
+
+  const beforeAfterCategory = await resolveIntakeBeforeAfterCategory({
+    industry: row.industry,
+    services: row.services,
+    other_services: row.other_services,
+  })
 
   return {
     businessName: row.business_name,
@@ -65,6 +72,8 @@ export function buildIntakePublicJson(row: ProspectIntakeRow) {
     aiSiteConfig: siteConfig ?? null,
     widgetConfigHints: Object.keys(widgetConfigHints).length > 0 ? widgetConfigHints : null,
     imageSelections: selections,
+    /** Server truth (includes custom industries) — prefer over client catalog guess. */
+    beforeAfterApplicable: beforeAfterCategory !== 'not-applicable',
     maintenancePlan: row.maintenance_plan,
     previewApprovedAt: row.preview_approved_at,
     siteLiveAt: row.site_live_at,
