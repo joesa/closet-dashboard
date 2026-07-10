@@ -1,5 +1,5 @@
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
-import { getTenantPublicUrl } from '@/lib/admin-preview'
+import { getTenantPreviewSiteUrl } from '@/lib/admin-preview'
 
 /**
  * Bust the tenant site's per-hostname config cache so a just-saved
@@ -16,13 +16,10 @@ export async function revalidateTenantSiteCache(tenantId: string): Promise<boole
     const supabase = getSupabaseAdmin()
     const { data } = await supabase
       .from('domains')
-      .select('hostname')
+      .select('hostname, source, is_primary')
       .eq('tenant_id', tenantId)
-      .maybeSingle()
-    const hostname = (data as { hostname?: string } | null)?.hostname
-    if (!hostname) return false
-
-    const siteUrl = getTenantPublicUrl(hostname)
+    const rows = Array.isArray(data) ? data : []
+    const siteUrl = getTenantPreviewSiteUrl(rows)
     if (!siteUrl || siteUrl === '#') return false
 
     const res = await fetch(`${siteUrl.replace(/\/$/, '')}/api/revalidate`, {

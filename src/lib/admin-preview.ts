@@ -16,12 +16,59 @@ export function buildTenantPreviewUrl(siteUrl: string): string | null {
 }
 
 /** Dev-only fixture hostnames that resolve solely on a developer's machine. */
-function isDevHostname(hostname: string): boolean {
+export function isDevHostname(hostname: string): boolean {
   return (
     hostname === 'localhost' ||
     hostname === '127.0.0.1' ||
     hostname.endsWith('.localhost')
   )
+}
+
+function isLocalTenantBase(): boolean {
+  const base = (process.env.TENANT_BASE_DOMAIN || '').replace(/^\.+|\.+$/g, '')
+  return base === 'localhost' || base.endsWith('.localhost')
+}
+
+export type PreviewDomainRow = {
+  hostname: string
+  source?: string | null
+  is_primary?: boolean | null
+}
+
+/**
+ * Hostname to use for admin bypass / local crawl / cache revalidate.
+ *
+ * Prefer the platform subdomain when it is a local host (or TENANT_BASE_DOMAIN
+ * is localhost). Custom/purchased domains are often primary before DNS exists,
+ * which would produce NXDOMAIN preview links.
+ */
+export function pickPreviewHostname(domains: PreviewDomainRow[]): string | null {
+  const rows = (domains || []).filter((d) => d?.hostname?.trim())
+  if (rows.length === 0) return null
+
+  const platform = rows.find((d) => d.source === 'platform_subdomain')
+  const primary = rows.find((d) => d.is_primary) || rows[0]
+
+  if (platform && isDevHostname(platform.hostname)) {
+    return platform.hostname.trim()
+  }
+
+  if (isLocalTenantBase() && platform) {
+    return platform.hostname.trim()
+  }
+
+  // Primary is a public domain that isn't resolvable locally — still prefer
+  // platform subdomain when present so admin bypass works before purchase/DNS.
+  if (
+    platform &&
+    primary &&
+    !isDevHostname(primary.hostname) &&
+    (isDevHostname(platform.hostname) || isLocalTenantBase())
+  ) {
+    return platform.hostname.trim()
+  }
+
+  return (primary?.hostname || rows[0].hostname).trim() || null
 }
 
 /**
@@ -40,4 +87,15 @@ export function getTenantPublicUrl(hostname: string): string {
   }
 
   return `https://${host}`
+}
+
+/** Site base URL for admin preview, preferring a locally reachable hostname. */
+export function getTenantPreviewSiteUrl(domains: PreviewDomainRow[]): string {
+  const host = pickPreviewHostname(domains)
+  return host ? getTenantPublicUrl(host) : '#'
+}
+
+/** Admin bypass URL built from the best reachable hostname for this tenant. */
+export function buildTenantPreviewUrlFromDomains(domains: PreviewDomainRow[]): string | null {
+  return buildTenantPreviewUrl(getTenantPreviewSiteUrl(domains))
 }

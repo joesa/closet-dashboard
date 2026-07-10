@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
-import { buildTenantPreviewUrl, getTenantPublicUrl } from '@/lib/admin-preview';
+import { buildTenantPreviewUrlFromDomains } from '@/lib/admin-preview';
 import DeleteTenantDialog from '@/components/DeleteTenantDialog';
 
 export const dynamic = 'force-dynamic';
@@ -17,7 +17,7 @@ export default async function AdminSitesPage() {
       site_status,
       created_at,
       validation_status,
-      domains ( hostname )
+      domains ( hostname, source, is_primary )
     `)
     .order('created_at', { ascending: false });
 
@@ -45,12 +45,21 @@ export default async function AdminSitesPage() {
             </thead>
             <tbody className="divide-y divide-neutral-800">
               {tenants?.map((tenant) => {
-                const domain = Array.isArray(tenant.domains) && tenant.domains.length > 0 
-                  ? tenant.domains[0].hostname 
-                  : (tenant.domains as { hostname?: string } | null)?.hostname;
-                  
-                const siteUrl = domain ? getTenantPublicUrl(domain) : '#';
-                const previewUrl = buildTenantPreviewUrl(siteUrl);
+                const domainRows = Array.isArray(tenant.domains)
+                  ? tenant.domains
+                  : tenant.domains
+                    ? [tenant.domains as { hostname?: string; source?: string; is_primary?: boolean }]
+                    : [];
+                const displayDomain =
+                  domainRows.find((d) => d.is_primary)?.hostname ||
+                  domainRows[0]?.hostname;
+                const previewUrl = buildTenantPreviewUrlFromDomains(
+                  domainRows.map((d) => ({
+                    hostname: d.hostname || '',
+                    source: d.source,
+                    is_primary: d.is_primary,
+                  }))
+                );
 
                 return (
                   <tr key={tenant.id} className="hover:bg-neutral-800/50 transition-colors group">
@@ -60,7 +69,7 @@ export default async function AdminSitesPage() {
                       </Link>
                     </td>
                     <td className="px-6 py-4 text-neutral-400">
-                      {domain || 'No Domain'}
+                      {displayDomain || 'No Domain'}
                     </td>
                     <td className="px-6 py-4 text-neutral-400">
                       {tenant.owner_email}

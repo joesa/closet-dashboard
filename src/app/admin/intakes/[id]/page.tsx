@@ -1,7 +1,10 @@
 import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
-import { getTenantPublicUrl, buildTenantPreviewUrl } from '@/lib/admin-preview'
+import {
+  buildTenantPreviewUrl,
+  getTenantPreviewSiteUrl,
+} from '@/lib/admin-preview'
 import { getIntakePaymentSummary, isLaunchBuildPaid } from '@/lib/intake/intakePaymentStage'
 import { syncTenantLaunchAccess } from '@/lib/intake/syncTenantLaunchAccess'
 import { formatUsd } from '@/lib/intake/tiers'
@@ -63,17 +66,13 @@ export default async function IntakeDetailPage({
     })
     tenantSiteStatus = synced.siteStatus
 
-    const { data: domain } = await admin
+    const { data: domainRows } = await admin
       .from('domains')
-      .select('hostname')
+      .select('hostname, source, is_primary')
       .eq('tenant_id', data.provisioned_contractor_id)
-      .order('is_primary', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-    if (domain?.hostname) {
-      const url = getTenantPublicUrl(domain.hostname)
-      tenantSiteUrl = url !== '#' ? url : null
-    }
+    const rows = Array.isArray(domainRows) ? domainRows : []
+    const url = getTenantPreviewSiteUrl(rows)
+    tenantSiteUrl = url !== '#' ? url : null
 
     const { data: tenantRow } = await admin
       .from('tenants')

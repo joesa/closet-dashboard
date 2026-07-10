@@ -1,7 +1,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
-import { buildTenantPreviewUrl, getTenantPublicUrl } from '@/lib/admin-preview';
+import { buildTenantPreviewUrlFromDomains } from '@/lib/admin-preview';
 import { notFound } from 'next/navigation';
 import DeleteTenantDialog from '@/components/DeleteTenantDialog';
 import SiteValidationPanel from '@/components/SiteValidationPanel';
@@ -84,9 +84,18 @@ export default async function TenantDetailsPage({ params }: { params: Promise<{ 
     domainRows.find((d) => d.is_primary)?.hostname ||
     domainRows[0]?.hostname;
   const purchased = domainRows.filter((d) => d.source === 'purchased');
-    
-  const siteUrl = primaryDomain ? getTenantPublicUrl(primaryDomain) : '#';
-  const previewUrl = buildTenantPreviewUrl(siteUrl);
+
+  // Preview/bypass must use a reachable host (platform *.localhost locally),
+  // not an unpurchased custom primary that returns NXDOMAIN.
+  const previewUrl = buildTenantPreviewUrlFromDomains(
+    domainRows
+      .filter((d): d is DomainShape & { hostname: string } => Boolean(d.hostname))
+      .map((d) => ({
+        hostname: d.hostname,
+        source: d.source,
+        is_primary: d.is_primary,
+      }))
+  );
 
   const config = (Array.isArray(tenant.site_configs) && tenant.site_configs.length > 0 
     ? tenant.site_configs[0]

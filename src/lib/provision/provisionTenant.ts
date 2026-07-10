@@ -523,7 +523,10 @@ export async function provisionTenant(
     }
 
     const primaryHost = domainResult.customHost || domainResult.platformHost
-    siteUrl = isLocalBase ? `http://${primaryHost}:3000` : `https://${primaryHost}`
+    // Locally, always expose the platform *.localhost URL — custom/desired
+    // domains are not in DNS yet and would NXDOMAIN admin preview links.
+    const reachableHost = isLocalBase ? domainResult.platformHost : primaryHost
+    siteUrl = isLocalBase ? `http://${reachableHost}:3000` : `https://${reachableHost}`
 
     const serviceCatalog: Record<string, { image: string; description: string }> = {
       'Walk-In Closets': {

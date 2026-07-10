@@ -1,5 +1,5 @@
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
-import { getTenantPublicUrl, buildTenantPreviewUrl } from '@/lib/admin-preview'
+import { getTenantPreviewSiteUrl, buildTenantPreviewUrlFromDomains, pickPreviewHostname } from '@/lib/admin-preview'
 import {
   THEME_LAYOUT_AFFINITY,
   MINIMAL_LAYOUTS_WITHOUT_ANCHOR_SECTIONS,
@@ -113,7 +113,7 @@ export async function validateTenantSite(tenantId: string): Promise<ValidationRe
     .select(
       `
       id, business_name, owner_email, widget_id,
-      domains ( hostname ),
+      domains ( hostname, source, is_primary ),
       site_configs ( theme, layout_style, design_variant, nav_links, hero_config, before_after_config, products_config, logo_url, brand_name, process_config )
     `
     )
@@ -135,8 +135,18 @@ export async function validateTenantSite(tenantId: string): Promise<ValidationRe
     }
   }
 
-  const domain = Array.isArray(tenant.domains) ? tenant.domains[0] : tenant.domains
-  const hostname = (domain as { hostname?: string } | null)?.hostname
+  const domainRows = Array.isArray(tenant.domains)
+    ? tenant.domains
+    : tenant.domains
+      ? [tenant.domains as { hostname?: string; source?: string; is_primary?: boolean }]
+      : []
+  const hostname = pickPreviewHostname(
+    domainRows.map((d) => ({
+      hostname: d.hostname || '',
+      source: d.source,
+      is_primary: d.is_primary,
+    }))
+  )
   const config = (Array.isArray(tenant.site_configs) ? tenant.site_configs[0] : tenant.site_configs) as
     | {
         theme?: string
@@ -255,8 +265,23 @@ export async function validateTenantSite(tenantId: string): Promise<ValidationRe
   }
 
   // ── 5. Live crawl (best-effort — never throws) ──
-  const publicUrl = hostname ? getTenantPublicUrl(hostname) : null
-  const crawlUrl = publicUrl ? buildTenantPreviewUrl(publicUrl) || publicUrl : null
+  const publicUrl = getTenantPreviewSiteUrl(
+    domainRows.map((d) => ({
+      hostname: d.hostname || '',
+      source: d.source,
+      is_primary: d.is_primary,
+    }))
+  )
+  const crawlUrl =
+    publicUrl && publicUrl !== '#'
+      ? buildTenantPreviewUrlFromDomains(
+          domainRows.map((d) => ({
+            hostname: d.hostname || '',
+            source: d.source,
+            is_primary: d.is_primary,
+          }))
+        ) || publicUrl
+      : null
   if (!crawlUrl || crawlUrl === '#') {
     issues.push({
       code: 'site_not_reachable',

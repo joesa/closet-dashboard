@@ -1,4 +1,4 @@
-import { getTenantPublicUrl } from '@/lib/admin-preview'
+import { getTenantPreviewSiteUrl } from '@/lib/admin-preview'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import type { ProspectIntakeRow } from '@/lib/intake/getIntakeByToken'
 import { isLaunchBuildPaid } from '@/lib/intake/intakePaymentStage'
@@ -24,17 +24,12 @@ export async function resolveIntakeLaunchUrls(row: ProspectIntakeRow): Promise<{
   }
 
   const admin = getSupabaseAdmin()
-  const { data: domain } = await admin
+  const { data: domainRows } = await admin
     .from('domains')
-    .select('hostname')
+    .select('hostname, source, is_primary')
     .eq('tenant_id', row.provisioned_contractor_id)
-    .order('created_at', { ascending: true })
-    .limit(1)
-    .maybeSingle()
 
-  const tenantSiteUrl = domain?.hostname
-    ? getTenantPublicUrl(domain.hostname)
-    : null
+  const tenantSiteUrl = getTenantPreviewSiteUrl(Array.isArray(domainRows) ? domainRows : [])
 
   return {
     launchPaid,
