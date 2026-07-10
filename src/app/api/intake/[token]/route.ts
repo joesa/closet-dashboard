@@ -231,6 +231,7 @@ export async function POST(
       differentiators: toArr(body.differentiators),
       primary_cta: toStr(body.primaryCta),
       desired_domain: toStr(body.desiredDomain),
+      domain_purchase_requested: body.domainPurchaseRequested === true,
       notes: toStr(body.notes),
       requested_pages: clampPagesForTier(
         body.pages,

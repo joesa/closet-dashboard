@@ -70,6 +70,8 @@ type IntakeSetup = {
   primaryColorHex?: string;
   logoUrl?: string;
   desiredDomain?: string;
+  /** When true, auto-purchase desiredDomain after sandbox provision. */
+  domainPurchaseRequested?: boolean;
   pricingNotes?: string;
 };
 
@@ -89,6 +91,7 @@ type IntakeRow = IntakeSetup & {
   primary_color_hex?: string | null;
   logo_url?: string | null;
   desired_domain?: string | null;
+  domain_purchase_requested?: boolean | null;
   pricing_notes?: string | null;
   services?: string[] | null;
   vibe?: string | null;
@@ -309,6 +312,7 @@ export default function SandboxOnboarding() {
             primaryColorHex: it.primary_color_hex ?? undefined,
             logoUrl: it.logo_url ?? undefined,
             desiredDomain: it.desired_domain ?? undefined,
+            domainPurchaseRequested: Boolean(it.domain_purchase_requested),
             pricingNotes: it.pricing_notes ?? undefined,
           });
           setFormData((prev) => ({
@@ -496,10 +500,11 @@ export default function SandboxOnboarding() {
       setEmbedSnippet(data.embedSnippet || '');
       setResultMode(data.mode === 'widget' ? 'widget' : 'full');
 
-      // If admin selected an available domain to buy, purchase + attach after provision.
+      // Only auto-purchase when prospect/admin opted into platform registration.
       const buyDomain = intakeSetup?.desiredDomain?.trim();
+      const purchaseRequested = Boolean(intakeSetup?.domainPurchaseRequested);
       const newTenantId = typeof data.tenantId === 'string' ? data.tenantId : null;
-      if (siteMode === 'full' && buyDomain && newTenantId) {
+      if (siteMode === 'full' && buyDomain && purchaseRequested && newTenantId) {
         try {
           const buyRes = await fetch('/api/domains/purchase', {
             method: 'POST',
@@ -1193,12 +1198,48 @@ export default function SandboxOnboarding() {
             <div className="rounded-lg border border-neutral-700 bg-neutral-900/50 p-4 space-y-3">
               <div>
                 <label className="block text-sm font-medium mb-1 text-neutral-300">
-                  Custom domain (optional)
+                  Custom domain (BYO by default)
                 </label>
                 <p className="text-xs text-neutral-500 mb-3">
-                  Check live Vercel availability for .com / .net / .io. Selecting a domain saves it
-                  for purchase after provision (or attach as BYO if they already own it).
+                  Enter a domain the customer already owns. Purchase via Vercel only if they asked
+                  us to register one (checkbox below).
                 </p>
+                <input
+                  type="text"
+                  value={intakeSetup?.desiredDomain || ''}
+                  onChange={(e) =>
+                    setIntakeSetup((prev) => ({
+                      ...(prev || {}),
+                      desiredDomain: e.target.value.trim().toLowerCase() || undefined,
+                      domainPurchaseRequested: false,
+                    }))
+                  }
+                  disabled={Boolean(intakeSetup?.domainPurchaseRequested)}
+                  className="w-full bg-neutral-900 border border-neutral-700 rounded-md p-2 text-white disabled:opacity-50"
+                  placeholder="example.com"
+                />
+              </div>
+              <label className="flex cursor-pointer items-start gap-3 rounded-md border border-neutral-700 bg-neutral-950/50 p-3">
+                <input
+                  type="checkbox"
+                  className="mt-1"
+                  checked={Boolean(intakeSetup?.domainPurchaseRequested)}
+                  onChange={(e) =>
+                    setIntakeSetup((prev) => ({
+                      ...(prev || {}),
+                      domainPurchaseRequested: e.target.checked,
+                    }))
+                  }
+                />
+                <span className="text-sm text-neutral-300">
+                  <span className="font-medium text-white">Purchase &amp; set up for them</span>
+                  <span className="mt-1 block text-xs text-neutral-500">
+                    After provision, auto-buy via Vercel Registrar (admin billing). Prefer BYO when
+                    they already own the name.
+                  </span>
+                </span>
+              </label>
+              {intakeSetup?.domainPurchaseRequested && (
                 <DomainSuggestPicker
                   mode="admin"
                   variant="dark"
@@ -1208,10 +1249,11 @@ export default function SandboxOnboarding() {
                     setIntakeSetup((prev) => ({
                       ...(prev || {}),
                       desiredDomain: domain || undefined,
+                      domainPurchaseRequested: true,
                     }))
                   }
                 />
-              </div>
+              )}
             </div>
           )}
 

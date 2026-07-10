@@ -2,6 +2,8 @@
 
 import React, { useCallback, useEffect, useState } from 'react'
 import type { DomainRow, DnsInstruction } from '@/lib/domains/types'
+import { defaultByoDnsInstructions } from '@/lib/domains/types'
+import RegistrarDnsGuides from '@/components/RegistrarDnsGuides'
 
 type SearchHit = {
   domain: string
@@ -14,7 +16,7 @@ type SearchHit = {
 type Props = {
   /** When set (admin site detail), scopes all API calls to this tenant. */
   tenantId?: string
-  /** Show wholesale cost / order ids (admin). */
+  /** Show wholesale cost / order ids (admin). Also unlocks optional purchase UI. */
   showAdminCost?: boolean
   /** Compact styling for embedding in dark admin pages. */
   variant?: 'dashboard' | 'admin'
@@ -330,21 +332,15 @@ export default function DomainManager({ tenantId, showAdminCost = false, variant
                   </div>
                 </div>
 
-                {d.source === 'byo' && instructions && instructions.length > 0 && (
-                  <div className="rounded-lg bg-black/30 border border-white/5 p-3">
-                    <p className="text-xs font-bold text-zinc-400 mb-2">DNS records to add</p>
-                    <div className="space-y-2">
-                      {instructions.map((ins, i) => (
-                        <div key={i} className="grid grid-cols-3 gap-2 text-xs font-mono text-zinc-300">
-                          <span>{ins.type}</span>
-                          <span>{ins.name}</span>
-                          <span className="truncate" title={ins.value}>
-                            {ins.value}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
+                {d.source === 'byo' && (
+                  <RegistrarDnsGuides
+                    variant="dark"
+                    records={
+                      instructions && instructions.length > 0
+                        ? instructions
+                        : defaultByoDnsInstructions(d.hostname)
+                    }
+                  />
                 )}
 
                 {d.source === 'purchased' && d.nameservers && d.nameservers.length > 0 && (
@@ -363,14 +359,15 @@ export default function DomainManager({ tenantId, showAdminCost = false, variant
         )}
       </div>
 
-      {/* BYO */}
+      {/* BYO — default path */}
       <div className="space-y-3 border-t border-white/10 pt-6">
         <h3 className="text-sm font-bold uppercase tracking-wider text-zinc-500">
-          Connect your domain
+          Connect your domain (recommended)
         </h3>
         <p className="text-xs text-zinc-500">
-          Enter a domain you already own. We&apos;ll attach it to your site and show the DNS
-          records to add at your registrar.
+          Enter a domain you already own. We attach it to your site; you keep ownership at GoDaddy,
+          Namecheap, Cloudflare, Hostinger, or any other registrar. Use the guides below after
+          connecting.
         </p>
         <div className="flex flex-col sm:flex-row gap-3">
           <input
@@ -389,71 +386,77 @@ export default function DomainManager({ tenantId, showAdminCost = false, variant
             {byoBusy ? 'Connecting…' : 'Connect domain'}
           </button>
         </div>
+        <RegistrarDnsGuides variant="dark" records={defaultByoDnsInstructions('yourdomain.com')} />
       </div>
 
-      {/* Purchase */}
-      <div className="space-y-3 border-t border-white/10 pt-6">
-        <h3 className="text-sm font-bold uppercase tracking-wider text-zinc-500">Get a domain</h3>
-        <p className="text-xs text-zinc-500">
-          We&apos;ll register an available .com / .net / .io on Vercel nameservers and map it to
-          your site. Registration is included with hosting — no separate checkout.
-        </p>
-        <div className="flex flex-col sm:flex-row gap-3">
-          <input
-            className={inputClass}
-            placeholder="business name or desired domain"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            disabled={searchBusy}
-          />
-          <button
-            type="button"
-            className={btnPrimary}
-            disabled={searchBusy || !searchQuery.trim()}
-            onClick={() => void runSearch()}
-          >
-            {searchBusy ? 'Searching…' : 'Search'}
-          </button>
-        </div>
-
-        {searchHits.length > 0 && (
-          <div className="space-y-2">
-            {!purchaseEnabled && (
-              <p className="text-xs text-amber-300">
-                Domain purchase is disabled in this environment (DOMAIN_PURCHASE_ENABLED). Search
-                still shows availability.
-              </p>
-            )}
-            {searchHits.map((hit) => (
-              <div
-                key={hit.domain}
-                className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-white/10 px-4 py-3"
-              >
-                <div>
-                  <span className="text-sm text-white font-medium">{hit.domain}</span>
-                  <span className="ml-2 text-xs text-zinc-500">
-                    {hit.available
-                      ? hit.priceUsd != null
-                        ? `Available · ~$${hit.priceUsd.toFixed(2)}/yr wholesale`
-                        : 'Available'
-                      : 'Unavailable'}
-                  </span>
-                </div>
-                {hit.available && (
-                  <button
-                    type="button"
-                    className={btnPrimary}
-                    disabled={!purchaseEnabled || purchaseBusy === hit.domain}
-                    onClick={() => void purchase(hit.domain)}
-                  >
-                    {purchaseBusy === hit.domain ? 'Registering…' : 'Register for me'}
-                  </button>
-                )}
-              </div>
-            ))}
+      {/* Purchase — admin optional only */}
+      {showAdminCost && (
+        <div className="space-y-3 border-t border-white/10 pt-6">
+          <h3 className="text-sm font-bold uppercase tracking-wider text-zinc-500">
+            Optional: register a domain for them
+          </h3>
+          <p className="text-xs text-zinc-500">
+            Admin only. Buy via Vercel Registrar when the customer checked “purchase for me” or
+            needs a turnkey domain. Cost folds into maintenance — prefer BYO when they already own
+            a name.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-3">
+            <input
+              className={inputClass}
+              placeholder="business name or desired domain"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              disabled={searchBusy}
+            />
+            <button
+              type="button"
+              className={btnPrimary}
+              disabled={searchBusy || !searchQuery.trim()}
+              onClick={() => void runSearch()}
+            >
+              {searchBusy ? 'Searching…' : 'Search'}
+            </button>
           </div>
-        )}
-      </div>
+
+          {searchHits.length > 0 && (
+            <div className="space-y-2">
+              {!purchaseEnabled && (
+                <p className="text-xs text-amber-300">
+                  Domain purchase is disabled in this environment (DOMAIN_PURCHASE_ENABLED). Search
+                  still shows availability.
+                </p>
+              )}
+              {searchHits.map((hit) => (
+                <div
+                  key={hit.domain}
+                  className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-white/10 px-4 py-3"
+                >
+                  <div>
+                    <span className="text-sm text-white font-medium">{hit.domain}</span>
+                    <span className="ml-2 text-xs text-zinc-500">
+                      {hit.available
+                        ? hit.priceUsd != null
+                          ? `Available · ~$${hit.priceUsd.toFixed(2)}/yr wholesale`
+                          : 'Available'
+                        : 'Unavailable'}
+                    </span>
+                  </div>
+                  {hit.available && (
+                    <button
+                      type="button"
+                      className={btnPrimary}
+                      disabled={!purchaseEnabled || purchaseBusy === hit.domain}
+                      onClick={() => void purchase(hit.domain)}
+                    >
+                      {purchaseBusy === hit.domain ? 'Registering…' : 'Register for them'}
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }

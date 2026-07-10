@@ -146,6 +146,8 @@ type Form = {
   differentiators: string[];
   primaryCta: string;
   desiredDomain: string;
+  /** Opt-in: platform buys desiredDomain after provision (admin). Default false = BYO. */
+  domainPurchaseRequested: boolean;
   notes: string;
   pages: string[];
   pageContents: Record<string, string>;
@@ -285,6 +287,7 @@ function emptyForm(
     differentiators: [],
     primaryCta: '',
     desiredDomain: '',
+    domainPurchaseRequested: false,
     notes: '',
     pages,
     pageContents: pageContents || {},
@@ -1713,30 +1716,73 @@ export default function IntakeFormClient({
             <section className={sectionClass}>
               <h2 className={sectionTitle}>Website domain</h2>
               <p className="mb-3 text-sm text-zinc-400">
-                Already have a domain? Enter it below. Need one? We&apos;ll check live availability
-                for .com / .net / .io and save your pick — our team registers it when your site
-                goes live (included with hosting).
+                Prefer a domain you already own (GoDaddy, Namecheap, Cloudflare, Hostinger, etc.).
+                After your site is built, you&apos;ll connect it with simple DNS records — you keep
+                ownership. Need us to buy one for you? Check the box below and pick an available
+                name.
               </p>
               <div className="mb-4">
-                <label className={label}>I already own this domain</label>
+                <label className={label}>Domain you already own (recommended)</label>
                 <input
                   className={input}
                   placeholder="example.com"
                   value={form.desiredDomain}
-                  onChange={(e) => set('desiredDomain', e.target.value.trim().toLowerCase())}
+                  onChange={(e) => {
+                    set('desiredDomain', e.target.value.trim().toLowerCase())
+                    if (form.domainPurchaseRequested) set('domainPurchaseRequested', false)
+                  }}
+                  disabled={form.domainPurchaseRequested}
                 />
+                <p className="mt-1.5 text-xs text-zinc-500">
+                  Leave blank to use a free subdomain for now; you can connect a custom domain later.
+                </p>
               </div>
-              <div>
-                <label className={label}>Or find an available domain</label>
-                <DomainSuggestPicker
-                  mode="intake"
-                  intakeToken={token}
-                  businessNameHint={form.businessName}
-                  value={form.desiredDomain}
-                  onChange={(domain) => set('desiredDomain', domain)}
-                  variant="light"
+
+              <label className="mb-4 flex cursor-pointer items-start gap-3 rounded-xl border border-white/[0.12] bg-white/[0.03] p-4">
+                <input
+                  type="checkbox"
+                  className="mt-1 h-4 w-4 rounded border-white/20 bg-transparent text-indigo-500"
+                  checked={form.domainPurchaseRequested}
+                  onChange={(e) => {
+                    const on = e.target.checked
+                    set('domainPurchaseRequested', on)
+                    if (!on) {
+                      /* keep desiredDomain so BYO field still shows their pick */
+                    }
+                  }}
                 />
-              </div>
+                <span>
+                  <span className="block text-sm font-medium text-zinc-100">
+                    I want you to purchase my domain and set it up for me
+                  </span>
+                  <span className="mt-1 block text-xs text-zinc-500">
+                    We&apos;ll register an available .com / .net / .io after your site is built
+                    (included with hosting). You won&apos;t leave this form to buy elsewhere.
+                  </span>
+                </span>
+              </label>
+
+              {form.domainPurchaseRequested && (
+                <div>
+                  <label className={label}>Find an available domain</label>
+                  <DomainSuggestPicker
+                    mode="intake"
+                    intakeToken={token}
+                    businessNameHint={form.businessName}
+                    value={form.desiredDomain}
+                    onChange={(domain) => set('desiredDomain', domain)}
+                    variant="light"
+                  />
+                </div>
+              )}
+
+              {!form.domainPurchaseRequested && form.desiredDomain && (
+                <p className="mt-3 text-xs text-sky-300/90 rounded-lg border border-sky-400/20 bg-sky-500/10 px-3 py-2">
+                  After launch you&apos;ll get step-by-step DNS instructions for GoDaddy, Namecheap,
+                  Cloudflare, Hostinger, and others to point <strong>{form.desiredDomain}</strong>{' '}
+                  at your new site.
+                </p>
+              )}
             </section>
           </div>
 

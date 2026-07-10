@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useState } from 'react'
+import Link from 'next/link'
 
 export type DesiredDomainStatus = {
   hostname: string
@@ -14,18 +15,21 @@ export type DesiredDomainStatus = {
 type Props = {
   intakeId: string
   desiredDomain: string | null
+  /** Prospect opted into platform purchase during intake. */
+  purchaseRequested: boolean
   tenantId: string | null
   /** Existing domains row for this hostname on the tenant, if any. */
   existingDomain: DesiredDomainStatus
 }
 
 /**
- * Admin intake detail: show prospect-selected domain and purchase via Vercel
- * after the site tenant exists.
+ * Admin intake detail: BYO is default. Purchase only when the prospect
+ * checked “purchase for me” (or admin overrides after provision).
  */
 export default function IntakeDomainPurchase({
   intakeId,
   desiredDomain,
+  purchaseRequested,
   tenantId,
   existingDomain,
 }: Props) {
@@ -40,11 +44,11 @@ export default function IntakeDomainPurchase({
     return (
       <div className="rounded-lg border border-gray-200 bg-white p-6">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">
-          Desired domain
+          Website domain
         </h2>
         <p className="mt-2 text-sm text-gray-600">
-          Prospect did not select a custom domain. They will use the platform subdomain unless
-          you add one later on the site detail page.
+          Prospect did not enter a domain. They will use the platform subdomain until they connect
+          a BYO domain from the site detail page (Domain Manager).
         </p>
       </div>
     )
@@ -55,8 +59,8 @@ export default function IntakeDomainPurchase({
     (existingDomain?.source === 'purchased' && Boolean(existingDomain.registrarOrderId))
   const stalePurchaseMarker =
     existingDomain?.source === 'purchased' && !existingDomain.registrarOrderId
-  // Legacy: provision used to insert desired_domain as byo before purchase.
   const legacyPlaceholder = existingDomain?.source === 'byo' && !existingDomain.registrarOrderId
+  const isByoIntent = !purchaseRequested
 
   const purchase = async () => {
     if (!tenantId) {
@@ -88,14 +92,38 @@ export default function IntakeDomainPurchase({
   return (
     <div className="rounded-lg border border-gray-200 bg-white p-6 space-y-3">
       <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">
-        Desired domain
+        Website domain
       </h2>
       <p className="text-lg font-medium text-gray-900">{desiredDomain}</p>
-      <p className="text-xs text-gray-500">
-        Prospect selected this during intake. Purchase registers it via Vercel (platform cost
-        folded into maintenance) and maps it to their site.
-      </p>
-      {!tenantId && (
+
+      {isByoIntent ? (
+        <div className="space-y-2">
+          <p className="text-sm text-sky-900 rounded-md border border-sky-200 bg-sky-50 px-3 py-2">
+            <span className="font-semibold">BYO (default).</span> Prospect will keep this domain at
+            their registrar. After the site is provisioned, connect it in Domain Manager and follow
+            the GoDaddy / Namecheap / Cloudflare / Hostinger DNS guides.
+          </p>
+          {tenantId && (
+            <Link
+              href={`/admin/sites/${tenantId}`}
+              className="inline-block text-sm font-medium text-indigo-600 hover:underline"
+            >
+              Open site → Domain Manager to connect BYO →
+            </Link>
+          )}
+          <p className="text-xs text-gray-500">
+            You can still purchase via Vercel below if they later ask you to handle registration
+            (optional override).
+          </p>
+        </div>
+      ) : (
+        <p className="text-sm text-violet-900 rounded-md border border-violet-200 bg-violet-50 px-3 py-2">
+          <span className="font-semibold">Purchase requested.</span> Prospect asked us to register
+          this domain and fold cost into hosting. Purchase after the site tenant exists.
+        </p>
+      )}
+
+      {!tenantId && purchaseRequested && (
         <p className="text-sm text-amber-800 rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
           Site not provisioned yet — open onboarding / build first, then return here to purchase.
         </p>
@@ -114,24 +142,36 @@ export default function IntakeDomainPurchase({
       )}
       {legacyPlaceholder && !alreadyPurchased && (
         <p className="text-sm text-amber-800 rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
-          A placeholder row exists from an earlier provision step (not purchased yet). Purchase will
-          register it with Vercel and upgrade that connection.
+          A BYO placeholder row already exists for this hostname. Prefer Domain Manager DNS setup,
+          or purchase to upgrade it to a Vercel-registered domain.
         </p>
       )}
       {error && <p className="text-sm text-red-600">{error}</p>}
       {success && <p className="text-sm text-green-700">{success}</p>}
-      <button
-        type="button"
-        disabled={busy || !tenantId || alreadyPurchased}
-        onClick={() => void purchase()}
-        className="w-full rounded-md bg-violet-700 px-4 py-2 text-sm font-medium text-white hover:bg-violet-600 disabled:opacity-50"
-      >
-        {busy
-          ? 'Purchasing…'
-          : alreadyPurchased
-            ? 'Already purchased'
-            : `Purchase ${desiredDomain}`}
-      </button>
+
+      {(purchaseRequested || !isByoIntent || Boolean(tenantId)) && !alreadyPurchased && (
+        <button
+          type="button"
+          disabled={busy || !tenantId || alreadyPurchased}
+          onClick={() => void purchase()}
+          className="w-full rounded-md bg-violet-700 px-4 py-2 text-sm font-medium text-white hover:bg-violet-600 disabled:opacity-50"
+        >
+          {busy
+            ? 'Purchasing…'
+            : purchaseRequested
+              ? `Purchase ${desiredDomain}`
+              : `Override: purchase ${desiredDomain} for them`}
+        </button>
+      )}
+      {alreadyPurchased && (
+        <button
+          type="button"
+          disabled
+          className="w-full rounded-md bg-violet-700 px-4 py-2 text-sm font-medium text-white opacity-50"
+        >
+          Already purchased
+        </button>
+      )}
       <p className="text-[11px] text-gray-400">Intake id: {intakeId}</p>
     </div>
   )

@@ -39,7 +39,7 @@ export default async function IntakeDetailPage({
        intake_tier, tier_total_cents, deposit_status, deposit_paid_cents,
        build_paid_at, balance_paid_at, maintenance_plan, preview_approved_at,
        site_live_at, maintenance_started_at, provisioned_contractor_id, submitted_at,
-       ai_site_config, desired_domain`
+       ai_site_config, desired_domain, domain_purchase_requested`
     )
     .eq('id', id)
     .maybeSingle()
@@ -285,6 +285,7 @@ export default async function IntakeDetailPage({
         <IntakeDomainPurchase
           intakeId={data.id}
           desiredDomain={data.desired_domain ?? null}
+          purchaseRequested={Boolean(data.domain_purchase_requested)}
           tenantId={data.provisioned_contractor_id ?? null}
           existingDomain={existingDomainStatus}
         />

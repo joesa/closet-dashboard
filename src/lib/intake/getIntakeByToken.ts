@@ -49,6 +49,8 @@ export type ProspectIntakeRow = {
   notification_email: string | null
   notification_phone: string | null
   desired_domain: string | null
+  /** When true, prospect asked platform to buy desired_domain (admin fulfills). */
+  domain_purchase_requested: boolean
   other_services: string | null
   industry: string | null
   requested_pages: string[]
@@ -69,7 +71,8 @@ const INTAKE_SELECT = `
   services, vibe, tone, customers, experience, differentiators, primary_cta, notes,
   pricing_notes, primary_color_hex, logo_url, contact_name, contact_phone,
   street_address, address_locality, address_region, postal_code, service_area,
-  notification_email, notification_phone, desired_domain, other_services, industry,
+  notification_email, notification_phone, desired_domain, domain_purchase_requested,
+  other_services, industry,
   requested_pages, gallery_images, page_contents, menu_items
 `
 

@@ -95,6 +95,9 @@ export async function POST(
     if (body.differentiators !== undefined) update.differentiators = toArr(body.differentiators)
     if (body.primaryCta !== undefined) update.primary_cta = toStr(body.primaryCta)
     if (body.desiredDomain !== undefined) update.desired_domain = toStr(body.desiredDomain)
+    if (body.domainPurchaseRequested !== undefined) {
+      update.domain_purchase_requested = body.domainPurchaseRequested === true
+    }
     if (body.notes !== undefined) update.notes = toStr(body.notes)
     
     if (body.pages !== undefined) {
