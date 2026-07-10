@@ -32,7 +32,9 @@ export default function IntakeDomainPurchase({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
-  const [purchased, setPurchased] = useState(existingDomain?.source === 'purchased')
+  const [purchased, setPurchased] = useState(
+    existingDomain?.source === 'purchased' && Boolean(existingDomain.registrarOrderId)
+  )
 
   if (!desiredDomain) {
     return (
@@ -48,7 +50,11 @@ export default function IntakeDomainPurchase({
     )
   }
 
-  const alreadyPurchased = purchased || existingDomain?.source === 'purchased'
+  const alreadyPurchased =
+    purchased ||
+    (existingDomain?.source === 'purchased' && Boolean(existingDomain.registrarOrderId))
+  const stalePurchaseMarker =
+    existingDomain?.source === 'purchased' && !existingDomain.registrarOrderId
   // Legacy: provision used to insert desired_domain as byo before purchase.
   const legacyPlaceholder = existingDomain?.source === 'byo' && !existingDomain.registrarOrderId
 
@@ -98,6 +104,12 @@ export default function IntakeDomainPurchase({
         <p className="text-sm text-emerald-800 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2">
           Domain is purchased and connected
           {existingDomain?.registrarOrderId ? ` (order ${existingDomain.registrarOrderId})` : ''}.
+        </p>
+      )}
+      {stalePurchaseMarker && !purchased && (
+        <p className="text-sm text-amber-800 rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
+          A previous purchase attempt was recorded without a completed Vercel order. You can retry
+          purchase after billing is fixed.
         </p>
       )}
       {legacyPlaceholder && !alreadyPurchased && (

@@ -24,6 +24,20 @@ export type RegistrarBuyResult = {
   orderId?: string
   error?: string
   status?: number
+  raw?: unknown
+}
+
+export type RegistrarOrderStatus = 'draft' | 'purchasing' | 'completed' | 'failed' | string
+
+export type RegistrarOrderResult = {
+  ok: boolean
+  attempted: boolean
+  orderId?: string
+  status?: RegistrarOrderStatus
+  domainStatuses?: Array<{ domainName?: string; status?: string; price?: number }>
+  error?: string
+  errorCode?: string
+  raw?: unknown
 }
 
 export type ProjectDomainStatus = {
@@ -186,11 +200,23 @@ export async function buyDomain(input: BuyDomainInput): Promise<RegistrarBuyResu
       return { ok: false, attempted: true, status, error: message }
     }
 
+    const orderId = (data as { orderId?: string }).orderId
+    if (!orderId) {
+      return {
+        ok: false,
+        attempted: true,
+        status,
+        error: 'Buy succeeded but Vercel did not return an orderId',
+        raw: data,
+      }
+    }
+
     return {
       ok: true,
       attempted: true,
       status,
-      orderId: (data as { orderId?: string }).orderId,
+      orderId,
+      raw: data,
     }
   } catch (e) {
     return {
@@ -202,38 +228,120 @@ export async function buyDomain(input: BuyDomainInput): Promise<RegistrarBuyResu
 }
 
 /**
- * GET /v1/registrar/domains/{domain}/order/{orderId} — best-effort order poll.
- * Returns null fields when the endpoint is unavailable.
+ * GET /v1/registrar/orders/{orderId}
+ * Docs: https://vercel.com/docs/rest-api/domains-registrar/get-a-domain-order
  */
-export async function getRegistrarOrder(
-  domain: string,
-  orderId: string
-): Promise<{ ok: boolean; status?: string; raw?: unknown; error?: string }> {
+export async function getRegistrarOrder(orderId: string): Promise<RegistrarOrderResult> {
   const auth = vercelAuth()
-  if (!auth) return { ok: false, error: 'VERCEL_API_TOKEN not set' }
+  if (!auth) return { ok: false, attempted: false, error: 'VERCEL_API_TOKEN not set' }
 
   try {
     const url = withTeam(
-      new URL(
-        `https://api.vercel.com/v1/registrar/domains/${encodeURIComponent(domain)}/order/${encodeURIComponent(orderId)}`
-      ),
+      new URL(`https://api.vercel.com/v1/registrar/orders/${encodeURIComponent(orderId)}`),
       auth.teamId
     )
     const { ok, data } = await vercelJson(url, { method: 'GET', token: auth.token })
     if (!ok) {
       return {
         ok: false,
-        error: (data as { error?: { message?: string } })?.error?.message || 'Order lookup failed',
+        attempted: true,
+        orderId,
+        error: (data as { error?: { message?: string }; message?: string })?.error?.message
+          || (data as { message?: string })?.message
+          || 'Order lookup failed',
         raw: data,
       }
     }
+
+    const payload = data as {
+      orderId?: string
+      status?: string
+      domains?: Array<{ domainName?: string; status?: string; price?: number }>
+      error?: { code?: string; message?: string }
+    }
+
     return {
       ok: true,
-      status: typeof (data as { status?: string }).status === 'string' ? (data as { status: string }).status : undefined,
+      attempted: true,
+      orderId: payload.orderId || orderId,
+      status: payload.status,
+      domainStatuses: Array.isArray(payload.domains) ? payload.domains : undefined,
+      errorCode: payload.error?.code,
+      error: payload.error?.message || payload.error?.code,
       raw: data,
     }
   } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : 'Order lookup failed' }
+    return {
+      ok: false,
+      attempted: true,
+      orderId,
+      error: e instanceof Error ? e.message : 'Order lookup failed',
+    }
+  }
+}
+
+/** Poll registrar order until completed/failed or timeout. */
+export async function waitForRegistrarOrder(
+  orderId: string,
+  opts?: { timeoutMs?: number; intervalMs?: number }
+): Promise<RegistrarOrderResult> {
+  const timeoutMs = opts?.timeoutMs ?? 45_000
+  const intervalMs = opts?.intervalMs ?? 2_000
+  const started = Date.now()
+  let last: RegistrarOrderResult = { ok: false, attempted: false, orderId }
+
+  while (Date.now() - started < timeoutMs) {
+    last = await getRegistrarOrder(orderId)
+    if (!last.ok && last.attempted === false) return last
+    if (last.ok && (last.status === 'completed' || last.status === 'failed')) {
+      return last
+    }
+    await new Promise((r) => setTimeout(r, intervalMs))
+  }
+
+  return {
+    ...last,
+    ok: false,
+    error:
+      last.status === 'purchasing' || last.status === 'draft'
+        ? `Domain order still ${last.status} after ${Math.round(timeoutMs / 1000)}s — check Vercel Domains / billing`
+        : last.error || 'Timed out waiting for domain order completion',
+  }
+}
+
+/** GET /v1/registrar/domains/{domain} — ownership record when registered. */
+export async function getRegistrarDomain(
+  domain: string
+): Promise<{ ok: boolean; attempted: boolean; owned: boolean; raw?: unknown; error?: string }> {
+  const auth = vercelAuth()
+  if (!auth) return { ok: false, attempted: false, owned: false, error: 'VERCEL_API_TOKEN not set' }
+
+  try {
+    const url = withTeam(
+      new URL(`https://api.vercel.com/v1/registrar/domains/${encodeURIComponent(domain)}`),
+      auth.teamId
+    )
+    const { ok, status, data } = await vercelJson(url, { method: 'GET', token: auth.token })
+    if (status === 404) {
+      return { ok: true, attempted: true, owned: false, raw: data }
+    }
+    if (!ok) {
+      return {
+        ok: false,
+        attempted: true,
+        owned: false,
+        error: (data as { error?: { message?: string } })?.error?.message || 'Domain lookup failed',
+        raw: data,
+      }
+    }
+    return { ok: true, attempted: true, owned: true, raw: data }
+  } catch (e) {
+    return {
+      ok: false,
+      attempted: true,
+      owned: false,
+      error: e instanceof Error ? e.message : 'Domain lookup failed',
+    }
   }
 }
 

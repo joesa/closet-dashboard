@@ -15,6 +15,8 @@ import {
   checkDomainAvailability,
   getDomainNameservers,
   getDomainPrice,
+  getRegistrarDomain,
+  waitForRegistrarOrder,
 } from '@/lib/domains/vercelRegistrar'
 import { listDomainsForTenant } from '@/lib/domains/auth'
 
@@ -71,9 +73,24 @@ export type PurchaseResult = {
   nameservers: string[]
 }
 
+function requireWebsitesProjectConfigured() {
+  if (!process.env.VERCEL_API_TOKEN?.trim()) {
+    throw new Error('VERCEL_API_TOKEN is not configured.')
+  }
+  if (!process.env.VERCEL_WEBSITES_PROJECT_ID?.trim()) {
+    throw new Error(
+      'VERCEL_WEBSITES_PROJECT_ID is not configured — cannot attach purchased domains to the sites project.'
+    )
+  }
+}
+
 /**
  * Platform buys the domain via Vercel Registrar, attaches it to the websites
  * project, and records wholesale cost for maintenance fold-in.
+ *
+ * Only marks source=purchased after the registrar order reaches status
+ * "completed" (or the domain ownership record exists). Failed/pending orders
+ * never write a purchased row.
  */
 export async function purchaseDomainForTenant(opts: {
   tenantId: string
@@ -82,6 +99,7 @@ export async function purchaseDomainForTenant(opts: {
   if (!domainPurchaseEnabled()) {
     throw new Error('Domain purchase is not enabled on this environment.')
   }
+  requireWebsitesProjectConfigured()
 
   const hostname = normalizeDomain(opts.domainInput)
   if (!hostname) throw new Error('Enter a valid domain (e.g. example.com)')
@@ -101,8 +119,20 @@ export async function purchaseDomainForTenant(opts: {
   const admin = getSupabaseAdmin()
   const existing = await listDomainsForTenant(opts.tenantId)
   const sameTenantRow = existing.find((d) => d.hostname === hostname)
-  if (sameTenantRow?.source === 'purchased') {
-    throw new Error('This domain is already purchased for your site.')
+  if (sameTenantRow?.source === 'purchased' && sameTenantRow.registrar_order_id) {
+    // Verify the prior order actually completed; allow retry on failed/stale markers.
+    const prior = await waitForRegistrarOrder(sameTenantRow.registrar_order_id, {
+      timeoutMs: 5_000,
+      intervalMs: 1_000,
+    })
+    if (prior.ok && prior.status === 'completed') {
+      throw new Error('This domain is already purchased for your site.')
+    }
+    console.warn(
+      `[domains] clearing failed/stale purchase marker for ${hostname} (order ${sameTenantRow.registrar_order_id} status=${prior.status || prior.error})`
+    )
+  } else if (sameTenantRow?.source === 'purchased') {
+    console.warn(`[domains] clearing purchased marker without order id for ${hostname}`)
   }
   if (sameTenantRow?.source === 'platform_subdomain') {
     throw new Error('That hostname is the platform subdomain and cannot be purchased.')
@@ -159,8 +189,36 @@ export async function purchaseDomainForTenant(opts: {
     },
   })
 
-  if (!buy.ok) {
+  if (!buy.ok || !buy.orderId) {
     throw new Error(buy.error || 'Domain purchase failed')
+  }
+
+  const order = await waitForRegistrarOrder(buy.orderId)
+  if (!order.ok || order.status !== 'completed') {
+    const code = order.errorCode || order.status || 'unknown'
+    const detail = order.error || order.status || 'not completed'
+    throw new Error(
+      `Vercel domain order ${buy.orderId} did not complete (${code}: ${detail}). ` +
+        'Fix billing/payment method in Vercel Domains, then retry purchase. ' +
+        'No purchased domain was recorded.'
+    )
+  }
+
+  // Confirm the domain is no longer available to buy (ownership settled).
+  const stillAvail = await checkDomainAvailability(hostname)
+  if (stillAvail.attempted && stillAvail.available) {
+    throw new Error(
+      `Order ${buy.orderId} reported completed but ${hostname} is still listed as available. ` +
+        'Check Vercel Domains / billing before retrying. No purchased domain was recorded.'
+    )
+  }
+
+  // Best-effort ownership record (non-fatal if the inventory endpoint lags).
+  const owned = await getRegistrarDomain(hostname)
+  if (owned.attempted && owned.ok && !owned.owned) {
+    console.warn(
+      `[domains] order ${buy.orderId} completed but registrar domain record for ${hostname} not found yet`
+    )
   }
 
   // Attach to websites project (Vercel NS domains usually verify quickly).
@@ -178,7 +236,7 @@ export async function purchaseDomainForTenant(opts: {
     source: 'purchased' as const,
     is_primary: true,
     ...patch,
-    registrar_order_id: buy.orderId || null,
+    registrar_order_id: buy.orderId,
     purchase_price_cents: wholesaleCents,
     purchase_currency: 'usd',
     purchased_at: purchasedAt.toISOString(),
