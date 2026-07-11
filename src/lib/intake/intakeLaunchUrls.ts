@@ -1,4 +1,4 @@
-import { getTenantPreviewSiteUrl } from '@/lib/admin-preview'
+import { getTenantLaunchSiteUrl } from '@/lib/admin-preview'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import type { ProspectIntakeRow } from '@/lib/intake/getIntakeByToken'
 import { isLaunchBuildPaid } from '@/lib/intake/intakePaymentStage'
@@ -26,10 +26,10 @@ export async function resolveIntakeLaunchUrls(row: ProspectIntakeRow): Promise<{
   const admin = getSupabaseAdmin()
   const { data: domainRows } = await admin
     .from('domains')
-    .select('hostname, source, is_primary')
+    .select('hostname, source, is_primary, vercel_verified, ssl_status')
     .eq('tenant_id', row.provisioned_contractor_id)
 
-  const tenantSiteUrl = getTenantPreviewSiteUrl(Array.isArray(domainRows) ? domainRows : [])
+  const tenantSiteUrl = getTenantLaunchSiteUrl(Array.isArray(domainRows) ? domainRows : [])
 
   return {
     launchPaid,

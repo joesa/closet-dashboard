@@ -1,6 +1,9 @@
 import Link from 'next/link';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
-import { buildTenantPreviewUrlFromDomains } from '@/lib/admin-preview';
+import {
+  buildTenantPreviewUrlFromDomains,
+  getTenantLaunchSiteUrl,
+} from '@/lib/admin-preview';
 import DeleteTenantDialog from '@/components/DeleteTenantDialog';
 
 export const dynamic = 'force-dynamic';
@@ -17,7 +20,7 @@ export default async function AdminSitesPage() {
       site_status,
       created_at,
       validation_status,
-      domains ( hostname, source, is_primary )
+      domains ( hostname, source, is_primary, vercel_verified, ssl_status )
     `)
     .order('created_at', { ascending: false });
 
@@ -48,18 +51,28 @@ export default async function AdminSitesPage() {
                 const domainRows = Array.isArray(tenant.domains)
                   ? tenant.domains
                   : tenant.domains
-                    ? [tenant.domains as { hostname?: string; source?: string; is_primary?: boolean }]
+                    ? [tenant.domains as {
+                        hostname?: string
+                        source?: string
+                        is_primary?: boolean
+                        vercel_verified?: boolean
+                        ssl_status?: string
+                      }]
                     : [];
+                const mappedDomains = domainRows.map((d) => ({
+                  hostname: d.hostname || '',
+                  source: d.source,
+                  is_primary: d.is_primary,
+                  vercel_verified: d.vercel_verified,
+                  ssl_status: d.ssl_status,
+                }));
                 const displayDomain =
                   domainRows.find((d) => d.is_primary)?.hostname ||
                   domainRows[0]?.hostname;
-                const previewUrl = buildTenantPreviewUrlFromDomains(
-                  domainRows.map((d) => ({
-                    hostname: d.hostname || '',
-                    source: d.source,
-                    is_primary: d.is_primary,
-                  }))
-                );
+                const previewUrl = buildTenantPreviewUrlFromDomains(mappedDomains);
+                const launchUrl = getTenantLaunchSiteUrl(mappedDomains);
+                const liveUrl =
+                  launchUrl !== '#' && !launchUrl.includes('.localhost') ? launchUrl : null;
 
                 return (
                   <tr key={tenant.id} className="hover:bg-neutral-800/50 transition-colors group">
@@ -108,6 +121,17 @@ export default async function AdminSitesPage() {
                       >
                         Details
                       </Link>
+
+                      {liveUrl ? (
+                        <a
+                          href={liveUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-xs font-medium text-emerald-400 hover:text-emerald-300 transition-colors uppercase tracking-wider"
+                        >
+                          Live
+                        </a>
+                      ) : null}
 
                       {previewUrl ? (
                         <a

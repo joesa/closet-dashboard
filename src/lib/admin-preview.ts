@@ -33,6 +33,19 @@ export type PreviewDomainRow = {
   hostname: string
   source?: string | null
   is_primary?: boolean | null
+  /** True once Vercel confirms the project domain (DNS A/CNAME in place). */
+  vercel_verified?: boolean | null
+  ssl_status?: string | null
+}
+
+/** Purchased/BYO custom host with DNS verified — safe to open as the live site. */
+export function isDnsReadyCustomDomain(d: PreviewDomainRow): boolean {
+  const host = (d.hostname || '').trim()
+  if (!host || isDevHostname(host)) return false
+  if (d.source === 'platform_subdomain') return false
+  if (d.vercel_verified === true) return true
+  // ssl_status active on a non-platform row is the same signal Domain Manager uses.
+  return d.ssl_status === 'active' && (d.source === 'purchased' || d.source === 'byo')
 }
 
 /**
@@ -72,6 +85,22 @@ export function pickPreviewHostname(domains: PreviewDomainRow[]): string | null 
 }
 
 /**
+ * Hostname for customer-facing "open the live site" / post-launch redirects.
+ * Prefers a purchased/BYO domain once DNS is verified; otherwise falls back to
+ * the preview hostname (platform *.localhost locally).
+ */
+export function pickLaunchHostname(domains: PreviewDomainRow[]): string | null {
+  const rows = (domains || []).filter((d) => d?.hostname?.trim())
+  if (rows.length === 0) return null
+
+  const ready = rows.filter(isDnsReadyCustomDomain)
+  const primaryReady = ready.find((d) => d.is_primary) || ready[0]
+  if (primaryReady) return primaryReady.hostname.trim()
+
+  return pickPreviewHostname(rows)
+}
+
+/**
  * Public URL for a tenant, using the tenant's own custom domain.
  *
  * Tenants bring their own domains (stored in `domains.hostname`). Dev fixture
@@ -92,6 +121,12 @@ export function getTenantPublicUrl(hostname: string): string {
 /** Site base URL for admin preview, preferring a locally reachable hostname. */
 export function getTenantPreviewSiteUrl(domains: PreviewDomainRow[]): string {
   const host = pickPreviewHostname(domains)
+  return host ? getTenantPublicUrl(host) : '#'
+}
+
+/** Live site URL for customers — verified custom domain when DNS is ready. */
+export function getTenantLaunchSiteUrl(domains: PreviewDomainRow[]): string {
+  const host = pickLaunchHostname(domains)
   return host ? getTenantPublicUrl(host) : '#'
 }
 

@@ -1,7 +1,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
-import { buildTenantPreviewUrlFromDomains } from '@/lib/admin-preview';
+import { buildTenantPreviewUrlFromDomains, getTenantLaunchSiteUrl } from '@/lib/admin-preview';
 import { notFound } from 'next/navigation';
 import DeleteTenantDialog from '@/components/DeleteTenantDialog';
 import SiteValidationPanel from '@/components/SiteValidationPanel';
@@ -27,6 +27,7 @@ type DomainShape = {
   is_primary?: boolean;
   source?: string;
   ssl_status?: string;
+  vercel_verified?: boolean;
   purchase_price_cents?: number | null;
   registrar_order_id?: string | null;
   expires_at?: string | null;
@@ -53,6 +54,7 @@ export default async function TenantDetailsPage({ params }: { params: Promise<{ 
         is_primary,
         source,
         ssl_status,
+        vercel_verified,
         purchase_price_cents,
         registrar_order_id,
         expires_at
@@ -94,8 +96,23 @@ export default async function TenantDetailsPage({ params }: { params: Promise<{ 
         hostname: d.hostname,
         source: d.source,
         is_primary: d.is_primary,
+        vercel_verified: d.vercel_verified,
+        ssl_status: d.ssl_status,
       }))
   );
+  const launchUrlRaw = getTenantLaunchSiteUrl(
+    domainRows
+      .filter((d): d is DomainShape & { hostname: string } => Boolean(d.hostname))
+      .map((d) => ({
+        hostname: d.hostname,
+        source: d.source,
+        is_primary: d.is_primary,
+        vercel_verified: d.vercel_verified,
+        ssl_status: d.ssl_status,
+      }))
+  );
+  const liveUrl =
+    launchUrlRaw !== '#' && !launchUrlRaw.includes('.localhost') ? launchUrlRaw : null;
 
   const config = (Array.isArray(tenant.site_configs) && tenant.site_configs.length > 0 
     ? tenant.site_configs[0]
@@ -157,6 +174,19 @@ export default async function TenantDetailsPage({ params }: { params: Promise<{ 
 
         {/* Action Bar */}
         <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-6 flex flex-wrap gap-4 items-center">
+          {liveUrl ? (
+            <a
+              href={liveUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="px-6 py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-medium rounded-lg transition-colors flex items-center gap-2 shadow-lg shadow-emerald-500/20"
+            >
+              Visit live site
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+              </svg>
+            </a>
+          ) : null}
           {previewUrl ? (
             <a
               href={previewUrl}

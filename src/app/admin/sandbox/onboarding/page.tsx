@@ -517,11 +517,15 @@ export default function SandboxOnboarding() {
               `Site provisioned, but domain purchase failed: ${buyJson.error || 'unknown error'}. Purchase from the site detail page.`
             );
           } else if (buyJson.domain?.hostname) {
-            setResultUrl(
-              typeof window !== 'undefined' && buyJson.domain.hostname.endsWith('.localhost')
-                ? `http://${buyJson.domain.hostname}:3000`
-                : `https://${buyJson.domain.hostname}`
-            );
+            const host = buyJson.domain.hostname as string;
+            const verified = Boolean(buyJson.domain.vercel_verified);
+            // Prefer the purchased domain once DNS is verified; otherwise keep
+            // the platform *.localhost URL so the result link still opens.
+            if (verified || !host.endsWith('.localhost')) {
+              setResultUrl(
+                host.endsWith('.localhost') ? `http://${host}:3000` : `https://${host}`
+              );
+            }
           }
         } catch (buyErr) {
           setError(

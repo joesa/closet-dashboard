@@ -3,7 +3,7 @@ import { notFound, redirect } from 'next/navigation'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import {
   buildTenantPreviewUrl,
-  getTenantPreviewSiteUrl,
+  getTenantLaunchSiteUrl,
 } from '@/lib/admin-preview'
 import { getIntakePaymentSummary, isLaunchBuildPaid } from '@/lib/intake/intakePaymentStage'
 import { syncTenantLaunchAccess } from '@/lib/intake/syncTenantLaunchAccess'
@@ -64,6 +64,7 @@ export default async function IntakeDetailPage({
     source: string
     is_primary: boolean
     vercel_verified?: boolean
+    ssl_status?: string | null
     registrar_order_id?: string | null
     purchase_price_cents?: number | null
   }> = []
@@ -77,11 +78,11 @@ export default async function IntakeDetailPage({
     const { data: domainData } = await admin
       .from('domains')
       .select(
-        'hostname, source, is_primary, vercel_verified, registrar_order_id, purchase_price_cents'
+        'hostname, source, is_primary, vercel_verified, ssl_status, registrar_order_id, purchase_price_cents'
       )
       .eq('tenant_id', data.provisioned_contractor_id)
     domainRows = Array.isArray(domainData) ? domainData : []
-    const url = getTenantPreviewSiteUrl(domainRows)
+    const url = getTenantLaunchSiteUrl(domainRows)
     tenantSiteUrl = url !== '#' ? url : null
 
     const { data: tenantRow } = await admin
