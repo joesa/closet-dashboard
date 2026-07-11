@@ -86,16 +86,22 @@ export function pickPreviewHostname(domains: PreviewDomainRow[]): string | null 
 
 /**
  * Hostname for customer-facing "open the live site" / post-launch redirects.
- * Prefers a purchased/BYO domain once DNS is verified; otherwise falls back to
- * the preview hostname (platform *.localhost locally).
+ * Prefers a purchased/BYO domain once DNS is verified AND the client has paid
+ * the full launch amount; otherwise falls back to the preview hostname
+ * (platform *.localhost locally / paywall host).
  */
-export function pickLaunchHostname(domains: PreviewDomainRow[]): string | null {
+export function pickLaunchHostname(
+  domains: PreviewDomainRow[],
+  opts?: { launchPaid?: boolean }
+): string | null {
   const rows = (domains || []).filter((d) => d?.hostname?.trim())
   if (rows.length === 0) return null
 
-  const ready = rows.filter(isDnsReadyCustomDomain)
-  const primaryReady = ready.find((d) => d.is_primary) || ready[0]
-  if (primaryReady) return primaryReady.hostname.trim()
+  if (opts?.launchPaid) {
+    const ready = rows.filter(isDnsReadyCustomDomain)
+    const primaryReady = ready.find((d) => d.is_primary) || ready[0]
+    if (primaryReady) return primaryReady.hostname.trim()
+  }
 
   return pickPreviewHostname(rows)
 }
@@ -124,9 +130,12 @@ export function getTenantPreviewSiteUrl(domains: PreviewDomainRow[]): string {
   return host ? getTenantPublicUrl(host) : '#'
 }
 
-/** Live site URL for customers — verified custom domain when DNS is ready. */
-export function getTenantLaunchSiteUrl(domains: PreviewDomainRow[]): string {
-  const host = pickLaunchHostname(domains)
+/** Live site URL for customers — verified custom domain only after full launch payment. */
+export function getTenantLaunchSiteUrl(
+  domains: PreviewDomainRow[],
+  opts?: { launchPaid?: boolean }
+): string {
+  const host = pickLaunchHostname(domains, opts)
   return host ? getTenantPublicUrl(host) : '#'
 }
 

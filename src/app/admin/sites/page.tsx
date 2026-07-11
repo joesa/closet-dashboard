@@ -70,7 +70,9 @@ export default async function AdminSitesPage() {
                   domainRows.find((d) => d.is_primary)?.hostname ||
                   domainRows[0]?.hostname;
                 const previewUrl = buildTenantPreviewUrlFromDomains(mappedDomains);
-                const launchUrl = getTenantLaunchSiteUrl(mappedDomains);
+                const launchUrl = getTenantLaunchSiteUrl(mappedDomains, {
+                  launchPaid: tenant.site_status === 'active',
+                });
                 const liveUrl =
                   launchUrl !== '#' && !launchUrl.includes('.localhost') ? launchUrl : null;
 

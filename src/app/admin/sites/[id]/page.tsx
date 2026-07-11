@@ -109,7 +109,8 @@ export default async function TenantDetailsPage({ params }: { params: Promise<{ 
         is_primary: d.is_primary,
         vercel_verified: d.vercel_verified,
         ssl_status: d.ssl_status,
-      }))
+      })),
+    { launchPaid: tenant.site_status === 'active' }
   );
   const liveUrl =
     launchUrlRaw !== '#' && !launchUrlRaw.includes('.localhost') ? launchUrlRaw : null;

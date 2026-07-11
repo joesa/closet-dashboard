@@ -82,7 +82,7 @@ export default async function IntakeDetailPage({
       )
       .eq('tenant_id', data.provisioned_contractor_id)
     domainRows = Array.isArray(domainData) ? domainData : []
-    const url = getTenantLaunchSiteUrl(domainRows)
+    const url = getTenantLaunchSiteUrl(domainRows, { launchPaid })
     tenantSiteUrl = url !== '#' ? url : null
 
     const { data: tenantRow } = await admin

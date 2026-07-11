@@ -29,7 +29,9 @@ export async function resolveIntakeLaunchUrls(row: ProspectIntakeRow): Promise<{
     .select('hostname, source, is_primary, vercel_verified, ssl_status')
     .eq('tenant_id', row.provisioned_contractor_id)
 
-  const tenantSiteUrl = getTenantLaunchSiteUrl(Array.isArray(domainRows) ? domainRows : [])
+  const tenantSiteUrl = getTenantLaunchSiteUrl(Array.isArray(domainRows) ? domainRows : [], {
+    launchPaid,
+  })
 
   return {
     launchPaid,
