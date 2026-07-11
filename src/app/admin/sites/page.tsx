@@ -32,7 +32,7 @@ export default async function AdminSitesPage() {
   return (
     <div className="min-h-screen bg-neutral-950 text-white p-8">
       <div className="max-w-6xl mx-auto">
-        <h1 className="text-3xl font-bold mb-2">Platform Control Center</h1>
+        <h1 className="text-3xl font-bold mb-2">Sites</h1>
         <p className="text-neutral-400 mb-8">Manage tenant websites, approve pending deployments, and review active sites.</p>
 
         <div className="bg-neutral-900 border border-neutral-800 rounded-xl overflow-hidden shadow-2xl">

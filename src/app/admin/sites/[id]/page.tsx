@@ -130,7 +130,7 @@ export default async function TenantDetailsPage({ params }: { params: Promise<{ 
         {/* Breadcrumb & Header */}
         <div className="space-y-4">
           <Link href="/admin/sites" className="text-neutral-400 hover:text-white transition-colors text-sm flex items-center gap-2">
-            <span>←</span> Back to Control Center
+            <span>←</span> Back to Sites
           </Link>
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
