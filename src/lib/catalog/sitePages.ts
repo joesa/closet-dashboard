@@ -226,10 +226,26 @@ export function splitParagraphs(text: string): string[] {
 export function contentToBlocks(
   rawContent: unknown,
   title: string,
-  images: string[] = []
+  images: string[] = [],
+  pageSlug?: string
 ): PageContentBlock[] {
   const content = parsePageCopy(rawContent)
   const paras = splitParagraphs(content)
+  const slugKey = (pageSlug || title || '')
+    .toLowerCase()
+    .replace(/^\/+/, '')
+    .split(/[-_/]/)[0]
+  const family =
+    ['services', 'service', 'offerings', 'menu'].includes(slugKey)
+      ? 'services'
+      : ['gallery', 'portfolio', 'projects', 'work'].includes(slugKey)
+        ? 'gallery'
+        : ['about', 'story', 'team'].includes(slugKey)
+          ? 'about'
+          : ['contact', 'book', 'booking'].includes(slugKey)
+            ? 'contact'
+            : 'default'
+
   if (paras.length === 0) {
     return [
       {
@@ -241,6 +257,51 @@ export function contentToBlocks(
   }
 
   const imgs = images.filter((u) => typeof u === 'string' && u.trim().length > 0)
+
+  // Gallery pages: intro text + lightbox-first gallery when images exist.
+  if (family === 'gallery') {
+    const blocks: PageContentBlock[] = [
+      { type: 'text', heading: title, body: paras[0] },
+    ]
+    if (imgs.length > 0) {
+      blocks.push({
+        type: 'gallery',
+        heading: 'Featured Work',
+        body: paras.slice(1).join('\n\n') || '',
+        images: imgs,
+      })
+    } else {
+      paras.slice(1).forEach((body) => {
+        blocks.push({ type: 'text', heading: '', body })
+      })
+    }
+    return blocks
+  }
+
+  // Services: intro + grid of remaining paragraphs as service cards when possible.
+  if (family === 'services' && paras.length >= 3) {
+    const items = paras.slice(1).map((body, i) => {
+      const firstLine = body.split('\n')[0]?.trim() || `Service ${i + 1}`
+      const headingGuess =
+        firstLine.length < 80 ? firstLine : `Offering ${i + 1}`
+      return {
+        title: headingGuess,
+        description: body,
+        ...(imgs.length > 0 ? { image: imgs[i % imgs.length] } : {}),
+      }
+    })
+    return [
+      { type: 'text', heading: title, body: paras[0] },
+      {
+        type: 'grid',
+        heading: 'What We Offer',
+        body: '',
+        items,
+      },
+    ]
+  }
+
+  // About / contact / default: existing alternating image+text spine.
   const blocks: PageContentBlock[] = [
     { type: 'text', heading: title, body: paras[0] },
   ]
@@ -248,18 +309,12 @@ export function contentToBlocks(
   const rest = paras.slice(1)
   if (rest.length === 0) return blocks
 
-  // Group the remaining paragraphs so each image section holds ~1-2 paragraphs
-  // (keeps text/image sections balanced rather than one image per sentence).
   const perGroup = rest.length > 4 ? 2 : 1
   const groups: string[] = []
   for (let i = 0; i < rest.length; i += perGroup) {
     groups.push(rest.slice(i, i + perGroup).join('\n\n'))
   }
 
-  // Always emit image_left/image_right section types (alternating) so the
-  // provisioning pipeline can fill their images from the product/hero pool
-  // even when no images were passed here. The renderer degrades gracefully to
-  // full-width text when a section ends up without an image.
   groups.forEach((body, i) => {
     blocks.push({
       type: i % 2 === 0 ? 'image_left' : 'image_right',
@@ -322,7 +377,7 @@ export function buildBasicPagesConfig(
     const title = opt?.label ?? slug.split('-').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
     const customText = pageContents?.[slug]
     const content_blocks = customText
-      ? contentToBlocks(customText, title, images)
+      ? contentToBlocks(customText, title, images, slug)
       : [
           {
             type: 'text',
@@ -411,7 +466,7 @@ export function normalizeAiPagesConfig(
         slug: `/${slug}`,
         title,
         hero: { headline: heroHeadline, subheadline: opt?.description ?? '' },
-        content_blocks: contentToBlocks(pageContents[slug], title),
+        content_blocks: contentToBlocks(pageContents[slug], title, [], slug),
       }
     }
     // Gap filler: model omitted this page — ship a basic scaffold so it exists.

@@ -34,6 +34,11 @@ import {
   layoutsForTheme,
 } from '@/lib/catalog/serviceCatalog'
 import { pickDiverseTheme } from '@/lib/provision/pickDiverseTheme'
+import {
+  buildProvisionSignature,
+  biasLayoutForEngagement,
+} from '@/lib/provision/siteSignature'
+import { generateImageVariants } from '@/lib/ai/generateImagesBatch'
 import { getEngineProfile } from '@/lib/catalog/engineProfiles'
 import type { IndustrySlug } from '@/lib/catalog/types'
 import {
@@ -347,6 +352,7 @@ export async function provisionTenant(
   const isOrderBusiness = resolvedEngagementModel === 'order';
   const isBookingBusiness = resolvedEngagementModel === 'booking';
   const isTicketBusiness = resolvedEngagementModel === 'ticket';
+  layoutStyle = biasLayoutForEngagement(layoutStyle || 'standard', resolvedEngagementModel)
 
   // We explicitly log to let us trace tenant creation in edge logs.
   // Some businesses have no physical "before" state at all (order/direct-
@@ -529,9 +535,9 @@ export async function provisionTenant(
       },
     }
 
-    const GENERIC_HERO = 'https://images.unsplash.com/photo-1595428774223-ef52624120d2'
+    const GENERIC_HERO = 'https://images.unsplash.com/photo-1558211583-d26f610c1eb1'
     const THEME_HERO_IMAGES: Record<string, string> = {
-      'luxury-minimal': GENERIC_HERO,
+      'luxury-minimal': 'https://images.unsplash.com/photo-1600585154340-be6161a56a0c',
       brutalist: 'https://images.unsplash.com/photo-1605810230434-7631ac76ec81',
       'classic-warm': 'https://images.unsplash.com/photo-1556910103-1c02745a872f',
       'modern-office': 'https://images.unsplash.com/photo-1524758631624-e2822e304c36',
@@ -539,11 +545,11 @@ export async function provisionTenant(
       'rustic-pantry': 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a',
       'sleek-entertainment': 'https://images.unsplash.com/photo-1593640408182-31c70c8268f5',
       'elegant-dressing': 'https://images.unsplash.com/photo-1595428774223-ef52624120d2',
-      'functional-utility': 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a',
-      'creative-craft': 'https://images.unsplash.com/photo-1556910103-1c02745a872f',
-      'sophisticated-wine': 'https://images.unsplash.com/photo-1556910103-1c02745a872f',
-      'cozy-library': 'https://images.unsplash.com/photo-1524758631624-e2822e304c36',
-      'minimalist-zen': GENERIC_HERO,
+      'functional-utility': 'https://images.unsplash.com/photo-1558618666-fcd25c85f82e',
+      'creative-craft': 'https://images.unsplash.com/photo-1452860607046-6d350d744276',
+      'sophisticated-wine': 'https://images.unsplash.com/photo-1510812431401-41d2bd2722f3',
+      'cozy-library': 'https://images.unsplash.com/photo-1507842217343-583bb7270b66',
+      'minimalist-zen': 'https://images.unsplash.com/photo-1545389336-cf090694435e',
     }
     const PRODUCT_IMAGE_POOL = [
       'https://images.unsplash.com/photo-1595428774223-ef52624120d2',
@@ -670,17 +676,58 @@ export async function provisionTenant(
       }
     }
 
-    const defaultHeroBackground =
+    let defaultHeroBackground =
       heroSelectedUrl ||
       (heroImage && heroImage !== GENERIC_HERO
         ? heroImage
         : THEME_HERO_IMAGES[theme!] || GENERIC_HERO)
+
+    // Standard tier: one unique AI hero when keys exist and no prospect/operator hero.
+    const operatorHeroImage =
+      heroImage && heroImage !== GENERIC_HERO ? heroImage : null
+    const canGenerateHero =
+      !heroSelectedUrl &&
+      !operatorHeroImage &&
+      Boolean(process.env.OPENAI_API_KEY || process.env.GEMINI_API_KEY)
+    if (canGenerateHero) {
+      const heroPrompt = [
+        `Photorealistic website hero for ${businessName}.`,
+        selectedServices[0]
+          ? `Feature ${selectedServices[0]} craftsmanship in a premium interior setting.`
+          : 'Premium interior craftsmanship in a polished residential setting.',
+        'Wide cinematic composition, natural light, no text, no logos, no people faces.',
+      ].join(' ')
+      try {
+        const generated = await generateImageVariants(
+          heroPrompt,
+          `sites/${assetSlug}`,
+          'hero-auto',
+          1
+        )
+        if (generated[0]) {
+          defaultHeroBackground = generated[0]
+          console.log('[provisionTenant] Generated unique Standard-tier hero')
+        }
+      } catch (err) {
+        console.warn('[provisionTenant] Standard hero generation failed, keeping theme fallback:', err)
+      }
+    }
+
     const resolveDefaultProductImage = makeImageResolver()
 
     // Stable per-business seed for the fallback About/Process copy so two sites
     // in the same trade don't get byte-identical sections when the AI didn't
     // generate them.
     const copySeed = (businessName || subdomain || tenantId || '').trim()
+    const signature = buildProvisionSignature({
+      businessName,
+      seed: designVariant || copySeed,
+    })
+    const defaultProcess = buildDefaultProcess(
+      resolvedEngagementModel,
+      selectedServices[0] || '',
+      copySeed
+    )
 
     let siteConfigData: Record<string, unknown> = {
       tenant_id: tenantId,
@@ -708,11 +755,12 @@ export async function provisionTenant(
             copySeed
           ).description,
       },
-      process_config: buildDefaultProcess(
-        resolvedEngagementModel,
-        selectedServices[0] || '',
-        copySeed
-      ),
+      process_config: {
+        ...defaultProcess,
+        title: signature.processName,
+        signatureMotif: signature.motif,
+        signatureEyebrow: signature.eyebrow,
+      },
       quiz_config: aiSiteConfig?.quiz || null,
       products_config: selectedServices.map((serviceName: string) => {
         const industryDef = getIndustry(beforeAfterContext.industry)
@@ -878,7 +926,12 @@ export async function provisionTenant(
           (typeof aboutDescription === 'string' && aboutDescription.trim())
             ? { description: aboutDescription.trim() }
             : aiSiteConfig.about || siteConfigData.about_config,
-        process_config: aiSiteConfig.process || siteConfigData.process_config,
+        process_config: {
+          ...((aiSiteConfig.process as object) || (siteConfigData.process_config as object) || {}),
+          title: signature.processName,
+          signatureMotif: signature.motif,
+          signatureEyebrow: signature.eyebrow,
+        },
         quiz_config: aiSiteConfig.quiz || siteConfigData.quiz_config,
         engagement_model: (aiSiteConfig.engagementModel as string) || siteConfigData.engagement_model,
         products_config: productsWithImages,

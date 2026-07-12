@@ -11,6 +11,10 @@ import {
   SERVICE_LABELS,
 } from '@/lib/catalog/contractorServices'
 import { coerceLayoutSlug, coerceThemeSlug, THEME_SLUGS } from '@/lib/catalog/sitePresentationCatalog'
+import {
+  buildProvisionSignature,
+  biasLayoutForEngagement,
+} from '@/lib/provision/siteSignature'
 
 export { VIBE_TO_THEME } from '@/lib/catalog/sitePresentationCatalog'
 
@@ -25,21 +29,21 @@ const THEME_HERO: Record<string, string> = {
   'elegant-dressing': 'https://images.unsplash.com/photo-1595428774223-ef52624120d2',
   'functional-utility': 'https://images.unsplash.com/photo-1558618666-fcd25c85f82e',
   'creative-craft': 'https://images.unsplash.com/photo-1452860607046-6d350d744276',
-  'sophisticated-wine': 'https://images.unsplash.com/photo-1556910103-1c02745a872f',
+  'sophisticated-wine': 'https://images.unsplash.com/photo-1510812431401-41d2bd2722f3',
   'cozy-library': 'https://images.unsplash.com/photo-1507842217343-583bb7270b66',
   'minimalist-zen': 'https://images.unsplash.com/photo-1545389336-cf090694435e',
-  'garage-industrial': 'https://images.unsplash.com/photo-1605810230434-7631ac76ec81',
-  'pantry-fresh': 'https://images.unsplash.com/photo-1556910103-1c02745a872f',
+  'garage-industrial': 'https://images.unsplash.com/photo-1486262715619-67b93e8d82c5',
+  'pantry-fresh': 'https://images.unsplash.com/photo-1490818387583-1baba5e638af',
   'laundry-clean': 'https://images.unsplash.com/photo-1585429371326-7f264a7de3d0',
-  'mudroom-family': 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a',
+  'mudroom-family': 'https://images.unsplash.com/photo-1600585154526-990dced4db0d',
   'commercial-pro': 'https://images.unsplash.com/photo-1497366216548-37526070297c',
-  'coastal-climate': 'https://images.unsplash.com/photo-1605810230434-7631ac76ec81',
-  'historic-classic': 'https://images.unsplash.com/photo-1556910103-1c02745a872f',
+  'coastal-climate': 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e',
+  'historic-classic': 'https://images.unsplash.com/photo-1600607687939-ce8a6c25118c',
   'luxury-gallery': 'https://images.unsplash.com/photo-1577083552431-6e5fd01988ec',
   'kids-playful': 'https://images.unsplash.com/photo-1505693314120-0d443867891c',
   'media-theater': 'https://images.unsplash.com/photo-1593640408182-31c70c8268f5',
   'office-executive': 'https://images.unsplash.com/photo-1524758631624-e2822e304c36',
-  'wine-cellar': 'https://images.unsplash.com/photo-1556910103-1c02745a872f',
+  'wine-cellar': 'https://images.unsplash.com/photo-1506377247377-2a5b3b417ebb',
   // New trade-vertical themes (wave 1) — previously MISSING from this map
   // entirely, so every one of these silently fell through to GENERIC_HERO
   // (the same single closet stock photo) regardless of the assigned theme.
@@ -60,7 +64,7 @@ const THEME_HERO: Record<string, string> = {
   'pastoral-pet': 'https://images.unsplash.com/photo-1516734212186-a967f81ad0d7',
   'hearth-warm': 'https://images.unsplash.com/photo-1513694203232-719a280e022f',
   'seasonal-outdoor': 'https://images.unsplash.com/photo-1416879595882-3373a0480b5b',
-  'garage-smart': 'https://images.unsplash.com/photo-1605810230434-7631ac76ec81',
+  'garage-smart': 'https://images.unsplash.com/photo-1558618666-fcd25c85f82e',
   'window-light': 'https://images.unsplash.com/photo-1581578731548-c64695cc6952',
   // Third wave
   'bold-remodel': 'https://images.unsplash.com/photo-1556909114-f6e7ad7d3136',
@@ -124,7 +128,10 @@ export async function buildTemplateProvisionPayload(intake: IntakeRowForProvisio
     | undefined
 
   const theme = userPres?.theme ? coerceThemeSlug(userPres.theme) : presentation.theme
-  const layoutStyle = userPres?.layoutStyle ? coerceLayoutSlug(userPres.layoutStyle) : presentation.layoutStyle
+  const layoutStyle = biasLayoutForEngagement(
+    userPres?.layoutStyle ? coerceLayoutSlug(userPres.layoutStyle) : presentation.layoutStyle,
+    presentation.engagementModel
+  )
   // When the user's stored review-step choice still carries synthesized
   // tokens (they kept the AI-suggested last-resort look), honour those;
   // otherwise fall back to whatever the fresh resolution just synthesized.
@@ -179,15 +186,23 @@ export async function buildTemplateProvisionPayload(intake: IntakeRowForProvisio
     },
     hero: { headline: `Welcome to ${businessName}`, backgroundImage: heroImage },
     about: { description: about },
-    process: {
-      title: 'How We Work',
-      subtitle: 'Simple, Fast, and Done Right',
-      steps: [
-        { number: '01', title: 'Get in Touch', description: `Contact ${businessName} for a free consultation and estimate.` },
-        { number: '02', title: 'We Diagnose & Plan', description: 'We assess the job and walk you through exactly what needs to be done.' },
-        { number: '03', title: 'We Get It Done', description: 'Our team completes the work to the highest standard — on time and on budget.' },
-      ],
-    },
+    process: (() => {
+      const signature = buildProvisionSignature({
+        businessName,
+        seed: `${businessName}:${theme}:${layoutStyle}`,
+      })
+      return {
+        title: signature.processName,
+        subtitle: 'Simple, Fast, and Done Right',
+        signatureMotif: signature.motif,
+        signatureEyebrow: signature.eyebrow,
+        steps: [
+          { number: '01', title: 'Get in Touch', description: `Contact ${businessName} for a free consultation and estimate.` },
+          { number: '02', title: 'We Diagnose & Plan', description: 'We assess the job and walk you through exactly what needs to be done.' },
+          { number: '03', title: 'We Get It Done', description: 'Our team completes the work to the highest standard — on time and on budget.' },
+        ],
+      }
+    })(),
     quiz: quizConfig,
     products,
   }
