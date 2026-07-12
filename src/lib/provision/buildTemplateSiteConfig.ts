@@ -15,6 +15,11 @@ import {
   buildProvisionSignature,
   biasLayoutForEngagement,
 } from '@/lib/provision/siteSignature'
+import {
+  buildDefaultProcess,
+  buildFallbackHeadline,
+  defaultProductSpecs,
+} from '@/lib/provision/defaultCopy'
 
 export { VIBE_TO_THEME } from '@/lib/catalog/sitePresentationCatalog'
 
@@ -70,7 +75,7 @@ const THEME_HERO: Record<string, string> = {
   'bold-remodel': 'https://images.unsplash.com/photo-1556909114-f6e7ad7d3136',
   'winter-ready': 'https://images.unsplash.com/photo-1551529834-525807d6b4f3',
   'event-festive': 'https://images.unsplash.com/photo-1492684223066-81342ee5ff30',
-  'wellness-calm': 'https://images.unsplash.com/photo-1595428774223-ef52624120d2',
+  'wellness-calm': 'https://images.unsplash.com/photo-1540555700478-4be289fbecef',
   'fleet-logistics': 'https://images.unsplash.com/photo-1545558014-8692077e9b5c',
   'media-creative': 'https://images.unsplash.com/photo-1516035069371-29a1b244cc32',
   'gourmet-warm': 'https://images.unsplash.com/photo-1555507036-ab1f4038808a',
@@ -139,9 +144,11 @@ export async function buildTemplateProvisionPayload(intake: IntakeRowForProvisio
   // themeTokens, so it renders with that theme's authentic hand-tuned style.
   const themeTokens = userPres?.source === 'user' ? userPres.themeTokens : presentation.themeTokens
   const heroImage = THEME_HERO[theme] || GENERIC_HERO
+  const primaryService = services[0] || ''
+  const place = intake.service_area || intake.address_locality || ''
   const about =
     intake.notes?.trim() ||
-    `${businessName} is a trusted local service provider — get in touch for a free estimate.`
+    `${businessName} provides ${primaryService.toLowerCase() || 'local service'}${place ? ` across ${place}` : ''}. Get clear next steps and straightforward pricing.`
 
   const products = services.map((serviceName) => {
     const catalogItem = getServiceCatalogEntry(serviceName)
@@ -150,9 +157,9 @@ export async function buildTemplateProvisionPayload(intake: IntakeRowForProvisio
       image: catalogItem.image,
       description: catalogItem.description,
       details: {
-        subtitle: 'Professional Service',
-        longDescription: `Expert ${serviceName} delivered by ${businessName} — licensed, insured, and guaranteed.`,
-        specifications: ['Licensed & insured', 'Free estimate', 'Satisfaction guaranteed'],
+        subtitle: 'What we offer',
+        longDescription: `${serviceName} from ${businessName}${place ? ` serving ${place}` : ''}.`,
+        specifications: defaultProductSpecs(presentation.engagementModel, serviceName),
       },
     }
   })
@@ -161,11 +168,11 @@ export async function buildTemplateProvisionPayload(intake: IntakeRowForProvisio
     products.push({
       title: intake.other_services.trim(),
       image: GENERIC_HERO,
-      description: `Professional ${intake.other_services.trim()} service tailored to your needs.`,
+      description: `${intake.other_services.trim()} from ${businessName}.`,
       details: {
-        subtitle: 'Custom Service',
+        subtitle: 'What we offer',
         longDescription: intake.other_services.trim(),
-        specifications: ['Consultation included', 'Licensed & insured', 'Free estimate'],
+        specifications: defaultProductSpecs(presentation.engagementModel, intake.other_services.trim()),
       },
     })
   }
@@ -184,23 +191,27 @@ export async function buildTemplateProvisionPayload(intake: IntakeRowForProvisio
       source: presentation.source,
       themeTokens: themeTokens || undefined,
     },
-    hero: { headline: `Welcome to ${businessName}`, backgroundImage: heroImage },
+    hero: {
+      headline: buildFallbackHeadline({
+        businessName,
+        primaryService,
+        serviceArea: place,
+        locality: intake.address_locality || undefined,
+      }),
+      backgroundImage: heroImage,
+    },
     about: { description: about },
     process: (() => {
       const signature = buildProvisionSignature({
         businessName,
         seed: `${businessName}:${theme}:${layoutStyle}`,
       })
+      const process = buildDefaultProcess(presentation.engagementModel, primaryService, `${businessName}:${theme}`)
       return {
+        ...process,
         title: signature.processName,
-        subtitle: 'Simple, Fast, and Done Right',
         signatureMotif: signature.motif,
         signatureEyebrow: signature.eyebrow,
-        steps: [
-          { number: '01', title: 'Get in Touch', description: `Contact ${businessName} for a free consultation and estimate.` },
-          { number: '02', title: 'We Diagnose & Plan', description: 'We assess the job and walk you through exactly what needs to be done.' },
-          { number: '03', title: 'We Get It Done', description: 'Our team completes the work to the highest standard — on time and on budget.' },
-        ],
       }
     })(),
     quiz: quizConfig,
@@ -216,7 +227,12 @@ export async function buildTemplateProvisionPayload(intake: IntakeRowForProvisio
     engagementModel: presentation.engagementModel,
     menuItems,
     ownerEmail: intake.contact_email || intake.notification_email || '',
-    heroHeadline: `Welcome to ${businessName}`,
+    heroHeadline: buildFallbackHeadline({
+      businessName,
+      primaryService,
+      serviceArea: place,
+      locality: intake.address_locality || undefined,
+    }),
     aboutDescription: about,
     heroImage,
     // beforeImage intentionally omitted — provisionTenant.ts generates a

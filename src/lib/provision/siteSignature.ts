@@ -16,14 +16,30 @@ const MOTIFS = [
 ] as const
 
 const EYEBROWS = [
-  'Our Philosophy',
-  'Who We Are',
-  'Our Approach',
-  'The Difference',
-  'Our Standard',
-  'Our Story',
-  'The Craft',
-  'Why Choose Us',
+  'How we work',
+  'On every job',
+  'What clients notice',
+  'In practice',
+  'From the shop',
+  'Locally',
+  'Day to day',
+  'Before we start',
+  'After the call',
+  'Out in the field',
+  'What we stand for',
+  'How we show up',
+  'Real talk',
+  'The short version',
+  'Behind the work',
+  'For homeowners',
+  'For businesses nearby',
+  'What matters here',
+  'Our habit',
+  'Proven nearby',
+  'Straight answers',
+  'Built around you',
+  'Steady hands',
+  'Clear next steps',
 ]
 
 const METHOD_WORDS = ['Method', 'Process', 'Standard', 'Approach', 'System', 'Craft']

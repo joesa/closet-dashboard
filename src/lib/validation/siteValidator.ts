@@ -114,7 +114,7 @@ export async function validateTenantSite(tenantId: string): Promise<ValidationRe
       `
       id, business_name, owner_email, widget_id,
       domains ( hostname, source, is_primary ),
-      site_configs ( theme, layout_style, design_variant, nav_links, hero_config, before_after_config, products_config, logo_url, brand_name, process_config )
+      site_configs ( theme, layout_style, design_variant, nav_links, hero_config, before_after_config, products_config, logo_url, brand_name, process_config, default_room )
     `
     )
     .eq('id', tenantId)
@@ -155,9 +155,10 @@ export async function validateTenantSite(tenantId: string): Promise<ValidationRe
         nav_links?: NavLink[] | null
         hero_config?: { headline?: string; backgroundImage?: string } | null
         before_after_config?: { beforeImage?: string; afterImage?: string } | null
-        products_config?: { image?: string; title?: string }[] | null
+        products_config?: { image?: string; title?: string; details?: { specifications?: string[] } }[] | null
         logo_url?: string | null
         brand_name?: string | null
+        default_room?: string | null
         process_config?: {
           title?: string
           subtitle?: string
@@ -380,6 +381,57 @@ export async function validateTenantSite(tenantId: string): Promise<ValidationRe
       message: 'Hero background is still the generic fallback stock photo, not a bespoke/AI-generated image.',
       fixable: true,
     })
+  }
+
+  if (heroHeadline && /^Welcome to\b/i.test(heroHeadline)) {
+    issues.push({
+      code: 'welcome_to_headline',
+      severity: 'warning',
+      message: 'Hero headline starts with "Welcome to" — sounds template-generated. Prefer service + locality.',
+      fixable: false,
+      meta: { headline: heroHeadline },
+    })
+  }
+
+  if (config.default_room === 'Custom Space') {
+    issues.push({
+      code: 'closet_default_room',
+      severity: 'warning',
+      message: 'default_room is still "Custom Space" (closet leftover). Prefer engagement-aware project/order labels.',
+      fixable: false,
+    })
+  }
+
+  const heroImg = config.hero_config?.backgroundImage || ''
+  if (/unsplash\.com/i.test(heroImg)) {
+    issues.push({
+      code: 'unsplash_hero',
+      severity: 'warning',
+      message: 'Hero still uses an Unsplash URL — prefer a generated or uploaded asset.',
+      fixable: true,
+    })
+  }
+
+  const SPEC_TRIPLETS = [
+    ['Premium Materials', 'Precision Fit', 'Lifetime Warranty'],
+    ['Premium Materials', 'Professional Execution', 'Quality Guaranteed'],
+    ['Licensed & insured', 'Free estimate', 'Satisfaction guaranteed'],
+  ]
+  const products = Array.isArray(config.products_config) ? config.products_config : []
+  for (const p of products) {
+    const specs = (p as { details?: { specifications?: string[] } })?.details?.specifications
+    if (!Array.isArray(specs)) continue
+    for (const trip of SPEC_TRIPLETS) {
+      if (trip.every((t) => specs.includes(t))) {
+        issues.push({
+          code: 'generic_product_specs',
+          severity: 'warning',
+          message: `Product specs still use the generic trilogy (${trip.join(' / ')}).`,
+          fixable: false,
+        })
+        break
+      }
+    }
   }
 
   const hasError = issues.some((i) => i.severity === 'error')

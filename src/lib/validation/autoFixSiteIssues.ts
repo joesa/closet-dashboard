@@ -5,6 +5,7 @@ import { THEME_LAYOUT_AFFINITY, type ThemeSlug, type LayoutSlug } from '@/lib/ca
 import { resolveDesignSeed } from '@/lib/provision/resolveDesignSeed'
 import { themeHeroUrl } from '@/lib/provision/buildTemplateSiteConfig'
 import { revalidateTenantSiteCache } from '@/lib/tenants/revalidateTenantSite'
+import { buildDefaultProcess } from '@/lib/provision/defaultCopy'
 
 export type AutoFixResult = {
   report: ValidationReport
@@ -231,20 +232,14 @@ async function fixProcessStepsWithAi(
   const services = Array.isArray(intake?.services) ? intake.services.join(', ') : ''
 
   if (!process.env.GEMINI_API_KEY) {
-    const steps = currentProcess?.steps || []
-    const padded = [...steps]
-    while (padded.length < 3) {
-      padded.unshift({ number: '01', title: 'Consultation', description: 'Schedule a consultation.' })
-    }
-    const fixed = padded.slice(0, 3).map((s, i) => ({
-      ...s,
-      number: `0${i + 1}`,
-      title: s.title || (i === 0 ? 'Consultation' : i === 1 ? 'Design' : 'Install'),
-      description: s.description || (i === 0 ? 'We meet with you.' : i === 1 ? 'We design it.' : 'We build it.'),
-    }))
+    const primary = (services || '').split(',')[0]?.trim() || 'the work'
+    const fallback = buildDefaultProcess('quote', primary, brandName || tenantId)
     return {
+      ...fallback,
       ...currentProcess,
-      steps: fixed,
+      title: currentProcess?.title || fallback.title,
+      subtitle: currentProcess?.subtitle || fallback.subtitle,
+      steps: fallback.steps,
     }
   }
 
@@ -284,18 +279,22 @@ Only output JSON.`
   }
 
   const steps = currentProcess?.steps || []
-  const padded = [...steps]
-  while (padded.length < 3) {
-    padded.unshift({ number: '01', title: 'Consultation', description: 'Schedule a consultation.' })
+  const primary = (services || '').split(',')[0]?.trim() || 'the work'
+  const fallback = buildDefaultProcess('quote', primary, brandName || tenantId)
+  if (steps.length >= 3) {
+    return {
+      title: currentProcess?.title || fallback.title,
+      subtitle: currentProcess?.subtitle || fallback.subtitle,
+      steps: steps.slice(0, 3).map((s: { number?: string; title?: string; description?: string }, i: number) => ({
+        number: `0${i + 1}`,
+        title: s.title || fallback.steps[i].title,
+        description: s.description || fallback.steps[i].description,
+      })),
+    }
   }
   return {
-    title: currentProcess?.title || 'Our Process',
-    subtitle: currentProcess?.subtitle || 'How we work',
-    steps: padded.slice(0, 3).map((s, i) => ({
-      ...s,
-      number: `0${i + 1}`,
-      title: s.title || (i === 0 ? 'Consultation' : i === 1 ? 'Design' : 'Install'),
-      description: s.description || (i === 0 ? 'We meet with you.' : i === 1 ? 'We design it.' : 'We build it.'),
-    }))
+    title: currentProcess?.title || fallback.title,
+    subtitle: currentProcess?.subtitle || fallback.subtitle,
+    steps: fallback.steps,
   }
 }

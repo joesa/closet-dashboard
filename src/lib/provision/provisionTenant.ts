@@ -38,6 +38,13 @@ import {
   buildProvisionSignature,
   biasLayoutForEngagement,
 } from '@/lib/provision/siteSignature'
+import {
+  buildDefaultAbout,
+  buildDefaultProcess,
+  buildFallbackHeadline,
+  defaultRoomForEngagement,
+  defaultProductSpecs,
+} from '@/lib/provision/defaultCopy'
 import { generateImageVariants } from '@/lib/ai/generateImagesBatch'
 import { getEngineProfile } from '@/lib/catalog/engineProfiles'
 import type { IndustrySlug } from '@/lib/catalog/types'
@@ -45,135 +52,8 @@ import {
   DEFAULT_DOMAIN_CONFIG,
   ROOM_TYPES,
 } from '@/lib/rooms'
-import { hashSeed } from '@/lib/catalog/designFingerprint'
 
 const DEFAULT_DISABLED_ROOMS = [...ROOM_TYPES]
-
-/**
- * Trade-neutral, per-business "About" copy used ONLY when the AI didn't
- * generate an about section (e.g. an intake that shipped images but no full AI
- * site). Several seeded variants keep two businesses in the same trade from
- * getting byte-identical copy, and none of them are closet/storage-specific.
- */
-function buildDefaultAbout(
-  businessName: string,
-  primaryService: string,
-  serviceArea: string | undefined,
-  seed: string
-): { description: string } {
-  const svc = (primaryService || 'quality work').toLowerCase()
-  const area = serviceArea?.trim() || 'the areas we serve'
-  const variants = [
-    `${businessName} delivers dependable, high-quality ${svc} for homeowners and businesses across ${area}. Our experienced team treats every job with care, precision, and respect for your property. We stand behind our work and every result we deliver.`,
-    `For ${area}, ${businessName} is a trusted name in ${svc}. We pair skilled craftsmanship with honest, upfront service, so you always know exactly what to expect. Quality workmanship and customer satisfaction drive everything we do.`,
-    `${businessName} has built its reputation on reliable ${svc} and a genuine customer-first approach. From the first call to the final walkthrough, we focus on doing the job right the first time. Expect clear communication, fair pricing, and lasting results.`,
-  ]
-  return { description: variants[hashSeed(`${seed}:about`) % variants.length] }
-}
-
-type ProcessConfig = {
-  title: string
-  subtitle: string
-  steps: Array<{ number: string; title: string; description: string }>
-}
-
-/**
- * Trade-aware, per-business default "process" section (used only when the AI
- * didn't produce one). Steps are chosen by engagement model so a booking or
- * order business doesn't read like a closet "Design → Install" studio, and a
- * seeded variant keeps two same-trade sites from sharing identical wording.
- */
-function buildDefaultProcess(
-  engagementModel: string,
-  primaryService: string,
-  seed: string
-): ProcessConfig {
-  const svc = (primaryService || 'the work').toLowerCase()
-  const byModel: Record<string, ProcessConfig[]> = {
-    booking: [
-      {
-        title: 'How It Works',
-        subtitle: 'Simple from start to finish',
-        steps: [
-          { number: '01', title: 'Book', description: `Pick a time that works for you and request your ${svc}.` },
-          { number: '02', title: 'Confirm', description: 'We confirm the details and arrive on schedule.' },
-          { number: '03', title: 'Done', description: 'We complete the job and make sure you’re happy with it.' },
-        ],
-      },
-      {
-        title: 'Our Process',
-        subtitle: 'Booking made easy',
-        steps: [
-          { number: '01', title: 'Schedule', description: `Choose a convenient appointment for your ${svc}.` },
-          { number: '02', title: 'Service', description: 'Our team shows up prepared and gets to work.' },
-          { number: '03', title: 'Follow Up', description: 'We check in to make sure everything meets your expectations.' },
-        ],
-      },
-    ],
-    order: [
-      {
-        title: 'How It Works',
-        subtitle: 'From order to enjoyment',
-        steps: [
-          { number: '01', title: 'Browse', description: 'Explore our menu and choose what you love.' },
-          { number: '02', title: 'Order', description: 'Place your order in just a few taps.' },
-          { number: '03', title: 'Enjoy', description: 'We prepare it fresh and get it to you fast.' },
-        ],
-      },
-      {
-        title: 'Our Process',
-        subtitle: 'Fresh and simple',
-        steps: [
-          { number: '01', title: 'Choose', description: 'Pick your favorites from our selection.' },
-          { number: '02', title: 'Checkout', description: 'Order online quickly and securely.' },
-          { number: '03', title: 'Delivered', description: 'Made to order and ready when you are.' },
-        ],
-      },
-    ],
-    ticket: [
-      {
-        title: 'How It Works',
-        subtitle: 'Fast, reliable support',
-        steps: [
-          { number: '01', title: 'Reach Out', description: `Tell us what you need help with regarding ${svc}.` },
-          { number: '02', title: 'Diagnose', description: 'We assess the situation and recommend the right fix.' },
-          { number: '03', title: 'Resolve', description: 'We take care of it and confirm everything is working.' },
-        ],
-      },
-      {
-        title: 'Our Process',
-        subtitle: 'Here when you need us',
-        steps: [
-          { number: '01', title: 'Request', description: `Submit your request for ${svc}.` },
-          { number: '02', title: 'Respond', description: 'A specialist reviews and gets back to you quickly.' },
-          { number: '03', title: 'Repair', description: 'We solve the problem and follow up to be sure.' },
-        ],
-      },
-    ],
-    quote: [
-      {
-        title: 'Our Process',
-        subtitle: 'How we work',
-        steps: [
-          { number: '01', title: 'Consult', description: `Tell us about your ${svc} and what you need.` },
-          { number: '02', title: 'Plan', description: 'We provide a clear, upfront quote and a plan of action.' },
-          { number: '03', title: 'Deliver', description: 'Our team completes the job to a high standard.' },
-        ],
-      },
-      {
-        title: 'How It Works',
-        subtitle: 'Straightforward from day one',
-        steps: [
-          { number: '01', title: 'Assess', description: `We review your ${svc} needs and answer your questions.` },
-          { number: '02', title: 'Estimate', description: 'You get a transparent, no-surprises estimate.' },
-          { number: '03', title: 'Complete', description: 'We do the work right and stand behind the results.' },
-        ],
-      },
-    ],
-  }
-  const pool = byModel[engagementModel] || byModel.quote
-  return pool[hashSeed(`${seed}:process`) % pool.length]
-}
 
 function inferWidgetDomainConfig(services: string[] | null | undefined) {
   if (!services || services.length === 0) return null
@@ -737,11 +617,18 @@ export async function provisionTenant(
       theme_tokens: themeTokens || null,
       design_variant: designVariant || null,
       engagement_model: resolvedEngagementModel,
-      default_room: 'Custom Space',
+      default_room: defaultRoomForEngagement(resolvedEngagementModel),
       logo_url: setup.logoUrl || null,
       pricing_notes: setup.pricingNotes || null,
       hero_config: {
-        headline: heroHeadline || `Welcome to ${businessName}`,
+        headline:
+          heroHeadline ||
+          buildFallbackHeadline({
+            businessName,
+            primaryService: selectedServices[0],
+            serviceArea: setup.serviceArea,
+            locality: setup.addressLocality,
+          }),
         subheadline: (aiSiteConfig?.hero as { subheadline?: string })?.subheadline || null,
         backgroundImage: defaultHeroBackground,
       },
@@ -771,13 +658,11 @@ export async function provisionTenant(
           description: isOrderBusiness ? 'Premium menu item.' : 'Premium service offering.',
         }
         
-        const subtitle = isOrderBusiness ? 'Freshly Prepared' : 'Expert Service'
-        const longDesc = isOrderBusiness 
-          ? `Enjoy our freshly prepared ${serviceName}, crafted to order.`
-          : `Professional, high-quality execution for your ${serviceName}.`
-        const specs = isOrderBusiness
-          ? ['Premium Quality', 'Made to Order', 'Satisfaction Guaranteed']
-          : ['Premium Materials', 'Professional Execution', 'Quality Guaranteed']
+        const subtitle = isOrderBusiness ? 'From the menu' : 'What we offer'
+        const longDesc = isOrderBusiness
+          ? `${serviceName} prepared to order.`
+          : `${serviceName} handled with care from first call through completion.`
+        const specs = defaultProductSpecs(resolvedEngagementModel, serviceName)
 
         return {
           title: serviceName,
@@ -793,12 +678,12 @@ export async function provisionTenant(
       seo_config: {
         legalName: businessName,
         email: setup.contactEmail || ownerEmail || '',
-        phone: setup.contactPhone || '555-0199',
-        streetAddress: setup.streetAddress || '123 Main St',
-        addressLocality: setup.addressLocality || setup.serviceArea || 'Anytown',
-        addressRegion: setup.addressRegion || 'NY',
-        postalCode: setup.postalCode || '10001',
-        geo: { latitude: '40.7128', longitude: '-74.0060' },
+        phone: setup.contactPhone || '',
+        streetAddress: setup.streetAddress || '',
+        addressLocality: setup.addressLocality || setup.serviceArea || '',
+        addressRegion: setup.addressRegion || '',
+        postalCode: setup.postalCode || '',
+        geo: { latitude: '', longitude: '' },
       },
       before_after_config: (() => {
         // Prospect opt-out wins; opt-in forces slider on; otherwise industry default.
@@ -816,7 +701,7 @@ export async function provisionTenant(
           // prospect already chose one in the intake studio)
           beforeImage: beforeSelectedUrl || beforeImage || '/brands/lumina/before.png',
           afterImage,
-          title: `The ${businessName} Transformation`,
+          title: `${businessName} — before & after`,
           subtitle: 'Drag to see',
         }
       })(),
@@ -882,16 +767,17 @@ export async function provisionTenant(
             description:
               p.description ||
               serviceCatalog[title]?.description ||
-              `Bespoke ${title.toLowerCase()} crafted with premium materials and precision joinery.`,
+              `${title} from ${businessName}.`,
             details: {
-              subtitle: p.details?.subtitle || 'Signature Collection',
+              subtitle: p.details?.subtitle || 'What we offer',
               longDescription:
                 p.details?.longDescription ||
-                `Full architectural build-out for your ${title.toLowerCase()}, engineered for flawless daily function and lasting craftsmanship.`,
+                p.description ||
+                `Details on ${title.toLowerCase()} from ${businessName}.`,
               specifications:
                 p.details?.specifications && p.details.specifications.length > 0
                   ? p.details.specifications
-                  : ['Premium Materials', 'Precision Fit', 'Lifetime Warranty'],
+                  : defaultProductSpecs(resolvedEngagementModel, title),
             },
             image:
               resolveAiProductImage(p.title) ||

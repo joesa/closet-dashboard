@@ -6,6 +6,7 @@ import {
   coerceLayoutSlug,
   coerceThemeSlug,
 } from '@/lib/catalog/sitePresentationCatalog'
+import { buildFallbackHeadline } from '@/lib/provision/defaultCopy'
 import type { ProspectIntakeRow } from '@/lib/intake/getIntakeByToken'
 import {
   imageSelectionsComplete,
@@ -95,7 +96,12 @@ export async function buildAiProvisionPayload(
       headline:
         prospectSite.hero?.headline ||
         (bundle?.siteConfig?.hero as { headline?: string } | undefined)?.headline ||
-        `Welcome to ${businessName}`,
+        buildFallbackHeadline({
+          businessName,
+          primaryService: Array.isArray(row.services) ? String(row.services[0] || '') : '',
+          serviceArea: row.service_area || undefined,
+          locality: row.address_locality || undefined,
+        }),
     },
     about: {
       description:
