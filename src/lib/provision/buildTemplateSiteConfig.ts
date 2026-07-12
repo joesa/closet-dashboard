@@ -113,15 +113,23 @@ export async function buildTemplateProvisionPayload(intake: IntakeRowForProvisio
     { useGemini: true }
   )
 
-  const { config: quizConfig } = await generateQuizConfig(
-    {
-      industry: rowAsProspect(intake).industry,
-      business_name: businessName,
-      services,
-      other_services: intake.other_services,
-    },
-    { useGemini: true }
-  )
+  const includeQuiz = (intake as { include_quiz?: boolean }).include_quiz === true
+  let quizConfig: Awaited<ReturnType<typeof generateQuizConfig>>['config'] | null = null
+  if (includeQuiz) {
+    const generated = await generateQuizConfig(
+      {
+        industry: rowAsProspect(intake).industry,
+        business_name: businessName,
+        services,
+        other_services: intake.other_services,
+      },
+      { useGemini: true }
+    )
+    // Fail closed: never stamp the generic fallback quiz onto a live site.
+    if (generated.source !== 'fallback') {
+      quizConfig = generated.config
+    }
+  }
 
   // If the user picked a theme/layout in the review step, it's stored in
   // ai_site_config.presentation — honour that over the AI-resolved values.

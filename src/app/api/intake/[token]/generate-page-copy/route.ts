@@ -233,6 +233,9 @@ export async function POST(
     if (body.domainPurchaseRequested !== undefined) {
       update.domain_purchase_requested = body.domainPurchaseRequested === true
     }
+    if (body.includeQuiz !== undefined) {
+      update.include_quiz = body.includeQuiz === true
+    }
     if (body.notes !== undefined) update.notes = toStr(body.notes)
     
     if (body.pages !== undefined) {

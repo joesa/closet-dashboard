@@ -469,15 +469,18 @@ export async function provisionTenant(
     let intakeTierForPages: 'standard' | 'ai_premium' = 'standard'
     let galleryUrls: string[] = []
     let pageContents: Record<string, string> = {}
+    /** null = no intake / unknown; true/false = prospect opt-in for homepage quiz. */
+    let prospectIncludeQuiz: boolean | null = null
     if (intakeId) {
       const { data: intakeForImages } = await supabase
         .from('prospect_intakes')
         .select(
-          'token, services, other_services, image_selections, requested_pages, intake_tier, gallery_images, page_contents'
+          'token, services, other_services, image_selections, requested_pages, intake_tier, gallery_images, page_contents, include_quiz'
         )
         .eq('id', intakeId)
         .maybeSingle()
       if (intakeForImages) {
+        prospectIncludeQuiz = intakeForImages.include_quiz === true
         const labels = provisionServiceLabels(intakeForImages)
         let sel = syncProductSlots(
           parseImageSelections(intakeForImages.image_selections),
@@ -648,7 +651,7 @@ export async function provisionTenant(
         signatureMotif: signature.motif,
         signatureEyebrow: signature.eyebrow,
       },
-      quiz_config: aiSiteConfig?.quiz || null,
+      quiz_config: prospectIncludeQuiz === false ? null : aiSiteConfig?.quiz || null,
       products_config: selectedServices.map((serviceName: string) => {
         const industryDef = getIndustry(beforeAfterContext.industry)
         const industryService = industryDef?.services.find((s) => s.label === serviceName)
@@ -818,7 +821,10 @@ export async function provisionTenant(
           signatureMotif: signature.motif,
           signatureEyebrow: signature.eyebrow,
         },
-        quiz_config: aiSiteConfig.quiz || siteConfigData.quiz_config,
+        quiz_config:
+          prospectIncludeQuiz === false
+            ? null
+            : aiSiteConfig.quiz || siteConfigData.quiz_config,
         engagement_model: (aiSiteConfig.engagementModel as string) || siteConfigData.engagement_model,
         products_config: productsWithImages,
       }

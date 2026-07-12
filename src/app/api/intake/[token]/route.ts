@@ -232,6 +232,7 @@ export async function POST(
       primary_cta: toStr(body.primaryCta),
       desired_domain: toStr(body.desiredDomain),
       domain_purchase_requested: body.domainPurchaseRequested === true,
+      include_quiz: body.includeQuiz === true,
       notes: toStr(body.notes),
       requested_pages: clampPagesForTier(
         body.pages,

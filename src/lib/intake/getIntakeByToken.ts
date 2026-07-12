@@ -51,6 +51,8 @@ export type ProspectIntakeRow = {
   desired_domain: string | null
   /** When true, prospect asked platform to buy desired_domain (admin fulfills). */
   domain_purchase_requested: boolean
+  /** When true, homepage includes a trade-specific lead quiz (default false). */
+  include_quiz: boolean
   other_services: string | null
   industry: string | null
   requested_pages: string[]
@@ -72,6 +74,7 @@ const INTAKE_SELECT = `
   pricing_notes, primary_color_hex, logo_url, contact_name, contact_phone,
   street_address, address_locality, address_region, postal_code, service_area,
   notification_email, notification_phone, desired_domain, domain_purchase_requested,
+  include_quiz,
   other_services, industry,
   requested_pages, gallery_images, page_contents, menu_items
 `

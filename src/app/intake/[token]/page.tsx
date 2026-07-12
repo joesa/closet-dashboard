@@ -71,6 +71,7 @@ export default async function IntakePage({
               ? pub.depositRequiredCents
               : 0
       }
+      includeQuiz={healed.include_quiz === true}
     />
   )
 }

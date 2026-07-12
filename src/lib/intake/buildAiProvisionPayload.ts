@@ -158,6 +158,10 @@ export async function buildAiProvisionPayload(
     },
   }
 
+  if (row.include_quiz !== true) {
+    delete (aiSiteConfig as { quiz?: unknown }).quiz
+  }
+
   return {
     businessName: row.business_name?.trim() || 'Your Business',
     theme,

@@ -151,6 +151,8 @@ type Form = {
   desiredDomain: string;
   /** Opt-in: platform buys desiredDomain after provision (admin). Default false = BYO. */
   domainPurchaseRequested: boolean;
+  /** Opt-in: homepage lead quiz. Default false. */
+  includeQuiz: boolean;
   notes: string;
   pages: string[];
   pageContents: Record<string, string>;
@@ -241,6 +243,8 @@ export type IntakeFormClientProps = {
   paymentCheckoutKind?: IntakeCheckoutKind | null;
   canPayToLaunch?: boolean;
   paymentAmountCents?: number;
+  /** Server-persisted opt-in for homepage lead quiz. */
+  includeQuiz?: boolean;
 };
 
 function emptyForm(
@@ -248,7 +252,8 @@ function emptyForm(
   contactEmail = '',
   pages: string[] = [],
   pageContents?: Record<string, string>,
-  widgetHints?: WidgetHintsSnapshot | null
+  widgetHints?: WidgetHintsSnapshot | null,
+  includeQuiz = false
 ): Form {
   const finishes = widgetHints?.finishLabels ?? [];
   return {
@@ -293,6 +298,7 @@ function emptyForm(
     primaryCta: '',
     desiredDomain: '',
     domainPurchaseRequested: false,
+    includeQuiz: includeQuiz === true,
     notes: '',
     pages,
     pageContents: pageContents || {},
@@ -380,6 +386,7 @@ export default function IntakeFormClient({
   paymentCheckoutKind: initialPaymentCheckoutKind = null,
   canPayToLaunch: initialCanPayToLaunch = false,
   paymentAmountCents: initialPaymentAmountCents = 0,
+  includeQuiz: initialIncludeQuiz = false,
 }: IntakeFormClientProps) {
   const router = useRouter();
   const tierPreselectDone = useRef(false);
@@ -391,7 +398,8 @@ export default function IntakeFormClient({
       prospectEmail,
       requestedPages.length ? sanitizePageSlugs(requestedPages) : RECOMMENDED_PAGE_SLUGS,
       pageContents,
-      widgetConfigHints as WidgetHintsSnapshot | null
+      widgetConfigHints as WidgetHintsSnapshot | null,
+      initialIncludeQuiz
     )
   );
   const [logoDataUrl, setLogoDataUrl] = useState<string>('');
@@ -2290,6 +2298,26 @@ export default function IntakeFormClient({
 
             <label className={label}>Pricing details (optional)</label>
             <textarea className={`${input} min-h-[80px]`} value={form.pricingNotes} onChange={(e) => set('pricingNotes', e.target.value)} placeholder="e.g. Most jobs start around $300. Larger projects run $2,000–$8,000. If unsure, leave blank and we'll estimate." />
+
+            {!isOrderBusiness && !isBookingBusiness && !isTicketBusiness && (
+              <label className="mt-6 flex cursor-pointer items-start gap-3 rounded-xl border border-white/[0.12] bg-white/[0.03] p-4">
+                <input
+                  type="checkbox"
+                  className="mt-1 h-4 w-4 rounded border-white/20 bg-transparent text-indigo-500"
+                  checked={form.includeQuiz}
+                  onChange={(e) => set('includeQuiz', e.target.checked)}
+                />
+                <span>
+                  <span className="block text-sm font-medium text-zinc-100">
+                    Include a short lead quiz on my homepage
+                  </span>
+                  <span className="mt-1 block text-xs text-zinc-500">
+                    Optional. We&apos;ll add three trade-specific questions before the quote form so
+                    visitors share what they need. Off by default — leave unchecked for a simpler site.
+                  </span>
+                </span>
+              </label>
+            )}
           </section>
           </div>
 
