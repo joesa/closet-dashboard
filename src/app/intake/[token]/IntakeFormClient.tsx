@@ -448,6 +448,10 @@ export default function IntakeFormClient({
   const [bulkProgress, setBulkProgress] = useState({ current: 0, total: 0 });
   const [suggestingPages, setSuggestingPages] = useState(false);
   const [suggestedPages, setSuggestedPages] = useState<Array<{ slug: string; label: string; description: string }>>([]);
+  /** Gate: AI page copy must not run until the user confirms page selection is done. */
+  const [pagesSelectionConfirmed, setPagesSelectionConfirmed] = useState(false);
+  /** Labels from AI-recommended pages that were added as Services offerings. */
+  const [addedAiServiceLabels, setAddedAiServiceLabels] = useState<string[]>([]);
   const [servicesBlurGuidance, setServicesBlurGuidance] = useState<ReturnType<
     typeof inferQuoteCalculatorGuidance
   > | null>(null);
@@ -910,13 +914,68 @@ export default function IntakeFormClient({
     intakeTier === 'ai_premium' ? 'ai_premium' : 'standard'
   );
 
-  const handleAddSuggestedPage = (slug: string) => {
+  /** AI recommendations become Services offerings — not separate top-level pages. */
+  const handleAddSuggestedPage = (suggestion: { slug: string; label: string; description: string }) => {
+    const label = suggestion.label.trim();
+    if (!label) return;
+
     setForm((f) => {
-      if (f.pages.includes(slug)) return f;
-      if (f.pages.length >= pageCap) return f;
-      return { ...f, pages: [...f.pages, slug] };
+      const pages = f.pages.includes('services')
+        ? f.pages
+        : f.pages.length >= pageCap
+          ? f.pages
+          : [...f.pages, 'services'];
+      const already =
+        f.services.some((s) => s.toLowerCase() === label.toLowerCase()) ||
+        f.otherServices
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean)
+          .some((s) => s.toLowerCase() === label.toLowerCase());
+      if (already) return { ...f, pages };
+
+      const extras = f.otherServices
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+      extras.push(label);
+      // Clear Services copy so the next confirm regenerates with the new offerings.
+      const { services: _servicesCopy, ...restContents } = f.pageContents;
+      return {
+        ...f,
+        pages,
+        otherServices: extras.join(', '),
+        pageContents: restContents,
+      };
     });
-    setSuggestedPages((prev) => prev.filter((p) => p.slug !== slug));
+    setSuggestedPages((prev) => prev.filter((s) => s.slug !== suggestion.slug));
+    setAddedAiServiceLabels((prev) =>
+      prev.some((l) => l.toLowerCase() === label.toLowerCase()) ? prev : [...prev, label]
+    );
+    setPagesSelectionConfirmed(false);
+  };
+
+  const handleRemoveAiServiceOffering = (label: string) => {
+    setAddedAiServiceLabels((prev) => prev.filter((l) => l !== label));
+    setForm((f) => {
+      const extras = f.otherServices
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .filter((s) => s.toLowerCase() !== label.toLowerCase());
+      const { services: _servicesCopy, ...restContents } = f.pageContents;
+      return { ...f, otherServices: extras.join(', '), pageContents: restContents };
+    });
+    setPagesSelectionConfirmed(false);
+  };
+
+  const handleConfirmPagesSelection = async () => {
+    if (form.pages.length === 0) return;
+    setPagesSelectionConfirmed(true);
+    const missing = form.pages.filter((slug) => !(form.pageContents[slug] || '').trim());
+    if (missing.length > 0) {
+      await handleGenerateAllPageCopy();
+    }
   };
 
   const handleRemovePage = (slug: string) => {
@@ -1446,17 +1505,8 @@ export default function IntakeFormClient({
     setMaxStepIndexVisited((m) => Math.min(m, steps.length - 1));
   }, [steps.length]);
 
-  useEffect(() => {
-    if (currentStepIndex !== stepIdx.pageContent || !stepIdx.pageContent) return;
-    if (form.pages.some((slug) => !form.pageContents[slug]?.trim())) {
-      void handleGenerateAllPageCopy();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentStepIndex, stepIdx.pageContent]);
-
   // Auto-load trade-specific page suggestions the first time the prospect lands
-  // on the Page Content step so they always see AI recommendations (not just the
-  // default pages), tailored to their industry/services.
+  // on the Page Content step (selection only — copy generation waits for confirm).
   const pageSuggestFetchedRef = useRef(false);
   useEffect(() => {
     if (currentStepIndex !== stepIdx.pageContent || !stepIdx.pageContent) return;
@@ -1467,6 +1517,15 @@ export default function IntakeFormClient({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentStepIndex, stepIdx.pageContent]);
 
+  // Changing catalog pages after confirm requires a fresh confirm before generation.
+  const pagesSelectionKey = form.pages.join('|');
+  const pagesSelectionKeyPrev = useRef(pagesSelectionKey);
+  useEffect(() => {
+    if (pagesSelectionKeyPrev.current === pagesSelectionKey) return;
+    pagesSelectionKeyPrev.current = pagesSelectionKey;
+    setPagesSelectionConfirmed(false);
+  }, [pagesSelectionKey]);
+
   const businessStepComplete =
     form.businessName.trim().length > 0 &&
     form.contactPhone.trim().length > 0 &&
@@ -1475,7 +1534,11 @@ export default function IntakeFormClient({
   const isLastStep = currentStepIndex === steps.length - 1;
 
   const canAdvanceFromCurrentStep =
-    currentStepIndex === stepIdx.business ? businessStepComplete : true;
+    currentStepIndex === stepIdx.business
+      ? businessStepComplete
+      : currentStepIndex === stepIdx.pageContent
+        ? form.pages.length === 0 || pagesSelectionConfirmed
+        : true;
 
   const goToStep = (idx: number) => {
     if (idx < 0 || idx >= steps.length || idx > maxStepIndexVisited) return;
@@ -2449,9 +2512,9 @@ export default function IntakeFormClient({
             <section className={sectionClass}>
               <h2 className={sectionTitle}>Choose Your Pages</h2>
               <p className="mb-3 text-sm text-zinc-400">
-                Pick the pages your site should include. We recommend a strong starter set, and our
-                AI suggests extra pages tailored to your specific trade so your site doesn&apos;t look
-                like everyone else&apos;s.
+                Pick the pages your site should include. AI-recommended offerings are optional and
+                are added under Services — not as separate pages. Confirm when you&apos;re done;
+                AI won&apos;t write copy until then.
               </p>
               <p className="mb-3 text-xs font-medium text-zinc-500">
                 {form.pages.length} of {pageCap} pages selected
@@ -2486,9 +2549,10 @@ export default function IntakeFormClient({
               <div className="mt-5 rounded-lg border border-white/[0.1] bg-white/[0.02] p-4">
                 <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0">
-                    <h3 className="text-sm font-semibold text-white">AI-Recommended Pages</h3>
+                    <h3 className="text-sm font-semibold text-white">AI-Recommended Offerings</h3>
                     <p className="text-xs text-zinc-500">
-                      Trade-specific pages tailored to {form.industry || 'your business'}.
+                      Optional — add any you want under your Services page. Tailored to{' '}
+                      {form.industry || 'your business'}.
                     </p>
                   </div>
                   <button
@@ -2508,16 +2572,41 @@ export default function IntakeFormClient({
                     ) : (
                       <>
                         <span aria-hidden>✨</span>
-                        {suggestedPages.length ? 'Refresh suggestions' : 'Suggest pages'}
+                        {suggestedPages.length ? 'Refresh suggestions' : 'Suggest offerings'}
                       </>
                     )}
                   </button>
                 </div>
 
+                {addedAiServiceLabels.length > 0 && (
+                  <div className="mt-3">
+                    <p className="mb-1.5 text-xs font-medium text-zinc-500">Added under Services</p>
+                    <div className="flex flex-wrap gap-2">
+                      {addedAiServiceLabels.map((label) => (
+                        <button
+                          key={label}
+                          type="button"
+                          onClick={() => handleRemoveAiServiceOffering(label)}
+                          title="Remove from Services"
+                          className="inline-flex items-center gap-1.5 rounded-full border border-emerald-400/40 bg-emerald-500/15 px-3 py-1.5 text-xs font-semibold text-emerald-100 hover:border-emerald-300/60"
+                        >
+                          <span aria-hidden>✓</span>
+                          {label}
+                          <span aria-hidden className="text-emerald-300/80">×</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {suggestedPages.length > 0 ? (
                   <div className="mt-3 grid gap-2 sm:grid-cols-2">
                     {suggestedPages.map((s) => {
-                      const atCap = form.pages.length >= pageCap;
+                      const alreadyAdded = addedAiServiceLabels.some(
+                        (l) => l.toLowerCase() === s.label.trim().toLowerCase()
+                      );
+                      const servicesAtCap =
+                        !form.pages.includes('services') && form.pages.length >= pageCap;
                       return (
                         <div
                           key={s.slug}
@@ -2529,11 +2618,11 @@ export default function IntakeFormClient({
                           </div>
                           <button
                             type="button"
-                            onClick={() => handleAddSuggestedPage(s.slug)}
-                            disabled={atCap}
+                            onClick={() => handleAddSuggestedPage(s)}
+                            disabled={alreadyAdded || servicesAtCap}
                             className="shrink-0 rounded-md bg-white px-2.5 py-1.5 text-xs font-bold text-black hover:bg-slate-200 disabled:opacity-50"
                           >
-                            Add
+                            {alreadyAdded ? 'Added' : 'Add'}
                           </button>
                         </div>
                       );
@@ -2542,19 +2631,38 @@ export default function IntakeFormClient({
                 ) : (
                   !suggestingPages && (
                     <p className="mt-3 text-xs text-zinc-600">
-                      Click &quot;Suggest pages&quot; to get trade-specific page ideas for your site.
+                      Click &quot;Suggest offerings&quot; for trade-specific ideas under Services.
                     </p>
                   )
                 )}
 
-                {form.pages.length >= pageCap && (
+                {form.pages.length >= pageCap && !form.pages.includes('services') && (
                   <p className="mt-3 text-xs text-amber-400/80">
-                    You&apos;ve reached the {pageCap}-page limit for your plan. Remove a page to add another.
+                    You&apos;ve reached the {pageCap}-page limit. Remove a page (or select Services)
+                    before adding AI offerings under Services.
                   </p>
                 )}
               </div>
+
+              {!pagesSelectionConfirmed && (
+                <div className="mt-5 rounded-lg border border-indigo-400/30 bg-indigo-500/10 p-4">
+                  <p className="text-sm text-indigo-100">
+                    When you&apos;re finished choosing pages (AI offerings are optional), confirm below.
+                    AI will only start writing page copy after you confirm.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => void handleConfirmPagesSelection()}
+                    disabled={form.pages.length === 0 || bulkGenerating}
+                    className="mt-3 inline-flex items-center gap-2 rounded-lg bg-white px-4 py-2.5 text-sm font-bold text-black hover:bg-slate-200 disabled:opacity-60 transition-colors"
+                  >
+                    Done selecting pages — write my copy
+                  </button>
+                </div>
+              )}
             </section>
 
+            {pagesSelectionConfirmed && (
             <section className={sectionClass}>
               <h2 className={sectionTitle}>
                 Customize Page Content
@@ -2730,6 +2838,7 @@ export default function IntakeFormClient({
               </div>
             </div>
             </section>
+            )}
           </div>
           )}
 
