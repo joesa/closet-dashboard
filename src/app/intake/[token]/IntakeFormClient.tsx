@@ -1362,10 +1362,8 @@ export default function IntakeFormClient({
           })
         ) !== 'not-applicable';
 
-  // If they already opted in, require completion even when the industry catalog
-  // says not-applicable (custom-industry mismatch / explicit yes).
-  const beforeAfterRequired =
-    beforeAfterApplicableForSubmit || imageSelections.beforeAfter?.enabled === true;
+  // Only require before/after completion when the industry actually supports it.
+  const beforeAfterRequired = beforeAfterApplicableForSubmit;
 
   const premiumImagesReady =
     intakeTier !== 'ai_premium' ||

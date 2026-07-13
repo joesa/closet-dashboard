@@ -91,18 +91,14 @@ export async function POST(
           { status: 400 }
         )
       }
-      // Not every business has a physical "before" state (restaurants, legal,
-      // medical, booking…) — the site won't render a transformation slider for
-      // these, so don't burn generation attempts on one.
+      // Not every business has a physical "before" state — don't burn attempts
+      // or surface a generate UI for trades where the site never shows a slider.
       const category = await resolveIntakeBeforeAfterCategory({
         industry: row.industry,
         services: serviceNames,
         other_services: row.other_services,
       })
-      // Prospect opt-in wins: if they asked for before/after, generate even when
-      // the industry catalog marks the trade as not-applicable (common for vague
-      // custom industries like "Entertainment" that the client still surfaces).
-      if (category === 'not-applicable' && beforeState.enabled !== true) {
+      if (category === 'not-applicable') {
         return NextResponse.json(
           {
             error:

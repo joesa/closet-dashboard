@@ -238,24 +238,24 @@ export default function IntakeImageStudio({
   const beforeState = selections.beforeAfter ?? { attemptsUsed: 0, history: [] };
 
   // Not every business has a physical "before" state (restaurants, legal,
-  // medical, booking businesses…) — for those the site never renders a
-  // transformation slider, so the whole before/after section is hidden. The
-  // server's answer (which also knows about contractor-created custom
-  // industries in the DB) arrives with the AI brief; until then fall back to
-  // the same static catalog classification computed client-side.
+  // medical, booking, IT/consulting…) — for those the site never renders a
+  // transformation slider, so the whole before/after section stays hidden.
+  // Server truth (custom industries in DB) wins; client catalog is fallback only.
   const [serverBeforeAfterApplicable, setServerBeforeAfterApplicable] = useState<boolean | null>(
     typeof initialBeforeAfterApplicable === 'boolean' ? initialBeforeAfterApplicable : null
   );
-  const beforeAfterApplicable =
-    (serverBeforeAfterApplicable ??
-      getBeforeAfterCategory(
-        resolveIndustrySlug({
-          industry: (formState?.industry as string) || null,
-          services,
-          other_services: (formState?.otherServices as string) || null,
-        })
-      ) !== 'not-applicable') ||
-    beforeState.enabled === true;
+  const industryAllowsBeforeAfter =
+    serverBeforeAfterApplicable ??
+    getBeforeAfterCategory(
+      resolveIndustrySlug({
+        industry: (formState?.industry as string) || null,
+        services,
+        other_services: (formState?.otherServices as string) || null,
+      })
+    ) !== 'not-applicable';
+  // Never show / offer before/after when the industry does not support it —
+  // even if a prior session left enabled=true on the selection record.
+  const beforeAfterApplicable = industryAllowsBeforeAfter === true;
   const beforePrompt =
     beforePromptOverride ??
     beforeState.prompt ??
@@ -264,6 +264,13 @@ export default function IntakeImageStudio({
       services,
       otherServices: (formState?.otherServices as string) || null,
     });
+
+  // Keep prop / brief response in sync (e.g. custom industry resolves after load).
+  React.useEffect(() => {
+    if (typeof initialBeforeAfterApplicable === 'boolean') {
+      setServerBeforeAfterApplicable(initialBeforeAfterApplicable);
+    }
+  }, [initialBeforeAfterApplicable]);
 
   const runBrief = async () => {
     setBriefLoading(true);
@@ -302,6 +309,10 @@ export default function IntakeImageStudio({
     prompt: string,
     productIndex?: number
   ) => {
+    if (slot === 'before' && !beforeAfterApplicable) {
+      setServerBeforeAfterApplicable(false);
+      return;
+    }
     const key = slot === 'hero' ? 'hero' : slot === 'before' ? 'before' : `product-${productIndex}`;
     setGenLoading(key);
     setError('');
@@ -312,7 +323,17 @@ export default function IntakeImageStudio({
         body: JSON.stringify({ slot, prompt, productIndex, serviceNames: services }),
       });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error || 'Image generation failed');
+      if (!res.ok) {
+        const message = typeof json.error === 'string' ? json.error : 'Image generation failed';
+        // Server (incl. custom industries) decided this trade has no before/after —
+        // hide the section immediately so the prospect stops retrying.
+        if (/before\/after transformation section does not apply/i.test(message)) {
+          setServerBeforeAfterApplicable(false);
+          setError('');
+          return;
+        }
+        throw new Error(message);
+      }
       const res2 = await fetch(`/api/intake/${token}`);
       const refreshed = await res2.json();
       if (refreshed.imageSelections) {
@@ -496,6 +517,35 @@ export default function IntakeImageStudio({
     };
     return persistSelections(next);
   };
+
+  // If before/after does not apply, clear any leftover opt-in so submit gates
+  // and accidental generate calls cannot resurrect the section.
+  const clearedBeforeAfterRef = React.useRef(false);
+  React.useEffect(() => {
+    if (industryAllowsBeforeAfter) {
+      clearedBeforeAfterRef.current = false;
+      return;
+    }
+    if (clearedBeforeAfterRef.current) return;
+    const ba = selections.beforeAfter;
+    const needsClear =
+      ba?.enabled === true ||
+      ba?.mode != null ||
+      !!ba?.selectedUrl ||
+      !!ba?.afterSelectedUrl;
+    if (!needsClear) return;
+    clearedBeforeAfterRef.current = true;
+    void patchBeforeAfter({
+      enabled: false,
+      mode: null,
+      selectedUrl: undefined,
+      selectedAttempt: undefined,
+      afterSelectedUrl: undefined,
+      afterUrl: undefined,
+      prompt: undefined,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [industryAllowsBeforeAfter, selections.beforeAfter?.enabled, selections.beforeAfter?.mode]);
 
   const uploadBeforeAfterSide = (
     e: React.ChangeEvent<HTMLInputElement>,
