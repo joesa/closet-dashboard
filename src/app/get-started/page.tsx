@@ -58,11 +58,17 @@ function GetStartedForm() {
     setError('');
 
     try {
-      const turnstileToken =
-        typeof window !== 'undefined' &&
-        (window as unknown as { turnstile?: { getResponse: () => string } }).turnstile
-          ? (window as unknown as { turnstile: { getResponse: () => string } }).turnstile.getResponse()
-          : '';
+      let turnstileToken = '';
+      if (siteKey) {
+        turnstileToken =
+          typeof window !== 'undefined' &&
+          (window as unknown as { turnstile?: { getResponse: () => string } }).turnstile
+            ? (window as unknown as { turnstile: { getResponse: () => string } }).turnstile.getResponse()
+            : '';
+        if (!turnstileToken) {
+          throw new Error('Please complete the captcha and try again.');
+        }
+      }
 
       const res = await fetch('/api/intake/public/start', {
         method: 'POST',
@@ -72,7 +78,7 @@ function GetStartedForm() {
           businessName,
           hasWebsite: false,
           tier: tierParam === 'ai_premium' || tierParam === 'standard' ? tierParam : undefined,
-          turnstileToken: turnstileToken || 'dev-bypass',
+          ...(turnstileToken ? { turnstileToken } : {}),
         }),
       });
       const json = await res.json();
