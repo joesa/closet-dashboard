@@ -309,7 +309,10 @@ export default function DomainManager({ tenantId, showAdminCost = false, variant
                         — covered by maintenance
                         {d.registrar_order_id ? ` · order ${d.registrar_order_id}` : ''}
                         {d.expires_at
-                          ? ` · renews ${new Date(d.expires_at).toLocaleDateString()}`
+                          ? ` · renews ${new Date(d.expires_at).toLocaleDateString('en-US', {
+                              timeZone: 'UTC',
+                              dateStyle: 'medium',
+                            })} UTC`
                           : ''}
                       </p>
                     )}

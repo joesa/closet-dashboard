@@ -75,7 +75,17 @@ export default function SiteValidationPanel({ tenantId, status, issues, validate
         </p>
       )}
 
-      {validatedAt && <p className="text-xs text-neutral-500">Last checked: {new Date(validatedAt).toLocaleString()}</p>}
+      {validatedAt && (
+        <p className="text-xs text-neutral-500" suppressHydrationWarning>
+          Last checked:{' '}
+          {new Date(validatedAt).toLocaleString('en-US', {
+            timeZone: 'UTC',
+            dateStyle: 'medium',
+            timeStyle: 'short',
+          })}{' '}
+          UTC
+        </p>
+      )}
 
       {issues.length > 0 && (
         <ul className="space-y-2">
