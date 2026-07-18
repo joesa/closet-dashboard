@@ -21,6 +21,7 @@
     "@supabase/ssr": "^0.10.3",
     "@supabase/supabase-js": "^2.105.4",
     "cheerio": "^1.2.0",
+    "isomorphic-dompurify": "^3.19.0",
     "lucide-react": "^1.16.0",
     "next": "16.2.6",
     "openai": "^6.39.1",

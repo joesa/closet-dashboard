@@ -6,6 +6,7 @@ import { notFound } from 'next/navigation';
 import DeleteTenantDialog from '@/components/DeleteTenantDialog';
 import SiteValidationPanel from '@/components/SiteValidationPanel';
 import AdminSiteChat from '@/components/AdminSiteChat';
+import AdminCustomBuild from '@/components/AdminCustomBuild';
 import DomainManager from '@/components/DomainManager';
 import { DESIGN_VARIANT_OPTIONS } from '@/lib/catalog/designVariantCatalog';
 import { formatUsdCents } from '@/lib/domains/types';
@@ -238,6 +239,9 @@ export default async function TenantDetailsPage({ params }: { params: Promise<{ 
 
         {/* AI Site Assistant — conversational edits to this site's config */}
         <AdminSiteChat tenantId={tenant.id} previewUrl={previewUrl} />
+
+        {/* Per-site custom HTML/CSS build — isolated from the template engine */}
+        <AdminCustomBuild tenantId={tenant.id} previewUrl={previewUrl} />
 
         {/* Domain management — BYO + Vercel purchase (admin override) */}
         <DomainManager tenantId={tenant.id} showAdminCost variant="admin" />
