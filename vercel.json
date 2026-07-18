@@ -10,7 +10,7 @@
     },
     {
       "path": "/api/cron/domain-verify",
-      "schedule": "*/15 * * * *"
+      "schedule": "0 6 * * *"
     }
   ]
 }
