@@ -65,13 +65,19 @@ export async function POST(
     if (action === 'generate') {
       const prompt = typeof body.prompt === 'string' ? body.prompt.trim().slice(0, 4000) : ''
       const mode = body.mode === 'iframe' ? 'iframe' : body.mode === 'inline' ? 'inline' : undefined
-      const iterate = body.iterate === true
+      // Prefer explicit intent; legacy iterate:true → surgical.
+      const intent =
+        body.intent === 'full' || body.intent === 'surgical'
+          ? body.intent
+          : body.iterate === true
+            ? 'surgical'
+            : 'full'
 
       const result = await generateCustomSiteDraft({
         tenantId,
         prompt,
         mode,
-        iterate,
+        intent,
       })
 
       await logAdminAction({
@@ -81,7 +87,8 @@ export async function POST(
         targetId: tenantId,
         metadata: {
           prompt: prompt.slice(0, 500),
-          iterate,
+          intent: result.intent,
+          changedPages: result.changedPages,
           mode: result.draft.mode,
           pageKeys: Object.keys(result.draft.pages || {}),
           warnings: result.warnings,
@@ -91,6 +98,8 @@ export async function POST(
 
       return NextResponse.json({
         reply: result.reply,
+        intent: result.intent,
+        changedPages: result.changedPages,
         draft: {
           mode: result.draft.mode,
           pageKeys: Object.keys(result.draft.pages || {}),

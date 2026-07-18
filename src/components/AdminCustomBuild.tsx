@@ -12,8 +12,8 @@ type Status = {
 
 /**
  * Admin panel: AI-build a completely custom HTML/CSS site for ONE tenant,
- * preview the draft, then publish (render_mode=custom) or revert to the
- * shared template engine. Other tenants are never affected.
+ * or surgically edit an existing custom draft/published site. Preview →
+ * publish. Other tenants and the template engine stay untouched.
  */
 export default function AdminCustomBuild({
   tenantId,
@@ -32,6 +32,10 @@ export default function AdminCustomBuild({
   const [reply, setReply] = useState('');
   const [warnings, setWarnings] = useState<string[]>([]);
   const [info, setInfo] = useState('');
+  const [changedPages, setChangedPages] = useState<string[]>([]);
+  const [lastIntent, setLastIntent] = useState<'full' | 'surgical' | null>(null);
+
+  const hasBase = !!(status?.draft || status?.published);
 
   const refresh = useCallback(async () => {
     try {
@@ -49,8 +53,6 @@ export default function AdminCustomBuild({
     }
   }, [tenantId]);
 
-  // Avoid SSR/client text mismatches (React #418) by rendering dynamic status
-  // only after mount; fetch runs client-side only.
   useEffect(() => {
     setMounted(true);
     void refresh();
@@ -62,6 +64,8 @@ export default function AdminCustomBuild({
     setInfo('');
     setReply('');
     setWarnings([]);
+    setChangedPages([]);
+    setLastIntent(null);
     try {
       const res = await fetch(`/api/admin/sites/${tenantId}/custom-build`, {
         method: 'POST',
@@ -73,12 +77,14 @@ export default function AdminCustomBuild({
         const detail = typeof json.error === 'string' ? json.error : `Request failed (${res.status})`;
         throw new Error(
           res.status === 504 || /timeout|timed out/i.test(detail)
-            ? 'Generation timed out — try a shorter creative direction, or Generate again (drafts are smaller now).'
+            ? 'Generation timed out — try a shorter, more specific prompt.'
             : detail
         );
       }
       if (typeof json.reply === 'string') setReply(json.reply);
       if (Array.isArray(json.warnings)) setWarnings(json.warnings);
+      if (Array.isArray(json.changedPages)) setChangedPages(json.changedPages);
+      if (json.intent === 'full' || json.intent === 'surgical') setLastIntent(json.intent);
       if (action === 'publish') {
         setInfo(
           json.liveNow
@@ -89,6 +95,12 @@ export default function AdminCustomBuild({
         setInfo('Reverted to the shared template engine for this site.');
       } else if (action === 'discard') {
         setInfo('Draft discarded.');
+      } else if (action === 'generate' && json.intent === 'surgical') {
+        setInfo(
+          Array.isArray(json.changedPages) && json.changedPages.length
+            ? `Surgical edit saved to draft. Changed: ${json.changedPages.join(', ')}`
+            : 'Surgical edit saved — no pages changed.'
+        );
       }
       await refresh();
       router.refresh();
@@ -109,11 +121,12 @@ export default function AdminCustomBuild({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h3 className="text-xs font-bold text-violet-300 uppercase tracking-widest">
-            Custom build (from scratch)
+            Custom build
           </h3>
           <p className="mt-1 text-sm text-neutral-400 max-w-2xl">
-            AI generates a completely bespoke HTML/CSS site for <em>this tenant only</em>.
-            Draft first → preview → publish. Other sites and the template engine stay untouched.
+            Build a bespoke HTML/CSS site for <em>this tenant only</em>, then make{' '}
+            <strong className="text-neutral-300 font-medium">surgical edits</strong> without
+            redesigning the whole site. Draft → preview → publish.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -178,13 +191,17 @@ export default function AdminCustomBuild({
 
       <div>
         <label className="block text-xs font-semibold text-neutral-500 uppercase tracking-wide mb-2">
-          Creative direction
+          What should AI do?
         </label>
         <textarea
           className="w-full min-h-[100px] rounded-lg border border-neutral-700 bg-black/40 px-3 py-2 text-sm text-white placeholder:text-neutral-600 focus:outline-none focus:border-violet-500/60"
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
-          placeholder="e.g. Bold editorial magazine layout, deep forest greens, large hero photography, sticky nav, services as a horizontal scroll — completely different from our usual engine look."
+          placeholder={
+            hasBase
+              ? 'Surgical: e.g. “Simplify the hero headline to Welcome to Acme” or “Change the CTA to Get a free quote” — do not redesign.'
+              : 'Full build: e.g. Bold editorial layout, deep forest greens, large hero photo…'
+          }
           disabled={loading}
         />
       </div>
@@ -207,31 +224,46 @@ export default function AdminCustomBuild({
       <div className="flex flex-wrap gap-3">
         <button
           type="button"
-          disabled={loading}
+          disabled={loading || !hasBase || !prompt.trim()}
           onClick={() =>
             void run('generate', {
-              prompt: prompt || 'Create a distinctive, conversion-focused custom site.',
+              prompt: prompt.trim(),
               mode,
-              iterate: false,
+              intent: 'surgical',
             })
           }
-          className="px-4 py-2 bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors"
+          className="px-4 py-2 bg-violet-600 hover:bg-violet-500 disabled:opacity-40 text-white text-sm font-medium rounded-lg transition-colors"
+          title={
+            hasBase
+              ? 'Apply only the requested change to the existing custom site'
+              : 'Generate a custom site first'
+          }
         >
-          {loading ? 'Working…' : 'Generate from scratch'}
+          {loading ? 'Working…' : 'Edit surgically'}
         </button>
         <button
           type="button"
-          disabled={loading || !status?.draft}
-          onClick={() =>
+          disabled={loading}
+          onClick={() => {
+            if (
+              hasBase &&
+              !confirm(
+                'Full redesign will rebuild the entire custom site (new layout/CSS). Continue?'
+              )
+            ) {
+              return;
+            }
             void run('generate', {
-              prompt: prompt || 'Improve the existing draft.',
+              prompt:
+                prompt.trim() ||
+                'Create a distinctive, conversion-focused custom site.',
               mode,
-              iterate: true,
-            })
-          }
-          className="px-4 py-2 border border-violet-400/40 hover:bg-violet-500/10 disabled:opacity-40 text-violet-200 text-sm font-medium rounded-lg transition-colors"
+              intent: 'full',
+            });
+          }}
+          className="px-4 py-2 border border-violet-400/40 hover:bg-violet-500/10 disabled:opacity-50 text-violet-200 text-sm font-medium rounded-lg transition-colors"
         >
-          Iterate on draft
+          {hasBase ? 'Full redesign' : 'Generate from scratch'}
         </button>
         {draftPreviewUrl ? (
           <a
@@ -277,6 +309,19 @@ export default function AdminCustomBuild({
           Discard draft
         </button>
       </div>
+
+      {lastIntent ? (
+        <p className="text-xs text-neutral-500">
+          Last run: <span className="text-violet-300 font-mono">{lastIntent}</span>
+          {changedPages.length > 0 ? (
+            <>
+              {' '}
+              · changed pages:{' '}
+              <span className="text-neutral-300 font-mono">{changedPages.join(', ')}</span>
+            </>
+          ) : null}
+        </p>
+      ) : null}
 
       {reply ? (
         <div className="rounded-lg border border-violet-500/20 bg-violet-500/5 p-4 text-sm text-violet-100 whitespace-pre-wrap">

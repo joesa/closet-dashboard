@@ -1,0 +1,45 @@
+import { describe, expect, it } from 'vitest'
+import { mergeCustomPatch } from './generateCustomSite'
+import type { CustomSiteConfig } from '@/lib/customSite'
+
+const base: CustomSiteConfig = {
+  mode: 'inline',
+  globalCss: 'body{color:#111}',
+  pages: {
+    '/': { html: '<h1>Old Home</h1>', title: 'Home' },
+    '/about': { html: '<h1>About</h1>', title: 'About' },
+    '/contact': { html: '<h1>Contact</h1>', title: 'Contact' },
+  },
+}
+
+describe('mergeCustomPatch', () => {
+  it('updates only the pages and fields in the patch', () => {
+    const { merged, changedPages } = mergeCustomPatch(base, {
+      pages: {
+        '/': { html: '<h1>New Home</h1>' },
+      },
+    })
+    expect(changedPages).toEqual(['/'])
+    expect(merged.pages['/'].html).toBe('<h1>New Home</h1>')
+    expect(merged.pages['/about'].html).toBe('<h1>About</h1>')
+    expect(merged.pages['/contact'].html).toBe('<h1>Contact</h1>')
+    expect(merged.globalCss).toBe('body{color:#111}')
+  })
+
+  it('does not drop pages omitted from the patch', () => {
+    const { merged } = mergeCustomPatch(base, { pages: { '/about': { title: 'Our Story' } } })
+    expect(Object.keys(merged.pages).sort()).toEqual(['/', '/about', '/contact'])
+    expect(merged.pages['/about'].title).toBe('Our Story')
+    expect(merged.pages['/about'].html).toBe('<h1>About</h1>')
+  })
+
+  it('ignores null globalCss (no overwrite)', () => {
+    const { merged } = mergeCustomPatch(base, { globalCss: null, pages: {} })
+    expect(merged.globalCss).toBe('body{color:#111}')
+  })
+
+  it('applies globalCss when provided as a string', () => {
+    const { merged } = mergeCustomPatch(base, { globalCss: ':root{--c:red}' })
+    expect(merged.globalCss).toBe(':root{--c:red}')
+  })
+})
