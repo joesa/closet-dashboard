@@ -37,26 +37,22 @@ export function normalizeCustomPath(path: string): string {
   return withSlash.replace(/\/+$/, '') || '/'
 }
 
+/**
+ * Pure-JS HTML sanitizer (no jsdom/DOMPurify). isomorphic-dompurify pulls
+ * jsdom and is unreliable on Vercel serverless; this strips the dangerous
+ * bits while preserving our widget HTML comment placeholder.
+ */
 export function sanitizeCustomHtml(html: string): string {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const DOMPurify = require('isomorphic-dompurify') as typeof import('isomorphic-dompurify')
-  return DOMPurify.sanitize(html || '', {
-    USE_PROFILES: { html: true },
-    ADD_TAGS: ['closet-quote-widget', 'closet-order-widget'],
-    ADD_ATTR: [
-      'data-contractor-id',
-      'data-api-url',
-      'data-preview-color',
-      'data-radius',
-      'data-font-heading',
-      'data-widget-title',
-      'class',
-      'style',
-      'id',
-    ],
-    FORBID_TAGS: ['script', 'iframe', 'object', 'embed', 'form'],
-    FORBID_ATTR: ['srcdoc'],
-  })
+  if (!html) return ''
+  let out = html
+  // Remove script/iframe/object/embed/form blocks entirely.
+  out = out.replace(/<\s*(script|iframe|object|embed|form)\b[^>]*>[\s\S]*?<\s*\/\s*\1\s*>/gi, '')
+  out = out.replace(/<\s*(script|iframe|object|embed|form)\b[^>]*\/?\s*>/gi, '')
+  // Strip inline event handlers and javascript: URLs.
+  out = out.replace(/\s+on\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+  out = out.replace(/\s(href|src|action)\s*=\s*(['"])\s*javascript:[^'"]*\2/gi, ' $1="#"')
+  out = out.replace(/\ssrcdoc\s*=\s*("[^"]*"|'[^']*')/gi, '')
+  return out
 }
 
 export function sanitizeCustomCss(css: string): string {

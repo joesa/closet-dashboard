@@ -23,6 +23,7 @@ export default function AdminCustomBuild({
   previewUrl?: string | null;
 }) {
   const router = useRouter();
+  const [mounted, setMounted] = useState(false);
   const [status, setStatus] = useState<Status | null>(null);
   const [prompt, setPrompt] = useState('');
   const [mode, setMode] = useState<'inline' | 'iframe'>('inline');
@@ -35,8 +36,8 @@ export default function AdminCustomBuild({
   const refresh = useCallback(async () => {
     try {
       const res = await fetch(`/api/admin/sites/${tenantId}/custom-build`);
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || 'Failed to load status');
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || `Failed to load status (${res.status})`);
       setStatus(json);
       if (json.draft?.mode === 'iframe' || json.draft?.mode === 'inline') {
         setMode(json.draft.mode);
@@ -48,7 +49,10 @@ export default function AdminCustomBuild({
     }
   }, [tenantId]);
 
+  // Avoid SSR/client text mismatches (React #418) by rendering dynamic status
+  // only after mount; fetch runs client-side only.
   useEffect(() => {
+    setMounted(true);
     void refresh();
   }, [refresh]);
 
@@ -64,8 +68,15 @@ export default function AdminCustomBuild({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action, ...extra }),
       });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || 'Request failed');
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const detail = typeof json.error === 'string' ? json.error : `Request failed (${res.status})`;
+        throw new Error(
+          res.status === 504 || /timeout|timed out/i.test(detail)
+            ? 'Generation timed out — try a shorter creative direction, or Generate again (drafts are smaller now).'
+            : detail
+        );
+      }
       if (typeof json.reply === 'string') setReply(json.reply);
       if (Array.isArray(json.warnings)) setWarnings(json.warnings);
       if (action === 'publish') {
@@ -108,12 +119,18 @@ export default function AdminCustomBuild({
         <div className="flex items-center gap-2">
           <span
             className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium border ${
-              status?.renderMode === 'custom'
+              mounted && status?.renderMode === 'custom'
                 ? 'bg-violet-500/15 text-violet-300 border-violet-500/30'
                 : 'bg-neutral-800 text-neutral-400 border-neutral-700'
             }`}
+            suppressHydrationWarning
           >
-            Live: {status?.renderMode === 'custom' ? 'CUSTOM' : 'ENGINE'}
+            Live:{' '}
+            {!mounted
+              ? '…'
+              : status?.renderMode === 'custom'
+                ? 'CUSTOM'
+                : 'ENGINE'}
           </span>
         </div>
       </div>
@@ -123,7 +140,9 @@ export default function AdminCustomBuild({
           <div className="text-xs font-semibold text-neutral-500 uppercase tracking-wide mb-2">
             Draft
           </div>
-          {status?.draft ? (
+          {!mounted ? (
+            <p className="text-neutral-500">Loading…</p>
+          ) : status?.draft ? (
             <>
               <p className="text-neutral-200">
                 Mode: <span className="font-mono text-violet-300">{status.draft.mode}</span>
@@ -140,7 +159,9 @@ export default function AdminCustomBuild({
           <div className="text-xs font-semibold text-neutral-500 uppercase tracking-wide mb-2">
             Published
           </div>
-          {status?.published ? (
+          {!mounted ? (
+            <p className="text-neutral-500">Loading…</p>
+          ) : status?.published ? (
             <>
               <p className="text-neutral-200">
                 Mode: <span className="font-mono text-violet-300">{status.published.mode}</span>

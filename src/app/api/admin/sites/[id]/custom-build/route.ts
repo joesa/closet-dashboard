@@ -9,7 +9,8 @@ import {
 } from '@/lib/ai/generateCustomSite'
 import { isCustomSiteConfig } from '@/lib/customSite'
 
-export const maxDuration = 300
+// Vercel Hobby allows up to 60s; keep generation compact to fit.
+export const maxDuration = 60
 export const runtime = 'nodejs'
 
 /**

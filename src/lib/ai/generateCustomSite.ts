@@ -69,9 +69,17 @@ export async function generateCustomSiteDraft(opts: {
   const seo = (cfg.seo_config || {}) as Record<string, unknown>
   const brandName = (cfg.brand_name || tenant.business_name || 'Business') as string
 
+  // Keep the page set small so generation finishes within Vercel Hobby timeouts.
+  const requestedSlugs = pagesConfig
+    .map((p: { slug?: string }) => (typeof p.slug === 'string' ? p.slug : ''))
+    .filter(Boolean)
+    .slice(0, 3)
   const pageHints =
-    pagesConfig.length > 0
-      ? pagesConfig.map((p: { slug?: string; title?: string }) => p.slug || p.title).join(', ')
+    requestedSlugs.length > 0
+      ? ['/', ...requestedSlugs.map((s: string) => (s.startsWith('/') ? s : `/${s}`))]
+          .filter((v, i, a) => a.indexOf(v) === i)
+          .slice(0, 4)
+          .join(', ')
       : '/, /about, /services, /contact'
 
   const systemPrompt = `You are an expert web designer building a COMPLETE custom marketing website from scratch as raw HTML + CSS.
@@ -79,7 +87,7 @@ export async function generateCustomSiteDraft(opts: {
 Output ONLY valid JSON matching this schema (no markdown fences):
 {
   "mode": "${mode}",
-  "globalCss": "string — shared CSS for the whole site",
+  "globalCss": "string — shared CSS for the whole site (keep under ~4KB)",
   "pages": {
     "/": { "html": "string — body HTML for home", "css": "optional page CSS", "title": "page title", "description": "meta description" },
     "/about": { "html": "...", "title": "..." }
@@ -89,9 +97,9 @@ Output ONLY valid JSON matching this schema (no markdown fences):
 
 Hard rules:
 1. Generate a DISTINCT, bespoke design — NOT a clone of a generic template. Unique layout, typography, color palette for THIS business.
-2. Include pages for at least: ${pageHints}. Always include "/".
+2. Include EXACTLY these pages (no more): ${pageHints}. Always include "/".
 3. HTML is BODY CONTENT ONLY (no <html>/<head>/<body> wrappers). Use semantic tags (header, nav, main, section, footer).
-4. Embed exactly this widget placeholder somewhere on the home page (and optionally contact) so the live quote calculator mounts:
+4. Embed exactly this widget placeholder somewhere on the home page so the live quote calculator mounts:
    ${WIDGET_PLACEHOLDER}
 5. Use absolute https:// image URLs when referencing images (prefer ones already on the site if provided in context). Do not invent broken localhost URLs.
 6. CSS must be self-contained. No @import. Prefer CSS variables for the palette.
@@ -102,7 +110,7 @@ Hard rules:
   }
 8. Internal links must be root-relative paths that match your pages keys (e.g. href="/services").
 9. Make it mobile-responsive.
-10. Keep total JSON under a practical size — aim for polished but not novel-length copy.`
+10. CRITICAL SIZE LIMIT: keep each page html under ~2500 characters and globalCss under ~4000 characters. Short, punchy copy. Compact CSS. The JSON MUST be complete and valid — do not truncate mid-string.`
 
   const context = {
     brandName,
@@ -148,20 +156,33 @@ ${opts.prompt || 'Create a distinctive, conversion-focused marketing site that f
 Business context:
 ${JSON.stringify(context, null, 2)}`
 
-  const { text } = await generateTextWithFallback({
-    prompt: userPrompt,
-    systemPrompt,
-    jsonMode: true,
-    temperature: 0.85,
-    maxOutputTokens: 16384,
-  })
+  let text: string
+  try {
+    const result = await generateTextWithFallback({
+      prompt: userPrompt,
+      systemPrompt,
+      jsonMode: true,
+      temperature: 0.7,
+      // Hobby serverless budgets are tight — keep the completion small.
+      maxOutputTokens: 8192,
+    })
+    text = result.text
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    if (/GEMINI_API_KEY/i.test(msg)) {
+      throw new Error('AI is not configured (missing GEMINI_API_KEY on the server).')
+    }
+    throw new Error(`AI generation failed: ${msg}`)
+  }
 
   let parsed: Record<string, unknown>
   try {
     parsed = JSON.parse(sanitizeJsonString(extractJson(text))) as Record<string, unknown>
   } catch (err) {
     throw new Error(
-      `Model returned unparseable JSON: ${err instanceof Error ? err.message : 'parse error'}`
+      `Model returned unparseable/truncated JSON (${text.length} chars). Try again with a shorter prompt, or iterate after a simpler first draft. ${
+        err instanceof Error ? err.message : 'parse error'
+      }`
     )
   }
 
