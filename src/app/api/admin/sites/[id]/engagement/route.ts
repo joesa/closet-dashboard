@@ -4,6 +4,7 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import {
   normalizeDomainConfig,
   normalizeRoomPricing,
+  ROOM_TYPES,
   type DomainConfig,
   type RoomPricing,
 } from '@/lib/rooms'
@@ -34,11 +35,7 @@ async function resolveTenantWidget(tenantId: string) {
 
 /**
  * Admin engagement tools for one tenant.
- *
- * GET  → engagement model + contractor settings + catalog rows
- * PATCH → update engagement_model and/or quote settings
- * POST  → add catalog item (menu / service / availability / event)
- * DELETE → remove catalog item by kind + id
+ * Quote calculator state mirrors GET /api/settings (what the live widget shows).
  */
 export async function GET(
   _req: Request,
@@ -66,7 +63,7 @@ export async function GET(
     supabase
       .from('contractor_settings')
       .select(
-        'id, company_name, primary_color_hex, room_pricing, domain_config, tier_names'
+        'id, company_name, primary_color_hex, room_pricing, domain_config, tier_names, disabled_default_rooms, disabled_default_finishes'
       )
       .eq('id', widgetId)
       .maybeSingle(),
@@ -81,6 +78,9 @@ export async function GET(
     { data: services },
     { data: availability },
     { data: events },
+    { data: customRooms },
+    { data: customFinishes },
+    { data: addons },
   ] = await Promise.all([
     supabase
       .from('menu_items')
@@ -102,7 +102,57 @@ export async function GET(
       .select('*')
       .eq('contractor_id', widgetId)
       .order('event_date', { ascending: true }),
+    supabase
+      .from('contractor_rooms')
+      .select('id, name, price_basic, price_standard, price_premium')
+      .eq('contractor_id', widgetId)
+      .order('created_at', { ascending: true }),
+    supabase
+      .from('contractor_finishes')
+      .select('id, label, description, swatch_hex, tier, sort_order')
+      .eq('contractor_id', widgetId)
+      .order('sort_order', { ascending: true }),
+    supabase
+      .from('contractor_addons')
+      .select('id, room_type, room_types, name, price')
+      .eq('contractor_id', widgetId)
+      .order('created_at', { ascending: true }),
   ])
+
+  const disabledDefaultRooms =
+    (settings?.disabled_default_rooms as string[] | null) || []
+  const disabledDefaultFinishes =
+    (settings?.disabled_default_finishes as string[] | null) || []
+  const roomPricing = normalizeRoomPricing(settings?.room_pricing)
+  const domainConfig = normalizeDomainConfig(settings?.domain_config)
+  const tierNamesRaw = settings?.tier_names as
+    | { basic?: string; standard?: string; premium?: string }
+    | null
+  const tierNames = {
+    basic: tierNamesRaw?.basic || 'Basic',
+    standard: tierNamesRaw?.standard || 'Standard',
+    premium: tierNamesRaw?.premium || 'Premium',
+  }
+
+  // Same Step 1 list the widget builds (system defaults − disabled + custom).
+  const step1Categories = [
+    ...ROOM_TYPES.filter((r) => !disabledDefaultRooms.includes(r)).map((name) => ({
+      kind: 'default' as const,
+      id: name,
+      name,
+      prices: roomPricing[name],
+    })),
+    ...(customRooms || []).map((r) => ({
+      kind: 'custom' as const,
+      id: r.id,
+      name: r.name,
+      prices: {
+        basic: Number(r.price_basic) || 0,
+        standard: Number(r.price_standard) || 0,
+        premium: Number(r.price_premium) || 0,
+      },
+    })),
+  ]
 
   return NextResponse.json({
     tenantId,
@@ -113,15 +163,20 @@ export async function GET(
       ? {
           companyName: settings.company_name || '',
           primaryColorHex: settings.primary_color_hex || '#6C47FF',
-          roomPricing: normalizeRoomPricing(settings.room_pricing),
-          domainConfig: normalizeDomainConfig(settings.domain_config),
-          tierNames: (settings.tier_names as Record<string, string> | null) || {
-            basic: 'Basic',
-            standard: 'Standard',
-            premium: 'Premium',
-          },
+          roomPricing,
+          domainConfig,
+          tierNames,
+          disabledDefaultRooms,
+          disabledDefaultFinishes,
         }
       : null,
+    calculator: {
+      step1Categories,
+      customRooms: customRooms || [],
+      customFinishes: customFinishes || [],
+      addons: addons || [],
+      systemRoomTypes: [...ROOM_TYPES],
+    },
     catalog: {
       menuItems: menuItems || [],
       services: services || [],
@@ -175,6 +230,8 @@ export async function PATCH(
       roomPricing?: unknown
       domainConfig?: unknown
       tierNames?: unknown
+      disabledDefaultRooms?: unknown
+      disabledDefaultFinishes?: unknown
     }
     const patch: Record<string, unknown> = {}
     if (typeof s.companyName === 'string') patch.company_name = s.companyName
@@ -193,6 +250,16 @@ export async function PATCH(
         premium: typeof t.premium === 'string' ? t.premium : 'Premium',
       }
     }
+    if (Array.isArray(s.disabledDefaultRooms)) {
+      patch.disabled_default_rooms = s.disabledDefaultRooms.filter(
+        (x): x is string => typeof x === 'string'
+      )
+    }
+    if (Array.isArray(s.disabledDefaultFinishes)) {
+      patch.disabled_default_finishes = s.disabledDefaultFinishes.filter(
+        (x): x is string => typeof x === 'string'
+      )
+    }
     if (Object.keys(patch).length > 0) {
       const { error } = await supabase
         .from('contractor_settings')
@@ -203,6 +270,64 @@ export async function PATCH(
       }
       updates.push('contractor_settings')
     }
+  }
+
+  // Immediate price/name update for a custom room row.
+  if (body.roomUpdate && typeof body.roomUpdate === 'object') {
+    const u = body.roomUpdate as {
+      id?: string
+      name?: string
+      price_basic?: number
+      price_standard?: number
+      price_premium?: number
+    }
+    if (!u.id) {
+      return NextResponse.json({ error: 'roomUpdate.id required' }, { status: 400 })
+    }
+    const patch: Record<string, unknown> = {}
+    if (typeof u.name === 'string' && u.name.trim()) patch.name = u.name.trim()
+    if (typeof u.price_basic === 'number') patch.price_basic = u.price_basic
+    if (typeof u.price_standard === 'number') patch.price_standard = u.price_standard
+    if (typeof u.price_premium === 'number') patch.price_premium = u.price_premium
+    if (Object.keys(patch).length === 0) {
+      return NextResponse.json({ error: 'No room fields to update' }, { status: 400 })
+    }
+    const { error } = await supabase
+      .from('contractor_rooms')
+      .update(patch)
+      .eq('id', u.id)
+      .eq('contractor_id', widgetId)
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+    updates.push('contractor_rooms')
+  }
+
+  if (body.addonUpdate && typeof body.addonUpdate === 'object') {
+    const u = body.addonUpdate as {
+      id?: string
+      name?: string
+      price?: number
+      room_type?: string | null
+      room_types?: string[] | null
+    }
+    if (!u.id) {
+      return NextResponse.json({ error: 'addonUpdate.id required' }, { status: 400 })
+    }
+    const patch: Record<string, unknown> = {}
+    if (typeof u.name === 'string') patch.name = u.name.trim()
+    if (typeof u.price === 'number') patch.price = u.price
+    if (u.room_type !== undefined) patch.room_type = u.room_type
+    if (u.room_types !== undefined) patch.room_types = u.room_types
+    const { error } = await supabase
+      .from('contractor_addons')
+      .update(patch)
+      .eq('id', u.id)
+      .eq('contractor_id', widgetId)
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+    updates.push('contractor_addons')
   }
 
   if (updates.length === 0) {
@@ -294,9 +419,60 @@ export async function POST(
     if (!row.name || !row.event_date) {
       return NextResponse.json({ error: 'Event name and date required' }, { status: 400 })
     }
+  } else if (kind === 'room') {
+    table = 'contractor_rooms'
+    const name = String(data.name || '').trim()
+    if (!name) {
+      return NextResponse.json({ error: 'Category name required' }, { status: 400 })
+    }
+    if ((ROOM_TYPES as readonly string[]).includes(name)) {
+      return NextResponse.json(
+        { error: `"${name}" is a system category — re-enable it instead of duplicating` },
+        { status: 400 }
+      )
+    }
+    row = {
+      ...row,
+      name,
+      price_basic: Number(data.price_basic) || 0,
+      price_standard: Number(data.price_standard) || 0,
+      price_premium: Number(data.price_premium) || 0,
+    }
+  } else if (kind === 'finish') {
+    table = 'contractor_finishes'
+    const label = String(data.label || '').trim()
+    if (!label) {
+      return NextResponse.json({ error: 'Finish label required' }, { status: 400 })
+    }
+    row = {
+      ...row,
+      label,
+      description: data.description != null ? String(data.description) : null,
+      swatch_hex: String(data.swatch_hex || '#A78B6A'),
+      tier: ['basic', 'standard', 'premium'].includes(String(data.tier))
+        ? String(data.tier)
+        : 'standard',
+      sort_order: Number(data.sort_order) || 0,
+    }
+  } else if (kind === 'addon') {
+    table = 'contractor_addons'
+    const name = String(data.name || '').trim()
+    if (!name) {
+      return NextResponse.json({ error: 'Add-on name required' }, { status: 400 })
+    }
+    row = {
+      ...row,
+      name,
+      price: Number(data.price) || 0,
+      room_type: data.room_type != null ? String(data.room_type) : 'all',
+      room_types: Array.isArray(data.room_types) ? data.room_types : null,
+    }
   } else {
     return NextResponse.json(
-      { error: 'kind must be menu|service|availability|event' },
+      {
+        error:
+          'kind must be menu|service|availability|event|room|finish|addon',
+      },
       { status: 400 }
     )
   }
@@ -355,11 +531,20 @@ export async function DELETE(
           ? 'booking_availability'
           : kind === 'event'
             ? 'ticket_events'
-            : null
+            : kind === 'room'
+              ? 'contractor_rooms'
+              : kind === 'finish'
+                ? 'contractor_finishes'
+                : kind === 'addon'
+                  ? 'contractor_addons'
+                  : null
 
   if (!table) {
     return NextResponse.json(
-      { error: 'kind must be menu|service|availability|event' },
+      {
+        error:
+          'kind must be menu|service|availability|event|room|finish|addon',
+      },
       { status: 400 }
     )
   }

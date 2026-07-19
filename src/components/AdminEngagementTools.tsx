@@ -1,16 +1,49 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   PRICING_TIERS,
   ROOM_TYPES,
   type DomainConfig,
+  type PricingModel,
   type PricingTier,
   type RoomPricing,
   type RoomType,
 } from '@/lib/rooms'
 
 type EngagementModel = 'quote' | 'order' | 'booking' | 'ticket'
+
+type CustomRoom = {
+  id: string
+  name: string
+  price_basic: number
+  price_standard: number
+  price_premium: number
+}
+
+type CustomFinish = {
+  id: string
+  label: string
+  description: string | null
+  swatch_hex: string
+  tier: PricingTier
+  sort_order: number
+}
+
+type Addon = {
+  id: string
+  room_type: string | null
+  room_types?: string[] | null
+  name: string
+  price: number
+}
+
+type Step1Category = {
+  kind: 'default' | 'custom'
+  id: string
+  name: string
+  prices: { basic: number; standard: number; premium: number }
+}
 
 type Catalog = {
   menuItems: Array<{
@@ -52,7 +85,16 @@ type Payload = {
     roomPricing: RoomPricing
     domainConfig: DomainConfig
     tierNames: { basic: string; standard: string; premium: string }
+    disabledDefaultRooms: string[]
+    disabledDefaultFinishes: string[]
   } | null
+  calculator: {
+    step1Categories: Step1Category[]
+    customRooms: CustomRoom[]
+    customFinishes: CustomFinish[]
+    addons: Addon[]
+    systemRoomTypes: string[]
+  }
   catalog: Catalog
 }
 
@@ -65,9 +107,21 @@ const MODEL_OPTIONS: { id: EngagementModel; label: string; hint: string }[] = [
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
+const DEFAULT_FINISH_META: Record<PricingTier, { label: string; swatch: string }> = {
+  basic: { label: 'White Melamine', swatch: '#F4F1EC' },
+  standard: { label: 'Textured Wood', swatch: '#A0744A' },
+  premium: { label: 'Custom Paint', swatch: '#3A4750' },
+}
+
+const PRICING_MODELS: { id: PricingModel; label: string }[] = [
+  { id: 'per_unit', label: 'Per unit (e.g. $/ft)' },
+  { id: 'flat_tiered', label: 'Flat tiered (package price)' },
+  { id: 'base_plus_distance', label: 'Base + distance' },
+]
+
 /**
- * Per-tenant engagement tools editor on the admin site detail page.
- * Scoped to tenants.widget_id → contractor_settings (live-linked calculator).
+ * Per-tenant engagement tools. For quote mode, loads the exact live calculator
+ * state (Step 1 categories = defaults − disabled + contractor_rooms).
  */
 export default function AdminEngagementTools({ tenantId }: { tenantId: string }) {
   const [data, setData] = useState<Payload | null>(null)
@@ -75,16 +129,34 @@ export default function AdminEngagementTools({ tenantId }: { tenantId: string })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [info, setInfo] = useState('')
+  const [showHiddenDefaults, setShowHiddenDefaults] = useState(false)
 
-  // Editable quote settings (local until Save)
   const [model, setModel] = useState<EngagementModel>('quote')
   const [companyName, setCompanyName] = useState('')
   const [primaryColor, setPrimaryColor] = useState('#6C47FF')
   const [roomPricing, setRoomPricing] = useState<RoomPricing | null>(null)
   const [domainConfig, setDomainConfig] = useState<DomainConfig | null>(null)
-  const [showFullMatrix, setShowFullMatrix] = useState(false)
+  const [tierNames, setTierNames] = useState({
+    basic: 'Basic',
+    standard: 'Standard',
+    premium: 'Premium',
+  })
+  const [disabledRooms, setDisabledRooms] = useState<string[]>([])
+  const [disabledFinishes, setDisabledFinishes] = useState<string[]>([])
 
-  // Add forms
+  const [newRoom, setNewRoom] = useState({
+    name: '',
+    price_basic: 0,
+    price_standard: 0,
+    price_premium: 0,
+  })
+  const [newFinish, setNewFinish] = useState({
+    label: '',
+    swatch_hex: '#A78B6A',
+    tier: 'standard' as PricingTier,
+  })
+  const [newAddon, setNewAddon] = useState({ name: '', price: 0 })
+
   const [newMenu, setNewMenu] = useState({
     name: '',
     description: '',
@@ -124,6 +196,9 @@ export default function AdminEngagementTools({ tenantId }: { tenantId: string })
         setPrimaryColor(payload.settings.primaryColorHex)
         setRoomPricing(payload.settings.roomPricing)
         setDomainConfig(payload.settings.domainConfig)
+        setTierNames(payload.settings.tierNames)
+        setDisabledRooms(payload.settings.disabledDefaultRooms || [])
+        setDisabledFinishes(payload.settings.disabledDefaultFinishes || [])
       } else {
         setRoomPricing(null)
         setDomainConfig(null)
@@ -139,23 +214,38 @@ export default function AdminEngagementTools({ tenantId }: { tenantId: string })
     void refresh()
   }, [refresh])
 
-  const saveModelAndQuote = async () => {
+  const categoryLabel = domainConfig?.categoryLabel || 'Room'
+  const unitLabel = domainConfig?.unitLabel || 'unit'
+  const customRooms = data?.calculator.customRooms || []
+  const step1 = data?.calculator.step1Categories || []
+
+  const hiddenDefaults = useMemo(
+    () => ROOM_TYPES.filter((r) => disabledRooms.includes(r)),
+    [disabledRooms]
+  )
+
+  const saveSettings = async (extra?: {
+    disabledDefaultRooms?: string[]
+    disabledDefaultFinishes?: string[]
+  }) => {
     setSaving(true)
     setError('')
     setInfo('')
     try {
       const body: Record<string, unknown> = { engagementModel: model }
-      if (model === 'quote' && roomPricing && domainConfig) {
-        body.settings = {
-          companyName,
-          primaryColorHex: primaryColor,
-          roomPricing,
-          domainConfig,
-        }
-      } else if (companyName || primaryColor) {
-        // Brand fields apply across models
-        body.settings = { companyName, primaryColorHex: primaryColor }
+      const settings: Record<string, unknown> = {
+        companyName,
+        primaryColorHex: primaryColor,
       }
+      if (model === 'quote' && roomPricing && domainConfig) {
+        settings.roomPricing = roomPricing
+        settings.domainConfig = domainConfig
+        settings.tierNames = tierNames
+        settings.disabledDefaultRooms = extra?.disabledDefaultRooms ?? disabledRooms
+        settings.disabledDefaultFinishes =
+          extra?.disabledDefaultFinishes ?? disabledFinishes
+      }
+      body.settings = settings
       const res = await fetch(`/api/admin/sites/${tenantId}/engagement`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -172,6 +262,16 @@ export default function AdminEngagementTools({ tenantId }: { tenantId: string })
     }
   }
 
+  const patchJson = async (body: Record<string, unknown>) => {
+    const res = await fetch(`/api/admin/sites/${tenantId}/engagement`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    const json = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(json.error || 'Update failed')
+  }
+
   const addItem = async (kind: string, itemData: Record<string, unknown>) => {
     setError('')
     setInfo('')
@@ -183,10 +283,11 @@ export default function AdminEngagementTools({ tenantId }: { tenantId: string })
     const json = await res.json().catch(() => ({}))
     if (!res.ok) {
       setError(json.error || 'Add failed')
-      return
+      return false
     }
     setInfo('Added.')
     await refresh()
+    return true
   }
 
   const deleteItem = async (kind: string, id: string) => {
@@ -204,6 +305,39 @@ export default function AdminEngagementTools({ tenantId }: { tenantId: string })
     await refresh()
   }
 
+  const setDefaultRoomEnabled = async (room: RoomType, enabled: boolean) => {
+    const next = enabled
+      ? disabledRooms.filter((r) => r !== room)
+      : [...disabledRooms, room]
+    setDisabledRooms(next)
+    try {
+      await patchJson({
+        settings: { disabledDefaultRooms: next },
+      })
+      setInfo(enabled ? `Enabled “${room}” in calculator.` : `Hid “${room}” from calculator.`)
+      await refresh()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Update failed')
+      await refresh()
+    }
+  }
+
+  const setDefaultFinishEnabled = async (tier: PricingTier, enabled: boolean) => {
+    const next = enabled
+      ? disabledFinishes.filter((t) => t !== tier)
+      : [...disabledFinishes, tier]
+    setDisabledFinishes(next)
+    try {
+      await patchJson({
+        settings: { disabledDefaultFinishes: next },
+      })
+      await refresh()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Update failed')
+      await refresh()
+    }
+  }
+
   const setRoomPrice = (room: RoomType, tier: PricingTier, value: number) => {
     setRoomPricing((prev) => {
       if (!prev) return prev
@@ -214,11 +348,30 @@ export default function AdminEngagementTools({ tenantId }: { tenantId: string })
     })
   }
 
+  const updateCustomRoomPrice = async (
+    roomId: string,
+    tier: PricingTier,
+    value: number
+  ) => {
+    const col =
+      tier === 'basic'
+        ? 'price_basic'
+        : tier === 'standard'
+          ? 'price_standard'
+          : 'price_premium'
+    try {
+      await patchJson({ roomUpdate: { id: roomId, [col]: value } })
+      await refresh()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Price update failed')
+    }
+  }
+
   if (loading) {
     return (
       <section className="bg-neutral-900 border border-neutral-800 rounded-xl p-6">
         <h2 className="text-lg font-semibold text-white mb-2">Engagement tools</h2>
-        <p className="text-sm text-neutral-500">Loading…</p>
+        <p className="text-sm text-neutral-500">Loading live calculator state…</p>
       </section>
     )
   }
@@ -237,9 +390,10 @@ export default function AdminEngagementTools({ tenantId }: { tenantId: string })
       <div>
         <h2 className="text-lg font-semibold text-white">Engagement tools</h2>
         <p className="text-sm text-neutral-400 mt-1">
-          Quote, booking, order, and ticket config for this client. Linked to widget{' '}
+          Configure this client’s live calculator / booking / order / ticket engine.
+          Linked to widget{' '}
           <code className="text-xs text-blue-300 font-mono">{data.widgetId}</code>
-          — not a cloned snapshot in the HTML.
+          — same data the public widget loads.
         </p>
       </div>
 
@@ -254,7 +408,6 @@ export default function AdminEngagementTools({ tenantId }: { tenantId: string })
         </div>
       ) : null}
 
-      {/* Model picker */}
       <div>
         <label className="text-xs font-bold text-neutral-500 uppercase tracking-widest block mb-2">
           Engagement model
@@ -278,7 +431,6 @@ export default function AdminEngagementTools({ tenantId }: { tenantId: string })
         </div>
       </div>
 
-      {/* Shared brand */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label className="text-xs text-neutral-500 uppercase tracking-widest block mb-1">
@@ -310,93 +462,522 @@ export default function AdminEngagementTools({ tenantId }: { tenantId: string })
         </div>
       </div>
 
-      {/* Quote pricing */}
+      {/* ── Quote calculator (live state) ─────────────────────────── */}
       {model === 'quote' && roomPricing && domainConfig ? (
-        <div className="space-y-4 border-t border-neutral-800 pt-4">
-          <div>
-            <h3 className="text-sm font-semibold text-white">Quote pricing</h3>
-            <p className="text-xs text-neutral-500 mt-1">
-              Live matrix used by the calculator ({domainConfig.unitLabel} /{' '}
-              {domainConfig.tierLabel}).
-            </p>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div>
-              <label className="text-xs text-neutral-500 block mb-1">Category label</label>
-              <input
-                value={domainConfig.categoryLabel}
-                onChange={(e) =>
-                  setDomainConfig({ ...domainConfig, categoryLabel: e.target.value })
-                }
-                className="w-full rounded-lg bg-black/40 border border-neutral-700 px-3 py-2 text-sm text-white"
-              />
+        <div className="space-y-6 border-t border-neutral-800 pt-4">
+          {/* Live Step 1 mirror */}
+          <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 p-4 space-y-3">
+            <div className="flex items-baseline justify-between gap-3 flex-wrap">
+              <div>
+                <h3 className="text-sm font-semibold text-white">
+                  Live Step 1 — Select Your {categoryLabel}
+                </h3>
+                <p className="text-xs text-neutral-400 mt-1">
+                  Exactly what visitors see in the calculator ({step1.length} option
+                  {step1.length === 1 ? '' : 's'}).
+                </p>
+              </div>
+              <span className="text-[10px] uppercase tracking-wider text-blue-300/80 font-medium">
+                Live baseline
+              </span>
             </div>
-            <div>
-              <label className="text-xs text-neutral-500 block mb-1">Unit label</label>
-              <input
-                value={domainConfig.unitLabel}
-                onChange={(e) =>
-                  setDomainConfig({ ...domainConfig, unitLabel: e.target.value })
-                }
-                className="w-full rounded-lg bg-black/40 border border-neutral-700 px-3 py-2 text-sm text-white"
-              />
-            </div>
-            <div>
-              <label className="text-xs text-neutral-500 block mb-1">Tier label</label>
-              <input
-                value={domainConfig.tierLabel}
-                onChange={(e) =>
-                  setDomainConfig({ ...domainConfig, tierLabel: e.target.value })
-                }
-                className="w-full rounded-lg bg-black/40 border border-neutral-700 px-3 py-2 text-sm text-white"
-              />
-            </div>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => setShowFullMatrix((v) => !v)}
-            className="text-sm text-blue-400 hover:text-blue-300"
-          >
-            {showFullMatrix ? 'Hide' : 'Edit'} full pricing matrix
-          </button>
-
-          {showFullMatrix ? (
-            <div className="max-h-80 overflow-y-auto space-y-2 pr-1">
-              {ROOM_TYPES.map((room) => (
-                <div
-                  key={room}
-                  className="grid grid-cols-[1fr_repeat(3,5rem)] gap-2 items-center text-sm"
-                >
-                  <span className="text-neutral-300 truncate">{room}</span>
-                  {PRICING_TIERS.map((tier) => (
-                    <input
-                      key={tier}
-                      type="number"
-                      value={roomPricing[room][tier]}
-                      onChange={(e) =>
-                        setRoomPrice(room, tier, Number(e.target.value) || 0)
-                      }
-                      className="rounded bg-black/40 border border-neutral-700 px-2 py-1 text-white font-mono text-xs"
-                      aria-label={`${room} ${tier}`}
-                    />
-                  ))}
-                </div>
-              ))}
-              <div className="grid grid-cols-[1fr_repeat(3,5rem)] gap-2 text-[10px] text-neutral-500 uppercase tracking-wider">
-                <span />
-                {PRICING_TIERS.map((t) => (
-                  <span key={t} className="text-center">
-                    {t}
+            {step1.length === 0 ? (
+              <p className="text-sm text-amber-300">
+                No categories visible — add a custom {categoryLabel.toLowerCase()} below
+                or re-enable a system default.
+              </p>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {step1.map((c) => (
+                  <span
+                    key={`${c.kind}-${c.id}`}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-neutral-600 bg-black/40 px-3 py-2 text-sm text-white"
+                  >
+                    {c.name}
+                    {c.kind === 'custom' ? (
+                      <span className="text-[9px] uppercase tracking-wider text-neutral-500">
+                        custom
+                      </span>
+                    ) : null}
                   </span>
                 ))}
               </div>
+            )}
+          </div>
+
+          {/* Labels + pricing model */}
+          <div className="space-y-3">
+            <h3 className="text-sm font-semibold text-white">Calculator labels & model</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              <div>
+                <label className="text-xs text-neutral-500 block mb-1">Category label</label>
+                <input
+                  value={domainConfig.categoryLabel}
+                  onChange={(e) =>
+                    setDomainConfig({ ...domainConfig, categoryLabel: e.target.value })
+                  }
+                  className="w-full rounded-lg bg-black/40 border border-neutral-700 px-3 py-2 text-sm text-white"
+                  placeholder="Room / Service"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-neutral-500 block mb-1">Unit label</label>
+                <input
+                  value={domainConfig.unitLabel}
+                  onChange={(e) =>
+                    setDomainConfig({ ...domainConfig, unitLabel: e.target.value })
+                  }
+                  className="w-full rounded-lg bg-black/40 border border-neutral-700 px-3 py-2 text-sm text-white"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-neutral-500 block mb-1">Tier label</label>
+                <input
+                  value={domainConfig.tierLabel}
+                  onChange={(e) =>
+                    setDomainConfig({ ...domainConfig, tierLabel: e.target.value })
+                  }
+                  className="w-full rounded-lg bg-black/40 border border-neutral-700 px-3 py-2 text-sm text-white"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-neutral-500 block mb-1">Pricing model</label>
+                <select
+                  value={domainConfig.pricingModel}
+                  onChange={(e) =>
+                    setDomainConfig({
+                      ...domainConfig,
+                      pricingModel: e.target.value as PricingModel,
+                    })
+                  }
+                  className="w-full rounded-lg bg-black/40 border border-neutral-700 px-3 py-2 text-sm text-white"
+                >
+                  {PRICING_MODELS.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
-          ) : null}
+            <div className="grid grid-cols-3 gap-3">
+              {PRICING_TIERS.map((tier) => (
+                <div key={tier}>
+                  <label className="text-xs text-neutral-500 block mb-1 capitalize">
+                    {tier} tier name
+                  </label>
+                  <input
+                    value={tierNames[tier]}
+                    onChange={(e) =>
+                      setTierNames({ ...tierNames, [tier]: e.target.value })
+                    }
+                    className="w-full rounded-lg bg-black/40 border border-neutral-700 px-3 py-2 text-sm text-white"
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Categories & pricing — only what is live + tools to expand */}
+          <div className="space-y-3">
+            <div className="flex items-baseline justify-between gap-2 flex-wrap">
+              <div>
+                <h3 className="text-sm font-semibold text-white">
+                  {categoryLabel} pricing
+                </h3>
+                <p className="text-xs text-neutral-500 mt-1">
+                  Prices per {unitLabel.toLowerCase()} (or flat package, depending on model).
+                  Custom rows save immediately; default-room prices save with the button below.
+                </p>
+              </div>
+              <span className="text-[10px] uppercase tracking-wider text-neutral-500">
+                {step1.filter((c) => c.kind === 'default').length} system ·{' '}
+                {customRooms.length} custom
+              </span>
+            </div>
+
+            <div className="overflow-hidden rounded-xl border border-neutral-800">
+              <div className="grid grid-cols-[1.5fr_repeat(3,4.5rem)_2.5rem] gap-px bg-neutral-800 text-[10px] font-medium uppercase tracking-widest text-neutral-500">
+                <div className="bg-neutral-900 px-3 py-2">{categoryLabel}</div>
+                {PRICING_TIERS.map((t) => (
+                  <div key={t} className="bg-neutral-900 px-2 py-2 text-center">
+                    {tierNames[t] || t}
+                  </div>
+                ))}
+                <div className="bg-neutral-900 px-1 py-2 text-center">On</div>
+              </div>
+
+              {/* Active system defaults */}
+              {ROOM_TYPES.filter((r) => !disabledRooms.includes(r)).map((room) => (
+                <div
+                  key={room}
+                  className="grid grid-cols-[1.5fr_repeat(3,4.5rem)_2.5rem] gap-px border-t border-neutral-800 bg-neutral-950"
+                >
+                  <div className="px-3 py-2 text-sm text-neutral-200 flex items-center">
+                    {room}
+                  </div>
+                  {PRICING_TIERS.map((tier) => (
+                    <div key={tier} className="px-1.5 py-1.5">
+                      <input
+                        type="number"
+                        value={roomPricing[room][tier]}
+                        onChange={(e) =>
+                          setRoomPrice(room, tier, Number(e.target.value) || 0)
+                        }
+                        className="w-full rounded bg-black/50 border border-neutral-700 px-1.5 py-1 text-xs text-white font-mono"
+                      />
+                    </div>
+                  ))}
+                  <div className="flex items-center justify-center">
+                    <button
+                      type="button"
+                      title="Hide from calculator"
+                      onClick={() => void setDefaultRoomEnabled(room, false)}
+                      className="h-4 w-7 rounded-full bg-emerald-500 relative"
+                    >
+                      <span className="absolute right-0.5 top-0.5 h-3 w-3 rounded-full bg-white" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+
+              {/* Custom rooms (Kidefa-style) */}
+              {customRooms.map((room) => (
+                <div
+                  key={room.id}
+                  className="grid grid-cols-[1.5fr_repeat(3,4.5rem)_2.5rem] gap-px border-t border-neutral-800 bg-neutral-950"
+                >
+                  <div className="px-3 py-2 text-sm text-white flex items-center gap-2 min-w-0">
+                    <span className="truncate">{room.name}</span>
+                    <span className="shrink-0 text-[9px] uppercase tracking-wider text-neutral-500">
+                      custom
+                    </span>
+                  </div>
+                  {PRICING_TIERS.map((tier) => {
+                    const col =
+                      tier === 'basic'
+                        ? 'price_basic'
+                        : tier === 'standard'
+                          ? 'price_standard'
+                          : 'price_premium'
+                    return (
+                      <div key={tier} className="px-1.5 py-1.5">
+                        <input
+                          type="number"
+                          defaultValue={room[col]}
+                          onBlur={(e) =>
+                            void updateCustomRoomPrice(
+                              room.id,
+                              tier,
+                              Number(e.target.value) || 0
+                            )
+                          }
+                          className="w-full rounded bg-black/50 border border-neutral-700 px-1.5 py-1 text-xs text-white font-mono"
+                        />
+                      </div>
+                    )
+                  })}
+                  <div className="flex items-center justify-center">
+                    <button
+                      type="button"
+                      onClick={() => void deleteItem('room', room.id)}
+                      className="text-xs text-red-400 hover:text-red-300"
+                      title="Delete"
+                    >
+                      ×
+                    </button>
+                  </div>
+                </div>
+              ))}
+
+              {step1.length === 0 && customRooms.length === 0 ? (
+                <p className="px-3 py-4 text-sm text-neutral-500 italic">
+                  No categories in the live calculator yet.
+                </p>
+              ) : null}
+            </div>
+
+            {/* Add custom category */}
+            <div className="rounded-xl border border-dashed border-neutral-700 bg-black/20 p-4 space-y-3">
+              <h4 className="text-xs font-semibold uppercase tracking-widest text-neutral-400">
+                Add {categoryLabel.toLowerCase()}
+              </h4>
+              <div className="grid grid-cols-1 sm:grid-cols-[1.5fr_repeat(3,1fr)_auto] gap-2 items-end">
+                <div>
+                  <label className="text-[10px] text-neutral-500 block mb-1">Name</label>
+                  <input
+                    value={newRoom.name}
+                    onChange={(e) => setNewRoom({ ...newRoom, name: e.target.value })}
+                    placeholder="e.g. Custom Home Theater"
+                    className="w-full rounded-lg bg-black/40 border border-neutral-700 px-3 py-2 text-sm text-white"
+                  />
+                </div>
+                {PRICING_TIERS.map((tier) => {
+                  const col =
+                    tier === 'basic'
+                      ? 'price_basic'
+                      : tier === 'standard'
+                        ? 'price_standard'
+                        : 'price_premium'
+                  return (
+                    <div key={tier}>
+                      <label className="text-[10px] text-neutral-500 block mb-1">
+                        {tierNames[tier]}
+                      </label>
+                      <input
+                        type="number"
+                        value={newRoom[col]}
+                        onChange={(e) =>
+                          setNewRoom({
+                            ...newRoom,
+                            [col]: Number(e.target.value) || 0,
+                          })
+                        }
+                        className="w-full rounded-lg bg-black/40 border border-neutral-700 px-3 py-2 text-sm text-white font-mono"
+                      />
+                    </div>
+                  )
+                })}
+                <button
+                  type="button"
+                  disabled={!newRoom.name.trim()}
+                  onClick={() => {
+                    void addItem('room', newRoom).then((ok) => {
+                      if (ok) {
+                        setNewRoom({
+                          name: '',
+                          price_basic: 0,
+                          price_standard: 0,
+                          price_premium: 0,
+                        })
+                      }
+                    })
+                  }}
+                  className="px-4 py-2 rounded-lg bg-white/10 hover:bg-white/15 text-sm text-white disabled:opacity-40"
+                >
+                  Add
+                </button>
+              </div>
+            </div>
+
+            {/* Re-enable hidden system defaults */}
+            <div>
+              <button
+                type="button"
+                onClick={() => setShowHiddenDefaults((v) => !v)}
+                className="text-sm text-blue-400 hover:text-blue-300"
+              >
+                {showHiddenDefaults ? 'Hide' : 'Show'} hidden system categories (
+                {hiddenDefaults.length})
+              </button>
+              {showHiddenDefaults && hiddenDefaults.length > 0 ? (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {hiddenDefaults.map((room) => (
+                    <button
+                      key={room}
+                      type="button"
+                      onClick={() => void setDefaultRoomEnabled(room, true)}
+                      className="rounded-lg border border-neutral-700 bg-black/30 px-3 py-1.5 text-xs text-neutral-300 hover:border-emerald-500/50 hover:text-white"
+                    >
+                      + {room}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+              {showHiddenDefaults && hiddenDefaults.length === 0 ? (
+                <p className="mt-2 text-xs text-neutral-500">All system categories are enabled.</p>
+              ) : null}
+            </div>
+          </div>
+
+          {/* Finishes */}
+          <div className="space-y-3 border-t border-neutral-800 pt-4">
+            <h3 className="text-sm font-semibold text-white">
+              {domainConfig.tierLabel || 'Finish'} options
+            </h3>
+            <div className="space-y-2">
+              {PRICING_TIERS.map((tier) => {
+                const on = !disabledFinishes.includes(tier)
+                const meta = DEFAULT_FINISH_META[tier]
+                return (
+                  <div
+                    key={tier}
+                    className="flex items-center justify-between gap-3 rounded-lg border border-neutral-800 bg-black/30 px-3 py-2"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span
+                        className="h-6 w-6 rounded border border-neutral-600"
+                        style={{ background: meta.swatch }}
+                      />
+                      <div>
+                        <div className="text-sm text-white">
+                          {tierNames[tier]}{' '}
+                          <span className="text-neutral-500 text-xs">({meta.label})</span>
+                        </div>
+                        <div className="text-[10px] text-neutral-500 uppercase tracking-wider">
+                          system · {tier}
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void setDefaultFinishEnabled(tier, !on)}
+                      className={`h-4 w-7 rounded-full relative ${on ? 'bg-emerald-500' : 'bg-zinc-700'}`}
+                    >
+                      <span
+                        className={`absolute top-0.5 h-3 w-3 rounded-full bg-white transition-all ${on ? 'right-0.5' : 'left-0.5'}`}
+                      />
+                    </button>
+                  </div>
+                )
+              })}
+              {(data.calculator.customFinishes || []).map((f) => (
+                <div
+                  key={f.id}
+                  className="flex items-center justify-between gap-3 rounded-lg border border-neutral-800 bg-black/30 px-3 py-2"
+                >
+                  <div className="flex items-center gap-3">
+                    <span
+                      className="h-6 w-6 rounded border border-neutral-600"
+                      style={{ background: f.swatch_hex }}
+                    />
+                    <div>
+                      <div className="text-sm text-white">{f.label}</div>
+                      <div className="text-[10px] text-neutral-500 uppercase tracking-wider">
+                        custom · {f.tier}
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void deleteItem('finish', f.id)}
+                    className="text-xs text-red-400 hover:text-red-300"
+                  >
+                    Delete
+                  </button>
+                </div>
+              ))}
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto_auto_auto] gap-2 items-end">
+              <input
+                placeholder="Custom finish name"
+                value={newFinish.label}
+                onChange={(e) => setNewFinish({ ...newFinish, label: e.target.value })}
+                className="rounded-lg bg-black/40 border border-neutral-700 px-3 py-2 text-sm text-white"
+              />
+              <input
+                type="color"
+                value={newFinish.swatch_hex}
+                onChange={(e) =>
+                  setNewFinish({ ...newFinish, swatch_hex: e.target.value })
+                }
+                className="h-10 w-12 rounded border border-neutral-700 bg-transparent"
+              />
+              <select
+                value={newFinish.tier}
+                onChange={(e) =>
+                  setNewFinish({
+                    ...newFinish,
+                    tier: e.target.value as PricingTier,
+                  })
+                }
+                className="rounded-lg bg-black/40 border border-neutral-700 px-3 py-2 text-sm text-white"
+              >
+                {PRICING_TIERS.map((t) => (
+                  <option key={t} value={t}>
+                    {tierNames[t]}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                disabled={!newFinish.label.trim()}
+                onClick={() => {
+                  void addItem('finish', newFinish).then((ok) => {
+                    if (ok) {
+                      setNewFinish({
+                        label: '',
+                        swatch_hex: '#A78B6A',
+                        tier: 'standard',
+                      })
+                    }
+                  })
+                }}
+                className="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/15 text-sm text-white disabled:opacity-40"
+              >
+                Add finish
+              </button>
+            </div>
+          </div>
+
+          {/* Add-ons */}
+          <div className="space-y-3 border-t border-neutral-800 pt-4">
+            <h3 className="text-sm font-semibold text-white">Add-ons</h3>
+            {(data.calculator.addons || []).length === 0 ? (
+              <p className="text-sm text-neutral-500 italic">No add-ons yet.</p>
+            ) : (
+              data.calculator.addons.map((a) => (
+                <div
+                  key={a.id}
+                  className="flex justify-between items-center gap-3 rounded-lg border border-neutral-800 bg-black/30 px-3 py-2"
+                >
+                  <div>
+                    <div className="text-sm text-white font-medium">{a.name}</div>
+                    <div className="text-xs text-neutral-500">
+                      ${Number(a.price).toFixed(2)}
+                      {a.room_type && a.room_type !== 'all'
+                        ? ` · ${a.room_type}`
+                        : ' · all categories'}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void deleteItem('addon', a.id)}
+                    className="text-xs text-red-400 hover:text-red-300"
+                  >
+                    Delete
+                  </button>
+                </div>
+              ))
+            )}
+            <div className="grid grid-cols-1 sm:grid-cols-[1fr_8rem_auto] gap-2">
+              <input
+                placeholder="Add-on name"
+                value={newAddon.name}
+                onChange={(e) => setNewAddon({ ...newAddon, name: e.target.value })}
+                className="rounded-lg bg-black/40 border border-neutral-700 px-3 py-2 text-sm text-white"
+              />
+              <input
+                type="number"
+                placeholder="Price $"
+                value={newAddon.price}
+                onChange={(e) =>
+                  setNewAddon({ ...newAddon, price: Number(e.target.value) || 0 })
+                }
+                className="rounded-lg bg-black/40 border border-neutral-700 px-3 py-2 text-sm text-white font-mono"
+              />
+              <button
+                type="button"
+                disabled={!newAddon.name.trim()}
+                onClick={() => {
+                  void addItem('addon', {
+                    name: newAddon.name,
+                    price: newAddon.price,
+                    room_type: 'all',
+                  }).then((ok) => {
+                    if (ok) setNewAddon({ name: '', price: 0 })
+                  })
+                }}
+                className="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/15 text-sm text-white disabled:opacity-40"
+              >
+                Add
+              </button>
+            </div>
+          </div>
         </div>
       ) : null}
 
-      {/* Order menu */}
+      {/* Order / booking / ticket — unchanged patterns */}
       {model === 'order' ? (
         <div className="space-y-4 border-t border-neutral-800 pt-4">
           <h3 className="text-sm font-semibold text-white">Menu items</h3>
@@ -440,18 +1021,14 @@ export default function AdminEngagementTools({ tenantId }: { tenantId: string })
               onChange={(e) => setNewMenu({ ...newMenu, price: Number(e.target.value) })}
               className="rounded-lg bg-black/40 border border-neutral-700 px-3 py-2 text-sm text-white font-mono"
             />
-            <input
-              placeholder="Description"
-              value={newMenu.description}
-              onChange={(e) => setNewMenu({ ...newMenu, description: e.target.value })}
-              className="rounded-lg bg-black/40 border border-neutral-700 px-3 py-2 text-sm text-white sm:col-span-2"
-            />
             <button
               type="button"
               onClick={() => {
-                void addItem('menu', newMenu).then(() =>
-                  setNewMenu({ name: '', description: '', price: 0, category: 'Menu' })
-                )
+                void addItem('menu', newMenu).then((ok) => {
+                  if (ok) {
+                    setNewMenu({ name: '', description: '', price: 0, category: 'Menu' })
+                  }
+                })
               }}
               className="sm:col-span-2 px-3 py-2 rounded-lg bg-white/10 hover:bg-white/15 text-sm text-white"
             >
@@ -461,35 +1038,30 @@ export default function AdminEngagementTools({ tenantId }: { tenantId: string })
         </div>
       ) : null}
 
-      {/* Booking */}
       {model === 'booking' ? (
         <div className="space-y-6 border-t border-neutral-800 pt-4">
           <div className="space-y-3">
             <h3 className="text-sm font-semibold text-white">Bookable services</h3>
-            {data.catalog.services.length === 0 ? (
-              <p className="text-sm text-neutral-500 italic">No services yet.</p>
-            ) : (
-              data.catalog.services.map((s) => (
-                <div
-                  key={s.id}
-                  className="flex justify-between items-center gap-3 rounded-lg border border-neutral-800 bg-black/30 px-3 py-2"
-                >
-                  <div>
-                    <div className="text-sm text-white font-medium">{s.name}</div>
-                    <div className="text-xs text-neutral-500">
-                      {s.duration_minutes} min · ${(s.price_cents / 100).toFixed(2)}
-                    </div>
+            {data.catalog.services.map((s) => (
+              <div
+                key={s.id}
+                className="flex justify-between items-center gap-3 rounded-lg border border-neutral-800 bg-black/30 px-3 py-2"
+              >
+                <div>
+                  <div className="text-sm text-white font-medium">{s.name}</div>
+                  <div className="text-xs text-neutral-500">
+                    {s.duration_minutes} min · ${(s.price_cents / 100).toFixed(2)}
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => void deleteItem('service', s.id)}
-                    className="text-xs text-red-400 hover:text-red-300"
-                  >
-                    Delete
-                  </button>
                 </div>
-              ))
-            )}
+                <button
+                  type="button"
+                  onClick={() => void deleteItem('service', s.id)}
+                  className="text-xs text-red-400 hover:text-red-300"
+                >
+                  Delete
+                </button>
+              </div>
+            ))}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               <input
                 placeholder="Service name"
@@ -499,7 +1071,6 @@ export default function AdminEngagementTools({ tenantId }: { tenantId: string })
               />
               <input
                 type="number"
-                placeholder="Duration (min)"
                 value={newService.duration_minutes}
                 onChange={(e) =>
                   setNewService({
@@ -512,7 +1083,6 @@ export default function AdminEngagementTools({ tenantId }: { tenantId: string })
               <div className="flex gap-2">
                 <input
                   type="number"
-                  placeholder="Price (cents)"
                   value={newService.price_cents}
                   onChange={(e) =>
                     setNewService({
@@ -525,18 +1095,19 @@ export default function AdminEngagementTools({ tenantId }: { tenantId: string })
                 <button
                   type="button"
                   onClick={() => {
-                    void addItem('service', newService).then(() =>
-                      setNewService({ name: '', duration_minutes: 60, price_cents: 0 })
-                    )
+                    void addItem('service', newService).then((ok) => {
+                      if (ok) {
+                        setNewService({ name: '', duration_minutes: 60, price_cents: 0 })
+                      }
+                    })
                   }}
-                  className="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/15 text-sm text-white whitespace-nowrap"
+                  className="px-3 py-2 rounded-lg bg-white/10 text-sm text-white"
                 >
                   Add
                 </button>
               </div>
             </div>
           </div>
-
           <div className="space-y-3">
             <h3 className="text-sm font-semibold text-white">Weekly availability</h3>
             {data.catalog.availability.map((a) => (
@@ -585,7 +1156,7 @@ export default function AdminEngagementTools({ tenantId }: { tenantId: string })
               <button
                 type="button"
                 onClick={() => void addItem('availability', newAvail)}
-                className="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/15 text-sm text-white"
+                className="px-3 py-2 rounded-lg bg-white/10 text-sm text-white"
               >
                 Add hours
               </button>
@@ -594,35 +1165,30 @@ export default function AdminEngagementTools({ tenantId }: { tenantId: string })
         </div>
       ) : null}
 
-      {/* Tickets */}
       {model === 'ticket' ? (
         <div className="space-y-4 border-t border-neutral-800 pt-4">
           <h3 className="text-sm font-semibold text-white">Events</h3>
-          {data.catalog.events.length === 0 ? (
-            <p className="text-sm text-neutral-500 italic">No events yet.</p>
-          ) : (
-            data.catalog.events.map((e) => (
-              <div
-                key={e.id}
-                className="flex justify-between items-center gap-3 rounded-lg border border-neutral-800 bg-black/30 px-3 py-2"
-              >
-                <div>
-                  <div className="text-sm text-white font-medium">{e.name}</div>
-                  <div className="text-xs text-neutral-500">
-                    {e.event_date} {e.event_time}
-                    {e.venue ? ` · ${e.venue}` : ''} · ${(e.price_cents / 100).toFixed(2)}
-                  </div>
+          {data.catalog.events.map((e) => (
+            <div
+              key={e.id}
+              className="flex justify-between items-center gap-3 rounded-lg border border-neutral-800 bg-black/30 px-3 py-2"
+            >
+              <div>
+                <div className="text-sm text-white font-medium">{e.name}</div>
+                <div className="text-xs text-neutral-500">
+                  {e.event_date} {e.event_time}
+                  {e.venue ? ` · ${e.venue}` : ''} · ${(e.price_cents / 100).toFixed(2)}
                 </div>
-                <button
-                  type="button"
-                  onClick={() => void deleteItem('event', e.id)}
-                  className="text-xs text-red-400 hover:text-red-300"
-                >
-                  Delete
-                </button>
               </div>
-            ))
-          )}
+              <button
+                type="button"
+                onClick={() => void deleteItem('event', e.id)}
+                className="text-xs text-red-400 hover:text-red-300"
+              >
+                Delete
+              </button>
+            </div>
+          ))}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <input
               placeholder="Event name"
@@ -648,39 +1214,23 @@ export default function AdminEngagementTools({ tenantId }: { tenantId: string })
               onChange={(e) => setNewEvent({ ...newEvent, event_time: e.target.value })}
               className="rounded-lg bg-black/40 border border-neutral-700 px-3 py-2 text-sm text-white"
             />
-            <input
-              type="number"
-              placeholder="Capacity"
-              value={newEvent.capacity}
-              onChange={(e) =>
-                setNewEvent({ ...newEvent, capacity: Number(e.target.value) })
-              }
-              className="rounded-lg bg-black/40 border border-neutral-700 px-3 py-2 text-sm text-white font-mono"
-            />
-            <input
-              type="number"
-              placeholder="Price (cents)"
-              value={newEvent.price_cents}
-              onChange={(e) =>
-                setNewEvent({ ...newEvent, price_cents: Number(e.target.value) })
-              }
-              className="rounded-lg bg-black/40 border border-neutral-700 px-3 py-2 text-sm text-white font-mono"
-            />
             <button
               type="button"
               onClick={() => {
-                void addItem('event', newEvent).then(() =>
-                  setNewEvent({
-                    name: '',
-                    venue: '',
-                    event_date: '',
-                    event_time: '19:00',
-                    capacity: 100,
-                    price_cents: 0,
-                  })
-                )
+                void addItem('event', newEvent).then((ok) => {
+                  if (ok) {
+                    setNewEvent({
+                      name: '',
+                      venue: '',
+                      event_date: '',
+                      event_time: '19:00',
+                      capacity: 100,
+                      price_cents: 0,
+                    })
+                  }
+                })
               }}
-              className="sm:col-span-2 px-3 py-2 rounded-lg bg-white/10 hover:bg-white/15 text-sm text-white"
+              className="sm:col-span-2 px-3 py-2 rounded-lg bg-white/10 text-sm text-white"
             >
               + Create event
             </button>
@@ -691,7 +1241,7 @@ export default function AdminEngagementTools({ tenantId }: { tenantId: string })
       <div className="flex justify-end border-t border-neutral-800 pt-4">
         <button
           type="button"
-          onClick={() => void saveModelAndQuote()}
+          onClick={() => void saveSettings()}
           disabled={saving}
           className="px-5 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium disabled:opacity-50"
         >
