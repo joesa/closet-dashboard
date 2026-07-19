@@ -10,6 +10,10 @@ import {
   type CustomPageArtifact,
   type CustomSiteConfig,
 } from '@/lib/customSite'
+import {
+  ensureHomeVideoAfterHero,
+  listTenantMediaAssets,
+} from '@/lib/customSiteAssets'
 
 export type CustomBuildIntent = 'full' | 'surgical'
 
@@ -114,6 +118,84 @@ function looksLikeTextOnlyRequest(prompt: string): boolean {
   )
 }
 
+function extractHttpUrl(text: string): string | null {
+  const m = text.match(/https?:\/\/[^\s"'<>]+/i)
+  if (!m) return null
+  return m[0].replace(/[.,);]+$/, '')
+}
+
+function looksLikeVideoUrl(url: string): boolean {
+  return /\.(mp4|webm|mov|m4v)(\?|$)/i.test(url)
+}
+
+function looksLikeVideoSurgicalRequest(prompt: string): boolean {
+  return (
+    /\b(video|mp4|webm|testimonial)\b/i.test(prompt) ||
+    /\b(don't|do not|cant|can't|cannot)\s+see\b/i.test(prompt) ||
+    /\bmissing\s+video\b/i.test(prompt) ||
+    /\badd\s+(the\s+)?(uploaded\s+)?(video|mp4)\b/i.test(prompt) ||
+    /\bembed\b/i.test(prompt)
+  )
+}
+
+/**
+ * Deterministic surgical path for video: use URL from the prompt, else the
+ * newest video in the tenant Media library. Avoids the LLM asking for a URL
+ * that is already uploaded on the same admin page.
+ */
+async function trySurgicalVideoShortcut(opts: {
+  tenantId: string
+  prompt: string
+  base: CustomSiteConfig
+}): Promise<GenerateCustomSiteResult | null> {
+  if (!looksLikeVideoSurgicalRequest(opts.prompt)) return null
+
+  const fromPrompt = extractHttpUrl(opts.prompt)
+  let videoUrl =
+    fromPrompt && looksLikeVideoUrl(fromPrompt) ? fromPrompt : null
+
+  if (!videoUrl) {
+    const videos = await listTenantMediaAssets(opts.tenantId, {
+      kind: 'video',
+      includeEngine: false,
+    })
+    videoUrl = videos[0]?.url || null
+  }
+
+  if (!videoUrl) {
+    return {
+      draft: opts.base,
+      warnings: [],
+      errors: [],
+      reply:
+        'No video found in Media & files for this tenant. Upload an MP4 there (or paste a CDN URL in the prompt), then run Edit surgically again.',
+      intent: 'surgical',
+      changedPages: [],
+    }
+  }
+
+  const { draft } = await ensureHomeVideoAfterHero({
+    tenantId: opts.tenantId,
+    videoUrl,
+  })
+  const homeBefore = opts.base.pages['/']?.html || ''
+  const homeAfter = draft.pages['/']?.html || ''
+  const changed = homeBefore !== homeAfter
+
+  return {
+    draft,
+    warnings: changed
+      ? []
+      : ['Video was already present on the home page — source URL refreshed if needed.'],
+    errors: [],
+    reply: changed
+      ? 'Embedded your Media library video in a player after the hero on the home page. Preview draft to confirm, then Publish when ready.'
+      : 'Home page already had a video player — updated it to your Media library file. Preview draft to confirm.',
+    intent: 'surgical',
+    changedPages: changed ? ['/'] : [],
+  }
+}
+
 /**
  * AI-builds (full) or surgically edits a custom HTML/CSS site into
  * custom_config_draft. Never touches render_mode or published custom_config
@@ -183,6 +265,15 @@ export async function generateCustomSiteDraft(opts: {
     )
   }
 
+  if (intent === 'surgical' && base) {
+    const mediaShortcut = await trySurgicalVideoShortcut({
+      tenantId: opts.tenantId,
+      prompt: opts.prompt || '',
+      base,
+    })
+    if (mediaShortcut) return mediaShortcut
+  }
+
   const mode = opts.mode || base?.mode || 'inline'
   const products = Array.isArray(cfg.products_config) ? cfg.products_config : []
   const pagesConfig = Array.isArray(cfg.pages_config) ? cfg.pages_config : []
@@ -201,6 +292,11 @@ export async function generateCustomSiteDraft(opts: {
           .join(', ')
       : '/, /about, /services, /contact'
 
+  const mediaLibrary = await listTenantMediaAssets(opts.tenantId, {
+    kind: 'all',
+    includeEngine: false,
+  }).catch(() => [])
+
   const context = {
     brandName,
     themeHint: cfg.theme,
@@ -218,6 +314,12 @@ export async function generateCustomSiteDraft(opts: {
       city: seo.addressLocality,
       region: seo.addressRegion,
     },
+    /** Uploaded CDN assets the admin can reference without pasting URLs. */
+    mediaLibrary: mediaLibrary.slice(0, 40).map((a) => ({
+      kind: a.kind,
+      name: a.name,
+      url: a.url,
+    })),
   }
 
   const result =
@@ -395,7 +497,8 @@ Hard rules:
 7. mode stays "${opts.mode}". Do not change render mode.
 8. HTML is BODY CONTENT ONLY. No <script> in inline mode. No javascript: URLs.
 9. Keep each returned html under ~2500 characters. JSON must be complete and valid.
-10. If the request is ambiguous ("make it nicer") and does not specify what to change, set pages to {} and explain in reply that you need a more specific instruction — do NOT invent a redesign.`
+10. If the request is ambiguous ("make it nicer") and does not specify what to change, set pages to {} and explain in reply that you need a more specific instruction — do NOT invent a redesign.
+11. When the admin asks to add/embed a video (or says they don't see the video), use a URL from mediaLibrary in the business context — do NOT ask them to paste a URL that is already listed there. Insert a <video controls><source src="URL" type="video/mp4"></video> block after the hero on "/".`
 
   const userPrompt = `Surgical edit for "${opts.brandName}".
 
@@ -407,7 +510,7 @@ ${JSON.stringify(opts.base).slice(0, 70000)}
 
 Existing page keys: ${pageKeys.join(', ') || '(none)'}
 
-Business context (for accurate copy only — do not restyle from this):
+Business context (for accurate copy only — do not restyle from this). mediaLibrary lists uploaded CDN files — reuse those URLs when asked to add video/images:
 ${JSON.stringify(opts.context, null, 2)}`
 
   const parsed = await callModelJson({

@@ -508,7 +508,7 @@ export default function AdminCustomBuild({
           onChange={(e) => setPrompt(e.target.value)}
           placeholder={
             hasBase
-              ? 'Surgical: e.g. “Simplify the hero headline to Welcome to Acme” or “Change the CTA to Get a free quote” — do not redesign.'
+              ? 'Surgical: e.g. “Add the uploaded video after the hero” or “Simplify the headline to Welcome to Acme”. Videos use Media & files automatically.'
               : 'Optional notes for a Full redesign later. First click “Generate from scratch” to clone the current site.'
           }
           disabled={loading}
