@@ -8,6 +8,14 @@ type Status = {
   customUpdatedAt?: string | null;
   draft: { mode: string; pageKeys: string[] } | null;
   published: { mode: string; pageKeys: string[] } | null;
+  draftAhead?: boolean;
+  draftDiffPages?: string[];
+};
+
+type NextStep = {
+  preview: boolean;
+  publish: boolean;
+  message: string;
 };
 
 type CustomAsset = {
@@ -45,6 +53,7 @@ export default function AdminCustomBuild({
   const [info, setInfo] = useState('');
   const [changedPages, setChangedPages] = useState<string[]>([]);
   const [lastIntent, setLastIntent] = useState<'full' | 'surgical' | 'clone' | null>(null);
+  const [nextStep, setNextStep] = useState<NextStep | null>(null);
   const [assets, setAssets] = useState<CustomAsset[]>([]);
   const [uploading, setUploading] = useState(false);
   const [uploadKind, setUploadKind] = useState<'video' | 'image' | 'file' | 'auto'>('auto');
@@ -239,6 +248,7 @@ export default function AdminCustomBuild({
     setWarnings([]);
     setChangedPages([]);
     setLastIntent(null);
+    setNextStep(null);
     try {
       const res = await fetch(`/api/admin/sites/${tenantId}/custom-build`, {
         method: 'POST',
@@ -260,11 +270,16 @@ export default function AdminCustomBuild({
       if (json.intent === 'full' || json.intent === 'surgical' || json.intent === 'clone') {
         setLastIntent(json.intent);
       }
+      if (json.nextStep && typeof json.nextStep === 'object') {
+        setNextStep(json.nextStep as NextStep);
+      }
       if (action === 'publish') {
         setInfo(
-          json.liveNow
-            ? 'Published — custom site is live (cache busted).'
-            : 'Published — may take up to ~60s for cache to refresh.'
+          typeof json.reply === 'string'
+            ? json.reply
+            : json.liveNow
+              ? 'Published — custom site is live (cache busted). Open the public site (hard refresh).'
+              : 'Published — may take up to ~60s for cache to refresh. Hard-refresh the public site.'
         );
       } else if (action === 'revert') {
         setInfo('Reverted to the shared template engine for this site.');
@@ -278,12 +293,12 @@ export default function AdminCustomBuild({
         );
       } else if (action === 'generate' && json.intent === 'full') {
         setInfo(
-          'Full redesign saved to DRAFT only — the live site is unchanged until you Publish. Use Preview draft to see it.'
+          'Full redesign saved to DRAFT only. Preview draft → Publish draft. The public site stays unchanged until Publish.'
         );
       } else if (action === 'generate' && json.intent === 'surgical') {
         setInfo(
           Array.isArray(json.changedPages) && json.changedPages.length
-            ? `Surgical edit saved to draft. Changed: ${json.changedPages.join(', ')}`
+            ? `Surgical edit saved to DRAFT (${json.changedPages.join(', ')}). Preview draft to verify, then Publish draft to update the live site.`
             : 'Surgical edit saved — no pages changed.'
         );
       }
@@ -300,6 +315,24 @@ export default function AdminCustomBuild({
     previewUrl && status?.draft
       ? `${previewUrl}${previewUrl.includes('?') ? '&' : '?'}draft=1`
       : null;
+
+  const liveSiteUrl = previewUrl
+    ? previewUrl.split('?')[0].replace(/\/$/, '') || previewUrl
+    : null;
+
+  const draftAhead = !!(status?.draftAhead ?? (status?.draft && status.renderMode !== 'custom'));
+  const diffPages = status?.draftDiffPages || [];
+
+  const pagePreviewUrl = (path: string) => {
+    if (!draftPreviewUrl) return null;
+    try {
+      const u = new URL(draftPreviewUrl);
+      u.pathname = path === '/' ? '/' : path;
+      return u.toString();
+    } catch {
+      return draftPreviewUrl;
+    }
+  };
 
   return (
     <section className="bg-neutral-900 border border-violet-500/30 rounded-xl p-6 space-y-5">
@@ -333,26 +366,113 @@ export default function AdminCustomBuild({
         </div>
       </div>
 
-      {mounted && status?.draft && status.renderMode !== 'custom' ? (
-        <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
-          <strong className="font-semibold text-amber-200">Draft is not live yet.</strong> The public
-          site still shows the template engine. Click{' '}
-          <span className="text-amber-50">Preview draft</span> to see your redesign (with video), then{' '}
-          <span className="text-amber-50">Publish draft</span> to switch Live from ENGINE → CUSTOM.
-          {draftPreviewUrl ? (
-            <>
-              {' '}
+      {mounted && status?.draft && draftAhead ? (
+        <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-100 space-y-2">
+          <p>
+            <strong className="font-semibold text-amber-200">
+              {status.renderMode === 'custom'
+                ? 'Draft is ahead of the live site.'
+                : 'Draft is not live yet.'}
+            </strong>{' '}
+            {status.renderMode === 'custom'
+              ? 'Visitors still see the last published version until you Publish again.'
+              : 'The public site still shows the template engine until you Publish.'}
+            {diffPages.length > 0 ? (
+              <>
+                {' '}
+                Unpublished changes on:{' '}
+                <span className="font-mono text-amber-50">{diffPages.join(', ')}</span>
+              </>
+            ) : null}
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {draftPreviewUrl ? (
               <a
                 href={draftPreviewUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="underline decoration-amber-300/60 hover:decoration-amber-200"
+                className="inline-flex px-3 py-1.5 rounded-lg bg-amber-500/20 border border-amber-400/40 text-amber-50 text-xs font-medium hover:bg-amber-500/30"
               >
-                Open draft preview now
+                1. Preview draft
               </a>
-              .
-            </>
-          ) : null}
+            ) : null}
+            {diffPages
+              .filter((p) => p.startsWith('/'))
+              .slice(0, 4)
+              .map((p) => {
+                const href = pagePreviewUrl(p);
+                return href ? (
+                  <a
+                    key={p}
+                    href={href}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex px-3 py-1.5 rounded-lg border border-amber-400/30 text-amber-100/90 text-xs font-mono hover:bg-amber-500/15"
+                  >
+                    Preview {p}
+                  </a>
+                ) : null;
+              })}
+            <button
+              type="button"
+              disabled={loading}
+              onClick={() => {
+                if (!confirm('Publish draft to the live site now?')) return;
+                void run('publish');
+              }}
+              className="inline-flex px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium disabled:opacity-40"
+            >
+              2. Publish draft
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {nextStep ? (
+        <div className="rounded-lg border border-sky-500/35 bg-sky-500/10 px-4 py-3 text-sm text-sky-100 space-y-2">
+          <p>
+            <strong className="text-sky-200">Next step:</strong> {nextStep.message}
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {nextStep.preview && draftPreviewUrl ? (
+              <a
+                href={
+                  changedPages[0]?.startsWith('/')
+                    ? pagePreviewUrl(changedPages[0]) || draftPreviewUrl
+                    : draftPreviewUrl
+                }
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex px-3 py-1.5 rounded-lg bg-sky-500/20 border border-sky-400/40 text-sky-50 text-xs font-medium hover:bg-sky-500/30"
+              >
+                Open preview
+                {changedPages[0]?.startsWith('/') ? ` (${changedPages[0]})` : ''}
+              </a>
+            ) : null}
+            {nextStep.publish ? (
+              <button
+                type="button"
+                disabled={loading}
+                onClick={() => {
+                  if (!confirm('Publish draft to the live site now?')) return;
+                  void run('publish');
+                }}
+                className="inline-flex px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium disabled:opacity-40"
+              >
+                Publish draft now
+              </button>
+            ) : null}
+            {!nextStep.preview && !nextStep.publish && liveSiteUrl ? (
+              <a
+                href={liveSiteUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex px-3 py-1.5 rounded-lg border border-sky-400/40 text-sky-50 text-xs font-medium hover:bg-sky-500/20"
+              >
+                Open live site
+              </a>
+            ) : null}
+          </div>
         </div>
       ) : null}
 
@@ -637,9 +757,16 @@ export default function AdminCustomBuild({
             if (!confirm('Publish this draft? The live site will switch to custom render mode.')) return;
             void run('publish');
           }}
-          className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white text-sm font-medium rounded-lg transition-colors"
+          className={`px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white text-sm font-medium rounded-lg transition-colors ${
+            draftAhead ? 'ring-2 ring-emerald-300/70 ring-offset-2 ring-offset-neutral-900' : ''
+          }`}
+          title={
+            draftAhead
+              ? 'Draft has unpublished changes — click to push them live'
+              : 'Publish the current draft to the live site'
+          }
         >
-          Publish draft
+          {draftAhead ? 'Publish draft (updates live)' : 'Publish draft'}
         </button>
         <button
           type="button"

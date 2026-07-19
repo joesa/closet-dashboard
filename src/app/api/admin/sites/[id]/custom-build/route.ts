@@ -8,6 +8,7 @@ import {
   revertToEngine,
 } from '@/lib/ai/generateCustomSite'
 import { cloneCurrentSiteToDraft } from '@/lib/ai/cloneEngineSite'
+import { diffCustomDraftPages } from '@/lib/ai/customDraftDiff'
 import { isCustomSiteConfig } from '@/lib/customSite'
 
 // Vercel Hobby allows up to 60s; keep generation compact to fit.
@@ -52,6 +53,7 @@ export async function POST(
       }
       const draft = isCustomSiteConfig(data.custom_config_draft) ? data.custom_config_draft : null
       const published = isCustomSiteConfig(data.custom_config) ? data.custom_config : null
+      const draftDiffPages = diffCustomDraftPages(draft, published)
       return NextResponse.json({
         renderMode: data.render_mode === 'custom' ? 'custom' : 'engine',
         customUpdatedAt: data.custom_updated_at,
@@ -61,6 +63,9 @@ export async function POST(
         published: published
           ? { mode: published.mode, pageKeys: Object.keys(published.pages || {}) }
           : null,
+        /** True when draft HTML differs from what visitors see (or nothing published yet). */
+        draftAhead: !!(draft && (!published || draftDiffPages.length > 0)),
+        draftDiffPages,
       })
     }
 
@@ -89,6 +94,13 @@ export async function POST(
         },
         warnings: result.warnings,
         errors: [],
+        draftAhead: true,
+        nextStep: {
+          preview: true,
+          publish: true,
+          message:
+            'Clone saved to DRAFT. Preview draft to review, then Publish draft to make it live.',
+        },
       })
     }
 
@@ -138,6 +150,19 @@ export async function POST(
         },
         warnings: result.warnings,
         errors: result.errors,
+        draftAhead: true,
+        nextStep:
+          result.changedPages.length > 0
+            ? {
+                preview: true,
+                publish: true,
+                message: `Saved to DRAFT only (${result.changedPages.join(', ')}). Click Preview draft to verify, then Publish draft — the live site will not update until you publish.`,
+              }
+            : {
+                preview: false,
+                publish: false,
+                message: 'No pages changed in the draft.',
+              },
       })
     }
 
@@ -155,6 +180,16 @@ export async function POST(
         renderMode: 'custom',
         warnings: result.warnings,
         liveNow: result.liveNow,
+        draftAhead: false,
+        reply: result.liveNow
+          ? 'Published. Live cache cleared — open the public site (hard refresh) to see your changes.'
+          : 'Published. If the public site looks stale, wait up to ~60s or hard-refresh.',
+        nextStep: {
+          preview: false,
+          publish: false,
+          message:
+            'Live site updated. Open the public URL (without ?draft=1) to confirm visitors see the new content.',
+        },
       })
     }
 
