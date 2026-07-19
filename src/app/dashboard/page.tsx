@@ -156,21 +156,35 @@ export default function DashboardPage() {
       const uid = user.id
       setUserId(uid)
 
-      // Provisioned tenants: link contractor_settings via tenant_id metadata.
+      // Prefer the tenant's live widget_id (same row admin + public widget use).
+      // Claim links user_id onto that row and returns its id.
+      let canonicalWidgetId: string | null = null
       try {
-        await fetch('/api/contractor/claim', { method: 'POST' })
+        const claimRes = await fetch('/api/contractor/claim', { method: 'POST' })
+        const claimJson = await claimRes.json().catch(() => ({}))
+        if (
+          claimRes.ok &&
+          typeof claimJson.contractorId === 'string' &&
+          claimJson.contractorId
+        ) {
+          canonicalWidgetId = claimJson.contractorId
+        }
       } catch {
         /* non-fatal */
       }
 
-      // Try to load existing settings for this user (or provisioned tenant id).
-      const { data: existing } = await supabaseBrowser
-        .from('contractor_settings')
-        .select('*')
-        .eq('user_id', uid)
-        .maybeSingle()
+      let settingsRow: Record<string, unknown> | null = null
 
-      let settingsRow = existing
+      if (canonicalWidgetId) {
+        const { data: byWidget } = await supabaseBrowser
+          .from('contractor_settings')
+          .select('*')
+          .eq('id', canonicalWidgetId)
+          .maybeSingle()
+        settingsRow = byWidget
+      }
+
+      // Fallback: metadata tenant_id (legacy widget_id === tenant.id)
       if (!settingsRow && user.user_metadata?.tenant_id) {
         const tenantId = user.user_metadata.tenant_id as string
         const { data: byTenant } = await supabaseBrowser
@@ -179,6 +193,18 @@ export default function DashboardPage() {
           .eq('id', tenantId)
           .maybeSingle()
         settingsRow = byTenant
+      }
+
+      // Last resort: any row owned by this user (solo signup / bootstrap).
+      if (!settingsRow) {
+        const { data: existing } = await supabaseBrowser
+          .from('contractor_settings')
+          .select('*')
+          .eq('user_id', uid)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+        settingsRow = existing
       }
 
       if (settingsRow) {

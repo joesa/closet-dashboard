@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getCurrentAdmin, logAdminAction } from '@/lib/admin'
-import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { resolveTenantWidget } from '@/lib/resolveTenantWidget'
 import {
   normalizeDomainConfig,
   normalizeRoomPricing,
@@ -12,25 +12,15 @@ import {
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
+const NO_STORE = {
+  'Cache-Control': 'no-store, no-cache, must-revalidate',
+}
+
 const ENGAGEMENT_MODELS = ['quote', 'order', 'booking', 'ticket'] as const
 type EngagementModel = (typeof ENGAGEMENT_MODELS)[number]
 
 function isEngagementModel(v: unknown): v is EngagementModel {
   return typeof v === 'string' && (ENGAGEMENT_MODELS as readonly string[]).includes(v)
-}
-
-async function resolveTenantWidget(tenantId: string) {
-  const supabase = getSupabaseAdmin()
-  const { data: tenant, error } = await supabase
-    .from('tenants')
-    .select('id, business_name, widget_id')
-    .eq('id', tenantId)
-    .maybeSingle()
-  if (error || !tenant) return { error: 'Tenant not found' as const, status: 404 as const }
-  if (!tenant.widget_id) {
-    return { error: 'Tenant has no widget_id linked' as const, status: 400 as const }
-  }
-  return { tenant, supabase }
 }
 
 /**
@@ -49,10 +39,12 @@ export async function GET(
   const { id: tenantId } = await params
   const resolved = await resolveTenantWidget(tenantId)
   if ('error' in resolved) {
-    return NextResponse.json({ error: resolved.error }, { status: resolved.status })
+    return NextResponse.json(
+      { error: resolved.error },
+      { status: resolved.status, headers: NO_STORE }
+    )
   }
-  const { tenant, supabase } = resolved
-  const widgetId = tenant.widget_id as string
+  const { tenant, supabase, widgetId, healedWidgetId } = resolved
 
   const [{ data: siteConfig }, { data: settings }] = await Promise.all([
     supabase
@@ -63,7 +55,7 @@ export async function GET(
     supabase
       .from('contractor_settings')
       .select(
-        'id, company_name, primary_color_hex, room_pricing, domain_config, tier_names, disabled_default_rooms, disabled_default_finishes'
+        'id, company_name, primary_color_hex, room_pricing, domain_config, tier_names, disabled_default_rooms, disabled_default_finishes, updated_at'
       )
       .eq('id', widgetId)
       .maybeSingle(),
@@ -154,36 +146,42 @@ export async function GET(
     })),
   ]
 
-  return NextResponse.json({
-    tenantId,
-    businessName: tenant.business_name,
-    widgetId,
-    engagementModel,
-    settings: settings
-      ? {
-          companyName: settings.company_name || '',
-          primaryColorHex: settings.primary_color_hex || '#6C47FF',
-          roomPricing,
-          domainConfig,
-          tierNames,
-          disabledDefaultRooms,
-          disabledDefaultFinishes,
-        }
-      : null,
-    calculator: {
-      step1Categories,
-      customRooms: customRooms || [],
-      customFinishes: customFinishes || [],
-      addons: addons || [],
-      systemRoomTypes: [...ROOM_TYPES],
+  return NextResponse.json(
+    {
+      tenantId,
+      businessName: tenant.business_name,
+      widgetId,
+      healedWidgetId,
+      /** Same row the live widget + contractor dashboard should edit. */
+      settingsUpdatedAt: settings?.updated_at ?? null,
+      engagementModel,
+      settings: settings
+        ? {
+            companyName: settings.company_name || '',
+            primaryColorHex: settings.primary_color_hex || '#6C47FF',
+            roomPricing,
+            domainConfig,
+            tierNames,
+            disabledDefaultRooms,
+            disabledDefaultFinishes,
+          }
+        : null,
+      calculator: {
+        step1Categories,
+        customRooms: customRooms || [],
+        customFinishes: customFinishes || [],
+        addons: addons || [],
+        systemRoomTypes: [...ROOM_TYPES],
+      },
+      catalog: {
+        menuItems: menuItems || [],
+        services: services || [],
+        availability: availability || [],
+        events: events || [],
+      },
     },
-    catalog: {
-      menuItems: menuItems || [],
-      services: services || [],
-      availability: availability || [],
-      events: events || [],
-    },
-  })
+    { headers: NO_STORE }
+  )
 }
 
 export async function PATCH(
@@ -198,10 +196,12 @@ export async function PATCH(
   const { id: tenantId } = await params
   const resolved = await resolveTenantWidget(tenantId)
   if ('error' in resolved) {
-    return NextResponse.json({ error: resolved.error }, { status: resolved.status })
+    return NextResponse.json(
+      { error: resolved.error },
+      { status: resolved.status, headers: NO_STORE }
+    )
   }
-  const { tenant, supabase } = resolved
-  const widgetId = tenant.widget_id as string
+  const { supabase, widgetId } = resolved
   const body = await req.json().catch(() => ({}))
 
   const updates: string[] = []
@@ -357,10 +357,12 @@ export async function POST(
   const { id: tenantId } = await params
   const resolved = await resolveTenantWidget(tenantId)
   if ('error' in resolved) {
-    return NextResponse.json({ error: resolved.error }, { status: resolved.status })
+    return NextResponse.json(
+      { error: resolved.error },
+      { status: resolved.status, headers: NO_STORE }
+    )
   }
-  const { supabase } = resolved
-  const widgetId = resolved.tenant.widget_id as string
+  const { supabase, widgetId } = resolved
   const body = await req.json().catch(() => ({}))
   const kind = body.kind as string
   const data = (body.data || {}) as Record<string, unknown>
@@ -510,10 +512,12 @@ export async function DELETE(
   const { id: tenantId } = await params
   const resolved = await resolveTenantWidget(tenantId)
   if ('error' in resolved) {
-    return NextResponse.json({ error: resolved.error }, { status: resolved.status })
+    return NextResponse.json(
+      { error: resolved.error },
+      { status: resolved.status, headers: NO_STORE }
+    )
   }
-  const { supabase } = resolved
-  const widgetId = resolved.tenant.widget_id as string
+  const { supabase, widgetId } = resolved
   const body = await req.json().catch(() => ({}))
   const kind = body.kind as string
   const itemId = body.id as string

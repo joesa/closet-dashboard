@@ -78,6 +78,8 @@ type Catalog = {
 
 type Payload = {
   widgetId: string
+  settingsUpdatedAt?: string | null
+  healedWidgetId?: boolean
   engagementModel: EngagementModel
   settings: {
     companyName: string
@@ -182,10 +184,14 @@ export default function AdminEngagementTools({ tenantId }: { tenantId: string })
     price_cents: 0,
   })
 
-  const refresh = useCallback(async () => {
-    setError('')
+  const refresh = useCallback(async (opts?: { quiet?: boolean }) => {
+    if (!opts?.quiet) setError('')
     try {
-      const res = await fetch(`/api/admin/sites/${tenantId}/engagement`)
+      // Always hit the live contractor_settings row (no browser/CDN cache).
+      const res = await fetch(
+        `/api/admin/sites/${tenantId}/engagement?t=${Date.now()}`,
+        { cache: 'no-store' }
+      )
       const json = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(json.error || 'Failed to load engagement tools')
       const payload = json as Payload
@@ -212,6 +218,22 @@ export default function AdminEngagementTools({ tenantId }: { tenantId: string })
 
   useEffect(() => {
     void refresh()
+  }, [refresh])
+
+  // Re-load when admin returns to the tab so client dashboard edits show up.
+  useEffect(() => {
+    const onFocus = () => {
+      void refresh({ quiet: true })
+    }
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') onFocus()
+    }
+    window.addEventListener('focus', onFocus)
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      window.removeEventListener('focus', onFocus)
+      document.removeEventListener('visibilitychange', onVisibility)
+    }
   }, [refresh])
 
   const categoryLabel = domainConfig?.categoryLabel || 'Room'
@@ -387,14 +409,29 @@ export default function AdminEngagementTools({ tenantId }: { tenantId: string })
 
   return (
     <section className="bg-neutral-900 border border-neutral-800 rounded-xl p-6 space-y-6">
-      <div>
-        <h2 className="text-lg font-semibold text-white">Engagement tools</h2>
-        <p className="text-sm text-neutral-400 mt-1">
-          Configure this client’s live calculator / booking / order / ticket engine.
-          Linked to widget{' '}
-          <code className="text-xs text-blue-300 font-mono">{data.widgetId}</code>
-          — same data the public widget loads.
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-semibold text-white">Engagement tools</h2>
+          <p className="text-sm text-neutral-400 mt-1">
+            Live-linked to the same{' '}
+            <code className="text-xs text-blue-300 font-mono">{data.widgetId}</code>{' '}
+            row the client dashboard and public widget use. Client edits appear
+            here on load / refresh.
+          </p>
+          {data.settingsUpdatedAt ? (
+            <p className="text-xs text-neutral-500 mt-1">
+              Settings last updated{' '}
+              {new Date(data.settingsUpdatedAt).toLocaleString()}
+            </p>
+          ) : null}
+        </div>
+        <button
+          type="button"
+          onClick={() => void refresh()}
+          className="shrink-0 px-3 py-1.5 rounded-lg border border-neutral-700 text-sm text-neutral-300 hover:border-neutral-500 hover:text-white"
+        >
+          Refresh from live
+        </button>
       </div>
 
       {error ? (
