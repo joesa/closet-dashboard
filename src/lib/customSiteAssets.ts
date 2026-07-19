@@ -17,6 +17,8 @@ export type CustomAssetRecord = {
   contentType: string | null
   kind: CustomAssetKind
   updatedAt: string | null
+  /** custom/ uploads vs provisioned engine images under <slug>/ */
+  source: 'custom' | 'engine'
 }
 
 const VIDEO_MIME = new Set([
@@ -215,22 +217,26 @@ export async function uploadCustomSiteAsset(opts: {
     contentType,
     kind,
     updatedAt: new Date().toISOString(),
+    source: 'custom',
   }
 }
 
-/** List assets previously uploaded for this tenant's custom site. */
-export async function listCustomSiteAssets(tenantId: string): Promise<CustomAssetRecord[]> {
+async function listStoragePrefix(
+  prefix: string,
+  source: 'custom' | 'engine'
+): Promise<CustomAssetRecord[]> {
   const supabase = getSupabaseAdmin()
-  const prefix = assetPrefix(tenantId)
   const { data, error } = await supabase.storage.from(SITE_ASSETS_BUCKET).list(prefix, {
-    limit: 200,
+    limit: 500,
     sortBy: { column: 'updated_at', order: 'desc' },
   })
-  if (error) throw new Error(`List failed: ${error.message}`)
+  if (error) throw new Error(`List failed (${prefix}): ${error.message}`)
 
   const rows: CustomAssetRecord[] = []
   for (const item of data || []) {
     if (!item.name || item.name.endsWith('/')) continue
+    // Skip nested "folder" placeholders Supabase sometimes returns.
+    if (item.id === null && !item.metadata) continue
     const path = `${prefix}/${item.name}`
     const { data: pub } = supabase.storage.from(SITE_ASSETS_BUCKET).getPublicUrl(path)
     const mime =
@@ -244,9 +250,87 @@ export async function listCustomSiteAssets(tenantId: string): Promise<CustomAsse
       contentType: mime,
       kind: classifyMime(mime || '') || 'file',
       updatedAt: item.updated_at || null,
+      source,
     })
   }
   return rows
+}
+
+/** Resolve platform asset slug (subdomain) for engine images under site-assets/<slug>/. */
+export async function resolveTenantAssetSlug(tenantId: string): Promise<string | null> {
+  const supabase = getSupabaseAdmin()
+  const { data } = await supabase
+    .from('domains')
+    .select('hostname, source')
+    .eq('tenant_id', tenantId)
+    .eq('source', 'platform_subdomain')
+    .maybeSingle()
+  const host = (data?.hostname || '').trim()
+  if (!host) return null
+  const slug = host.split('.')[0]?.trim()
+  return slug || null
+}
+
+export type ListTenantMediaOptions = {
+  /** Filter to one kind, or omit / 'all' for everything. */
+  kind?: CustomAssetKind | 'all'
+  /** Include provisioned engine images under site-assets/<slug>/ (default true). */
+  includeEngine?: boolean
+}
+
+/**
+ * List admin-uploaded (and optionally provisioned) media for a tenant.
+ * Custom uploads: site-assets/custom/<tenantId>/
+ * Engine images:  site-assets/<subdomain>/
+ */
+export async function listTenantMediaAssets(
+  tenantId: string,
+  opts: ListTenantMediaOptions = {}
+): Promise<CustomAssetRecord[]> {
+  const kind = opts.kind && opts.kind !== 'all' ? opts.kind : null
+  const includeEngine = opts.includeEngine !== false
+
+  const custom = await listStoragePrefix(assetPrefix(tenantId), 'custom')
+  let engine: CustomAssetRecord[] = []
+  if (includeEngine) {
+    const slug = await resolveTenantAssetSlug(tenantId)
+    if (slug && slug !== 'custom') {
+      try {
+        engine = await listStoragePrefix(slug, 'engine')
+      } catch {
+        // Missing slug folder is fine for custom-only tenants.
+        engine = []
+      }
+    }
+  }
+
+  const merged = [...custom, ...engine].sort((a, b) => {
+    const ta = a.updatedAt ? Date.parse(a.updatedAt) : 0
+    const tb = b.updatedAt ? Date.parse(b.updatedAt) : 0
+    return tb - ta
+  })
+
+  if (!kind) return merged
+  return merged.filter((r) => r.kind === kind)
+}
+
+/** @deprecated Prefer listTenantMediaAssets — kept for call sites that only need custom/. */
+export async function listCustomSiteAssets(tenantId: string): Promise<CustomAssetRecord[]> {
+  return listTenantMediaAssets(tenantId, { includeEngine: false })
+}
+
+export function mediaCounts(assets: CustomAssetRecord[]): {
+  all: number
+  image: number
+  video: number
+  file: number
+} {
+  return {
+    all: assets.length,
+    image: assets.filter((a) => a.kind === 'image').length,
+    video: assets.filter((a) => a.kind === 'video').length,
+    file: assets.filter((a) => a.kind === 'file').length,
+  }
 }
 
 function guessMimeFromName(name: string): string {

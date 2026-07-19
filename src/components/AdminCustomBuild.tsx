@@ -18,6 +18,7 @@ type CustomAsset = {
   contentType: string | null;
   kind: 'video' | 'image' | 'file';
   updatedAt: string | null;
+  source?: 'custom' | 'engine';
 };
 
 /**
@@ -53,7 +54,8 @@ export default function AdminCustomBuild({
 
   const refreshAssets = useCallback(async () => {
     try {
-      const res = await fetch(`/api/admin/sites/${tenantId}/custom-assets`);
+      // Custom uploads only here (engine images live in Media library below).
+      const res = await fetch(`/api/admin/sites/${tenantId}/custom-assets?engine=0&kind=all`);
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json.error || 'Failed to list assets');
       setAssets(Array.isArray(json.assets) ? json.assets : []);
@@ -429,8 +431,8 @@ export default function AdminCustomBuild({
         </div>
 
         {assets.length > 0 ? (
-          <ul className="divide-y divide-neutral-800 border border-neutral-800 rounded-lg overflow-hidden">
-            {assets.slice(0, 12).map((a) => (
+          <ul className="divide-y divide-neutral-800 border border-neutral-800 rounded-lg overflow-hidden max-h-64 overflow-y-auto">
+            {assets.map((a) => (
               <li
                 key={a.path}
                 className="flex flex-wrap items-center gap-2 px-3 py-2 text-sm bg-black/20"
@@ -446,9 +448,14 @@ export default function AdminCustomBuild({
                 >
                   {a.kind}
                 </span>
-                <span className="text-neutral-200 truncate min-w-0 flex-1" title={a.name}>
-                  {a.name}
-                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="text-neutral-200 truncate" title={a.name}>
+                    {a.name}
+                  </div>
+                  <div className="text-[11px] text-neutral-500 font-mono truncate" title={a.url}>
+                    {a.url}
+                  </div>
+                </div>
                 <button
                   type="button"
                   className="text-xs text-violet-300 hover:text-violet-200"

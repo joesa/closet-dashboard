@@ -7,6 +7,7 @@ import DeleteTenantDialog from '@/components/DeleteTenantDialog';
 import SiteValidationPanel from '@/components/SiteValidationPanel';
 import AdminSiteChat from '@/components/AdminSiteChat';
 import AdminCustomBuild from '@/components/AdminCustomBuild';
+import AdminTenantMedia from '@/components/AdminTenantMedia';
 import DomainManager from '@/components/DomainManager';
 import { DESIGN_VARIANT_OPTIONS } from '@/lib/catalog/designVariantCatalog';
 import { formatUsdCents } from '@/lib/domains/types';
@@ -242,6 +243,9 @@ export default async function TenantDetailsPage({ params }: { params: Promise<{ 
 
         {/* Per-site custom HTML/CSS build — isolated from the template engine */}
         <AdminCustomBuild tenantId={tenant.id} previewUrl={previewUrl} />
+
+        {/* All CDN images / videos / files for this tenant */}
+        <AdminTenantMedia tenantId={tenant.id} />
 
         {/* Domain management — BYO + Vercel purchase (admin override) */}
         <DomainManager tenantId={tenant.id} showAdminCost variant="admin" />

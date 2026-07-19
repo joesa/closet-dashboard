@@ -4,7 +4,8 @@ import {
   appendAssetToDraftPage,
   applyVideoUrlToHomeDraft,
   createCustomSiteAssetUpload,
-  listCustomSiteAssets,
+  listTenantMediaAssets,
+  mediaCounts,
   uploadCustomSiteAsset,
   type CustomAssetKind,
 } from '@/lib/customSiteAssets'
@@ -13,12 +14,12 @@ export const maxDuration = 60
 export const runtime = 'nodejs'
 
 /**
- * Custom-site asset library for one tenant.
- * GET  → list uploads under site-assets/custom/<tenantId>/
- * POST → upload a file (multipart) to Supabase CDN; optional apply to draft
+ * Tenant media library.
+ * GET  → list CDN assets (filter ?kind=image|video|file|all, ?engine=0 to skip provisioned)
+ * POST → upload / sign / apply into custom draft
  */
 export async function GET(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id: tenantId } = await params
@@ -27,8 +28,27 @@ export async function GET(
     if (!adminUser) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
-    const assets = await listCustomSiteAssets(tenantId)
-    return NextResponse.json({ assets })
+
+    const { searchParams } = new URL(req.url)
+    const kindRaw = (searchParams.get('kind') || 'all').trim().toLowerCase()
+    const kind =
+      kindRaw === 'image' || kindRaw === 'video' || kindRaw === 'file' || kindRaw === 'all'
+        ? kindRaw
+        : 'all'
+    const includeEngine = searchParams.get('engine') !== '0'
+
+    const assets = await listTenantMediaAssets(tenantId, { kind, includeEngine })
+    const allForCounts = kind === 'all'
+      ? assets
+      : await listTenantMediaAssets(tenantId, { kind: 'all', includeEngine })
+
+    return NextResponse.json({
+      kind,
+      counts: mediaCounts(allForCounts),
+      assets,
+      /** Convenience: just the public CDN URLs for the current filter. */
+      urls: assets.map((a) => a.url),
+    })
   } catch (error) {
     console.error('custom-assets GET error:', error)
     return NextResponse.json(
