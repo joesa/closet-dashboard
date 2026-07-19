@@ -1,5 +1,10 @@
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
-import { getTenantPreviewSiteUrl, buildTenantPreviewUrlFromDomains, pickPreviewHostname } from '@/lib/admin-preview'
+import {
+  getTenantPreviewSiteUrl,
+  buildTenantPreviewUrlFromDomains,
+  pickPreviewHostname,
+  isDevHostname,
+} from '@/lib/admin-preview'
 import {
   THEME_LAYOUT_AFFINITY,
   MINIMAL_LAYOUTS_WITHOUT_ANCHOR_SECTIONS,
@@ -266,37 +271,34 @@ export async function validateTenantSite(tenantId: string): Promise<ValidationRe
   }
 
   // ── 5. Live crawl (best-effort — never throws) ──
-  const publicUrl = getTenantPreviewSiteUrl(
-    domainRows.map((d) => ({
-      hostname: d.hostname || '',
-      source: d.source,
-      is_primary: d.is_primary,
-    }))
-  )
+  const previewDomainRows = domainRows.map((d) => ({
+    hostname: d.hostname || '',
+    source: d.source,
+    is_primary: d.is_primary,
+  }))
+  const previewHost = pickPreviewHostname(previewDomainRows)
+  const publicUrl = getTenantPreviewSiteUrl(previewDomainRows)
   const crawlUrl =
     publicUrl && publicUrl !== '#'
-      ? buildTenantPreviewUrlFromDomains(
-          domainRows.map((d) => ({
-            hostname: d.hostname || '',
-            source: d.source,
-            is_primary: d.is_primary,
-          }))
-        ) || publicUrl
+      ? buildTenantPreviewUrlFromDomains(previewDomainRows) || publicUrl
       : null
-  if (!crawlUrl || crawlUrl === '#') {
-    issues.push({
-      code: 'site_not_reachable',
-      severity: 'warning',
-      message: 'Could not construct a reachable URL for this tenant (no ADMIN_BYPASS_SECRET or no domain) — skipped the live link/image crawl.',
-      fixable: false,
-    })
-  } else if (/(\.|^)localhost(?::\d+)?(\/|$)/i.test(crawlUrl) || /127\.0\.0\.1/.test(crawlUrl)) {
-    // Validator runs on Vercel — it cannot DNS-resolve *.localhost preview hosts.
+
+  // Cloud validator cannot DNS-resolve *.localhost / 127.0.0.1 preview hosts.
+  // Check the hostname (not the full URL) — admin_bypass query strings broke
+  // earlier regex matching and kept producing "Live crawl failed: fetch failed".
+  if (previewHost && isDevHostname(previewHost)) {
     issues.push({
       code: 'crawl_skipped_local',
       severity: 'warning',
       message:
-        'Live crawl skipped: this site only has a *.localhost preview hostname, which is not reachable from the cloud validator. Open Preview locally or attach a public domain to crawl links/images.',
+        'Live crawl skipped: this site only has a local preview hostname (*.localhost), which is not reachable from the cloud. Open Preview on your machine or attach a public domain to crawl links/images.',
+      fixable: false,
+    })
+  } else if (!crawlUrl || crawlUrl === '#') {
+    issues.push({
+      code: 'site_not_reachable',
+      severity: 'warning',
+      message: 'Could not construct a reachable URL for this tenant (no ADMIN_BYPASS_SECRET or no domain) — skipped the live link/image crawl.',
       fixable: false,
     })
   } else {
