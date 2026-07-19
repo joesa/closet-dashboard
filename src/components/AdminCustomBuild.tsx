@@ -276,6 +276,10 @@ export default function AdminCustomBuild({
             ? json.reply
             : 'Cloned the current live site into the custom draft.'
         );
+      } else if (action === 'generate' && json.intent === 'full') {
+        setInfo(
+          'Full redesign saved to DRAFT only — the live site is unchanged until you Publish. Use Preview draft to see it.'
+        );
       } else if (action === 'generate' && json.intent === 'surgical') {
         setInfo(
           Array.isArray(json.changedPages) && json.changedPages.length
@@ -328,6 +332,29 @@ export default function AdminCustomBuild({
           </span>
         </div>
       </div>
+
+      {mounted && status?.draft && status.renderMode !== 'custom' ? (
+        <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+          <strong className="font-semibold text-amber-200">Draft is not live yet.</strong> The public
+          site still shows the template engine. Click{' '}
+          <span className="text-amber-50">Preview draft</span> to see your redesign (with video), then{' '}
+          <span className="text-amber-50">Publish draft</span> to switch Live from ENGINE → CUSTOM.
+          {draftPreviewUrl ? (
+            <>
+              {' '}
+              <a
+                href={draftPreviewUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="underline decoration-amber-300/60 hover:decoration-amber-200"
+              >
+                Open draft preview now
+              </a>
+              .
+            </>
+          ) : null}
+        </div>
+      ) : null}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
         <div className="rounded-lg border border-neutral-800 bg-black/30 p-4">

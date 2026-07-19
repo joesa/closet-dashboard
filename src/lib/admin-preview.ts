@@ -51,9 +51,12 @@ export function isDnsReadyCustomDomain(d: PreviewDomainRow): boolean {
 /**
  * Hostname to use for admin bypass / local crawl / cache revalidate.
  *
- * Prefer the platform subdomain when it is a local host (or TENANT_BASE_DOMAIN
- * is localhost). Custom/purchased domains are often primary before DNS exists,
- * which would produce NXDOMAIN preview links.
+ * In cloud/production, prefer a real public domain (purchased/BYO) so Preview
+ * links work in the browser. Never send admins to *.localhost from Vercel —
+ * that host only resolves on a developer machine.
+ *
+ * Locally (TENANT_BASE_DOMAIN=localhost and not on Vercel), prefer the
+ * platform *.localhost subdomain so admin bypass works before DNS exists.
  */
 export function pickPreviewHostname(domains: PreviewDomainRow[]): string | null {
   const rows = (domains || []).filter((d) => d?.hostname?.trim())
@@ -61,22 +64,32 @@ export function pickPreviewHostname(domains: PreviewDomainRow[]): string | null 
 
   const platform = rows.find((d) => d.source === 'platform_subdomain')
   const primary = rows.find((d) => d.is_primary) || rows[0]
+  const publicReady = rows.find(isDnsReadyCustomDomain)
+  const anyPublic = rows.find((d) => !isDevHostname((d.hostname || '').trim()))
 
+  const onVercel = process.env.VERCEL === '1'
+  const localDevOnly = isLocalTenantBase() && !onVercel
+
+  // Cloud dashboard: use the customer domain when we have one.
+  if (!localDevOnly) {
+    if (publicReady) return publicReady.hostname.trim()
+    if (anyPublic) return anyPublic.hostname.trim()
+  }
+
+  // Local websites app: *.localhost platform subdomain.
   if (platform && isDevHostname(platform.hostname)) {
     return platform.hostname.trim()
   }
 
-  if (isLocalTenantBase() && platform) {
+  if (localDevOnly && platform) {
     return platform.hostname.trim()
   }
 
-  // Primary is a public domain that isn't resolvable locally — still prefer
-  // platform subdomain when present so admin bypass works before purchase/DNS.
   if (
     platform &&
     primary &&
     !isDevHostname(primary.hostname) &&
-    (isDevHostname(platform.hostname) || isLocalTenantBase())
+    (isDevHostname(platform.hostname) || localDevOnly)
   ) {
     return platform.hostname.trim()
   }
