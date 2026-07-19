@@ -44,7 +44,7 @@ export default function AdminCustomBuild({
   const [warnings, setWarnings] = useState<string[]>([]);
   const [info, setInfo] = useState('');
   const [changedPages, setChangedPages] = useState<string[]>([]);
-  const [lastIntent, setLastIntent] = useState<'full' | 'surgical' | null>(null);
+  const [lastIntent, setLastIntent] = useState<'full' | 'surgical' | 'clone' | null>(null);
   const [assets, setAssets] = useState<CustomAsset[]>([]);
   const [uploading, setUploading] = useState(false);
   const [uploadKind, setUploadKind] = useState<'video' | 'image' | 'file' | 'auto'>('auto');
@@ -257,7 +257,9 @@ export default function AdminCustomBuild({
       if (typeof json.reply === 'string') setReply(json.reply);
       if (Array.isArray(json.warnings)) setWarnings(json.warnings);
       if (Array.isArray(json.changedPages)) setChangedPages(json.changedPages);
-      if (json.intent === 'full' || json.intent === 'surgical') setLastIntent(json.intent);
+      if (json.intent === 'full' || json.intent === 'surgical' || json.intent === 'clone') {
+        setLastIntent(json.intent);
+      }
       if (action === 'publish') {
         setInfo(
           json.liveNow
@@ -268,6 +270,12 @@ export default function AdminCustomBuild({
         setInfo('Reverted to the shared template engine for this site.');
       } else if (action === 'discard') {
         setInfo('Draft discarded.');
+      } else if (action === 'clone') {
+        setInfo(
+          typeof json.reply === 'string'
+            ? json.reply
+            : 'Cloned the current live site into the custom draft.'
+        );
       } else if (action === 'generate' && json.intent === 'surgical') {
         setInfo(
           Array.isArray(json.changedPages) && json.changedPages.length
@@ -297,9 +305,9 @@ export default function AdminCustomBuild({
             Custom build
           </h3>
           <p className="mt-1 text-sm text-neutral-400 max-w-2xl">
-            Build a bespoke HTML/CSS site for <em>this tenant only</em>, then make{' '}
-            <strong className="text-neutral-300 font-medium">surgical edits</strong> without
-            redesigning the whole site. Draft → preview → publish.
+            Start by cloning this tenant’s <em>current live site</em> into a draft, then make{' '}
+            <strong className="text-neutral-300 font-medium">surgical edits</strong>. Use Full
+            redesign only when you want an entirely new AI design. Draft → preview → publish.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -501,7 +509,7 @@ export default function AdminCustomBuild({
           placeholder={
             hasBase
               ? 'Surgical: e.g. “Simplify the hero headline to Welcome to Acme” or “Change the CTA to Get a free quote” — do not redesign.'
-              : 'Full build: e.g. Bold editorial layout, deep forest greens, large hero photo…'
+              : 'Optional notes for a Full redesign later. First click “Generate from scratch” to clone the current site.'
           }
           disabled={loading}
         />
@@ -549,7 +557,25 @@ export default function AdminCustomBuild({
             if (
               hasBase &&
               !confirm(
-                'Full redesign will rebuild the entire custom site (new layout/CSS). Continue?'
+                'Replace the current draft with a fresh clone of the live site? Surgical work in the draft will be overwritten.'
+              )
+            ) {
+              return;
+            }
+            void run('clone', { mode });
+          }}
+          className="px-4 py-2 border border-violet-400/40 hover:bg-violet-500/10 disabled:opacity-50 text-violet-200 text-sm font-medium rounded-lg transition-colors"
+          title="Copy the current live site into the custom draft (no AI redesign)"
+        >
+          {hasBase ? 'Re-clone live site' : 'Generate from scratch'}
+        </button>
+        <button
+          type="button"
+          disabled={loading}
+          onClick={() => {
+            if (
+              !confirm(
+                'Full redesign asks AI for an entirely new layout/CSS (not a copy of the live site). Continue?'
               )
             ) {
               return;
@@ -562,9 +588,10 @@ export default function AdminCustomBuild({
               intent: 'full',
             });
           }}
-          className="px-4 py-2 border border-violet-400/40 hover:bg-violet-500/10 disabled:opacity-50 text-violet-200 text-sm font-medium rounded-lg transition-colors"
+          className="px-4 py-2 border border-neutral-600 hover:bg-neutral-800 disabled:opacity-50 text-neutral-300 text-sm font-medium rounded-lg transition-colors"
+          title="AI invents a new design — only use when you want a drastic change"
         >
-          {hasBase ? 'Full redesign' : 'Generate from scratch'}
+          Full redesign
         </button>
         {draftPreviewUrl ? (
           <a

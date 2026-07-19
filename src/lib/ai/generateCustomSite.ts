@@ -179,7 +179,7 @@ export async function generateCustomSiteDraft(opts: {
 
   if (intent === 'surgical' && !base) {
     throw new Error(
-      'No custom site to edit yet — use “Generate from scratch” first, then surgical edits.'
+      'No custom site to edit yet — use “Generate from scratch” (clones the live site) first, then surgical edits.'
     )
   }
 

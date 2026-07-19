@@ -7,6 +7,7 @@ import {
   publishCustomSiteDraft,
   revertToEngine,
 } from '@/lib/ai/generateCustomSite'
+import { cloneCurrentSiteToDraft } from '@/lib/ai/cloneEngineSite'
 import { isCustomSiteConfig } from '@/lib/customSite'
 
 // Vercel Hobby allows up to 60s; keep generation compact to fit.
@@ -17,6 +18,7 @@ export const runtime = 'nodejs'
  * Admin custom-site build API.
  *
  * Actions:
+ *  - clone     → copy current live site into custom_config_draft (no AI redesign)
  *  - generate  → AI builds/iterates custom_config_draft (never goes live)
  *  - publish   → copy draft → custom_config, set render_mode=custom, revalidate
  *  - revert    → set render_mode=engine (keeps draft + published artifacts)
@@ -62,10 +64,40 @@ export async function POST(
       })
     }
 
+    if (action === 'clone') {
+      const mode = body.mode === 'iframe' ? 'iframe' : body.mode === 'inline' ? 'inline' : undefined
+      const result = await cloneCurrentSiteToDraft(tenantId, { mode })
+      await logAdminAction({
+        actor: adminUser,
+        action: 'site.custom_build_clone',
+        targetType: 'tenant',
+        targetId: tenantId,
+        metadata: {
+          source: result.source,
+          pageKeys: result.pageKeys,
+          warnings: result.warnings,
+        },
+      })
+      return NextResponse.json({
+        reply: result.reply,
+        intent: 'clone',
+        source: result.source,
+        changedPages: result.pageKeys,
+        draft: {
+          mode: result.draft.mode,
+          pageKeys: result.pageKeys,
+        },
+        warnings: result.warnings,
+        errors: [],
+      })
+    }
+
     if (action === 'generate') {
       const prompt = typeof body.prompt === 'string' ? body.prompt.trim().slice(0, 4000) : ''
       const mode = body.mode === 'iframe' ? 'iframe' : body.mode === 'inline' ? 'inline' : undefined
       // Prefer explicit intent; legacy iterate:true → surgical.
+      // Default without intent used to be full (AI redesign) — callers must
+      // send intent explicitly. UI uses clone for baseline, full for redesign.
       const intent =
         body.intent === 'full' || body.intent === 'surgical'
           ? body.intent
