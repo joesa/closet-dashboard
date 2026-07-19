@@ -107,7 +107,7 @@ export function validateCustomConfig(config: CustomSiteConfig): CustomPublishChe
     if (
       html.includes(WIDGET_PLACEHOLDER) ||
       html.includes(WIDGET_PLACEHOLDER_ALT) ||
-      /<closet-quote-widget\b/i.test(html)
+      /<closet-(?:quote|order|booking|ticket)-widget\b/i.test(html)
     ) {
       hasWidget = true
     }
@@ -123,7 +123,7 @@ export function validateCustomConfig(config: CustomSiteConfig): CustomPublishChe
   }
   if (!hasWidget) {
     warnings.push(
-      `No quote widget placeholder found. Embed ${WIDGET_PLACEHOLDER} (or <closet-quote-widget></closet-quote-widget>) so leads still convert.`
+      `No engagement widget placeholder found. Embed ${WIDGET_PLACEHOLDER} (or a closet-*-widget tag) so leads still convert.`
     )
   }
   return { ok: errors.length === 0, warnings, errors }

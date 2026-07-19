@@ -7,6 +7,7 @@ import DeleteTenantDialog from '@/components/DeleteTenantDialog';
 import SiteValidationPanel from '@/components/SiteValidationPanel';
 import AdminSiteChat from '@/components/AdminSiteChat';
 import AdminCustomBuild from '@/components/AdminCustomBuild';
+import AdminEngagementTools from '@/components/AdminEngagementTools';
 import AdminTenantMedia from '@/components/AdminTenantMedia';
 import DomainManager from '@/components/DomainManager';
 import { DESIGN_VARIANT_OPTIONS } from '@/lib/catalog/designVariantCatalog';
@@ -244,6 +245,9 @@ export default async function TenantDetailsPage({ params }: { params: Promise<{ 
         {/* Per-site custom HTML/CSS build — isolated from the template engine */}
         <AdminCustomBuild tenantId={tenant.id} previewUrl={previewUrl} />
 
+        {/* Quote / booking / order / ticket tools for this client's widget_id */}
+        <AdminEngagementTools tenantId={tenant.id} />
+
         {/* All CDN images / videos / files for this tenant */}
         <AdminTenantMedia tenantId={tenant.id} />
 
@@ -273,9 +277,12 @@ export default async function TenantDetailsPage({ params }: { params: Promise<{ 
                   </div>
                   <div>
                     <span className="text-neutral-400 text-sm block mb-1">Engagement Model</span>
-                    <div className={`font-mono px-3 py-2 rounded inline-block ${config.engagement_model === 'order' ? 'bg-purple-500/10 text-purple-300' : 'bg-black/50 text-blue-400'}`}>
-                      {config.engagement_model === 'order' ? 'order (menu \u2192 cart \u2192 submit)' : 'quote (estimate \u2192 lead capture)'}
+                    <div className="font-mono px-3 py-2 rounded inline-block bg-black/50 text-blue-400">
+                      {config.engagement_model || 'quote'}
                     </div>
+                    <p className="text-xs text-neutral-500 mt-1">
+                      Edit above in Engagement tools.
+                    </p>
                   </div>
                   <div>
                     <span className="text-neutral-400 text-sm block mb-1">Studio Style (Design Variant)</span>
