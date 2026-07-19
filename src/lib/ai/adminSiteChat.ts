@@ -13,6 +13,7 @@ import { revalidateTenantSiteCache } from '@/lib/tenants/revalidateTenantSite'
 import {
   applyVideoUrlToHomeDraft,
   appendAssetToDraftPage,
+  ensureHomeVideoAfterHero,
 } from '@/lib/customSiteAssets'
 
 /**
@@ -91,11 +92,17 @@ const EDITABLE_COLUMNS: Record<
         : 'must be quote | order | booking | ticket',
   },
   hero_config: {
-    shape: '{ headline: string (MAX 6 words), subheadline?: string, backgroundImage?: string(url) }',
-    validate: (v) =>
-      v && typeof v === 'object' && !Array.isArray(v) && typeof (v as any).headline === 'string'
-        ? null
-        : 'must be an object with a string headline',
+    shape: '{ headline: string (MAX 6 words), subheadline?: string, backgroundImage?: string(image url — JPG/PNG/WEBP only, never MP4/video) }',
+    validate: (v) => {
+      if (!v || typeof v !== 'object' || Array.isArray(v) || typeof (v as any).headline !== 'string') {
+        return 'must be an object with a string headline'
+      }
+      const bg = (v as any).backgroundImage
+      if (typeof bg === 'string' && /\.(mp4|webm|mov|m4v)(\?|$)/i.test(bg)) {
+        return 'backgroundImage cannot be a video file — use Custom Build / chat to place an MP4 after the hero'
+      }
+      return null
+    },
   },
   about_config: {
     shape: '{ description: string }',
@@ -219,48 +226,79 @@ function looksLikeImageUrl(url: string): boolean {
 }
 
 /**
- * When the site is on custom HTML (or has a custom draft), template-column
- * chat cannot set <video src>. Handle the common "set video to this URL"
- * request surgically; otherwise tell the admin to use Custom Build.
+ * Intercept media/video requests before the template-column LLM.
+ * Template engine cannot embed MP4s (hero backgrounds are images only).
+ * Videos go into a Custom Build draft — bootstrapping one from brand/hero
+ * fields when the tenant is still on the engine.
  */
-async function tryCustomModeShortcut(
+async function tryMediaShortcut(
   tenantId: string,
   config: Record<string, unknown>,
   lastAdminMessage: string
 ): Promise<SiteChatResult | null> {
-  const renderMode = config.render_mode
+  const url = extractHttpUrl(lastAdminMessage)
   const hasCustom =
-    renderMode === 'custom' ||
+    config.render_mode === 'custom' ||
     !!(config.custom_config && typeof config.custom_config === 'object') ||
     !!(config.custom_config_draft && typeof config.custom_config_draft === 'object')
-  if (!hasCustom) return null
 
-  const url = extractHttpUrl(lastAdminMessage)
-  const wantsVideo =
-    /\b(video|mp4|webm|testimonial|src)\b/i.test(lastAdminMessage) && !!url
-  const wantsAppendMedia =
-    /\b(add|append|insert|put)\b/i.test(lastAdminMessage) &&
-    /\b(image|photo|video|file|pdf|link)\b/i.test(lastAdminMessage) &&
-    !!url
+  const mentionsVideo = /\b(video|mp4|webm|testimonial)\b/i.test(lastAdminMessage)
+  const wantsAddOrPlace =
+    /\b(add|append|insert|put|embed|place|set|use|past|after)\b/i.test(lastAdminMessage) ||
+    /\bhero\b/i.test(lastAdminMessage)
 
-  if (wantsVideo && url && looksLikeVideoUrl(url)) {
-    await applyVideoUrlToHomeDraft(tenantId, url)
+  // Never put an MP4 into hero_config.backgroundImage — that caused the black
+  // broken-image screen. Intercept even without an explicit "video" word.
+  if (url && looksLikeVideoUrl(url) && /\b(hero|background)\b/i.test(lastAdminMessage)) {
+    const { bootstrapped } = await ensureHomeVideoAfterHero({ tenantId, videoUrl: url })
     const liveNow = await revalidateTenantSiteCache(tenantId)
     return {
-      reply:
-        'Updated the home page video `src` in the custom-site draft. Open Custom Build → Preview draft to confirm, then Publish draft when ready. (AI Site Assistant cannot rewrite custom HTML generally — use Custom Build for broader edits.)',
+      reply: bootstrapped
+        ? 'Hero backgrounds only accept images (JPG/PNG/WEBP), not MP4 — that’s why you saw a black broken image. I created a Custom Build draft from this site’s brand/hero and placed your video in a real player right after the hero. Use Custom Build → Preview draft, then Publish draft when ready (publishing switches this site to custom render mode).'
+        : 'Hero backgrounds only accept images, not MP4. I placed your video in a player after the hero in the Custom Build draft instead. Preview draft → Publish when ready.',
       applied: ['custom_config_draft'],
       rejected: [],
       liveNow,
     }
   }
 
-  if (wantsAppendMedia && url) {
-    const kind = looksLikeVideoUrl(url)
-      ? 'video'
-      : looksLikeImageUrl(url)
-        ? 'image'
-        : 'file'
+  if (url && looksLikeVideoUrl(url) && (mentionsVideo || wantsAddOrPlace)) {
+    const afterHero =
+      /\b(past|after)\b/i.test(lastAdminMessage) ||
+      /\bhero\b/i.test(lastAdminMessage) ||
+      /\b(add|insert|embed|place|append)\b/i.test(lastAdminMessage)
+
+    if (afterHero || !hasCustom) {
+      const { bootstrapped } = await ensureHomeVideoAfterHero({ tenantId, videoUrl: url })
+      const liveNow = await revalidateTenantSiteCache(tenantId)
+      return {
+        reply: bootstrapped
+          ? 'Template sites can’t embed video players. I created a Custom Build draft (from this business’s brand/hero/services) and inserted your video after the hero. Open Custom Build → Preview draft, then Publish draft to go live.'
+          : 'Inserted your video after the hero in the Custom Build draft. Preview draft → Publish when ready.',
+        applied: ['custom_config_draft'],
+        rejected: [],
+        liveNow,
+      }
+    }
+
+    await applyVideoUrlToHomeDraft(tenantId, url)
+    const liveNow = await revalidateTenantSiteCache(tenantId)
+    return {
+      reply:
+        'Updated the home page video source in the Custom Build draft. Preview draft → Publish when ready.',
+      applied: ['custom_config_draft'],
+      rejected: [],
+      liveNow,
+    }
+  }
+
+  const wantsAppendMedia =
+    !!url &&
+    /\b(add|append|insert|put)\b/i.test(lastAdminMessage) &&
+    /\b(image|photo|file|pdf|link)\b/i.test(lastAdminMessage)
+
+  if (wantsAppendMedia && url && hasCustom) {
+    const kind = looksLikeImageUrl(url) ? 'image' : 'file'
     await appendAssetToDraftPage({
       tenantId,
       pagePath: '/',
@@ -277,17 +315,15 @@ async function tryCustomModeShortcut(
     }
   }
 
-  // Custom site + request that sounds like HTML/markup editing → steer away
-  // from template-column chat (which would fail or no-op confusingly).
+  // Custom site + generic HTML request → steer away from template-column chat.
   if (
-    /\b(html|css|<video|custom (site|build|html)|source src|testimonial video)\b/i.test(
-      lastAdminMessage
-    ) ||
-    (url && /\b(set|change|update|put|use)\b/i.test(lastAdminMessage))
+    hasCustom &&
+    (/\b(html|css|<video|custom (site|build|html)|source src)\b/i.test(lastAdminMessage) ||
+      (url && /\b(set|change|update|put|use)\b/i.test(lastAdminMessage)))
   ) {
     return {
       reply:
-        'This site uses Custom Build (bespoke HTML/CSS). The AI Site Assistant only edits the shared template fields (hero, services, nav, etc.). For video/media: use Custom Build → Media & files → “Use as home video” or “Append to home”. For copy/layout tweaks: Custom Build → Edit surgically.',
+        'This site uses Custom Build. For video/media: paste the CDN URL here (I’ll place it after the hero) or use Custom Build → Media & files. For copy/layout tweaks: Custom Build → Edit surgically.',
       applied: [],
       rejected: [],
       liveNow: false,
@@ -320,7 +356,7 @@ export async function runAdminSiteChat(
 
   const lastAdmin =
     [...messages].reverse().find((m) => m.role === 'admin')?.content || ''
-  const shortcut = await tryCustomModeShortcut(tenantId, config, lastAdmin)
+  const shortcut = await tryMediaShortcut(tenantId, config, lastAdmin)
   if (shortcut) return shortcut
 
   // Only show the model columns it may edit (plus nothing internal like ids).

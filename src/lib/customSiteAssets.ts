@@ -444,6 +444,148 @@ export async function applyVideoUrlToHomeDraft(
   return { changed, draft: sanitized }
 }
 
+function videoSectionHtml(videoUrl: string, heading = 'Featured video'): string {
+  const safeUrl = videoUrl.replace(/"/g, '')
+  const safeHeading = heading.replace(/[<>&"]/g, '')
+  return `
+<section data-custom-video style="padding:2.5rem 1.5rem 4rem;max-width:960px;margin:0 auto;">
+  <h2 style="margin:0 0 1.25rem;font-size:1.5rem;text-align:center;">${safeHeading}</h2>
+  <div style="aspect-ratio:16/9;overflow:hidden;border-radius:12px;background:#000;">
+    <video controls playsinline style="width:100%;height:100%;display:block;background:#000;">
+      <source src="${safeUrl}" type="video/mp4">
+    </video>
+  </div>
+</section>`
+}
+
+/** Insert a video block immediately after the first hero-like section, else after first </section>, else append. */
+export function insertVideoAfterHero(html: string, videoUrl: string): string {
+  const block = videoSectionHtml(videoUrl)
+  if (/data-custom-video/i.test(html) && /<source\b/i.test(html)) {
+    // Replace existing custom video source rather than stacking duplicates.
+    if (/<source\b[^>]*\bsrc\s*=\s*(["'])[^"']*\1/i.test(html)) {
+      return html.replace(
+        /(<source\b[^>]*\bsrc\s*=\s*)(["'])[^"']*\2/i,
+        `$1$2${videoUrl.replace(/"/g, '')}$2`
+      )
+    }
+  }
+
+  const heroClose =
+    /(<section\b[^>]*(?:hero|banner|splash)[^>]*>[\s\S]*?<\/section>)/i.exec(html) ||
+    /(<header\b[^>]*>[\s\S]*?<\/header>)/i.exec(html)
+  if (heroClose && heroClose.index != null) {
+    const end = heroClose.index + heroClose[0].length
+    return `${html.slice(0, end)}\n${block}\n${html.slice(end)}`
+  }
+
+  const firstSection = /<\/section>/i.exec(html)
+  if (firstSection && firstSection.index != null) {
+    const end = firstSection.index + firstSection[0].length
+    return `${html.slice(0, end)}\n${block}\n${html.slice(end)}`
+  }
+
+  return `${html || ''}\n${block}`
+}
+
+/**
+ * Ensure a custom draft exists (bootstrapping a simple home page from engine
+ * brand/hero fields when needed), then place the video after the hero.
+ */
+export async function ensureHomeVideoAfterHero(opts: {
+  tenantId: string
+  videoUrl: string
+}): Promise<{ draft: CustomSiteConfig; bootstrapped: boolean }> {
+  const supabase = getSupabaseAdmin()
+  const { data, error } = await supabase
+    .from('site_configs')
+    .select(
+      'custom_config_draft, custom_config, brand_name, hero_config, about_config, products_config'
+    )
+    .eq('tenant_id', opts.tenantId)
+    .single()
+  if (error || !data) throw new Error('Site config not found')
+
+  let bootstrapped = false
+  let base =
+    (isCustomSiteConfig(data.custom_config_draft) && data.custom_config_draft) ||
+    (isCustomSiteConfig(data.custom_config) && data.custom_config) ||
+    null
+
+  if (!base) {
+    bootstrapped = true
+    const brand = String(data.brand_name || 'Our Company').replace(/[<>&"]/g, '')
+    const hero = (data.hero_config || {}) as {
+      headline?: string
+      subheadline?: string
+      backgroundImage?: string
+    }
+    const headline = String(hero.headline || brand).replace(/[<>&"]/g, '').slice(0, 80)
+    const sub = String(hero.subheadline || '').replace(/[<>&"]/g, '').slice(0, 200)
+    const bg =
+      typeof hero.backgroundImage === 'string' &&
+      !/\.(mp4|webm|mov)(\?|$)/i.test(hero.backgroundImage)
+        ? hero.backgroundImage.replace(/"/g, '')
+        : ''
+    const about = String(
+      (data.about_config as { description?: string } | null)?.description || ''
+    )
+      .replace(/[<>&"]/g, '')
+      .slice(0, 600)
+    const products = Array.isArray(data.products_config) ? data.products_config : []
+    const serviceLis = products
+      .slice(0, 6)
+      .map((p: { title?: string }) =>
+        typeof p?.title === 'string'
+          ? `<li style="margin:0.35rem 0;">${p.title.replace(/[<>&"]/g, '')}</li>`
+          : ''
+      )
+      .join('')
+
+    base = {
+      mode: 'inline',
+      globalCss: `body{margin:0;font-family:Georgia,serif;color:#111;background:#f6f4f1;}a{color:inherit;}`,
+      pages: {
+        '/': {
+          title: brand,
+          html: `
+<section class="hero" style="min-height:55vh;display:flex;align-items:flex-end;padding:3rem 1.5rem;background:${
+            bg
+              ? `#111 url('${bg}') center/cover no-repeat`
+              : 'linear-gradient(145deg,#1a1a1a,#333)'
+          };color:#fff;">
+  <div style="max-width:720px;">
+    <p style="letter-spacing:0.12em;text-transform:uppercase;font-size:0.75rem;opacity:0.8;margin:0 0 0.75rem;">${brand}</p>
+    <h1 style="margin:0;font-size:clamp(2rem,5vw,3.25rem);line-height:1.1;">${headline}</h1>
+    ${sub ? `<p style="margin:1rem 0 0;font-size:1.1rem;opacity:0.9;max-width:36rem;">${sub}</p>` : ''}
+  </div>
+</section>
+${about ? `<section style="padding:2.5rem 1.5rem;max-width:720px;margin:0 auto;"><p style="font-size:1.1rem;line-height:1.6;">${about}</p></section>` : ''}
+${serviceLis ? `<section style="padding:1rem 1.5rem 3rem;max-width:720px;margin:0 auto;"><h2 style="font-size:1.35rem;">Services</h2><ul style="padding-left:1.2rem;">${serviceLis}</ul></section>` : ''}
+`,
+        },
+      },
+    }
+  }
+
+  const draft: CustomSiteConfig = JSON.parse(JSON.stringify(base))
+  const home = draft.pages['/'] || Object.values(draft.pages)[0]
+  if (!home) throw new Error('Home page missing from custom config.')
+  home.html = insertVideoAfterHero(home.html || '', opts.videoUrl)
+  draft.pages['/'] = home
+  const sanitized = sanitizeCustomConfig(draft)
+
+  const { error: updateErr } = await supabase
+    .from('site_configs')
+    .update({
+      custom_config_draft: sanitized,
+      custom_updated_at: new Date().toISOString(),
+    })
+    .eq('tenant_id', opts.tenantId)
+  if (updateErr) throw new Error(`Failed to update draft: ${updateErr.message}`)
+  return { draft: sanitized, bootstrapped }
+}
+
 /**
  * Append an image (or link for other files) block to a page in the draft.
  */
@@ -453,7 +595,17 @@ export async function appendAssetToDraftPage(opts: {
   url: string
   kind: CustomAssetKind
   label?: string
+  /** When 'after_hero' and kind is video, insert after hero instead of page end. */
+  position?: 'end' | 'after_hero'
 }): Promise<CustomSiteConfig> {
+  if (opts.kind === 'video' && opts.position === 'after_hero') {
+    const { draft } = await ensureHomeVideoAfterHero({
+      tenantId: opts.tenantId,
+      videoUrl: opts.url,
+    })
+    return draft
+  }
+
   const supabase = getSupabaseAdmin()
   const { data, error } = await supabase
     .from('site_configs')
@@ -480,7 +632,7 @@ export async function appendAssetToDraftPage(opts: {
   if (opts.kind === 'image') {
     block = `\n<figure style="margin:2rem 0;text-align:center;"><img src="${opts.url}" alt="${label}" style="max-width:100%;height:auto;border-radius:8px;" /><figcaption style="margin-top:0.5rem;opacity:0.7;">${label}</figcaption></figure>\n`
   } else if (opts.kind === 'video') {
-    block = `\n<section style="margin:2rem 0;"><video controls style="width:100%;max-height:70vh;background:#000;"><source src="${opts.url}" type="video/mp4"></video></section>\n`
+    block = videoSectionHtml(opts.url, label || 'Featured video')
   } else {
     block = `\n<p style="margin:1.5rem 0;"><a href="${opts.url}" target="_blank" rel="noopener noreferrer">${label}</a></p>\n`
   }
