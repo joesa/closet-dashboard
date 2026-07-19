@@ -10,6 +10,16 @@ type Status = {
   published: { mode: string; pageKeys: string[] } | null;
 };
 
+type CustomAsset = {
+  name: string;
+  path: string;
+  url: string;
+  size: number | null;
+  contentType: string | null;
+  kind: 'video' | 'image' | 'file';
+  updatedAt: string | null;
+};
+
 /**
  * Admin panel: AI-build a completely custom HTML/CSS site for ONE tenant,
  * or surgically edit an existing custom draft/published site. Preview →
@@ -34,8 +44,24 @@ export default function AdminCustomBuild({
   const [info, setInfo] = useState('');
   const [changedPages, setChangedPages] = useState<string[]>([]);
   const [lastIntent, setLastIntent] = useState<'full' | 'surgical' | null>(null);
+  const [assets, setAssets] = useState<CustomAsset[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [uploadKind, setUploadKind] = useState<'video' | 'image' | 'file' | 'auto'>('auto');
+  const [uploadApply, setUploadApply] = useState<'none' | 'video_home' | 'append_home'>('none');
 
   const hasBase = !!(status?.draft || status?.published);
+
+  const refreshAssets = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/admin/sites/${tenantId}/custom-assets`);
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || 'Failed to list assets');
+      setAssets(Array.isArray(json.assets) ? json.assets : []);
+    } catch (err) {
+      // Non-fatal for the rest of the panel
+      console.warn(err);
+    }
+  }, [tenantId]);
 
   const refresh = useCallback(async () => {
     try {
@@ -56,7 +82,152 @@ export default function AdminCustomBuild({
   useEffect(() => {
     setMounted(true);
     void refresh();
-  }, [refresh]);
+    void refreshAssets();
+  }, [refresh, refreshAssets]);
+
+  const uploadFile = async (file: File) => {
+    setUploading(true);
+    setError('');
+    setInfo('');
+    try {
+      // Direct-to-Supabase for anything over ~3.5MB (Vercel body limit ~4.5MB).
+      const useDirect = file.size > 3.5 * 1024 * 1024 || file.type.startsWith('video/');
+
+      let url: string | undefined;
+      let applied: string | null = null;
+
+      if (useDirect) {
+        const signRes = await fetch(`/api/admin/sites/${tenantId}/custom-assets`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'sign',
+            fileName: file.name,
+            mime: file.type || 'application/octet-stream',
+            size: file.size,
+            kind: uploadKind === 'auto' ? undefined : uploadKind,
+          }),
+        });
+        const signJson = await signRes.json().catch(() => ({}));
+        if (!signRes.ok) {
+          throw new Error(signJson.error || `Could not start upload (${signRes.status})`);
+        }
+        const u = signJson.upload as {
+          signedUrl: string
+          publicUrl: string
+          path: string
+          contentType: string
+          kind: 'video' | 'image' | 'file'
+          name: string
+        };
+        const putRes = await fetch(u.signedUrl, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': u.contentType || file.type || 'application/octet-stream',
+          },
+          body: file,
+        });
+        if (!putRes.ok) {
+          throw new Error(`Direct upload to storage failed (${putRes.status})`);
+        }
+        const completeRes = await fetch(`/api/admin/sites/${tenantId}/custom-assets`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'complete',
+            url: u.publicUrl,
+            path: u.path,
+            kind: u.kind,
+            label: file.name,
+            mime: u.contentType,
+            size: file.size,
+            apply: uploadApply,
+          }),
+        });
+        const completeJson = await completeRes.json().catch(() => ({}));
+        if (!completeRes.ok) {
+          throw new Error(completeJson.error || `Finalize failed (${completeRes.status})`);
+        }
+        url = u.publicUrl;
+        applied = completeJson.applied ?? null;
+      } else {
+        const fd = new FormData();
+        fd.append('file', file);
+        if (uploadKind !== 'auto') fd.append('kind', uploadKind);
+        fd.append('apply', uploadApply);
+        fd.append('label', file.name);
+        const res = await fetch(`/api/admin/sites/${tenantId}/custom-assets`, {
+          method: 'POST',
+          body: fd,
+        });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(json.error || `Upload failed (${res.status})`);
+        url = json.asset?.url as string | undefined;
+        applied = json.applied ?? null;
+      }
+
+      setInfo(
+        applied === 'video_home'
+          ? `Uploaded and set as home testimonial video.${url ? ` URL: ${url}` : ''}`
+          : applied === 'append_home'
+            ? `Uploaded and appended to the home page draft.${url ? ` URL: ${url}` : ''}`
+            : `Uploaded to Supabase CDN.${url ? ` Copy this URL for surgical edits: ${url}` : ''}`
+      );
+      await refreshAssets();
+      if (applied) {
+        await refresh();
+        router.refresh();
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Upload failed');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const applyExisting = async (
+    asset: CustomAsset,
+    apply: 'video_home' | 'append_home'
+  ) => {
+    setUploading(true);
+    setError('');
+    setInfo('');
+    try {
+      const res = await fetch(`/api/admin/sites/${tenantId}/custom-assets`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'apply',
+          url: asset.url,
+          kind: asset.kind,
+          label: asset.name,
+          apply,
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || 'Failed to apply asset');
+      setInfo(
+        apply === 'video_home'
+          ? 'Set as home page video in the draft.'
+          : 'Appended to the home page draft.'
+      );
+      await refresh();
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to apply asset');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const copyUrl = async (url: string) => {
+    try {
+      await navigator.clipboard.writeText(url);
+      setInfo('CDN URL copied to clipboard.');
+    } catch {
+      setInfo(url);
+    }
+  };
 
   const run = async (action: string, extra: Record<string, unknown> = {}) => {
     setLoading(true);
@@ -187,6 +358,129 @@ export default function AdminCustomBuild({
             <p className="text-neutral-500">Nothing published yet.</p>
           )}
         </div>
+      </div>
+
+      <div className="rounded-lg border border-neutral-800 bg-black/30 p-4 space-y-3">
+        <div>
+          <div className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">
+            Media &amp; files (Supabase CDN)
+          </div>
+          <p className="mt-1 text-xs text-neutral-500">
+            Upload videos, images, or docs for this custom site. Files land in{' '}
+            <code className="text-neutral-400">site-assets/custom/{'{tenantId}'}/</code> and
+            get a permanent public URL you can paste into surgical edits.
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="text-sm text-neutral-300">
+            <span className="block text-xs text-neutral-500 uppercase mb-1">Type</span>
+            <select
+              className="bg-black/50 border border-neutral-700 text-white text-sm rounded px-3 py-1.5"
+              value={uploadKind}
+              onChange={(e) =>
+                setUploadKind(e.target.value as 'video' | 'image' | 'file' | 'auto')
+              }
+              disabled={uploading || loading}
+            >
+              <option value="auto">Auto-detect</option>
+              <option value="video">Video</option>
+              <option value="image">Image</option>
+              <option value="file">File / doc</option>
+            </select>
+          </label>
+          <label className="text-sm text-neutral-300">
+            <span className="block text-xs text-neutral-500 uppercase mb-1">After upload</span>
+            <select
+              className="bg-black/50 border border-neutral-700 text-white text-sm rounded px-3 py-1.5"
+              value={uploadApply}
+              onChange={(e) =>
+                setUploadApply(e.target.value as 'none' | 'video_home' | 'append_home')
+              }
+              disabled={uploading || loading}
+            >
+              <option value="none">Upload only (copy URL)</option>
+              <option value="video_home">Set as home video src</option>
+              <option value="append_home">Append to home page</option>
+            </select>
+          </label>
+          <label className="inline-flex items-center gap-2 px-4 py-2 bg-violet-600/80 hover:bg-violet-500 disabled:opacity-40 text-white text-sm font-medium rounded-lg cursor-pointer transition-colors">
+            {uploading ? 'Uploading…' : 'Choose file'}
+            <input
+              type="file"
+              className="hidden"
+              disabled={uploading || loading}
+              accept={
+                uploadKind === 'video'
+                  ? 'video/mp4,video/webm,video/quicktime,.mp4,.webm,.mov'
+                  : uploadKind === 'image'
+                    ? 'image/jpeg,image/png,image/webp,image/gif,image/svg+xml'
+                    : uploadKind === 'file'
+                      ? '.pdf,.doc,.docx,.txt,.csv,.json,.zip,application/pdf'
+                      : 'video/*,image/*,.pdf,.doc,.docx,.txt,.csv,.json,.zip'
+              }
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                e.target.value = '';
+                if (f) void uploadFile(f);
+              }}
+            />
+          </label>
+        </div>
+
+        {assets.length > 0 ? (
+          <ul className="divide-y divide-neutral-800 border border-neutral-800 rounded-lg overflow-hidden">
+            {assets.slice(0, 12).map((a) => (
+              <li
+                key={a.path}
+                className="flex flex-wrap items-center gap-2 px-3 py-2 text-sm bg-black/20"
+              >
+                <span
+                  className={`shrink-0 px-1.5 py-0.5 rounded text-[10px] uppercase font-semibold ${
+                    a.kind === 'video'
+                      ? 'bg-rose-500/20 text-rose-300'
+                      : a.kind === 'image'
+                        ? 'bg-sky-500/20 text-sky-300'
+                        : 'bg-neutral-700 text-neutral-300'
+                  }`}
+                >
+                  {a.kind}
+                </span>
+                <span className="text-neutral-200 truncate min-w-0 flex-1" title={a.name}>
+                  {a.name}
+                </span>
+                <button
+                  type="button"
+                  className="text-xs text-violet-300 hover:text-violet-200"
+                  onClick={() => void copyUrl(a.url)}
+                  disabled={uploading}
+                >
+                  Copy URL
+                </button>
+                {a.kind === 'video' ? (
+                  <button
+                    type="button"
+                    className="text-xs text-amber-300 hover:text-amber-200 disabled:opacity-40"
+                    disabled={uploading || !hasBase}
+                    onClick={() => void applyExisting(a, 'video_home')}
+                  >
+                    Use as home video
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  className="text-xs text-neutral-400 hover:text-neutral-200 disabled:opacity-40"
+                  disabled={uploading || !hasBase}
+                  onClick={() => void applyExisting(a, 'append_home')}
+                >
+                  Append to home
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-xs text-neutral-600">No uploads yet for this site.</p>
+        )}
       </div>
 
       <div>
