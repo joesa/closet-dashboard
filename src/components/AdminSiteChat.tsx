@@ -144,9 +144,11 @@ export default function AdminSiteChat({
         </span>
       </div>
       <p className="text-sm text-neutral-400">
-        Describe a change in plain English — copy, services, pages, nav, theme, process steps —
-        and the AI will apply it to this site. Attach or paste screenshots to show a visual
-        problem or a reference design. Ask questions about the current config too.
+        Edits the shared template fields (hero, services, nav, theme, pages). For Custom Build
+        sites: use <span className="text-violet-300">Custom Build → Media &amp; files</span> for
+        videos/images, or <span className="text-violet-300">Edit surgically</span> for HTML/CSS.
+        Video URLs pasted here on a custom site are applied to the draft automatically when
+        recognized.
       </p>
 
       {messages.length > 0 && (

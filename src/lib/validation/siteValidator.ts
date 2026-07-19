@@ -290,6 +290,15 @@ export async function validateTenantSite(tenantId: string): Promise<ValidationRe
       message: 'Could not construct a reachable URL for this tenant (no ADMIN_BYPASS_SECRET or no domain) — skipped the live link/image crawl.',
       fixable: false,
     })
+  } else if (/(\.|^)localhost(?::\d+)?(\/|$)/i.test(crawlUrl) || /127\.0\.0\.1/.test(crawlUrl)) {
+    // Validator runs on Vercel — it cannot DNS-resolve *.localhost preview hosts.
+    issues.push({
+      code: 'crawl_skipped_local',
+      severity: 'warning',
+      message:
+        'Live crawl skipped: this site only has a *.localhost preview hostname, which is not reachable from the cloud validator. Open Preview locally or attach a public domain to crawl links/images.',
+      fixable: false,
+    })
   } else {
     try {
       const res = await fetch(crawlUrl, { signal: withTimeout(FETCH_TIMEOUT_MS) })

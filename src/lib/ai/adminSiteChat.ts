@@ -1,5 +1,6 @@
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { generateTextWithFallback } from '@/lib/ai/aiTextProvider'
+import { extractJson, sanitizeJsonString } from '@/lib/ai/generateSiteConfig'
 import {
   THEME_SLUGS,
   LAYOUT_SLUGS,
@@ -9,6 +10,10 @@ import {
 import { isForcedPreset } from '@/lib/catalog/designVariantCatalog'
 import { validateTenantSite, saveValidationReport } from '@/lib/validation/siteValidator'
 import { revalidateTenantSiteCache } from '@/lib/tenants/revalidateTenantSite'
+import {
+  applyVideoUrlToHomeDraft,
+  appendAssetToDraftPage,
+} from '@/lib/customSiteAssets'
 
 /**
  * Admin AI site chat: the admin describes a change to a provisioned tenant
@@ -198,6 +203,100 @@ function buildSystemPrompt(config: Record<string, unknown>, businessName: string
 
 const MAX_HISTORY = 16
 
+/** Pull a public http(s) URL out of admin message text (video/image/file). */
+function extractHttpUrl(text: string): string | null {
+  const m = text.match(/https?:\/\/[^\s"'<>]+/i)
+  if (!m) return null
+  return m[0].replace(/[.,);]+$/, '')
+}
+
+function looksLikeVideoUrl(url: string): boolean {
+  return /\.(mp4|webm|mov|m4v)(\?|$)/i.test(url) || /\/video\//i.test(url)
+}
+
+function looksLikeImageUrl(url: string): boolean {
+  return /\.(jpe?g|png|webp|gif|svg)(\?|$)/i.test(url)
+}
+
+/**
+ * When the site is on custom HTML (or has a custom draft), template-column
+ * chat cannot set <video src>. Handle the common "set video to this URL"
+ * request surgically; otherwise tell the admin to use Custom Build.
+ */
+async function tryCustomModeShortcut(
+  tenantId: string,
+  config: Record<string, unknown>,
+  lastAdminMessage: string
+): Promise<SiteChatResult | null> {
+  const renderMode = config.render_mode
+  const hasCustom =
+    renderMode === 'custom' ||
+    !!(config.custom_config && typeof config.custom_config === 'object') ||
+    !!(config.custom_config_draft && typeof config.custom_config_draft === 'object')
+  if (!hasCustom) return null
+
+  const url = extractHttpUrl(lastAdminMessage)
+  const wantsVideo =
+    /\b(video|mp4|webm|testimonial|src)\b/i.test(lastAdminMessage) && !!url
+  const wantsAppendMedia =
+    /\b(add|append|insert|put)\b/i.test(lastAdminMessage) &&
+    /\b(image|photo|video|file|pdf|link)\b/i.test(lastAdminMessage) &&
+    !!url
+
+  if (wantsVideo && url && looksLikeVideoUrl(url)) {
+    await applyVideoUrlToHomeDraft(tenantId, url)
+    const liveNow = await revalidateTenantSiteCache(tenantId)
+    return {
+      reply:
+        'Updated the home page video `src` in the custom-site draft. Open Custom Build → Preview draft to confirm, then Publish draft when ready. (AI Site Assistant cannot rewrite custom HTML generally — use Custom Build for broader edits.)',
+      applied: ['custom_config_draft'],
+      rejected: [],
+      liveNow,
+    }
+  }
+
+  if (wantsAppendMedia && url) {
+    const kind = looksLikeVideoUrl(url)
+      ? 'video'
+      : looksLikeImageUrl(url)
+        ? 'image'
+        : 'file'
+    await appendAssetToDraftPage({
+      tenantId,
+      pagePath: '/',
+      url,
+      kind,
+      label: url.split('/').pop() || 'Asset',
+    })
+    const liveNow = await revalidateTenantSiteCache(tenantId)
+    return {
+      reply: `Appended this ${kind} to the custom home page draft. Preview/publish from Custom Build.`,
+      applied: ['custom_config_draft'],
+      rejected: [],
+      liveNow,
+    }
+  }
+
+  // Custom site + request that sounds like HTML/markup editing → steer away
+  // from template-column chat (which would fail or no-op confusingly).
+  if (
+    /\b(html|css|<video|custom (site|build|html)|source src|testimonial video)\b/i.test(
+      lastAdminMessage
+    ) ||
+    (url && /\b(set|change|update|put|use)\b/i.test(lastAdminMessage))
+  ) {
+    return {
+      reply:
+        'This site uses Custom Build (bespoke HTML/CSS). The AI Site Assistant only edits the shared template fields (hero, services, nav, etc.). For video/media: use Custom Build → Media & files → “Use as home video” or “Append to home”. For copy/layout tweaks: Custom Build → Edit surgically.',
+      applied: [],
+      rejected: [],
+      liveNow: false,
+    }
+  }
+
+  return null
+}
+
 export async function runAdminSiteChat(
   tenantId: string,
   messages: ChatMessage[]
@@ -218,6 +317,11 @@ export async function runAdminSiteChat(
   if (!config) {
     throw new Error('This tenant has no site configuration to edit.')
   }
+
+  const lastAdmin =
+    [...messages].reverse().find((m) => m.role === 'admin')?.content || ''
+  const shortcut = await tryCustomModeShortcut(tenantId, config, lastAdmin)
+  if (shortcut) return shortcut
 
   // Only show the model columns it may edit (plus nothing internal like ids).
   const visibleConfig: Record<string, unknown> = {}
@@ -267,7 +371,7 @@ export async function runAdminSiteChat(
 
   let parsed: { reply?: unknown; changes?: unknown }
   try {
-    parsed = JSON.parse(text)
+    parsed = JSON.parse(sanitizeJsonString(extractJson(text)))
   } catch {
     throw new Error('The AI returned an unparseable response — please try again.')
   }
