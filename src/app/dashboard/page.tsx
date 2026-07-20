@@ -14,6 +14,8 @@ import PageManager from './components/PageManager'
 import BookingEditor from './components/BookingEditor'
 import TicketEditor from './components/TicketEditor'
 import DomainManager from '@/components/DomainManager'
+import WidgetThemePicker from '@/components/WidgetThemePicker'
+import { DEFAULT_WIDGET_THEME_ID } from '@/lib/widgetThemes'
 import {
   ROOM_TYPES,
   PRICING_TIERS,
@@ -47,6 +49,8 @@ export type ContractorSettings = {
   industry?: string
   company_name: string
   primary_color_hex: string
+  /** Matched calculator appearance pack (see widgetThemes). */
+  widget_theme_id?: string | null
   contact_email: string
   // Personal cell phone number for the contractor. When a new lead submits
   // through the widget we text the lead details to this number via Twilio.
@@ -786,26 +790,65 @@ export default function DashboardPage() {
                 htmlFor="primary_color_hex"
                 className="mb-2 block text-xs font-medium uppercase tracking-widest text-zinc-500"
               >
-                Brand Color
+                Accent (from theme)
               </label>
               <div className="flex items-center gap-3">
-                <input
-                  id="primary_color_hex"
-                  name="primary_color_hex"
-                  type="color"
-                  value={form.primary_color_hex}
-                  onChange={handleChange}
-                  className="h-11 w-14 cursor-pointer rounded-lg border border-white/[0.06] bg-transparent p-1"
+                <span
+                  className="h-11 w-14 rounded-lg border border-white/[0.06]"
+                  style={{ background: form.primary_color_hex }}
+                  title={form.primary_color_hex}
                 />
-                <input
-                  name="primary_color_hex"
-                  type="text"
-                  value={form.primary_color_hex}
-                  onChange={handleChange}
-                  className="flex-1 rounded-xl border border-white/[0.06] bg-white/[0.03] px-4 py-3 font-mono text-sm text-white placeholder:text-zinc-600 outline-none transition focus:border-white/30 focus:bg-white/[0.08]"
-                />
+                <code className="flex-1 rounded-xl border border-white/[0.06] bg-white/[0.03] px-4 py-3 font-mono text-sm text-zinc-300">
+                  {form.primary_color_hex}
+                </code>
               </div>
             </div>
+          </div>
+
+          {/* Calculator theme packs — surfaces + text + accent matched */}
+          <div className="mb-8">
+            <div className="mb-3 flex items-baseline justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-medium uppercase tracking-widest text-zinc-500">
+                  Calculator theme
+                </h2>
+                <p className="mt-1 text-xs text-zinc-500">
+                  Pick a matched look so your quote calculator blends with your site.
+                  Applies live on save.
+                </p>
+              </div>
+            </div>
+            <WidgetThemePicker
+              compact
+              value={form.widget_theme_id || DEFAULT_WIDGET_THEME_ID}
+              onChange={(theme) => {
+                setForm((prev) =>
+                  prev
+                    ? {
+                        ...prev,
+                        widget_theme_id: theme.id,
+                        primary_color_hex: theme.brand,
+                      }
+                    : prev
+                )
+                setSaved(false)
+                setPreviewKey((k) => k + 1)
+                // Persist immediately so the live widget preview updates.
+                if (form.id) {
+                  void supabaseBrowser
+                    .from('contractor_settings')
+                    .update({
+                      widget_theme_id: theme.id,
+                      primary_color_hex: theme.brand,
+                    })
+                    .eq('id', form.id)
+                    .then(({ error: themeErr }) => {
+                      if (themeErr) setError(themeErr.message)
+                      else setSaved(true)
+                    })
+                }
+              }}
+            />
           </div>
 
           {/* Divider */}

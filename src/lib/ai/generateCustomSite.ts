@@ -16,6 +16,11 @@ import {
   ensureHomeVideoAfterHero,
   listTenantMediaAssets,
 } from '@/lib/customSiteAssets'
+import {
+  applyWidgetThemeToContractor,
+  inferSiteAppearanceMode,
+  pickWidgetThemeForSite,
+} from '@/lib/widgetThemes'
 
 export type CustomBuildIntent = 'full' | 'surgical'
 
@@ -224,6 +229,7 @@ export async function generateCustomSiteDraft(opts: {
       `
       id,
       business_name,
+      widget_id,
       site_configs (
         brand_name,
         theme,
@@ -373,11 +379,49 @@ export async function generateCustomSiteDraft(opts: {
 
   if (updateErr) throw new Error(`Failed to save draft: ${updateErr.message}`)
 
+  // Full redesign / from-scratch: auto-pick a matched calculator theme so the
+  // engagement widget blends with the new site (dark CTA → dark pack, etc.).
+  let reply = result.reply
+  if (intent === 'full' && tenant.widget_id) {
+    try {
+      const homeHtml = sanitized.pages['/']?.html || sanitized.pages['']?.html || ''
+      const appearance = inferSiteAppearanceMode(
+        homeHtml,
+        sanitized.globalCss || ''
+      )
+      const { data: settingsRow } = await supabase
+        .from('contractor_settings')
+        .select('primary_color_hex, industry')
+        .eq('id', tenant.widget_id)
+        .maybeSingle()
+      const picked = pickWidgetThemeForSite({
+        mode: appearance,
+        brandColor: settingsRow?.primary_color_hex as string | null,
+        industryHint: [
+          settingsRow?.industry,
+          brandName,
+          context.themeHint,
+          context.engagementModel,
+          opts.prompt,
+        ]
+          .filter(Boolean)
+          .join(' '),
+      })
+      await applyWidgetThemeToContractor(supabase, tenant.widget_id as string, picked.id)
+      reply = `${reply}\n\nAuto-selected calculator theme “${picked.name}” (${picked.mode}) to match this design.`
+      warnings.push(
+        `Calculator theme set to “${picked.name}” so the quote widget matches the new site.`
+      )
+    } catch (themeErr) {
+      console.warn('[generateCustomSite] widget theme auto-pick failed:', themeErr)
+    }
+  }
+
   return {
     draft: sanitized,
     warnings,
     errors: check.errors,
-    reply: result.reply,
+    reply,
     intent,
     changedPages: result.changedPages,
   }

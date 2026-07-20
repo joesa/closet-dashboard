@@ -1,5 +1,5 @@
 /**
- * Curated quote-calculator appearance packs.
+ * Curated quote-calculator appearance packs (50).
  * Each theme’s surfaces, text, borders, and accent are designed together
  * for contrast — picking a theme sets the whole calculator chrome.
  */
@@ -8,7 +8,7 @@ export type WidgetThemeTokens = {
   id: string
   name: string
   mode: 'light' | 'dark'
-  /** One-line for admin picker */
+  /** One-line for pickers */
   description: string
   brand: string
   brandText: string
@@ -25,14 +25,48 @@ export type WidgetThemeTokens = {
 
 export const DEFAULT_WIDGET_THEME_ID = 'alabaster'
 
+function t(
+  partial: Omit<
+    WidgetThemeTokens,
+    | 'surfaceHover'
+    | 'surfaceMuted'
+    | 'surfaceBorderStrong'
+    | 'textSecondary'
+    | 'textMuted'
+    | 'brandText'
+  > &
+    Partial<
+      Pick<
+        WidgetThemeTokens,
+        | 'surfaceHover'
+        | 'surfaceMuted'
+        | 'surfaceBorderStrong'
+        | 'textSecondary'
+        | 'textMuted'
+        | 'brandText'
+      >
+    >
+): WidgetThemeTokens {
+  const isDark = partial.mode === 'dark'
+  return {
+    brandText: partial.brandText || (isDark ? '#0a0a0a' : '#ffffff'),
+    surfaceHover: partial.surfaceHover || (isDark ? '#222222' : '#f0eeea'),
+    surfaceMuted: partial.surfaceMuted || (isDark ? '#2a2a2a' : '#ebe8e2'),
+    surfaceBorderStrong: partial.surfaceBorderStrong || (isDark ? '#555555' : '#b0aaa0'),
+    textSecondary: partial.textSecondary || (isDark ? '#a0a0a0' : '#6b6b63'),
+    textMuted: partial.textMuted || (isDark ? '#6e6e6e' : '#a8a8a0'),
+    ...partial,
+  } as WidgetThemeTokens
+}
+
 export const WIDGET_THEMES: WidgetThemeTokens[] = [
-  {
+  // ── Original 20 ──────────────────────────────────────────────────
+  t({
     id: 'alabaster',
     name: 'Alabaster',
     mode: 'light',
     description: 'Warm gallery white — original ClosetQuote look',
     brand: '#5a6e5a',
-    brandText: '#ffffff',
     surfaceBase: '#f8f7f5',
     surfaceElevated: '#ffffff',
     surfaceHover: '#f2f1ed',
@@ -42,42 +76,30 @@ export const WIDGET_THEMES: WidgetThemeTokens[] = [
     textPrimary: '#2d2d2d',
     textSecondary: '#6b6b63',
     textMuted: '#a8a8a0',
-  },
-  {
+  }),
+  t({
     id: 'gallery-white',
     name: 'Gallery White',
     mode: 'light',
     description: 'Cool crisp white with steel accent',
     brand: '#3d5a80',
-    brandText: '#ffffff',
     surfaceBase: '#f4f6f8',
     surfaceElevated: '#ffffff',
-    surfaceHover: '#eef1f4',
-    surfaceMuted: '#e8ecf0',
     surfaceBorder: '#d0d7de',
-    surfaceBorderStrong: '#afb8c1',
     textPrimary: '#1f2933',
-    textSecondary: '#52606d',
-    textMuted: '#9aa5b1',
-  },
-  {
+  }),
+  t({
     id: 'linen',
     name: 'Linen',
     mode: 'light',
     description: 'Soft natural linen with clay accent',
     brand: '#9c6b4a',
-    brandText: '#ffffff',
     surfaceBase: '#f3efe8',
     surfaceElevated: '#faf7f2',
-    surfaceHover: '#ebe4da',
-    surfaceMuted: '#e5ddd2',
     surfaceBorder: '#d4c8b8',
-    surfaceBorderStrong: '#b8a994',
     textPrimary: '#3a3228',
-    textSecondary: '#6e6256',
-    textMuted: '#9c8f80',
-  },
-  {
+  }),
+  t({
     id: 'parchment',
     name: 'Parchment',
     mode: 'light',
@@ -86,83 +108,54 @@ export const WIDGET_THEMES: WidgetThemeTokens[] = [
     brandText: '#f5f0e6',
     surfaceBase: '#f0ebe0',
     surfaceElevated: '#f7f3ea',
-    surfaceHover: '#e8e1d2',
-    surfaceMuted: '#ddd5c4',
     surfaceBorder: '#cfc4b0',
-    surfaceBorderStrong: '#b0a48e',
     textPrimary: '#2c261f',
-    textSecondary: '#5c5348',
-    textMuted: '#8a8072',
-  },
-  {
+  }),
+  t({
     id: 'sage-atelier',
     name: 'Sage Atelier',
     mode: 'light',
     description: 'Muted sage surfaces with deeper green accent',
     brand: '#4f6f52',
-    brandText: '#ffffff',
     surfaceBase: '#eef2ee',
     surfaceElevated: '#f7faf7',
-    surfaceHover: '#e4ebe4',
-    surfaceMuted: '#dce5dc',
     surfaceBorder: '#c5d0c5',
-    surfaceBorderStrong: '#9aab9a',
     textPrimary: '#243028',
-    textSecondary: '#55635a',
-    textMuted: '#879489',
-  },
-  {
+  }),
+  t({
     id: 'coastal-mist',
     name: 'Coastal Mist',
     mode: 'light',
     description: 'Soft sea-glass with teal accent',
     brand: '#2a6f7a',
-    brandText: '#ffffff',
     surfaceBase: '#eef5f6',
     surfaceElevated: '#f8fbfc',
-    surfaceHover: '#e3eef0',
-    surfaceMuted: '#d7e6e9',
     surfaceBorder: '#c0d4d8',
-    surfaceBorderStrong: '#8fadb3',
     textPrimary: '#1c3338',
-    textSecondary: '#4d6a70',
-    textMuted: '#7f989d',
-  },
-  {
+  }),
+  t({
     id: 'arctic-frost',
     name: 'Arctic Frost',
     mode: 'light',
     description: 'Icy blue-gray with polar blue accent',
     brand: '#2563a8',
-    brandText: '#ffffff',
     surfaceBase: '#f0f4f8',
     surfaceElevated: '#ffffff',
-    surfaceHover: '#e6edf4',
-    surfaceMuted: '#dce5ef',
     surfaceBorder: '#c5d1de',
-    surfaceBorderStrong: '#96a8bc',
     textPrimary: '#1a2332',
-    textSecondary: '#4a5d73',
-    textMuted: '#8496ab',
-  },
-  {
+  }),
+  t({
     id: 'terracotta',
     name: 'Terracotta',
     mode: 'light',
     description: 'Sunbaked clay with warm earth accent',
     brand: '#c45c26',
-    brandText: '#ffffff',
     surfaceBase: '#faf3ed',
     surfaceElevated: '#fffaf6',
-    surfaceHover: '#f3e8de',
-    surfaceMuted: '#ead9cb',
     surfaceBorder: '#dbc4b0',
-    surfaceBorderStrong: '#c09a7c',
     textPrimary: '#3d2a1f',
-    textSecondary: '#7a5642',
-    textMuted: '#a8846c',
-  },
-  {
+  }),
+  t({
     id: 'ivory-brass',
     name: 'Ivory Brass',
     mode: 'light',
@@ -171,32 +164,21 @@ export const WIDGET_THEMES: WidgetThemeTokens[] = [
     brandText: '#1a1408',
     surfaceBase: '#f7f4ec',
     surfaceElevated: '#fffcf5',
-    surfaceHover: '#efe9dc',
-    surfaceMuted: '#e6dfce',
     surfaceBorder: '#d4cbb4',
-    surfaceBorderStrong: '#b8ac8e',
     textPrimary: '#2a2418',
-    textSecondary: '#6b614c',
-    textMuted: '#9a8f78',
-  },
-  {
+  }),
+  t({
     id: 'slate-studio',
     name: 'Slate Studio',
     mode: 'light',
     description: 'Neutral slate workspace',
     brand: '#475569',
-    brandText: '#ffffff',
     surfaceBase: '#f1f5f9',
     surfaceElevated: '#ffffff',
-    surfaceHover: '#e8eef4',
-    surfaceMuted: '#dde5ee',
     surfaceBorder: '#cbd5e1',
-    surfaceBorderStrong: '#94a3b8',
     textPrimary: '#0f172a',
-    textSecondary: '#475569',
-    textMuted: '#94a3b8',
-  },
-  {
+  }),
+  t({
     id: 'charcoal-stage',
     name: 'Charcoal Stage',
     mode: 'dark',
@@ -205,15 +187,10 @@ export const WIDGET_THEMES: WidgetThemeTokens[] = [
     brandText: '#1a1208',
     surfaceBase: '#121212',
     surfaceElevated: '#1c1c1c',
-    surfaceHover: '#262626',
-    surfaceMuted: '#2a2a2a',
     surfaceBorder: '#333333',
-    surfaceBorderStrong: '#4a4a4a',
     textPrimary: '#f2f2f2',
-    textSecondary: '#a3a3a3',
-    textMuted: '#6b6b6b',
-  },
-  {
+  }),
+  t({
     id: 'midnight-ink',
     name: 'Midnight Ink',
     mode: 'dark',
@@ -222,15 +199,10 @@ export const WIDGET_THEMES: WidgetThemeTokens[] = [
     brandText: '#0a1628',
     surfaceBase: '#0b1220',
     surfaceElevated: '#121a2b',
-    surfaceHover: '#1a2438',
-    surfaceMuted: '#1e2a40',
     surfaceBorder: '#243049',
-    surfaceBorderStrong: '#3a4d6e',
     textPrimary: '#e8eef8',
-    textSecondary: '#9aafc7',
-    textMuted: '#6b8199',
-  },
-  {
+  }),
+  t({
     id: 'obsidian',
     name: 'Obsidian',
     mode: 'dark',
@@ -239,15 +211,10 @@ export const WIDGET_THEMES: WidgetThemeTokens[] = [
     brandText: '#0e1014',
     surfaceBase: '#0a0a0b',
     surfaceElevated: '#141416',
-    surfaceHover: '#1c1c1f',
-    surfaceMuted: '#222226',
     surfaceBorder: '#2c2c32',
-    surfaceBorderStrong: '#45454f',
     textPrimary: '#f0f0f2',
-    textSecondary: '#a0a0ab',
-    textMuted: '#6e6e7a',
-  },
-  {
+  }),
+  t({
     id: 'graphite',
     name: 'Graphite',
     mode: 'dark',
@@ -256,15 +223,10 @@ export const WIDGET_THEMES: WidgetThemeTokens[] = [
     brandText: '#1a0a00',
     surfaceBase: '#16181c',
     surfaceElevated: '#1e2228',
-    surfaceHover: '#282d35',
-    surfaceMuted: '#2e343d',
     surfaceBorder: '#3a414c',
-    surfaceBorderStrong: '#556070',
     textPrimary: '#eceff3',
-    textSecondary: '#9aa3b0',
-    textMuted: '#6b7380',
-  },
-  {
+  }),
+  t({
     id: 'espresso',
     name: 'Espresso',
     mode: 'dark',
@@ -273,15 +235,10 @@ export const WIDGET_THEMES: WidgetThemeTokens[] = [
     brandText: '#1a1008',
     surfaceBase: '#1a1410',
     surfaceElevated: '#241c16',
-    surfaceHover: '#2e241c',
-    surfaceMuted: '#342a20',
     surfaceBorder: '#3d3228',
-    surfaceBorderStrong: '#5c4a3a',
     textPrimary: '#f3ebe3',
-    textSecondary: '#b8a090',
-    textMuted: '#7d6a58',
-  },
-  {
+  }),
+  t({
     id: 'forest-night',
     name: 'Forest Night',
     mode: 'dark',
@@ -290,15 +247,10 @@ export const WIDGET_THEMES: WidgetThemeTokens[] = [
     brandText: '#0c160c',
     surfaceBase: '#0e1410',
     surfaceElevated: '#161e18',
-    surfaceHover: '#1e2820',
-    surfaceMuted: '#243028',
     surfaceBorder: '#2c3a30',
-    surfaceBorderStrong: '#45604a',
     textPrimary: '#e6f0e6',
-    textSecondary: '#9ab09a',
-    textMuted: '#6a806a',
-  },
-  {
+  }),
+  t({
     id: 'ocean-dusk',
     name: 'Ocean Dusk',
     mode: 'dark',
@@ -307,15 +259,10 @@ export const WIDGET_THEMES: WidgetThemeTokens[] = [
     brandText: '#042020',
     surfaceBase: '#0a1618',
     surfaceElevated: '#122022',
-    surfaceHover: '#1a2c2e',
-    surfaceMuted: '#203638',
     surfaceBorder: '#284244',
-    surfaceBorderStrong: '#3a6064',
     textPrimary: '#e4f4f4',
-    textSecondary: '#8eb8b8',
-    textMuted: '#5a8080',
-  },
-  {
+  }),
+  t({
     id: 'copper-loft',
     name: 'Copper Loft',
     mode: 'dark',
@@ -324,15 +271,10 @@ export const WIDGET_THEMES: WidgetThemeTokens[] = [
     brandText: '#1a0e06',
     surfaceBase: '#141210',
     surfaceElevated: '#1e1a16',
-    surfaceHover: '#2a2420',
-    surfaceMuted: '#322c26',
     surfaceBorder: '#3e3630',
-    surfaceBorderStrong: '#5c4e42',
     textPrimary: '#f2ebe4',
-    textSecondary: '#b0a090',
-    textMuted: '#7a6c5c',
-  },
-  {
+  }),
+  t({
     id: 'noir-brass',
     name: 'Noir Brass',
     mode: 'dark',
@@ -341,15 +283,10 @@ export const WIDGET_THEMES: WidgetThemeTokens[] = [
     brandText: '#1a1400',
     surfaceBase: '#0d0d0d',
     surfaceElevated: '#171717',
-    surfaceHover: '#222222',
-    surfaceMuted: '#2a2a2a',
     surfaceBorder: '#333333',
-    surfaceBorderStrong: '#4d4d4d',
     textPrimary: '#f5f0e0',
-    textSecondary: '#b8ae90',
-    textMuted: '#7a7460',
-  },
-  {
+  }),
+  t({
     id: 'velvet-cinema',
     name: 'Velvet Cinema',
     mode: 'dark',
@@ -358,17 +295,361 @@ export const WIDGET_THEMES: WidgetThemeTokens[] = [
     brandText: '#1a0808',
     surfaceBase: '#100e12',
     surfaceElevated: '#1a161c',
-    surfaceHover: '#242028',
-    surfaceMuted: '#2c2830',
     surfaceBorder: '#3a343f',
-    surfaceBorderStrong: '#564e5c',
     textPrimary: '#f4eef2',
-    textSecondary: '#b4a4b0',
-    textMuted: '#7a6e78',
-  },
+  }),
+
+  // ── +30 new packs ────────────────────────────────────────────────
+  t({
+    id: 'cloud-linen',
+    name: 'Cloud Linen',
+    mode: 'light',
+    description: 'Airy soft gray with sky accent',
+    brand: '#5b8def',
+    surfaceBase: '#f5f7fa',
+    surfaceElevated: '#ffffff',
+    surfaceBorder: '#d5dbe6',
+    textPrimary: '#1e293b',
+  }),
+  t({
+    id: 'honeydew',
+    name: 'Honeydew',
+    mode: 'light',
+    description: 'Fresh pale green with leaf accent',
+    brand: '#3d8b5a',
+    surfaceBase: '#f3f8f3',
+    surfaceElevated: '#fbfffb',
+    surfaceBorder: '#c9dbc9',
+    textPrimary: '#1f3324',
+  }),
+  t({
+    id: 'blush-studio',
+    name: 'Blush Studio',
+    mode: 'light',
+    description: 'Soft blush with rosewood accent',
+    brand: '#b85c6e',
+    surfaceBase: '#faf4f5',
+    surfaceElevated: '#fff9fa',
+    surfaceBorder: '#e5cfd3',
+    textPrimary: '#3a2228',
+  }),
+  t({
+    id: 'sandstone',
+    name: 'Sandstone',
+    mode: 'light',
+    description: 'Desert sand with canyon accent',
+    brand: '#b07d4a',
+    surfaceBase: '#f6f1e8',
+    surfaceElevated: '#fdfaf4',
+    surfaceBorder: '#dccfb8',
+    textPrimary: '#3a2e20',
+  }),
+  t({
+    id: 'porcelain',
+    name: 'Porcelain',
+    mode: 'light',
+    description: 'Cool porcelain with indigo accent',
+    brand: '#4338ca',
+    surfaceBase: '#f8f8fc',
+    surfaceElevated: '#ffffff',
+    surfaceBorder: '#d4d4e0',
+    textPrimary: '#1e1b2e',
+  }),
+  t({
+    id: 'mint-clinic',
+    name: 'Mint Clinic',
+    mode: 'light',
+    description: 'Clean medical mint with teal accent',
+    brand: '#0d9488',
+    surfaceBase: '#f0faf8',
+    surfaceElevated: '#ffffff',
+    surfaceBorder: '#c5e5e0',
+    textPrimary: '#134e4a',
+  }),
+  t({
+    id: 'sunrise',
+    name: 'Sunrise',
+    mode: 'light',
+    description: 'Warm peach dawn with coral accent',
+    brand: '#e07a45',
+    surfaceBase: '#fff6f0',
+    surfaceElevated: '#fffaf7',
+    surfaceBorder: '#f0d4c4',
+    textPrimary: '#3d2418',
+  }),
+  t({
+    id: 'blueprint',
+    name: 'Blueprint',
+    mode: 'light',
+    description: 'Architect white with blueprint blue',
+    brand: '#1d4ed8',
+    surfaceBase: '#f4f7fc',
+    surfaceElevated: '#ffffff',
+    surfaceBorder: '#c7d4ea',
+    textPrimary: '#0f172a',
+  }),
+  t({
+    id: 'olive-grove',
+    name: 'Olive Grove',
+    mode: 'light',
+    description: 'Mediterranean olive with deep olive accent',
+    brand: '#6b7040',
+    surfaceBase: '#f4f3ea',
+    surfaceElevated: '#fbfaf3',
+    surfaceBorder: '#d4d2b8',
+    textPrimary: '#2c2e1a',
+  }),
+  t({
+    id: 'lavender-mist',
+    name: 'Lavender Mist',
+    mode: 'light',
+    description: 'Soft lavender with amethyst accent',
+    brand: '#7c5cbf',
+    surfaceBase: '#f6f3fb',
+    surfaceElevated: '#fcfaff',
+    surfaceBorder: '#d8ccec',
+    textPrimary: '#2a1f3d',
+  }),
+  t({
+    id: 'cement',
+    name: 'Cement',
+    mode: 'light',
+    description: 'Modern concrete with charcoal accent',
+    brand: '#374151',
+    surfaceBase: '#f3f4f6',
+    surfaceElevated: '#ffffff',
+    surfaceBorder: '#d1d5db',
+    textPrimary: '#111827',
+  }),
+  t({
+    id: 'buttercream',
+    name: 'Buttercream',
+    mode: 'light',
+    description: 'Bakery cream with caramel accent',
+    brand: '#c48a3a',
+    surfaceBase: '#fff9ef',
+    surfaceElevated: '#fffdf8',
+    surfaceBorder: '#ead9b8',
+    textPrimary: '#3a2a14',
+  }),
+  t({
+    id: 'glacier',
+    name: 'Glacier',
+    mode: 'light',
+    description: 'Cold glacier white with cyan accent',
+    brand: '#0891b2',
+    surfaceBase: '#f0fafa',
+    surfaceElevated: '#ffffff',
+    surfaceBorder: '#bfe4ec',
+    textPrimary: '#164e63',
+  }),
+  t({
+    id: 'rosewood',
+    name: 'Rosewood',
+    mode: 'light',
+    description: 'Warm woodgrain light with rosewood accent',
+    brand: '#8b4518',
+    brandText: '#fff8f0',
+    surfaceBase: '#f7efe8',
+    surfaceElevated: '#fcf7f2',
+    surfaceBorder: '#dcc4ae',
+    textPrimary: '#3b2415',
+  }),
+  t({
+    id: 'pearl',
+    name: 'Pearl',
+    mode: 'light',
+    description: 'Iridescent pearl with soft gold accent',
+    brand: '#b8860b',
+    brandText: '#1a1400',
+    surfaceBase: '#faf9f6',
+    surfaceElevated: '#ffffff',
+    surfaceBorder: '#e2ddd0',
+    textPrimary: '#2d2a22',
+  }),
+  t({
+    id: 'inkwell',
+    name: 'Inkwell',
+    mode: 'dark',
+    description: 'Writer’s desk dark with fountain-pen blue',
+    brand: '#5b9fd4',
+    brandText: '#061018',
+    surfaceBase: '#12141a',
+    surfaceElevated: '#1a1e28',
+    surfaceBorder: '#2e3545',
+    textPrimary: '#e8ecf4',
+  }),
+  t({
+    id: 'ember-forge',
+    name: 'Ember Forge',
+    mode: 'dark',
+    description: 'Forge black with molten ember accent',
+    brand: '#ff6b35',
+    brandText: '#1a0800',
+    surfaceBase: '#140f0c',
+    surfaceElevated: '#1e1712',
+    surfaceBorder: '#3a2c22',
+    textPrimary: '#f5ebe4',
+  }),
+  t({
+    id: 'deep-wine',
+    name: 'Deep Wine',
+    mode: 'dark',
+    description: 'Wine-cellar dark with burgundy accent',
+    brand: '#c45c6a',
+    brandText: '#1a080c',
+    surfaceBase: '#140e12',
+    surfaceElevated: '#1e161a',
+    surfaceBorder: '#3a2a30',
+    textPrimary: '#f4e8ec',
+  }),
+  t({
+    id: 'aurora',
+    name: 'Aurora',
+    mode: 'dark',
+    description: 'Northern-lights dark with violet accent',
+    brand: '#a78bfa',
+    brandText: '#12081f',
+    surfaceBase: '#0e0c16',
+    surfaceElevated: '#161222',
+    surfaceBorder: '#2e2840',
+    textPrimary: '#eee8f8',
+  }),
+  t({
+    id: 'steelworks',
+    name: 'Steelworks',
+    mode: 'dark',
+    description: 'Industrial steel with cool metal accent',
+    brand: '#94a3b8',
+    brandText: '#0b1018',
+    surfaceBase: '#0f1218',
+    surfaceElevated: '#181c24',
+    surfaceBorder: '#2e3540',
+    textPrimary: '#e8edf4',
+  }),
+  t({
+    id: 'moss-cave',
+    name: 'Moss Cave',
+    mode: 'dark',
+    description: 'Earthy cave dark with moss accent',
+    brand: '#86a873',
+    brandText: '#0c140a',
+    surfaceBase: '#10140e',
+    surfaceElevated: '#181e16',
+    surfaceBorder: '#2e3828',
+    textPrimary: '#e6efe0',
+  }),
+  t({
+    id: 'harbor-night',
+    name: 'Harbor Night',
+    mode: 'dark',
+    description: 'Harbor dark with signal-red accent',
+    brand: '#ef4444',
+    brandText: '#1a0505',
+    surfaceBase: '#0e1216',
+    surfaceElevated: '#161c22',
+    surfaceBorder: '#2a343e',
+    textPrimary: '#e8eef4',
+  }),
+  t({
+    id: 'onyx-lime',
+    name: 'Onyx Lime',
+    mode: 'dark',
+    description: 'Onyx black with neon lime accent',
+    brand: '#a3e635',
+    brandText: '#0a1400',
+    surfaceBase: '#0c0e0a',
+    surfaceElevated: '#141814',
+    surfaceBorder: '#2a3228',
+    textPrimary: '#eef4e4',
+  }),
+  t({
+    id: 'twilight-sand',
+    name: 'Twilight Sand',
+    mode: 'dark',
+    description: 'Dusk dunes with warm sand accent',
+    brand: '#e0b87a',
+    brandText: '#1a1208',
+    surfaceBase: '#16120e',
+    surfaceElevated: '#201a14',
+    surfaceBorder: '#3a3228',
+    textPrimary: '#f2ebe0',
+  }),
+  t({
+    id: 'neon-alley',
+    name: 'Neon Alley',
+    mode: 'dark',
+    description: 'Night alley with magenta neon accent',
+    brand: '#e879f9',
+    brandText: '#160818',
+    surfaceBase: '#100e14',
+    surfaceElevated: '#1a1620',
+    surfaceBorder: '#322838',
+    textPrimary: '#f4e8f8',
+  }),
+  t({
+    id: 'pine-lodge',
+    name: 'Pine Lodge',
+    mode: 'dark',
+    description: 'Cabin night with pine green accent',
+    brand: '#5a9e6f',
+    brandText: '#06140a',
+    surfaceBase: '#101410',
+    surfaceElevated: '#181e18',
+    surfaceBorder: '#2c362c',
+    textPrimary: '#e4eee6',
+  }),
+  t({
+    id: 'cobalt-vault',
+    name: 'Cobalt Vault',
+    mode: 'dark',
+    description: 'Vault dark with cobalt accent',
+    brand: '#3b82f6',
+    brandText: '#040c1a',
+    surfaceBase: '#0a0e18',
+    surfaceElevated: '#121828',
+    surfaceBorder: '#243048',
+    textPrimary: '#e4ecf8',
+  }),
+  t({
+    id: 'smoke',
+    name: 'Smoke',
+    mode: 'dark',
+    description: 'Soft smoke gray with soft white accent',
+    brand: '#e5e5e5',
+    brandText: '#141414',
+    surfaceBase: '#181818',
+    surfaceElevated: '#222222',
+    surfaceBorder: '#3a3a3a',
+    textPrimary: '#f0f0f0',
+  }),
+  t({
+    id: 'amber-den',
+    name: 'Amber Den',
+    mode: 'dark',
+    description: 'Cozy den dark with amber accent',
+    brand: '#f59e0b',
+    brandText: '#1a1000',
+    surfaceBase: '#14110c',
+    surfaceElevated: '#1e1a14',
+    surfaceBorder: '#3a3224',
+    textPrimary: '#f5eedf',
+  }),
+  t({
+    id: 'rift',
+    name: 'Rift',
+    mode: 'dark',
+    description: 'Deep space dark with electric cyan accent',
+    brand: '#22d3ee',
+    brandText: '#021418',
+    surfaceBase: '#080c12',
+    surfaceElevated: '#101820',
+    surfaceBorder: '#243040',
+    textPrimary: '#e0f4f8',
+  }),
 ]
 
-const BY_ID = new Map(WIDGET_THEMES.map((t) => [t.id, t]))
+const BY_ID = new Map(WIDGET_THEMES.map((theme) => [theme.id, theme]))
 
 export function isWidgetThemeId(value: unknown): value is string {
   return typeof value === 'string' && BY_ID.has(value)
@@ -406,14 +687,161 @@ export function listWidgetThemesForAdmin(): Array<{
   surfaceElevated: string
   textPrimary: string
 }> {
-  return WIDGET_THEMES.map((t) => ({
-    id: t.id,
-    name: t.name,
-    mode: t.mode,
-    description: t.description,
-    brand: t.brand,
-    surfaceBase: t.surfaceBase,
-    surfaceElevated: t.surfaceElevated,
-    textPrimary: t.textPrimary,
+  return WIDGET_THEMES.map((theme) => ({
+    id: theme.id,
+    name: theme.name,
+    mode: theme.mode,
+    description: theme.description,
+    brand: theme.brand,
+    surfaceBase: theme.surfaceBase,
+    surfaceElevated: theme.surfaceElevated,
+    textPrimary: theme.textPrimary,
   }))
+}
+
+export const listWidgetThemes = listWidgetThemesForAdmin
+
+function hexToRgb(hex: string): [number, number, number] | null {
+  const m = hex.trim().replace('#', '').match(/^([0-9a-f]{3}|[0-9a-f]{6})$/i)
+  if (!m) return null
+  let h = m[1]
+  if (h.length === 3) h = h.split('').map((c) => c + c).join('')
+  return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)]
+}
+
+function colorDistance(a: string, b: string): number {
+  const ra = hexToRgb(a)
+  const rb = hexToRgb(b)
+  if (!ra || !rb) return 9999
+  const dr = ra[0] - rb[0]
+  const dg = ra[1] - rb[1]
+  const db = ra[2] - rb[2]
+  return Math.sqrt(dr * dr + dg * dg + db * db)
+}
+
+/** Infer light vs dark from generated custom HTML/CSS. */
+export function inferSiteAppearanceMode(
+  html: string,
+  css: string
+): 'light' | 'dark' {
+  const blob = `${css || ''}\n${html || ''}`.toLowerCase()
+  const darkHits = (
+    blob.match(
+      /#0[0-9a-f]{5}|#1[0-9a-f]{5}|background(?:-color)?:\s*#000\b|background(?:-color)?:\s*black\b|color-scheme:\s*dark|--bg[^:;]*:\s*#0/g
+    ) || []
+  ).length
+  const lightHits = (
+    blob.match(
+      /#f[0-9a-f]{5}|#ffffff|background(?:-color)?:\s*#fff\b|background(?:-color)?:\s*white\b|color-scheme:\s*light/g
+    ) || []
+  ).length
+  if (darkHits === 0 && lightHits === 0) return 'light'
+  return darkHits >= lightHits ? 'dark' : 'light'
+}
+
+const INDUSTRY_THEME_BOOST: Array<{ re: RegExp; ids: string[] }> = [
+  {
+    re: /theater|theatre|cinema|audio.?visual|\bav\b|home theater|media room|smart home/i,
+    ids: ['velvet-cinema', 'charcoal-stage', 'noir-brass', 'midnight-ink', 'obsidian'],
+  },
+  {
+    re: /restaurant|cafe|coffee|bakery|food|catering|bar\b/i,
+    ids: ['espresso', 'buttercream', 'amber-den', 'linen', 'deep-wine'],
+  },
+  {
+    re: /medical|dental|clinic|health|wellness|spa/i,
+    ids: ['mint-clinic', 'arctic-frost', 'gallery-white', 'cloud-linen', 'porcelain'],
+  },
+  {
+    re: /landscape|garden|lawn|outdoor|tree|nursery/i,
+    ids: ['forest-night', 'sage-atelier', 'honeydew', 'moss-cave', 'olive-grove'],
+  },
+  {
+    re: /plumb|hvac|electric|contractor|construction|roof/i,
+    ids: ['slate-studio', 'cement', 'blueprint', 'steelworks', 'graphite'],
+  },
+  {
+    re: /law|attorney|finance|wealth|consult/i,
+    ids: ['noir-brass', 'inkwell', 'pearl', 'ivory-brass', 'obsidian'],
+  },
+  {
+    re: /auto|garage|detail|tow/i,
+    ids: ['graphite', 'ember-forge', 'steelworks', 'harbor-night', 'smoke'],
+  },
+]
+
+/**
+ * Pick the best matched calculator theme for a site / industry / brand color.
+ * Used on provision and Full Redesign so the engagement widget blends in.
+ */
+export function pickWidgetThemeForSite(opts: {
+  mode?: 'light' | 'dark' | null
+  brandColor?: string | null
+  industryHint?: string | null
+  /** Optional preferred ids (e.g. from AI) — first valid wins if mode matches. */
+  preferredIds?: string[] | null
+}): WidgetThemeTokens {
+  const mode = opts.mode === 'dark' || opts.mode === 'light' ? opts.mode : 'light'
+  let pool = WIDGET_THEMES.filter((theme) => theme.mode === mode)
+  if (pool.length === 0) pool = [...WIDGET_THEMES]
+
+  if (opts.preferredIds?.length) {
+    for (const id of opts.preferredIds) {
+      const hit = pool.find((theme) => theme.id === id)
+      if (hit) return hit
+    }
+  }
+
+  const scores = new Map<string, number>()
+  for (const theme of pool) scores.set(theme.id, 0)
+
+  const hint = (opts.industryHint || '').trim()
+  if (hint) {
+    for (const rule of INDUSTRY_THEME_BOOST) {
+      if (!rule.re.test(hint)) continue
+      for (let i = 0; i < rule.ids.length; i++) {
+        const id = rule.ids[i]
+        if (scores.has(id)) scores.set(id, (scores.get(id) || 0) + (40 - i * 5))
+      }
+    }
+  }
+
+  const brand = opts.brandColor?.trim()
+  if (brand && hexToRgb(brand)) {
+    for (const theme of pool) {
+      const dist = colorDistance(brand, theme.brand)
+      // Closer accent → higher score
+      scores.set(theme.id, (scores.get(theme.id) || 0) + Math.max(0, 50 - dist / 4))
+    }
+  }
+
+  let best = pool[0]
+  let bestScore = -Infinity
+  for (const theme of pool) {
+    const s = scores.get(theme.id) || 0
+    if (s > bestScore) {
+      bestScore = s
+      best = theme
+    }
+  }
+  return best
+}
+
+/** Persist theme id + matching accent on contractor_settings. */
+export async function applyWidgetThemeToContractor(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  admin: { from: (table: string) => any },
+  contractorId: string,
+  themeId: string
+): Promise<WidgetThemeTokens> {
+  const theme = resolveWidgetTheme(themeId)
+  const { error } = await admin
+    .from('contractor_settings')
+    .update({
+      widget_theme_id: theme.id,
+      primary_color_hex: theme.brand,
+    })
+    .eq('id', contractorId)
+  if (error) throw new Error(error.message)
+  return theme
 }

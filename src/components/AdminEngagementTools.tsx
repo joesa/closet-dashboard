@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import WidgetThemePicker from '@/components/WidgetThemePicker'
 import {
   PRICING_TIERS,
   ROOM_TYPES,
@@ -525,70 +526,33 @@ export default function AdminEngagementTools({ tenantId }: { tenantId: string })
             <div>
               <h3 className="text-sm font-semibold text-white">Calculator theme</h3>
               <p className="text-xs text-neutral-500 mt-1">
-                20 matched packs (surfaces, text, borders, accent). Pick one so the
-                calculator blends with the site — e.g. Charcoal Stage on dark sites.
+                {widgetThemes.length || 50} matched packs (surfaces, text, borders,
+                accent). Pick one so the calculator blends with the site — e.g.
+                Charcoal Stage / Velvet Cinema on dark AV sites.
               </p>
             </div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
-              {widgetThemes.map((t) => {
-                const selected = widgetThemeId === t.id
-                return (
-                  <button
-                    key={t.id}
-                    type="button"
-                    onClick={() => {
-                      setWidgetThemeId(t.id)
-                      setPrimaryColor(t.brand)
-                      void (async () => {
-                        try {
-                          await patchJson({
-                            settings: { widgetThemeId: t.id },
-                          })
-                          setInfo(`Theme “${t.name}” applied — live on next widget load.`)
-                          await refresh({ quiet: true })
-                        } catch (err) {
-                          setError(
-                            err instanceof Error ? err.message : 'Theme save failed'
-                          )
-                        }
-                      })()
-                    }}
-                    className={`text-left rounded-xl border overflow-hidden transition-colors ${
-                      selected
-                        ? 'border-blue-500 ring-1 ring-blue-500/40'
-                        : 'border-neutral-700 hover:border-neutral-500'
-                    }`}
-                  >
-                    <div
-                      className="h-12 px-2 flex items-end pb-1.5 gap-1"
-                      style={{ background: t.surfaceBase }}
-                    >
-                      <span
-                        className="h-6 flex-1 rounded"
-                        style={{ background: t.surfaceElevated }}
-                      />
-                      <span
-                        className="h-6 w-6 rounded"
-                        style={{ background: t.brand }}
-                      />
-                    </div>
-                    <div className="px-2.5 py-2 bg-black/50">
-                      <div className="flex items-center justify-between gap-1">
-                        <span className="text-xs font-medium text-white truncate">
-                          {t.name}
-                        </span>
-                        <span className="text-[9px] uppercase tracking-wider text-neutral-500">
-                          {t.mode}
-                        </span>
-                      </div>
-                      <p className="text-[10px] text-neutral-500 mt-0.5 line-clamp-2">
-                        {t.description}
-                      </p>
-                    </div>
-                  </button>
-                )
-              })}
-            </div>
+            <WidgetThemePicker
+              value={widgetThemeId}
+              onChange={(theme) => {
+                setWidgetThemeId(theme.id)
+                setPrimaryColor(theme.brand)
+                void (async () => {
+                  try {
+                    await patchJson({
+                      settings: { widgetThemeId: theme.id },
+                    })
+                    setInfo(
+                      `Theme “${theme.name}” applied — live on next widget load.`
+                    )
+                    await refresh({ quiet: true })
+                  } catch (err) {
+                    setError(
+                      err instanceof Error ? err.message : 'Theme save failed'
+                    )
+                  }
+                })()
+              }}
+            />
           </div>
 
           {/* Live Step 1 mirror */}

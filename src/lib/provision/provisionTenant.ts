@@ -330,6 +330,33 @@ export async function provisionTenant(
     settingsRow.domain_config = inferredDomainConfig
   }
 
+  // Auto-pick a matched calculator theme for the new site (industry + brand).
+  try {
+    const { pickWidgetThemeForSite } = await import('@/lib/widgetThemes')
+    const picked = pickWidgetThemeForSite({
+      mode: null, // prefer light unless industry boosts a dark pack via scoring
+      brandColor: setup.primaryColorHex || null,
+      industryHint: [businessName, ...(services || []).map(String)].join(' '),
+    })
+    // If industry strongly implies dark AV/theater, pickWidgetTheme still
+    // filters by mode — re-pick with dark when theater keywords present.
+    const theaterish =
+      /theater|theatre|cinema|audio.?visual|\bav\b|home theater|media room/i.test(
+        [businessName, ...(services || [])].join(' ')
+      )
+    const theme = theaterish
+      ? pickWidgetThemeForSite({
+          mode: 'dark',
+          brandColor: setup.primaryColorHex || null,
+          industryHint: [businessName, ...(services || []).map(String)].join(' '),
+        })
+      : picked
+    settingsRow.widget_theme_id = theme.id
+    if (!setup.primaryColorHex) settingsRow.primary_color_hex = theme.brand
+  } catch (themeErr) {
+    console.warn('[provisionTenant] widget theme auto-pick failed:', themeErr)
+  }
+
   const { error: settingsError } = await supabase
     .from('contractor_settings')
     .upsert(settingsRow)

@@ -191,6 +191,31 @@ export async function applyProWidgetConfig(
     industry: hints.industry?.trim() || undefined,
   }
 
+  try {
+    const { pickWidgetThemeForSite } = await import('@/lib/widgetThemes')
+    const industryBlob = [
+      hints.industry,
+      hints.businessName,
+      ...(hints.services || []),
+      hints.otherServices,
+    ]
+      .filter(Boolean)
+      .join(' ')
+    const dark =
+      /theater|theatre|cinema|audio.?visual|\bav\b|home theater|media room|nightlife|bar\b/i.test(
+        industryBlob
+      )
+    const theme = pickWidgetThemeForSite({
+      mode: dark ? 'dark' : 'light',
+      brandColor: hints.brandColor || null,
+      industryHint: industryBlob,
+    })
+    patch.widget_theme_id = theme.id
+    if (!hints.brandColor?.trim()) patch.primary_color_hex = theme.brand
+  } catch (themeErr) {
+    console.warn('[applyProWidgetConfig] widget theme auto-pick failed:', themeErr)
+  }
+
   const { error } = await admin
     .from('contractor_settings')
     .update(patch)
