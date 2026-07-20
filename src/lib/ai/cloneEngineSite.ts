@@ -242,7 +242,7 @@ img{max-width:100%;height:auto;display:block}
 .cs-ba{display:grid;gap:1rem;grid-template-columns:1fr 1fr}
 @media(max-width:700px){.cs-ba{grid-template-columns:1fr}}
 .cs-footer{padding:2.5rem 1.5rem 4rem;border-top:1px solid var(--line);color:var(--muted);font-size:.95rem}
-.closet-widget-slot{padding:3rem 1.5rem 4rem;max-width:960px;margin:0 auto}
+.closet-widget-slot{padding:1.5rem 1rem 2.5rem;margin:0 auto;background:transparent;border:none;box-shadow:none;max-width:none;display:flex;justify-content:center}
 `.trim()
 }
 

@@ -460,8 +460,9 @@ Hard rules:
    ${WIDGET_PLACEHOLDER}
    Put it INSIDE the quote / "Start Your Project" section. Do NOT invent variants like <!-- CLOSET_WIDGET theme="dark" -->.
    Do NOT leave an empty .widget-container — the comment must be the only child of that mount.
+   CRITICAL: Do NOT style a grey/card outer box around the widget. No background, border, box-shadow, or large padding on .widget-container / .closet-widget-slot / quote mounts. The engagement widget paints its own calculator card — the mount must be transparent and flush (section spacing only).
 5. Use absolute https:// image URLs when referencing images (prefer ones already on the site if provided in context). Do not invent broken localhost URLs.
-6. CSS must be self-contained. No @import. Prefer CSS variables for the palette.
+6. CSS must be self-contained. No @import. Prefer CSS variables for the palette. Never paint card chrome on the widget mount.
 7. mode="${opts.mode}" — ${
     opts.mode === 'inline'
       ? 'INLINE mode: NO <script> tags, NO onclick/on* handlers, NO javascript: URLs.'

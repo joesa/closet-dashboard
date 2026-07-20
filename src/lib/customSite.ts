@@ -22,6 +22,38 @@ export type CustomSiteConfig = {
 export const WIDGET_PLACEHOLDER = '<!-- CLOSET_WIDGET -->'
 export const WIDGET_PLACEHOLDER_ALT = '{{CLOSET_WIDGET}}'
 
+/**
+ * Kill decorative outer cards around the engagement widget.
+ * AI / clone CSS often paints `.widget-container` as a grey padded panel;
+ * the calculator web component already has its own bordered card.
+ */
+export const WIDGET_MOUNT_RESET_CSS = `
+.widget-container,
+.closet-widget-slot,
+.closet-widget-mount,
+.quote-embed,
+.quote-slot,
+.widget-wrap,
+.quote-box,
+.calculator-wrap {
+  background: transparent !important;
+  background-color: transparent !important;
+  background-image: none !important;
+  border: none !important;
+  border-width: 0 !important;
+  box-shadow: none !important;
+  outline: none !important;
+  padding: 1.5rem 1rem 2.5rem !important;
+  max-width: none !important;
+}
+.closet-widget-mount {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  box-sizing: border-box;
+}
+`.trim()
+
 /** AI sometimes emits `<!-- CLOSET_WIDGET theme="dark" -->` — must still match. */
 const WIDGET_COMMENT_RE = /<!--\s*CLOSET_WIDGET\b[\s\S]*?-->/gi
 const WIDGET_MUSTACHE_RE = /\{\{\s*CLOSET_WIDGET\s*\}\}/gi
