@@ -297,7 +297,13 @@ export default function AdminEngagementTools({ tenantId }: { tenantId: string })
       })
       const json = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(json.error || 'Save failed')
-      setInfo('Saved. Live widget picks this up on next load.')
+      if (json.liveNow === false) {
+        setInfo(
+          'Saved, but site cache bust failed — visitors may see the previous engagement widget for up to ~60s.'
+        )
+      } else {
+        setInfo('Saved. Live site and widget pick this up on next load.')
+      }
       await refresh()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Save failed')

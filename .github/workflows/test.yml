@@ -1,0 +1,27 @@
+name: Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - name: customSite shared-core sync
+        run: |
+          if [ -d ../custom-closets-websites ]; then
+            npm run test:custom-site-sync
+          else
+            echo "Sibling websites repo not present — skipping sync check"
+          fi
+        env:
+          CUSTOM_SITE_SYNC_SKIP: '1'

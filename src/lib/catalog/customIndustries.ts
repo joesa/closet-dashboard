@@ -57,6 +57,20 @@ function sanitizeServices(raw: unknown): CustomIndustryService[] {
   return out
 }
 
+const ENGAGEMENT_MODELS: readonly EngagementModel[] = [
+  'quote',
+  'order',
+  'booking',
+  'ticket',
+]
+
+function parseEngagementModel(v: string | null | undefined): EngagementModel {
+  if (v && (ENGAGEMENT_MODELS as readonly string[]).includes(v)) {
+    return v as EngagementModel
+  }
+  return 'quote'
+}
+
 function rowToRecord(row: CustomIndustryRow): CustomIndustryRecord {
   const themes = (row.default_themes ?? []).filter(isValidThemeSlug)
   const layouts = (row.default_layouts ?? []).filter(isValidLayoutSlug)
@@ -68,7 +82,7 @@ function rowToRecord(row: CustomIndustryRow): CustomIndustryRecord {
     defaultThemes: themes.length > 0 ? themes : ['luxury-minimal'],
     defaultLayouts: layouts.length > 0 ? layouts : ['standard'],
     beforeAfterCategory: (row.before_after_category as BeforeAfterCategory) || 'not-applicable',
-    engagementModel: row.engagement_model === 'order' ? 'order' : 'quote',
+    engagementModel: parseEngagementModel(row.engagement_model),
   }
 }
 

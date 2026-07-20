@@ -1,7 +1,7 @@
 /**
  * Per-site custom render mode — types + sanitize/validate helpers shared by
  * the admin custom-build API. Mirror of custom-closets-websites/src/lib/customSite.ts
- * (kept in sync manually — the two apps are separate packages).
+ * (shared core checked by scripts/check-custom-site-core-sync.mjs).
  */
 
 export type CustomRenderMode = 'inline' | 'iframe'

@@ -17,7 +17,10 @@ import {
  * TENANT_SITES_ORIGIN / VERCEL websites deployment URL.
  */
 export async function revalidateTenantSiteCache(tenantId: string): Promise<boolean> {
-  const secret = process.env.ADMIN_BYPASS_SECRET?.trim()
+  // Prefer dedicated secret; fall back to ADMIN_BYPASS_SECRET during cutover.
+  const secret =
+    process.env.REVALIDATE_SECRET?.trim() ||
+    process.env.ADMIN_BYPASS_SECRET?.trim()
   if (!secret) return false
 
   const origins = new Set<string>()

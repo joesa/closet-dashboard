@@ -10,6 +10,7 @@
     "lint": "eslint",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:custom-site-sync": "node scripts/check-custom-site-core-sync.mjs",
     "stripe:verify": "node scripts/stripe-verify.mjs",
     "stripe:catalog": "node scripts/stripe-setup-catalog.mjs",
     "backfill:widget-domain": "node scripts/backfill-widget-domain.mjs",
@@ -18,6 +19,7 @@
   "dependencies": {
     "@ditchtheform/pricing": "file:./packages/pricing",
     "@google/generative-ai": "^0.24.1",
+    "@sentry/nextjs": "^10.66.0",
     "@supabase/ssr": "^0.10.3",
     "@supabase/supabase-js": "^2.105.4",
     "cheerio": "^1.2.0",

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getCurrentAdmin, logAdminAction } from '@/lib/admin'
 import { resolveTenantWidget } from '@/lib/resolveTenantWidget'
+import { revalidateTenantSiteCache } from '@/lib/tenants/revalidateTenantSite'
 import {
   normalizeDomainConfig,
   normalizeRoomPricing,
@@ -367,7 +368,11 @@ export async function PATCH(
     metadata: { updates, widgetId },
   })
 
-  return NextResponse.json({ ok: true, updates })
+  // Bust tenant site cache so engagement_model / theme changes mount the
+  // right web component immediately (otherwise ~60s stale).
+  const liveNow = await revalidateTenantSiteCache(tenantId)
+
+  return NextResponse.json({ ok: true, updates, liveNow }, { headers: NO_STORE })
 }
 
 export async function POST(

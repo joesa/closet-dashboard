@@ -282,7 +282,11 @@ export default function AdminCustomBuild({
               : 'Published — may take up to ~60s for cache to refresh. Hard-refresh the public site.'
         );
       } else if (action === 'revert') {
-        setInfo('Reverted to the shared template engine for this site.');
+        setInfo(
+          json.liveNow === false
+            ? 'Reverted to the shared template engine, but site cache bust failed — visitors may see the custom site for up to ~60s.'
+            : 'Reverted to the shared template engine for this site.'
+        );
       } else if (action === 'discard') {
         setInfo('Draft discarded.');
       } else if (action === 'clone') {
