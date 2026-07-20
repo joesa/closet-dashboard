@@ -1297,7 +1297,7 @@ export async function provisionTenant(
     // window (see custom-closets-websites getConfig.ts / api/revalidate).
     // Never let a failure here fail provisioning — the site self-heals
     // within 60s regardless.
-    const secret = process.env.ADMIN_BYPASS_SECRET?.trim()
+    const secret = process.env.REVALIDATE_SECRET?.trim()
     if (secret) {
       try {
         await fetch(`${siteUrl.replace(/\/$/, '')}/api/revalidate`, {
