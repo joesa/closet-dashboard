@@ -75,7 +75,7 @@ Keep these defaults until a pilot is clean:
 1. Set `SMS_MAX_DAILY` low (e.g. `10`)
 2. Ensure phone-only Pipeline B leads hit `/api/sms-outreach`
 3. Confirm step-1 sends during Mon–Fri 9–17 CT
-4. Wait for `/api/cron/sms-followups` (hourly) for step-2 after `SMS_STEP2_DELAY_DAYS` (default 2)
+4. Wait for `/api/cron/sms-followups` (weekdays 16:00 UTC ≈ 11:00 America/Chicago) for step-2 after `SMS_STEP2_DELAY_DAYS` (default 2)
 
 ---
 

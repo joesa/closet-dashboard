@@ -14,7 +14,7 @@
     },
     {
       "path": "/api/cron/sms-followups",
-      "schedule": "0 * * * *"
+      "schedule": "0 16 * * 1-5"
     }
   ]
 }
