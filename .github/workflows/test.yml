@@ -10,6 +10,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Checkout websites sibling (customSite.ts)
+        uses: actions/checkout@v4
+        with:
+          repository: joesa/custom-closets-websites
+          ref: main
+          path: .ci-siblings/custom-closets-websites
+          sparse-checkout: |
+            src/lib/customSite.ts
+          sparse-checkout-cone-mode: false
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -17,11 +26,4 @@ jobs:
       - run: npm ci
       - run: npm test
       - name: customSite shared-core sync
-        run: |
-          if [ -d ../custom-closets-websites ]; then
-            npm run test:custom-site-sync
-          else
-            echo "Sibling websites repo not present — skipping sync check"
-          fi
-        env:
-          CUSTOM_SITE_SYNC_SKIP: '1'
+        run: npm run test:custom-site-sync -- --websites-root .ci-siblings/custom-closets-websites

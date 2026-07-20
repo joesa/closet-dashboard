@@ -84,7 +84,9 @@ if (!existsSync(dashPath) || !existsSync(webPath)) {
   console.error('Missing customSite.ts — expected:')
   console.error(' ', dashPath)
   console.error(' ', webPath)
-  if (process.env.CUSTOM_SITE_SYNC_SKIP === '1') {
+  // Local-only escape hatch. CI must never skip (workflows check out the sibling).
+  const inCi = Boolean(process.env.CI || process.env.GITHUB_ACTIONS)
+  if (!inCi && process.env.CUSTOM_SITE_SYNC_SKIP === '1') {
     console.warn('CUSTOM_SITE_SYNC_SKIP=1 — exiting 0')
     process.exit(0)
   }

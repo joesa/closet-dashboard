@@ -38,6 +38,9 @@ yarn-error.log*
 # vercel
 .vercel
 
+# CI sibling checkouts (customSite sync)
+.ci-siblings/
+
 # local accidental dumps
 et -a
 
