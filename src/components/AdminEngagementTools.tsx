@@ -76,11 +76,24 @@ type Catalog = {
   }>
 }
 
+type ThemeOption = {
+  id: string
+  name: string
+  mode: 'light' | 'dark'
+  description: string
+  brand: string
+  surfaceBase: string
+  surfaceElevated: string
+  textPrimary: string
+}
+
 type Payload = {
   widgetId: string
   settingsUpdatedAt?: string | null
   healedWidgetId?: boolean
   engagementModel: EngagementModel
+  widgetThemeId?: string
+  widgetThemes?: ThemeOption[]
   settings: {
     companyName: string
     primaryColorHex: string
@@ -89,6 +102,7 @@ type Payload = {
     tierNames: { basic: string; standard: string; premium: string }
     disabledDefaultRooms: string[]
     disabledDefaultFinishes: string[]
+    widgetThemeId?: string
   } | null
   calculator: {
     step1Categories: Step1Category[]
@@ -145,6 +159,8 @@ export default function AdminEngagementTools({ tenantId }: { tenantId: string })
   })
   const [disabledRooms, setDisabledRooms] = useState<string[]>([])
   const [disabledFinishes, setDisabledFinishes] = useState<string[]>([])
+  const [widgetThemeId, setWidgetThemeId] = useState('alabaster')
+  const [widgetThemes, setWidgetThemes] = useState<ThemeOption[]>([])
 
   const [newRoom, setNewRoom] = useState({
     name: '',
@@ -197,6 +213,10 @@ export default function AdminEngagementTools({ tenantId }: { tenantId: string })
       const payload = json as Payload
       setData(payload)
       setModel(payload.engagementModel)
+      setWidgetThemes(Array.isArray(payload.widgetThemes) ? payload.widgetThemes : [])
+      setWidgetThemeId(
+        payload.settings?.widgetThemeId || payload.widgetThemeId || 'alabaster'
+      )
       if (payload.settings) {
         setCompanyName(payload.settings.companyName)
         setPrimaryColor(payload.settings.primaryColorHex)
@@ -266,6 +286,7 @@ export default function AdminEngagementTools({ tenantId }: { tenantId: string })
         settings.disabledDefaultRooms = extra?.disabledDefaultRooms ?? disabledRooms
         settings.disabledDefaultFinishes =
           extra?.disabledDefaultFinishes ?? disabledFinishes
+        settings.widgetThemeId = widgetThemeId
       }
       body.settings = settings
       const res = await fetch(`/api/admin/sites/${tenantId}/engagement`, {
@@ -481,20 +502,17 @@ export default function AdminEngagementTools({ tenantId }: { tenantId: string })
         </div>
         <div>
           <label className="text-xs text-neutral-500 uppercase tracking-widest block mb-1">
-            Primary color
+            Accent (from theme pack)
           </label>
           <div className="flex gap-2 items-center">
-            <input
-              type="color"
-              value={primaryColor}
-              onChange={(e) => setPrimaryColor(e.target.value)}
-              className="h-10 w-12 rounded border border-neutral-700 bg-transparent"
+            <span
+              className="h-10 w-12 rounded border border-neutral-700"
+              style={{ background: primaryColor }}
+              title={primaryColor}
             />
-            <input
-              value={primaryColor}
-              onChange={(e) => setPrimaryColor(e.target.value)}
-              className="flex-1 rounded-lg bg-black/40 border border-neutral-700 px-3 py-2 text-sm text-white font-mono"
-            />
+            <code className="flex-1 rounded-lg bg-black/40 border border-neutral-700 px-3 py-2 text-sm text-neutral-300 font-mono">
+              {primaryColor}
+            </code>
           </div>
         </div>
       </div>
@@ -502,6 +520,77 @@ export default function AdminEngagementTools({ tenantId }: { tenantId: string })
       {/* ── Quote calculator (live state) ─────────────────────────── */}
       {model === 'quote' && roomPricing && domainConfig ? (
         <div className="space-y-6 border-t border-neutral-800 pt-4">
+          {/* Theme picker */}
+          <div className="space-y-3">
+            <div>
+              <h3 className="text-sm font-semibold text-white">Calculator theme</h3>
+              <p className="text-xs text-neutral-500 mt-1">
+                20 matched packs (surfaces, text, borders, accent). Pick one so the
+                calculator blends with the site — e.g. Charcoal Stage on dark sites.
+              </p>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+              {widgetThemes.map((t) => {
+                const selected = widgetThemeId === t.id
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => {
+                      setWidgetThemeId(t.id)
+                      setPrimaryColor(t.brand)
+                      void (async () => {
+                        try {
+                          await patchJson({
+                            settings: { widgetThemeId: t.id },
+                          })
+                          setInfo(`Theme “${t.name}” applied — live on next widget load.`)
+                          await refresh({ quiet: true })
+                        } catch (err) {
+                          setError(
+                            err instanceof Error ? err.message : 'Theme save failed'
+                          )
+                        }
+                      })()
+                    }}
+                    className={`text-left rounded-xl border overflow-hidden transition-colors ${
+                      selected
+                        ? 'border-blue-500 ring-1 ring-blue-500/40'
+                        : 'border-neutral-700 hover:border-neutral-500'
+                    }`}
+                  >
+                    <div
+                      className="h-12 px-2 flex items-end pb-1.5 gap-1"
+                      style={{ background: t.surfaceBase }}
+                    >
+                      <span
+                        className="h-6 flex-1 rounded"
+                        style={{ background: t.surfaceElevated }}
+                      />
+                      <span
+                        className="h-6 w-6 rounded"
+                        style={{ background: t.brand }}
+                      />
+                    </div>
+                    <div className="px-2.5 py-2 bg-black/50">
+                      <div className="flex items-center justify-between gap-1">
+                        <span className="text-xs font-medium text-white truncate">
+                          {t.name}
+                        </span>
+                        <span className="text-[9px] uppercase tracking-wider text-neutral-500">
+                          {t.mode}
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-neutral-500 mt-0.5 line-clamp-2">
+                        {t.description}
+                      </p>
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
           {/* Live Step 1 mirror */}
           <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 p-4 space-y-3">
             <div className="flex items-baseline justify-between gap-3 flex-wrap">

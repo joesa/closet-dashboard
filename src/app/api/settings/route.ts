@@ -4,6 +4,7 @@ import { corsHeaders, handleOptions } from '@/lib/cors'
 import { normalizeRoomPricing, normalizeDomainConfig } from '@/lib/rooms'
 import { assertEntitled } from '@/lib/gate'
 import { expandAddonsForWidget } from '@/lib/widgetAddons'
+import { resolveWidgetTheme, widgetThemeToCssVars } from '@/lib/widgetThemes'
 
 export const runtime = 'edge'
 
@@ -44,7 +45,7 @@ export async function GET(req: Request) {
       // Selecting brand fields + pricing fields so the widget has everything it needs.
       // price_per_ft_* are DEPRECATED; kept in the response during the room_pricing
       // rollout for older widget builds and will be removed in a follow-up.
-      .select('company_name, primary_color_hex, price_per_ft_basic, price_per_ft_standard, price_per_ft_premium, price_drawer, price_shoe_rack, room_pricing, disabled_default_rooms, disabled_default_finishes, domain_config, tier_names')
+      .select('company_name, primary_color_hex, price_per_ft_basic, price_per_ft_standard, price_per_ft_premium, price_drawer, price_shoe_rack, room_pricing, disabled_default_rooms, disabled_default_finishes, domain_config, tier_names, widget_theme_id')
       .eq('id', contractorId)
       .maybeSingle()
 
@@ -93,9 +94,24 @@ export async function GET(req: Request) {
       premium: tierNamesRaw?.premium || 'Premium',
     }
 
+    const widgetTheme = resolveWidgetTheme(
+      (data as { widget_theme_id?: string | null }).widget_theme_id
+    )
+    const themeVars = widgetThemeToCssVars(widgetTheme)
+    // Surfaces/text from the pack; accent prefers stored primary (kept in sync when a theme is picked).
+    const accent = data.primary_color_hex || widgetTheme.brand
+    themeVars['--brand-color'] = accent
+
     const responsePayload = {
       companyName: data.company_name,
-      primaryColorHex: data.primary_color_hex,
+      primaryColorHex: accent,
+      widgetThemeId: widgetTheme.id,
+      widgetTheme: {
+        id: widgetTheme.id,
+        name: widgetTheme.name,
+        mode: widgetTheme.mode,
+        ...themeVars,
+      },
       tierNames,
       // DEPRECATED: legacy global tiers, kept for older widget builds.
       pricePerFtBasic: data.price_per_ft_basic,

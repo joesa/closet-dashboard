@@ -8,6 +8,11 @@ import {
   type DomainConfig,
   type RoomPricing,
 } from '@/lib/rooms'
+import {
+  isWidgetThemeId,
+  listWidgetThemesForAdmin,
+  resolveWidgetTheme,
+} from '@/lib/widgetThemes'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -55,7 +60,7 @@ export async function GET(
     supabase
       .from('contractor_settings')
       .select(
-        'id, company_name, primary_color_hex, room_pricing, domain_config, tier_names, disabled_default_rooms, disabled_default_finishes, updated_at'
+        'id, company_name, primary_color_hex, room_pricing, domain_config, tier_names, disabled_default_rooms, disabled_default_finishes, widget_theme_id, updated_at'
       )
       .eq('id', widgetId)
       .maybeSingle(),
@@ -155,6 +160,10 @@ export async function GET(
       /** Same row the live widget + contractor dashboard should edit. */
       settingsUpdatedAt: settings?.updated_at ?? null,
       engagementModel,
+      widgetThemeId: resolveWidgetTheme(
+        (settings as { widget_theme_id?: string | null } | null)?.widget_theme_id
+      ).id,
+      widgetThemes: listWidgetThemesForAdmin(),
       settings: settings
         ? {
             companyName: settings.company_name || '',
@@ -164,6 +173,9 @@ export async function GET(
             tierNames,
             disabledDefaultRooms,
             disabledDefaultFinishes,
+            widgetThemeId: resolveWidgetTheme(
+              (settings as { widget_theme_id?: string | null }).widget_theme_id
+            ).id,
           }
         : null,
       calculator: {
@@ -232,6 +244,7 @@ export async function PATCH(
       tierNames?: unknown
       disabledDefaultRooms?: unknown
       disabledDefaultFinishes?: unknown
+      widgetThemeId?: unknown
     }
     const patch: Record<string, unknown> = {}
     if (typeof s.companyName === 'string') patch.company_name = s.companyName
@@ -259,6 +272,18 @@ export async function PATCH(
       patch.disabled_default_finishes = s.disabledDefaultFinishes.filter(
         (x): x is string => typeof x === 'string'
       )
+    }
+    if (s.widgetThemeId !== undefined) {
+      if (!isWidgetThemeId(s.widgetThemeId)) {
+        return NextResponse.json(
+          { error: 'Unknown widgetThemeId' },
+          { status: 400, headers: NO_STORE }
+        )
+      }
+      const theme = resolveWidgetTheme(s.widgetThemeId)
+      patch.widget_theme_id = theme.id
+      // Keep accent in sync so legacy readers stay matched to the pack.
+      patch.primary_color_hex = theme.brand
     }
     if (Object.keys(patch).length > 0) {
       const { error } = await supabase
