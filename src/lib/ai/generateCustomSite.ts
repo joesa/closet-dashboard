@@ -2,8 +2,10 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { generateTextWithFallback } from '@/lib/ai/aiTextProvider'
 import { extractJson, sanitizeJsonString } from '@/lib/ai/generateSiteConfig'
 import {
+  htmlHasInjectableWidget,
   isCustomSiteConfig,
   normalizeCustomPath,
+  normalizeWidgetPlaceholders,
   sanitizeCustomConfig,
   validateCustomConfig,
   WIDGET_PLACEHOLDER,
@@ -96,10 +98,11 @@ export function mergeCustomPatch(
 function ensureWidgetPlaceholder(config: CustomSiteConfig): void {
   const home = config.pages['/'] || config.pages['']
   if (!home) return
-  if (
-    home.html.includes(WIDGET_PLACEHOLDER) ||
-    /<closet-quote-widget\b/i.test(home.html)
-  ) {
+  // Canonicalize AI mutations (e.g. <!-- CLOSET_WIDGET theme="dark" -->) in place
+  // so the CTA shell mounts the widget instead of leaving an empty box.
+  home.html = normalizeWidgetPlaceholders(home.html || '')
+  if (htmlHasInjectableWidget(home.html)) {
+    config.pages['/'] = home
     return
   }
   home.html = `${home.html}\n<section class="closet-widget-slot">${WIDGET_PLACEHOLDER}</section>`
@@ -409,8 +412,10 @@ Hard rules:
 1. Generate a DISTINCT, bespoke design — NOT a clone of a generic template. Unique layout, typography, color palette for THIS business.
 2. Include EXACTLY these pages (no more): ${opts.pageHints}. Always include "/".
 3. HTML is BODY CONTENT ONLY (no <html>/<head>/<body> wrappers). Use semantic tags (header, nav, main, section, footer).
-4. Embed exactly this widget placeholder somewhere on the home page so the live quote calculator mounts:
+4. Embed EXACTLY this HTML comment on the home page (literal characters — NO attributes, NO theme=):
    ${WIDGET_PLACEHOLDER}
+   Put it INSIDE the quote / "Start Your Project" section. Do NOT invent variants like <!-- CLOSET_WIDGET theme="dark" -->.
+   Do NOT leave an empty .widget-container — the comment must be the only child of that mount.
 5. Use absolute https:// image URLs when referencing images (prefer ones already on the site if provided in context). Do not invent broken localhost URLs.
 6. CSS must be self-contained. No @import. Prefer CSS variables for the palette.
 7. mode="${opts.mode}" — ${

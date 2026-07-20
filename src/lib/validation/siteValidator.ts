@@ -14,6 +14,13 @@ import {
 import { designFingerprint, siteSeed } from '@/lib/catalog/designFingerprint'
 import { isForcedPreset } from '@/lib/catalog/designVariantCatalog'
 import { GENERIC_HERO as GENERIC_HERO_URL } from '@/lib/provision/buildTemplateSiteConfig'
+import {
+  findEmptyWidgetShells,
+  findUnmountedWidgetShells,
+  htmlHasInjectableWidget,
+  isCustomSiteConfig,
+  validateCustomConfig,
+} from '@/lib/customSite'
 
 export type ValidationSeverity = 'error' | 'warning'
 
@@ -119,7 +126,7 @@ export async function validateTenantSite(tenantId: string): Promise<ValidationRe
       `
       id, business_name, owner_email, widget_id,
       domains ( hostname, source, is_primary ),
-      site_configs ( theme, layout_style, design_variant, nav_links, hero_config, before_after_config, products_config, logo_url, brand_name, process_config, default_room )
+      site_configs ( theme, layout_style, design_variant, nav_links, hero_config, before_after_config, products_config, logo_url, brand_name, process_config, default_room, render_mode, custom_config, custom_config_draft )
     `
     )
     .eq('id', tenantId)
@@ -169,6 +176,9 @@ export async function validateTenantSite(tenantId: string): Promise<ValidationRe
           subtitle?: string
           steps?: { number?: string; title?: string; description?: string }[]
         } | null
+        render_mode?: string | null
+        custom_config?: unknown
+        custom_config_draft?: unknown
       }
     | null
 
@@ -190,6 +200,54 @@ export async function validateTenantSite(tenantId: string): Promise<ValidationRe
 
   const theme = config.theme as ThemeSlug | undefined
   const layoutStyle = config.layout_style as LayoutSlug | undefined
+
+  // ── 1b. Custom-build widget mount (Full Redesign empty-box class of bug) ──
+  if (config.render_mode === 'custom') {
+    const published = isCustomSiteConfig(config.custom_config) ? config.custom_config : null
+    const draft = isCustomSiteConfig(config.custom_config_draft)
+      ? config.custom_config_draft
+      : null
+    const artifact = published || draft
+    if (!artifact) {
+      issues.push({
+        code: 'custom_config_missing',
+        severity: 'error',
+        message:
+          'Site is in custom render mode but has no custom_config artifact — visitors may see a blank page.',
+        fixable: false,
+      })
+    } else {
+      const check = validateCustomConfig(artifact)
+      for (const err of check.errors) {
+        issues.push({
+          code: 'custom_widget_invalid',
+          severity: 'error',
+          message: err,
+          fixable: true,
+          meta: { source: published ? 'published' : 'draft' },
+        })
+      }
+      const homeHtml = artifact.pages['/']?.html || artifact.pages['']?.html || ''
+      if (!htmlHasInjectableWidget(homeHtml)) {
+        issues.push({
+          code: 'custom_widget_missing',
+          severity: 'error',
+          message:
+            'Custom home page has no injectable <!-- CLOSET_WIDGET --> mount — the quote calculator will not appear.',
+          fixable: true,
+        })
+      }
+      for (const shell of findEmptyWidgetShells(homeHtml)) {
+        issues.push({
+          code: 'custom_widget_empty_shell',
+          severity: 'error',
+          message: `Empty widget container on custom home (${shell}) — visitors see a blank box under the CTA.`,
+          fixable: true,
+          meta: { shell },
+        })
+      }
+    }
+  }
 
   // ── 2. Theme/layout consistency ──
   if (theme && layoutStyle) {
@@ -320,6 +378,30 @@ export async function validateTenantSite(tenantId: string): Promise<ValidationRe
             severity: 'error',
             message: 'nav_links is populated in the database, but no <nav> element actually rendered on the live page.',
             fixable: false,
+          })
+        }
+
+        // Live engagement widget must actually mount (custom + engine sites).
+        const hasLiveWidget =
+          /<closet-(?:quote|order|booking|ticket)-widget\b[^>]*data-contractor-id=/i.test(
+            html
+          )
+        if (!hasLiveWidget) {
+          issues.push({
+            code: 'live_widget_missing',
+            severity: 'error',
+            message:
+              'Live homepage has no mounted engagement widget (closet-*-widget with data-contractor-id). Quote/lead capture will not work.',
+            fixable: true,
+          })
+        }
+        for (const shell of findUnmountedWidgetShells(html)) {
+          issues.push({
+            code: 'live_widget_empty_shell',
+            severity: 'error',
+            message: `Live homepage has a widget container without a mounted calculator (${shell}) — typically a Full Redesign placeholder that never received the widget.`,
+            fixable: true,
+            meta: { shell },
           })
         }
 
