@@ -1,3 +1,5 @@
+import { DEFAULT_WIDGET_CDN_BASE, withWidgetCacheBust } from '@/lib/widgetCdn'
+
 function defaultWidgetScriptUrl(): string {
   const site =
     process.env.NEXT_PUBLIC_APP_URL?.trim() ||
@@ -5,13 +7,12 @@ function defaultWidgetScriptUrl(): string {
     ''
   // Local dev always uses /public/widget.js so preview matches the latest bundle.
   if (/localhost|127\.0\.0\.1/.test(site)) return '/widget.js'
-  return (
-    process.env.NEXT_PUBLIC_WIDGET_CDN_URL?.trim() ||
-    'https://closet-widget.vercel.app/widget.js'
-  )
+  const base =
+    process.env.NEXT_PUBLIC_WIDGET_CDN_URL?.trim() || DEFAULT_WIDGET_CDN_BASE
+  return withWidgetCacheBust(base)
 }
 
-/** CDN URL for the embeddable closet-quote-widget IIFE bundle. */
+/** CDN URL for the embeddable closet-quote-widget IIFE bundle (cache-busted). */
 export const WIDGET_CDN_URL = defaultWidgetScriptUrl()
 
 /** Public dashboard / widget API origin (no trailing slash). */
