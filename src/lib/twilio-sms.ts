@@ -113,15 +113,67 @@ export function personalizeTemplate(
 
 // ── Default SMS templates for Pipeline B ───────────────────────────
 
-export const PIPELINE_B_SMS_TEMPLATES = [
+export type SmsTemplate = {
+  step: number
+  delayDays: number
+  body: string
+}
+
+const BRAND = process.env.BRAND_NAME || 'ClosetQuote'
+const BRAND_DOMAIN = process.env.BRAND_DOMAIN || 'closetquotes.com'
+const INDUSTRY = process.env.INDUSTRY_NAME || 'closet'
+
+export const PIPELINE_B_SMS_TEMPLATES: SmsTemplate[] = [
   {
     step: 1,
     delayDays: 0,
-    body: `Hi! I found {businessName} on Google Maps while searching for closet contractors in {city}. Noticed you don't have a website yet — I build premium sites for contractors that come with a built-in quote calculator. It texts leads straight to your phone. Want to see a 60-sec demo? - Joseph, ClosetQuote`,
+    body: `Hi! I found {businessName} on Google Maps while searching for ${INDUSTRY} contractors in {city}. Noticed you don't have a website yet — I build premium sites for contractors that come with a built-in quote calculator. It texts leads straight to your phone. Want to see a 60-sec demo? - Joseph, ${BRAND}`,
   },
   {
     step: 2,
     delayDays: 2,
-    body: `Hey, just following up about {businessName}. I've got a live demo you can try right now at closetquotes.com — most contractors see their first lead within 48 hours of going live. Want me to mock up a free design for your business? - Joseph`,
+    body: `Hey, just following up about {businessName}. I've got a live demo you can try right now at ${BRAND_DOMAIN} — most contractors see their first lead within 48 hours of going live. Want me to mock up a free design for your business? - Joseph`,
   },
 ]
+
+/** Count SMS outreach messages successfully sent today (UTC day boundary). */
+export async function countSmsSentToday(): Promise<number> {
+  const admin = getSupabaseAdmin()
+  const start = new Date()
+  start.setUTCHours(0, 0, 0, 0)
+
+  const { count, error } = await admin
+    .from('sms_outreach_events')
+    .select('id', { count: 'exact', head: true })
+    .eq('status', 'sent')
+    .gte('created_at', start.toISOString())
+
+  if (error) {
+    console.error('countSmsSentToday failed:', error.message)
+    return 0
+  }
+  return count || 0
+}
+
+/**
+ * SMS send window: Mon–Fri 9–17 America/Chicago (mirrors email campaign schedule).
+ * Override with SMS_SEND_WINDOW_ENFORCE=false to disable.
+ */
+export function isWithinSmsSendWindow(now = new Date()): boolean {
+  if (process.env.SMS_SEND_WINDOW_ENFORCE === 'false') return true
+
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Chicago',
+    weekday: 'short',
+    hour: 'numeric',
+    hour12: false,
+  }).formatToParts(now)
+
+  const weekday = parts.find((p) => p.type === 'weekday')?.value || ''
+  const hour = Number.parseInt(parts.find((p) => p.type === 'hour')?.value || '', 10)
+
+  const isWeekday = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'].includes(weekday)
+  if (!isWeekday) return false
+  if (!Number.isFinite(hour)) return false
+  return hour >= 9 && hour < 17
+}

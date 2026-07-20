@@ -8,11 +8,12 @@ import {
   sendSms,
   personalizeTemplate,
   PIPELINE_B_SMS_TEMPLATES,
+  countSmsSentToday,
+  isWithinSmsSendWindow,
+  type SmsTemplate,
 } from '@/lib/twilio-sms'
 
 export const runtime = 'nodejs'
-
-// ── Types ──────────────────────────────────────────────────────────
 
 type IncomingLead = {
   businessName?: string | null
@@ -34,9 +35,10 @@ type IncomingPayload = {
   totalBatches: number
   count: number
   leads: IncomingLead[]
+  campaign?: {
+    smsTemplates?: SmsTemplate[]
+  }
 }
-
-// ── Helpers ────────────────────────────────────────────────────────
 
 function isValidPayload(payload: unknown): payload is IncomingPayload {
   if (!payload || typeof payload !== 'object') return false
@@ -47,12 +49,10 @@ function isValidPayload(payload: unknown): payload is IncomingPayload {
 }
 
 function extractCity(lead: IncomingLead): string {
-  // Try sourceLocation first (e.g. "Atlanta, Georgia")
   if (lead.sourceLocation) {
     const city = lead.sourceLocation.split(',')[0]?.trim()
     if (city) return city
   }
-  // Fallback to address
   if (lead.address) {
     const parts = lead.address.split(',')
     if (parts.length >= 2) return parts[parts.length - 2]?.trim() || 'your area'
@@ -60,39 +60,73 @@ function extractCity(lead: IncomingLead): string {
   return 'your area'
 }
 
-// ── Throttle helper ────────────────────────────────────────────────
-
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-// ── Main handler ───────────────────────────────────────────────────
+function resolveStep1Template(payload: IncomingPayload): SmsTemplate {
+  const fromCampaign = payload.campaign?.smsTemplates?.find((t) => t.step === 1)
+  if (fromCampaign?.body) return fromCampaign
+  return PIPELINE_B_SMS_TEMPLATES[0]
+}
 
 export async function POST(req: Request) {
   try {
-    // ── Auth ──
     const authError = assertWebhookToken(req, process.env.INSTANTLY_RECEIVER_AUTH_TOKEN, {
       missingEnvMessage: 'INSTANTLY_RECEIVER_AUTH_TOKEN is not configured',
     })
     if (authError) return authError
 
-    // ── Parse ──
     const payload = await req.json()
     if (!isValidPayload(payload)) {
       return NextResponse.json({ error: 'Invalid webhook payload' }, { status: 400 })
     }
 
+    if (!isWithinSmsSendWindow()) {
+      return NextResponse.json(
+        {
+          ok: true,
+          skipped: 'outside_send_window',
+          runId: payload.runId,
+          batchIndex: payload.batchIndex,
+          totalLeads: payload.leads.length,
+        },
+        { status: 200 }
+      )
+    }
+
+    const maxDaily = Number.parseInt(process.env.SMS_MAX_DAILY || '50', 10) || 50
+    let sentToday = await countSmsSentToday()
+    if (sentToday >= maxDaily) {
+      return NextResponse.json(
+        {
+          ok: true,
+          skipped: 'daily_cap',
+          runId: payload.runId,
+          sentToday,
+          maxDaily,
+          totalLeads: payload.leads.length,
+        },
+        { status: 200 }
+      )
+    }
+
     const admin = getSupabaseAdmin()
-    const template = PIPELINE_B_SMS_TEMPLATES[0] // Step 1 — immediate send
+    const template = resolveStep1Template(payload)
 
     let sent = 0
     let skippedNoPhone = 0
     let skippedSuppressed = 0
     let skippedDuplicate = 0
+    let skippedCap = 0
     let failed = 0
 
     for (const lead of payload.leads) {
-      // ── Normalize phone ──
+      if (sentToday >= maxDaily) {
+        skippedCap++
+        continue
+      }
+
       const rawPhone = lead.phoneNumber || ''
       const phone = normalizePhone(rawPhone)
 
@@ -101,7 +135,6 @@ export async function POST(req: Request) {
         continue
       }
 
-      // ── Idempotency check ──
       const eventKey = `${payload.runId}:sms:${phone}:step1`
       const { error: insertError } = await admin.from('sms_outreach_events').insert({
         event_key: eventKey,
@@ -110,7 +143,7 @@ export async function POST(req: Request) {
         business_name: (lead.businessName || '').trim(),
         source_location: (lead.sourceLocation || '').trim(),
         message_step: 1,
-        message_body: '', // placeholder, filled after personalization
+        message_body: '',
         status: 'pending',
       })
 
@@ -124,7 +157,6 @@ export async function POST(req: Request) {
         continue
       }
 
-      // ── Suppression check ──
       const suppressed = await isPhoneSuppressed(phone)
       if (suppressed) {
         await admin
@@ -135,14 +167,12 @@ export async function POST(req: Request) {
         continue
       }
 
-      // ── Personalize and send ──
       const city = extractCity(lead)
       const messageBody = personalizeTemplate(template.body, {
         businessName: (lead.businessName || 'your business').trim(),
         city,
       })
 
-      // Update the stored message body
       await admin
         .from('sms_outreach_events')
         .update({ message_body: messageBody })
@@ -160,6 +190,7 @@ export async function POST(req: Request) {
           })
           .eq('event_key', eventKey)
         sent++
+        sentToday++
       } else {
         await admin
           .from('sms_outreach_events')
@@ -172,7 +203,6 @@ export async function POST(req: Request) {
         failed++
       }
 
-      // ── Throttle: ~2 messages/second to stay within Twilio limits ──
       await delay(500)
     }
 
@@ -186,7 +216,10 @@ export async function POST(req: Request) {
         skippedNoPhone,
         skippedSuppressed,
         skippedDuplicate,
+        skippedCap,
         failed,
+        sentToday,
+        maxDaily,
       },
       { status: 200 }
     )

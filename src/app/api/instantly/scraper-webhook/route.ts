@@ -123,16 +123,45 @@ function isValidPayload(payload: unknown): payload is IncomingPayload {
   return true
 }
 
+type LeadImportRow = {
+  email: string
+  firstName: string
+  lastName: string
+  companyName: string
+  website: string
+  customVariables: Record<string, string>
+}
+
+async function filterSuppressedEmails(
+  rows: LeadImportRow[]
+): Promise<{ allowed: LeadImportRow[]; suppressedCount: number }> {
+  if (rows.length === 0) return { allowed: [], suppressedCount: 0 }
+
+  const emails = rows.map((r) => r.email)
+  const admin = getSupabaseAdmin()
+  const { data, error } = await admin
+    .from('global_suppressions')
+    .select('contact_value')
+    .eq('type', 'email')
+    .in('contact_value', emails)
+
+  if (error) {
+    console.error('global_suppressions lookup failed:', error.message)
+    // Fail open to Instantly import would re-contact suppressed leads —
+    // fail closed: skip import batch on lookup failure.
+    throw new Error(`Suppression lookup failed: ${error.message}`)
+  }
+
+  const suppressed = new Set(
+    (data || []).map((row) => String(row.contact_value || '').trim().toLowerCase())
+  )
+  const allowed = rows.filter((r) => !suppressed.has(r.email))
+  return { allowed, suppressedCount: rows.length - allowed.length }
+}
+
 function toLeadImportRows(payload: IncomingPayload) {
   const dedup = new Set<string>()
-  const rows: Array<{
-    email: string
-    firstName: string
-    lastName: string
-    companyName: string
-    website: string
-    customVariables: Record<string, string>
-  }> = []
+  const rows: LeadImportRow[] = []
 
   for (const lead of payload.leads) {
     const preferredEmail =
@@ -223,13 +252,16 @@ export async function POST(req: Request) {
     const warmupMode = process.env.INSTANTLY_WARMUP_MODE !== 'false'
 
     const leadRows = toLeadImportRows(payload)
+    const { allowed: filteredRows, suppressedCount } = await filterSuppressedEmails(leadRows)
 
-    if (leadRows.length < minLeadsPerBatch) {
+    if (filteredRows.length < minLeadsPerBatch) {
       await updateSyncEvent(eventKey, {
         status: 'skipped_threshold',
         result: {
           importedLeads: 0,
           dedupedLeads: leadRows.length,
+          suppressedLeads: suppressedCount,
+          afterSuppression: filteredRows.length,
           minLeadsPerBatch,
         },
       })
@@ -239,6 +271,8 @@ export async function POST(req: Request) {
           ok: true,
           skipped: 'below_min_lead_threshold',
           dedupedLeads: leadRows.length,
+          suppressedLeads: suppressedCount,
+          afterSuppression: filteredRows.length,
           minLeadsPerBatch,
         },
         { status: 200 }
@@ -246,7 +280,7 @@ export async function POST(req: Request) {
     }
 
     const upsert = await upsertCampaignByName(payload.campaign)
-    await importLeadsToCampaign(upsert.campaignId, leadRows)
+    await importLeadsToCampaign(upsert.campaignId, filteredRows)
 
     const shouldStart = autoStartEnabled && !warmupMode
     if (shouldStart) {
@@ -257,8 +291,10 @@ export async function POST(req: Request) {
       status: 'synced',
       result: {
         campaignId: upsert.campaignId,
+        suppressedLeads: suppressedCount,
         campaignCreated: upsert.created,
-        importedLeads: leadRows.length,
+        dedupedLeads: leadRows.length,
+        importedLeads: filteredRows.length,
         autoStartEnabled,
         warmupMode,
         campaignStarted: shouldStart,
@@ -271,7 +307,9 @@ export async function POST(req: Request) {
         eventKey,
         campaignId: upsert.campaignId,
         campaignCreated: upsert.created,
-        importedLeads: leadRows.length,
+        dedupedLeads: leadRows.length,
+        suppressedLeads: suppressedCount,
+        importedLeads: filteredRows.length,
         campaignStarted: shouldStart,
       },
       { status: 200 }

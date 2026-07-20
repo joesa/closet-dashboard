@@ -159,10 +159,20 @@ function campaignPayloadFromBlueprint(blueprint: CampaignBlueprint): Record<stri
   const fromHour = pad(blueprint.schedule.startHour)
   const toHour = pad(blueprint.schedule.endHour)
 
+  const minGapMins = Math.max(1, Math.ceil(blueprint.safety.minDelaySeconds / 60))
+  const maxExtraMins = Math.max(
+    0,
+    Math.ceil(
+      (blueprint.safety.maxDelaySeconds - blueprint.safety.minDelaySeconds) / 60
+    )
+  )
+
   return {
     name: blueprint.name,
     daily_limit: blueprint.safety.maxDailyPerAccount,
-    random_wait_max: Math.ceil(blueprint.safety.maxDelaySeconds / 60),
+    // Instantly: base gap between emails + optional random add-on (minutes).
+    email_gap: minGapMins,
+    random_wait_max: maxExtraMins,
     campaign_schedule: {
       schedules: [
         {
@@ -266,4 +276,25 @@ export async function startCampaign(campaignId: string): Promise<void> {
   const startPathTemplate = process.env.INSTANTLY_START_CAMPAIGN_PATH || '/campaigns/{campaignId}/activate'
   const path = applyPathTemplate(startPathTemplate, campaignId)
   await instantlyRequest(path, { method: 'POST', body: {} })
+}
+
+/**
+ * Add an email (or domain) to the Instantly workspace block list.
+ * Best-effort: logs and returns false on failure so STOP handling still completes locally.
+ */
+export async function blockLeadInInstantly(email: string): Promise<boolean> {
+  const value = email.trim().toLowerCase()
+  if (!value || !value.includes('@')) return false
+
+  const path = process.env.INSTANTLY_BLOCKLIST_PATH || '/block-lists-entries'
+  try {
+    await instantlyRequest(path, {
+      method: 'POST',
+      body: { bl_value: value },
+    })
+    return true
+  } catch (err) {
+    console.error('Instantly blocklist sync failed for', value, err)
+    return false
+  }
 }
