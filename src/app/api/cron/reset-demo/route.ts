@@ -94,7 +94,7 @@ async function reseed() {
   const { error: settingsErr, data: settingsRow } = await admin
     .from('contractor_settings')
     .update({
-      company_name: 'ClosetQuote Demo Co.',
+      company_name: 'DitchTheForm Demo',
       primary_color_hex: '#0f172a',
       price_drawer: 95,
       price_shoe_rack: 60,

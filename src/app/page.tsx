@@ -16,7 +16,7 @@ import {
   subscriptionBillingDisplay,
   formatUsd,
 } from '@/lib/intake/tiers'
-import { WIDGET_CDN_URL } from '@/lib/urls'
+import { PUBLIC_API_URL, WIDGET_CDN_URL } from '@/lib/urls'
 
 /**
  * "Start Free" / "Start Your 30-Day Free Trial" is ambiguous on its own — the
@@ -337,7 +337,7 @@ export default function LandingPage() {
               <div className="rounded-2xl bg-white overflow-hidden">
                 <closet-quote-widget
                   data-contractor-id={DEMO_CONTRACTOR_ID}
-                  data-api-url="https://closet-dashboard-orcin.vercel.app"
+                  data-api-url={PUBLIC_API_URL}
                 />
               </div>
             </div>
@@ -407,9 +407,13 @@ export default function LandingPage() {
                 options, toggle off what you don&apos;t carry, and protect your margins.
               </p>
 
-              {/* Mini UI mockup */}
+              {/* Mini UI mockup — sample Walk-In Closet rates (matches demo) */}
               <div className="mt-8 grid grid-cols-3 gap-3">
-                {['Basic', 'Standard', 'Premium'].map((tier) => (
+                {[
+                  { tier: 'Basic', price: '$45' },
+                  { tier: 'Standard', price: '$75' },
+                  { tier: 'Premium', price: '$140' },
+                ].map(({ tier, price }) => (
                   <div
                     key={tier}
                     className="rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-3"
@@ -418,7 +422,7 @@ export default function LandingPage() {
                       {tier}
                     </span>
                     <div className="mt-1 font-mono text-lg font-bold text-white/80">
-                      $—
+                      {price}
                     </div>
                     <span className="text-[10px] text-slate-600">/unit</span>
                   </div>
@@ -944,22 +948,28 @@ function PricingSection() {
               name: 'Lumina',
               style: 'Minimalist / Luxury',
               image: '/lumina_mockup.png',
-              link: '#',
+              link: 'https://lumina.closetquotes.com',
             },
             {
               name: 'Ironclad',
               style: 'Bold / Industrial',
               image: '/ironclad_mockup.png',
-              link: '#',
+              link: 'https://ironclad.closetquotes.com',
             },
             {
               name: 'Hearth & Home',
               style: 'Warm / Traditional',
               image: '/hearth_home_mockup.png',
-              link: '#',
+              link: 'https://hearth.closetquotes.com',
             },
           ].map((demo) => (
-            <a key={demo.name} href={demo.link} className="group block">
+            <a
+              key={demo.name}
+              href={demo.link}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="group block"
+            >
               <div className="relative aspect-[4/3] w-full overflow-hidden rounded-2xl border border-white/10 bg-white/[0.02]">
                 <Image
                   src={demo.image}
