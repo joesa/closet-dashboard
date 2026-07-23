@@ -62,17 +62,29 @@ export const DEMO_ALLOWED_ORIGINS: string[] = Array.from(
  * True when the given origin string (typically from `request.headers.get('origin')`
  * or derived from the Referer header) is allowed to call the API on
  * behalf of the demo contractor.
+ *
+ * Exact matches from DEMO_ALLOWED_ORIGINS always pass. Additionally any
+ * `*.closetquotes.com` subdomain (Lumina / Ironclad / Hearth demos) is allowed
+ * so aesthetic storefronts can exercise the shared demo widget.
  */
 export function isAllowedDemoOrigin(origin: string | null | undefined): boolean {
   if (!origin) return false
+  let host: string
   let normalized: string
   try {
     const u = new URL(origin)
-    normalized = `${u.protocol}//${u.host}`.toLowerCase()
+    host = u.host.toLowerCase()
+    normalized = `${u.protocol}//${host}`.replace(/\/+$/, '')
   } catch {
     normalized = origin.toLowerCase().replace(/\/+$/, '')
+    try {
+      host = new URL(normalized).host
+    } catch {
+      host = normalized.replace(/^https?:\/\//, '').split('/')[0] || ''
+    }
   }
-  return DEMO_ALLOWED_ORIGINS.includes(normalized)
+  if (DEMO_ALLOWED_ORIGINS.includes(normalized)) return true
+  return host === 'closetquotes.com' || host.endsWith('.closetquotes.com')
 }
 
 /**
