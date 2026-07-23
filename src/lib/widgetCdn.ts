@@ -9,7 +9,7 @@
 export const DEFAULT_WIDGET_CDN_BASE = 'https://closet-widget.vercel.app/widget.js'
 
 /** Matches closet-widget/package.json version for hard cache-bust. */
-export const DEFAULT_WIDGET_VERSION = '0.1.4'
+export const DEFAULT_WIDGET_VERSION = '0.1.5'
 
 export function withWidgetCacheBust(url: string, version?: string): string {
   const raw = (url || '').trim()

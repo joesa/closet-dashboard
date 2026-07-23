@@ -118,6 +118,17 @@ export default function LandingPage() {
     })
   }, [])
 
+  // Deep-link from demo sticky CTAs / widget success: /?start=free opens the
+  // same "Which one are you?" chooser as the nav Start Free button.
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const params = new URLSearchParams(window.location.search)
+    const hash = window.location.hash.replace(/^#/, '')
+    if (params.get('start') === 'free' || hash === 'start') {
+      setShowStartModal(true)
+    }
+  }, [])
+
   const handleSignOut = async () => {
     await supabaseBrowser.auth.signOut()
     router.refresh()
