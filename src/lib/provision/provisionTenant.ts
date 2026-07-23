@@ -38,6 +38,7 @@ import {
   buildProvisionSignature,
   biasLayoutForEngagement,
 } from '@/lib/provision/siteSignature'
+import { attachVercelDomain } from '@/lib/vercel-domains'
 import {
   buildDefaultAbout,
   buildDefaultProcess,
@@ -433,12 +434,49 @@ export async function provisionTenant(
       is_primary: true,
       ssl_status: 'active',
       source: 'platform_subdomain',
-      vercel_verified: true,
+      vercel_verified: isLocalBase ? true : false,
       status_message: 'Platform subdomain',
     })
     if (domainError) throw domainError
 
-    domainResult = { platformHost, customHost: null, vercel: null }
+    // Platform subdomains must be attached to the websites Vercel project or
+    // browsers hit DEPLOYMENT_NOT_FOUND / ERR_CONNECTION_CLOSED even when DNS
+    // points at 76.76.21.21. BYO/purchased domains go through DomainManager.
+    let vercelAttach: Awaited<ReturnType<typeof attachVercelDomain>> | null = null
+    if (!isLocalBase) {
+      vercelAttach = await attachVercelDomain(platformHost)
+      if (vercelAttach.ok) {
+        await supabase
+          .from('domains')
+          .update({
+            vercel_verified: vercelAttach.verified !== false,
+            status_message: vercelAttach.note === 'already_attached'
+              ? 'Platform subdomain (already on Vercel)'
+              : 'Platform subdomain (attached to Vercel)',
+          })
+          .eq('tenant_id', tenantId)
+          .eq('hostname', platformHost)
+      } else if (vercelAttach.attempted) {
+        console.warn(
+          `[provisionTenant] Vercel attach failed for ${platformHost}:`,
+          vercelAttach.error
+        )
+        await supabase
+          .from('domains')
+          .update({
+            status_message: `Platform subdomain — Vercel attach failed: ${vercelAttach.error || 'unknown'}`,
+          })
+          .eq('tenant_id', tenantId)
+          .eq('hostname', platformHost)
+      } else {
+        console.warn(
+          `[provisionTenant] Skipped Vercel attach for ${platformHost}:`,
+          vercelAttach.error
+        )
+      }
+    }
+
+    domainResult = { platformHost, customHost: null, vercel: vercelAttach }
 
     const primaryHost = domainResult.platformHost
     // Locally, always expose the platform *.localhost URL — custom/desired
