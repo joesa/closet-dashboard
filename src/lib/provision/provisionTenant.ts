@@ -311,8 +311,9 @@ export async function provisionTenant(
       { table: 'contractor_rooms', column: 'contractor_id' },
       { table: 'contractor_addons', column: 'contractor_id' },
       { table: 'contractor_finishes', column: 'contractor_id' },
-      { table: 'contractor_settings', column: 'id' },
+      // tenants.widget_id → contractor_settings(id): delete tenant before settings
       { table: 'tenants', column: 'id' },
+      { table: 'contractor_settings', column: 'id' },
     ]
     for (const step of teardown) {
       const { error: delErr } = await supabase
