@@ -540,8 +540,8 @@ export default function LandingPage() {
           using contact forms.
         </h2>
         <p className="mx-auto mt-6 max-w-md text-slate-400">
-          Give customers an instant, interactive quote — and watch your close
-          rate climb.
+          Replace dead forms with interactive quotes, bookings, and orders —
+          then get the lead on your phone.
         </p>
         <button
           type="button"
