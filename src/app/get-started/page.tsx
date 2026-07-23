@@ -159,6 +159,7 @@ function GetStartedForm() {
             <div
               className="cf-turnstile"
               data-sitekey={siteKey}
+              data-action="turnstile-spin-v2"
             />
           )}
 

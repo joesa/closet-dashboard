@@ -2,15 +2,18 @@
  * Cloudflare Turnstile verification for public intake/signup forms.
  *
  * Behavior when keys are missing:
- * - No TURNSTILE_SECRET_KEY → verification is skipped (allow). This keeps
- *   get-started working in environments that have not configured Turnstile yet.
+ * - No TURNSTILE_SECRET / TURNSTILE_SECRET_KEY → verification is skipped (allow).
+ *   This keeps get-started working in environments that have not configured Turnstile yet.
  * - Secret set but token empty/invalid → reject.
+ *
+ * Prefers Spin's `TURNSTILE_SECRET`; falls back to legacy `TURNSTILE_SECRET_KEY`.
  */
 export async function verifyTurnstileToken(token: string, remoteIp?: string): Promise<boolean> {
-  const secret = process.env.TURNSTILE_SECRET_KEY?.trim()
+  const secret =
+    process.env.TURNSTILE_SECRET?.trim() || process.env.TURNSTILE_SECRET_KEY?.trim()
   if (!secret) {
     console.warn(
-      '[turnstile] TURNSTILE_SECRET_KEY is not set — skipping captcha verification'
+      '[turnstile] TURNSTILE_SECRET is not set — skipping captcha verification'
     )
     return true
   }
