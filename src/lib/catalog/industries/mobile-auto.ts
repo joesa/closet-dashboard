@@ -31,15 +31,15 @@ export const MOBILE_AUTO_SERVICES: ServiceDef[] = [
   auto(
     'Mobile Auto Detailing',
     'Detailing',
-    ['swift-mobile', 'sleek-entertainment', 'luxury-minimal', 'garage-industrial'],
+    ['swift-mobile', 'fresh-clean', 'luxury-minimal', 'garage-industrial'],
     ['visual-impact', 'portfolio-first', 'gallery-showcase', 'conversion-focus'],
     { image: DETAIL_IMG, description: 'Showroom-quality detailing at your home or office parking lot.' },
-    ['auto detail', 'car detail', 'mobile detail', 'car wash', 'paint correction']
+    ['auto detail', 'car detail', 'mobile detail', 'paint correction']
   ),
   auto(
     'Ceramic Coating',
     'Detailing',
-    ['luxury-minimal', 'swift-mobile', 'sleek-entertainment', 'modern-office'],
+    ['luxury-minimal', 'swift-mobile', 'fresh-clean', 'modern-office'],
     ['visual-impact', 'gallery-showcase', 'portfolio-first', 'conversion-focus'],
     { image: DETAIL_IMG, description: 'Professional-grade ceramic coating for years of paint protection.' },
     ['ceramic coat', 'paint protection', 'ppf', 'nano coating']
@@ -87,7 +87,7 @@ export const MOBILE_AUTO_SERVICES: ServiceDef[] = [
   auto(
     'Mobile Dent & Scratch Repair',
     'Body Work',
-    ['swift-mobile', 'luxury-minimal', 'sleek-entertainment', 'garage-industrial'],
+    ['swift-mobile', 'luxury-minimal', 'fresh-clean', 'garage-industrial'],
     ['before-after', 'portfolio-first', 'gallery-showcase', 'conversion-focus'],
     { image: AUTO_IMG, description: 'Paintless dent repair and scratch touch-ups done at your door.' },
     ['dent repair', 'pdr', 'paintless dent', 'scratch repair', 'door ding']
@@ -95,7 +95,7 @@ export const MOBILE_AUTO_SERVICES: ServiceDef[] = [
   auto(
     'Window Tinting',
     'Detailing',
-    ['swift-mobile', 'sleek-entertainment', 'luxury-minimal', 'garage-industrial'],
+    ['swift-mobile', 'fresh-clean', 'luxury-minimal', 'garage-industrial'],
     ['visual-impact', 'gallery-showcase', 'portfolio-first', 'conversion-focus'],
     { image: DETAIL_IMG, description: 'Ceramic and film window tinting for privacy, heat rejection, and style.' },
     ['window tint', 'window tinting', 'ceramic tint', 'window film', 'tint install']
