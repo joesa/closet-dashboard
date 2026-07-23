@@ -183,7 +183,7 @@ export async function provisionTenant(
     menuItems,
     designVariant,
     subdomain,
-    ownerEmail,
+    ownerEmail: rawOwnerEmail,
     heroHeadline,
     aboutDescription,
     heroImage,
@@ -247,13 +247,19 @@ export async function provisionTenant(
   const isWidgetOnly = mode === 'widget'
 
   const missingRequired = isWidgetOnly
-    ? !businessName || !ownerEmail
-    : !businessName || !theme || !subdomain || !ownerEmail
+    ? !businessName || !rawOwnerEmail
+    : !businessName || !theme || !subdomain || !rawOwnerEmail
   if (missingRequired) {
     throw new Error('Missing required fields')
   }
 
   const supabase = getSupabaseAdmin()
+  const ownerEmail = String(rawOwnerEmail || '')
+    .trim()
+    .toLowerCase()
+  if (!ownerEmail) {
+    throw new Error('Missing required fields')
+  }
 
   // Guarantee same-trade sites don't collide on a theme — even when two are
   // created before either deploys (the load-time recommendation can't see a
@@ -296,14 +302,39 @@ export async function provisionTenant(
     .maybeSingle()
   if (existingTenant) {
     // Tear down the previous tenant so the admin can redeploy cleanly.
+    // Check every delete — silent failures used to leave the row in place and
+    // the following insert then blew up with tenants_owner_email_key (23505).
     const oldId = existingTenant.id
-    await supabase.from('site_configs').delete().eq('tenant_id', oldId)
-    await supabase.from('domains').delete().eq('tenant_id', oldId)
-    await supabase.from('contractor_rooms').delete().eq('contractor_id', oldId)
-    await supabase.from('contractor_addons').delete().eq('contractor_id', oldId)
-    await supabase.from('contractor_finishes').delete().eq('contractor_id', oldId)
-    await supabase.from('contractor_settings').delete().eq('id', oldId)
-    await supabase.from('tenants').delete().eq('id', oldId)
+    const teardown: Array<{ table: string; column: string }> = [
+      { table: 'site_configs', column: 'tenant_id' },
+      { table: 'domains', column: 'tenant_id' },
+      { table: 'contractor_rooms', column: 'contractor_id' },
+      { table: 'contractor_addons', column: 'contractor_id' },
+      { table: 'contractor_finishes', column: 'contractor_id' },
+      { table: 'contractor_settings', column: 'id' },
+      { table: 'tenants', column: 'id' },
+    ]
+    for (const step of teardown) {
+      const { error: delErr } = await supabase
+        .from(step.table)
+        .delete()
+        .eq(step.column, oldId)
+      if (delErr) {
+        throw new Error(
+          `Failed to tear down ${step.table} for ${ownerEmail}: ${delErr.message}`
+        )
+      }
+    }
+    const { data: stillThere } = await supabase
+      .from('tenants')
+      .select('id')
+      .eq('owner_email', ownerEmail)
+      .maybeSingle()
+    if (stillThere) {
+      throw new ProvisionReviewError(
+        `A site already exists for ${ownerEmail} and could not be replaced. Delete it in Admin → Sites first.`
+      )
+    }
     console.log(`Redeploy: tore down previous tenant ${oldId} for ${ownerEmail}`)
   }
 
@@ -370,7 +401,14 @@ export async function provisionTenant(
     subscription_status: 'active',
     site_status: siteStatus,
   })
-  if (tenantError) throw tenantError
+  if (tenantError) {
+    if ((tenantError as { code?: string }).code === '23505') {
+      throw new ProvisionReviewError(
+        `A site already exists for ${ownerEmail}. Open Admin → Sites to manage or delete it before provisioning again.`
+      )
+    }
+    throw tenantError
+  }
 
   let siteUrl: string | null = null
   let domainResult: ProvisionTenantResult['domain'] = null
