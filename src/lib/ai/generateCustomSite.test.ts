@@ -107,30 +107,76 @@ describe('assessFullRedesignCraft', () => {
         pages: { '/': { html: '<header></header><h1>Hi</h1>' } },
       },
       serviceCount: 3,
-      brief: 'wraps and mechanical',
+      brief: 'mobile detailing in clarksville',
     })
     expect(tips.some((t) => /thin/i.test(t))).toBe(true)
-    expect(tips.some((t) => /CSS variables/i.test(t))).toBe(true)
+    expect(tips.some((t) => /CSS variables|token/i.test(t))).toBe(true)
     expect(tips.some((t) => /Google Fonts/i.test(t))).toBe(true)
-    expect(tips.some((t) => /dual-lane/i.test(t))).toBe(true)
+    // Multiple services alone must NOT imply dual-lane
+    expect(tips.some((t) => /dual-lane|second accent/i.test(t))).toBe(false)
+  })
+
+  it('only hints dual-lane when the brief is explicitly dual-discipline', () => {
+    const tips = assessFullRedesignCraft({
+      config: {
+        mode: 'inline',
+        globalCss: ':root{--bg:#fff;--acc:#111}',
+        pages: {
+          '/': {
+            html: `<link href="https://fonts.googleapis.com/css2?family=Manrope&display=swap" rel="stylesheet">
+<section></section><section></section><section></section><section></section>`,
+          },
+        },
+      },
+      serviceCount: 6,
+      brief: 'vinyl wraps and mechanical brake repair under one roof',
+    })
+    expect(tips.some((t) => /two distinct lanes|second accent/i.test(t))).toBe(true)
+  })
+
+  it('flags dark+neon AI default when brief did not ask for it', () => {
+    const tips = assessFullRedesignCraft({
+      config: {
+        mode: 'inline',
+        globalCss: ':root{--ink:#0b0d0f;--acc:#c8f23c}',
+        pages: {
+          '/': {
+            html: `<link href="https://fonts.googleapis.com/css2?family=Manrope&display=swap" rel="stylesheet">
+<section></section><section></section><section></section><section></section>`,
+          },
+        },
+      },
+      brief: 'friendly family plumbing',
+    })
+    expect(tips.some((t) => /dark \+ neon|AI default/i.test(t))).toBe(true)
   })
 
   it('stays quiet for a token-rich multi-section home', () => {
     const tips = assessFullRedesignCraft({
       config: {
         mode: 'inline',
-        globalCss: ':root{--ink:#000;--panel:#111;--acc:#0ff;--acc2:#fc0}',
+        globalCss: ':root{--bg:#f7f4ef;--surface:#fff;--acc:#1a5f4a}',
         pages: {
           '/': {
             html: `<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope&display=swap">
 <section></section><section></section><section></section><section></section>
-<a class="btn-cy">A</a><a class="btn-gd">B</a>`,
+<a class="btn">Get a quote</a>`,
           },
         },
       },
       serviceCount: 4,
-      brief: 'wraps and mechanical',
+      brief: 'warm coastal cleaning',
     })
     expect(tips).toEqual([])
+  })
+})
+
+describe('full redesign anti-AI bias', () => {
+  it('prompt bans dark-neon auto default and Vantage cyan/gold example', () => {
+    const src = readFileSync(join(__dirname, 'generateCustomSite.ts'), 'utf8')
+    expect(src).toContain('NEVER default to dark charcoal + neon lime/cyan/gold')
+    expect(src).toContain('Do NOT converge on "premium dark local trade"')
+    expect(src).not.toContain('cyan = how it looks / gold = how it runs')
+    expect(src).not.toContain('carbon-ish overlay')
   })
 })

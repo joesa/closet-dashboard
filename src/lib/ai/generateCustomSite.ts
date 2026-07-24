@@ -595,6 +595,7 @@ export function extractCssAccent(css: string): string | null {
 
 /**
  * Soft craft checks after Full redesign — tips for the admin, never blocking.
+ * Avoid heuristics that push every multi-service site into a dual-lane / dark-neon look.
  */
 export function assessFullRedesignCraft(opts: {
   config: CustomSiteConfig
@@ -606,6 +607,7 @@ export function assessFullRedesignCraft(opts: {
     opts.config.pages['/']?.html || opts.config.pages['']?.html || ''
   const globalCss = opts.config.globalCss || ''
   const brief = (opts.brief || '').toLowerCase()
+  const blob = `${globalCss}\n${home}`.toLowerCase()
 
   const sectionCount = (home.match(/<section\b/gi) || []).length
   const landmarkCount =
@@ -619,7 +621,7 @@ export function assessFullRedesignCraft(opts: {
 
   if (!/--[a-zA-Z][\w-]*\s*:/.test(globalCss)) {
     warnings.push(
-      'globalCss has few/no CSS variables — Full redesign should emit --ink/--panel/--acc (and friends) as a design system.'
+      'globalCss has few/no CSS variables — Full redesign should emit a small token set (surfaces, text, accent) as a design system.'
     )
   }
 
@@ -634,16 +636,38 @@ export function assessFullRedesignCraft(opts: {
     )
   }
 
-  const dualLaneHint =
-    (opts.serviceCount ?? 0) >= 2 ||
-    /\b(and|&|\/|plus|both|dual|two)\b/.test(brief) ||
-    /\b(wrap|aesthetic).{0,40}(mech|brake|repair|maintenance)\b/i.test(brief) ||
-    /\b(mech|brake|repair|maintenance).{0,40}(wrap|aesthetic|ppf|tint)\b/i.test(brief)
-  const accentVars = globalCss.match(/--acc(?:ent|2)?\b/gi) || []
-  const btnClasses = (home.match(/btn-[a-z0-9-]+/gi) || []).length
-  if (dualLaneHint && accentVars.length < 2 && btnClasses < 2) {
+  // Only treat as dual-lane when the brief clearly describes two distinct businesses/lanes —
+  // NOT merely "2+ services" (that would cookie-cutter every plumber/detailer).
+  const explicitDualLane =
+    /\b(dual[- ]?(lane|offer|audience)|two (disciplines|lanes|sides|businesses)|under one roof\b.{0,40}\b(and|plus)\b)/i.test(
+      brief
+    ) ||
+    /\b(wrap|ppf|tint|aesthetic).{0,50}(mech|mechanical|brake|repair|maintenance)\b/i.test(
+      brief
+    ) ||
+    /\b(mech|mechanical|brake|repair|maintenance).{0,50}(wrap|ppf|tint|aesthetic)\b/i.test(
+      brief
+    )
+  if (explicitDualLane) {
+    const accentVars = globalCss.match(/--acc(?:ent|2)?\b/gi) || []
+    const btnClasses = (home.match(/btn-[a-z0-9-]+/gi) || []).length
+    if (accentVars.length < 2 && btnClasses < 2) {
+      warnings.push(
+        'Brief describes two distinct lanes but home may lack a second accent/CTA — worth a surgical pass if that was intentional.'
+      )
+    }
+  }
+
+  // Flag the common AI default skin (does not fail the job).
+  const darkBase =
+    /#(0[0-2][0-9a-f]{4}|0b0d0f|0b0d10|111827|0a0a0a)\b/i.test(globalCss) ||
+    /--(?:ink|bg|background)\s*:\s*#(0|1)[0-9a-f]{5}/i.test(globalCss)
+  const neonAccent =
+    /#(c8f23c|a3e635|84cc16|3fe3ff|22d3ee|e5b34a|fbbf24)\b/i.test(blob) ||
+    /lime|neon cyan|glacier cyan|battle gold/i.test(blob)
+  if (darkBase && neonAccent && !/dark\s*mode|neon|charcoal|lime|cyan/i.test(brief)) {
     warnings.push(
-      'Brief/catalog looks dual-lane but the home may lack a second accent/CTA treatment — dual gateway CTAs often convert better.'
+      'Home leans on a dark + neon-accent palette (common AI default). If that was not the brief, try a redesign brief with an explicit light/warm/editorial direction.'
     )
   }
 
@@ -700,38 +724,38 @@ Whenever you receive a Full redesign request, follow this layered pipeline INTER
    - Intake services are the baseline catalog — keep every one unless the brief explicitly removes/replaces it. If the creative brief names additional sellable services or packages, ADD them to the site and report them in serviceUpdates.added.
 
 2. SIGNATURE CONCEPT (required — invent one crisp line before any CSS)
-   - Distill the brand into a memorable one-line concept that drives the whole design (e.g. dual-lane "cyan = how it looks / gold = how it runs", or a single editorial metaphor).
-   - Dual-offer / dual-audience businesses → dual accent colors + dual gateway CTAs/sections.
-   - Single-offer businesses → one accent + a strong editorial metaphor.
-   - The concept MUST shape logo treatment, CTA pair, section rhythm, and a footer tagline.
+   - Distill THIS brand into a memorable one-line concept that drives the whole design. Examples of *variety* (do NOT copy these looks): "sunlit porch hospitality", "Swiss grid utility", "quiet gallery luxury", "workshop honesty".
+   - Dual-accent / dual-gateway layouts ONLY when the business truly has two distinct offerings or audiences (e.g. wraps studio + mechanical shop). Having several related services (oil + brakes + tires) is NOT dual-lane — use one accent and one coherent catalog.
+   - The concept MUST shape logo treatment, CTAs, section rhythm, and footer — without recycling a previous site's metaphor.
    - State this signature concept clearly in the JSON "reply" field so the admin can see it.
+   - NEVER default to dark charcoal + neon lime/cyan/gold "auto shop AI" skin unless the brief explicitly asks for that.
 
 3. DESIGN FRAMEWORK SELECTION (creative direction)
-   - If the admin provided a creative brief and/or reference images, that brief is the PRIMARY design direction. It may completely redirect the aesthetic (e.g. brutalist, Swiss editorial, cinematic luxury, heritage, industrial, coastal, etc.).
+   - If the admin provided a creative brief and/or reference images, that brief is the PRIMARY design direction. It may completely redirect the aesthetic (e.g. brutalist, Swiss editorial, cinematic luxury, heritage, industrial, coastal, light airy, warm paper, etc.).
    - Absorb the brief into this pipeline: translate it into a concrete design language, tokens, grid, and components — do not ignore it, and do not treat it as optional flavor text.
-   - If there is no brief, choose the strongest framework for THIS business (premium local trade → warm editorial; luxury → cinematic minimal; studio → Swiss/grid; heritage → classic serif editorial).
-   - Craft bar: Stripe, Linear, Vercel, Notion, Apple, high-end independent studios — but never dress a local service business as a SaaS product unless the brief explicitly asks for that.
+   - If there is no brief, choose the strongest framework for THIS trade and locality — deliberately vary light vs dark, warm vs cool, quiet vs bold. Do NOT converge on "premium dark local trade" by default.
+   - Craft bar: real independent studios and brand sites in this trade — not a SaaS landing page, not a cloned auto-wrap template.
 
-4. DESIGN SYSTEM / TOKENS (emit ALL of these on :root in globalCss)
-   - Surfaces: --ink (page bg), --panel (raised), --line (hairlines), --txt, --mut (muted text).
-   - Accents: --acc (primary). Optional --acc2 when dual-lane. Use them on CTAs, eyebrows, seams — not random purple SaaS gradients.
-   - Type: --df (display), --bf (body), optional --mono (eyebrows/captions). Pair characterful Google Fonts only.
-   - Shared primitives in globalCss: .wrap, .eyebrow, .btn (+ accent variants), sticky site header, designed footer.
-   - At least ONE atmospheric device: subtle texture/grain, diagonal seam, carbon-ish overlay, or a full-bleed photo hero — never neon glassmorphism clichés.
+4. DESIGN SYSTEM / TOKENS (emit a coherent :root set in globalCss)
+   - Surfaces + text: pick names that fit the concept (e.g. --bg/--surface/--line/--text/--muted OR --paper/--ink). Light themes are first-class — do not assume --ink means near-black.
+   - Accents: one primary (--acc). Add a second accent ONLY for true dual-lane concepts.
+   - Type: --df (display), --bf (body); optional mono ONLY if it fits the concept (tech/industrial) — do not force mono eyebrows on every site.
+   - Shared primitives: .wrap, .eyebrow, .btn (+ variants), sticky header, designed footer.
+   - At least ONE atmospheric device suited to the concept (paper grain, soft wash, photo bleed, hairline grid, airy whitespace) — never mandatory carbon texture, skewed buttons, or neon seams.
 
 5. LAYOUT & GRID ARCHITECTURE
-   - 12-column responsive grid; varied section rhythm; generous whitespace; mobile collapses at ~768px and ~420px.
-   - Visual hierarchy: oversized display headlines, ~65ch body measure.
+   - Responsive grid; varied section rhythm; intentional whitespace; mobile collapses at ~768px and ~420px.
+   - Hierarchy that fits the concept — oversized display is one option, not a requirement for every brand.
 
 6. COMPONENT LIBRARY
-   - Header/nav, hero, service gateway/cards, process, gallery/proof, conversion band (engagement engine mount), footer — designed once, reused on every page.
+   - Header/nav, hero, services treatment, process/proof, conversion band (engagement engine mount), footer — designed once, reused on every page. Card grids are allowed only when they aid scanning; do not default to three identical soft-shadow cards.
 
 7. PAGE / SECTION ARCHITECTURE
    - Build EVERY page in the required paths list. Reuse the same header + footer chrome.
-   - Home section recipe (adapt to the brief; do not pad with empty filler):
-     1) Sticky branded header
-     2) Hero with one sharp promise + dual CTAs when dual-lane (else one primary + tel)
-     3) Service gateway / catalog covering ALL intake + brief-added services
+   - Home rhythm (adapt freely; do not pad with empty filler):
+     1) Branded header
+     2) Hero with one sharp promise + primary CTA (add a second CTA only when dual-lane is real)
+     3) Services catalog covering ALL intake + brief-added services (gateway, list, or editorial — pick what fits)
      4) Proof / gallery from REAL mediaLibrary / service / intake image URLs only
      5) Process / why-us using only facts from context (no invented ratings)
      6) Conversion band mounting the engagement engine
@@ -795,17 +819,19 @@ PLATFORM CONSTRAINTS (the renderer enforces these — violations get stripped an
 - Mobile-first; collapses cleanly at ~768px and ~420px.
 
 ANTI-AI-LOOK RULES — instant failures:
-- Purple/indigo/teal SaaS gradients, glassmorphism, neon glows (unless the brief explicitly demands a related look — still avoid cliché AI defaults).
+- Purple/indigo/teal SaaS gradients, glassmorphism, neon glows.
+- Defaulting every local business to dark charcoal (#0b0d0f-ish) + neon lime/cyan/gold accents, carbon texture, skewed italic CTAs, or "Pick your lane" dual gateways — unless the brief explicitly asks for that vibe.
 - Emoji as icons; three identical soft-shadow cards on every section; center-aligning everything.
-- Default display faces (Inter, Poppins, Roboto, system-ui).
+- Default display faces (Inter, Poppins, Roboto, system-ui) and overused AI pairings reused on every site (e.g. always Big Shoulders / Space Grotesk / Syne).
 - Clichés: "Elevate your…", "Unlock", "Seamless", "Look no further", "We've got you covered", "Your one-stop shop".
 - Invented testimonials, ratings, stats, awards, or years-in-business — only facts from context.
 - Lorem ipsum or TODO placeholders.
+- Copying Stripe/Linear SaaS chrome onto a local service business.
 
 INSTEAD, ALWAYS:
-- Characterful Google Fonts pairing chosen for THIS brief/brand; oversized editorial headlines; ~65ch body measure.
-- Signature concept carried through accents, CTAs, and footer; neutrals from the brand world; at least one full-bleed photo moment from provided URLs when available.
-- Varied section rhythm, asymmetric splits, generous whitespace, designed footer.
+- A concept unique to THIS brand/trade/locality; light or dark chosen on purpose (not by habit).
+- Characterful Google Fonts pairing for THIS brief; readable body (~65ch); hierarchy that fits the concept.
+- Neutrals from the brand world; real photography from provided URLs when available; varied section rhythm; designed footer.
 
 SIZE BUDGET (hard): globalCss ≤ 11000 chars. Home html ≤ 14000 chars. Other pages ≤ 7000 chars each. Total ≤ 55000 chars. JSON must be complete and valid.`
 
@@ -817,7 +843,7 @@ ${
     ? adminBrief
     : hasImages
       ? 'No text brief — use the attached reference image(s) as the primary creative direction.'
-      : 'No admin brief — choose the strongest design framework for this business and execute at the highest craft level.'
+      : 'No admin brief — invent a distinctive concept for THIS trade/locality. Deliberately avoid the common AI default of dark charcoal + neon accents unless that truly fits.'
 }
 ${hasImages ? `\nReference images attached: ${opts.images!.length}. Study them as part of the brief.\n` : ''}
 === NON-NEGOTIABLE PRODUCT FACTS (always keep, regardless of brief) ===
