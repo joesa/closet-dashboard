@@ -473,6 +473,15 @@ export async function generateCustomSiteDraft(opts: {
         )
       }
     }
+    warnings.push(
+      ...assessFullRedesignCraft({
+        config: sanitized,
+        serviceCount: mergeResult.products.filter(
+          (p) => typeof p.title === 'string' && p.title.trim()
+        ).length,
+        brief: opts.prompt,
+      })
+    )
   }
 
   const siteUpdate: Record<string, unknown> = {
@@ -584,6 +593,64 @@ export function extractCssAccent(css: string): string | null {
   return m?.[1] || null
 }
 
+/**
+ * Soft craft checks after Full redesign — tips for the admin, never blocking.
+ */
+export function assessFullRedesignCraft(opts: {
+  config: CustomSiteConfig
+  serviceCount?: number
+  brief?: string
+}): string[] {
+  const warnings: string[] = []
+  const home =
+    opts.config.pages['/']?.html || opts.config.pages['']?.html || ''
+  const globalCss = opts.config.globalCss || ''
+  const brief = (opts.brief || '').toLowerCase()
+
+  const sectionCount = (home.match(/<section\b/gi) || []).length
+  const landmarkCount =
+    sectionCount +
+    (home.match(/<(header|main|footer)\b/gi) || []).length
+  if (sectionCount < 4 && landmarkCount < 5) {
+    warnings.push(
+      'Home looks thin (few sections) — consider Preview and a surgical pass to deepen the hero → services → proof → conversion rhythm.'
+    )
+  }
+
+  if (!/--[a-zA-Z][\w-]*\s*:/.test(globalCss)) {
+    warnings.push(
+      'globalCss has few/no CSS variables — Full redesign should emit --ink/--panel/--acc (and friends) as a design system.'
+    )
+  }
+
+  const hasFontsLink =
+    /fonts\.googleapis\.com/i.test(home) ||
+    Object.values(opts.config.pages || {}).some((p) =>
+      /fonts\.googleapis\.com/i.test(p?.html || '')
+    )
+  if (!hasFontsLink) {
+    warnings.push(
+      'No Google Fonts <link> detected on pages — display/body pairing may fall back to system fonts.'
+    )
+  }
+
+  const dualLaneHint =
+    (opts.serviceCount ?? 0) >= 2 ||
+    /\b(and|&|\/|plus|both|dual|two)\b/.test(brief) ||
+    /\b(wrap|aesthetic).{0,40}(mech|brake|repair|maintenance)\b/i.test(brief) ||
+    /\b(mech|brake|repair|maintenance).{0,40}(wrap|aesthetic|ppf|tint)\b/i.test(brief)
+  const accentVars = globalCss.match(/--acc(?:ent|2)?\b/gi) || []
+  const btnClasses = (home.match(/btn-[a-z0-9-]+/gi) || []).length
+  if (dualLaneHint && accentVars.length < 2 && btnClasses < 2) {
+    warnings.push(
+      'Brief/catalog looks dual-lane but the home may lack a second accent/CTA treatment — dual gateway CTAs often convert better.'
+    )
+  }
+
+  return warnings
+}
+
+
 async function runFullGenerate(opts: {
   brandName: string
   prompt: string
@@ -629,33 +696,50 @@ Whenever you receive a Full redesign request, follow this layered pipeline INTER
 
 1. PRODUCT UNDERSTANDING
    - Identify product type, target audience, goals, and key features from the business context.
-   - The conversion goal is ALWAYS the embedded engagement engine (${engagementLabel}).
+   - The conversion goal is ALWAYS the embedded engagement engine (${engagementLabel}) — never invent HTML forms, multi-step estimators, or booking wizards.
    - Intake services are the baseline catalog — keep every one unless the brief explicitly removes/replaces it. If the creative brief names additional sellable services or packages, ADD them to the site and report them in serviceUpdates.added.
 
-2. DESIGN FRAMEWORK SELECTION (creative direction)
+2. SIGNATURE CONCEPT (required — invent one crisp line before any CSS)
+   - Distill the brand into a memorable one-line concept that drives the whole design (e.g. dual-lane "cyan = how it looks / gold = how it runs", or a single editorial metaphor).
+   - Dual-offer / dual-audience businesses → dual accent colors + dual gateway CTAs/sections.
+   - Single-offer businesses → one accent + a strong editorial metaphor.
+   - The concept MUST shape logo treatment, CTA pair, section rhythm, and a footer tagline.
+   - State this signature concept clearly in the JSON "reply" field so the admin can see it.
+
+3. DESIGN FRAMEWORK SELECTION (creative direction)
    - If the admin provided a creative brief and/or reference images, that brief is the PRIMARY design direction. It may completely redirect the aesthetic (e.g. brutalist, Swiss editorial, cinematic luxury, heritage, industrial, coastal, etc.).
    - Absorb the brief into this pipeline: translate it into a concrete design language, tokens, grid, and components — do not ignore it, and do not treat it as optional flavor text.
    - If there is no brief, choose the strongest framework for THIS business (premium local trade → warm editorial; luxury → cinematic minimal; studio → Swiss/grid; heritage → classic serif editorial).
    - Craft bar: Stripe, Linear, Vercel, Notion, Apple, high-end independent studios — but never dress a local service business as a SaaS product unless the brief explicitly asks for that.
 
-3. DESIGN SYSTEM / TOKENS
-   - Colors (primary, secondary, accent, dark/light), typography scale, spacing, radius, shadows.
-   - Emit as CSS variables on :root in globalCss and use them everywhere.
+4. DESIGN SYSTEM / TOKENS (emit ALL of these on :root in globalCss)
+   - Surfaces: --ink (page bg), --panel (raised), --line (hairlines), --txt, --mut (muted text).
+   - Accents: --acc (primary). Optional --acc2 when dual-lane. Use them on CTAs, eyebrows, seams — not random purple SaaS gradients.
+   - Type: --df (display), --bf (body), optional --mono (eyebrows/captions). Pair characterful Google Fonts only.
+   - Shared primitives in globalCss: .wrap, .eyebrow, .btn (+ accent variants), sticky site header, designed footer.
+   - At least ONE atmospheric device: subtle texture/grain, diagonal seam, carbon-ish overlay, or a full-bleed photo hero — never neon glassmorphism clichés.
 
-4. LAYOUT & GRID ARCHITECTURE
-   - 12-column responsive grid, hero / features / services / conversion / footer.
-   - Visual hierarchy, whitespace, mobile adjustments, varied section rhythm.
+5. LAYOUT & GRID ARCHITECTURE
+   - 12-column responsive grid; varied section rhythm; generous whitespace; mobile collapses at ~768px and ~420px.
+   - Visual hierarchy: oversized display headlines, ~65ch body measure.
 
-5. COMPONENT LIBRARY
-   - Header/nav, hero, service rows/cards, process, gallery, CTA/conversion band (engagement engine mount), footer — designed once, reused coherently.
+6. COMPONENT LIBRARY
+   - Header/nav, hero, service gateway/cards, process, gallery/proof, conversion band (engagement engine mount), footer — designed once, reused on every page.
 
-6. PAGE ARCHITECTURE
-   - Build EVERY page in the required paths list.
-   - Use ALL intake content (context.intakePages + context.services): sharpen copy, never drop services, facts, or client-submitted sections unless the brief explicitly removes a service.
-   - Feature intake services PLUS any brief-added services on home and the services page.
-   - Home must include a designed conversion section that mounts the engagement engine.
+7. PAGE / SECTION ARCHITECTURE
+   - Build EVERY page in the required paths list. Reuse the same header + footer chrome.
+   - Home section recipe (adapt to the brief; do not pad with empty filler):
+     1) Sticky branded header
+     2) Hero with one sharp promise + dual CTAs when dual-lane (else one primary + tel)
+     3) Service gateway / catalog covering ALL intake + brief-added services
+     4) Proof / gallery from REAL mediaLibrary / service / intake image URLs only
+     5) Process / why-us using only facts from context (no invented ratings)
+     6) Conversion band mounting the engagement engine
+     7) Footer with real contact from seo context
+   - Services (or equivalent) page: deep coverage of every service. Contact: tel:/mailto: + hours/address + optional second widget mount — NEVER an HTML form.
+   - Use ALL intake content (context.intakePages + context.services): sharpen copy; never drop client facts unless the brief explicitly removes a service.
 
-7. FINAL OUTPUT — only the JSON schema below. Nothing else.
+8. FINAL OUTPUT — only the JSON schema below. Nothing else.
 
 NON-NEGOTIABLE (override aesthetic freedom — the brief cannot remove these):
 - SERVICES: include every intake service from context.services${
@@ -665,8 +749,15 @@ NON-NEGOTIABLE (override aesthetic freedom — the brief cannot remove these):
   }. Feature them on home and dedicate real coverage on the services page (or equivalent). You MAY add services the creative brief explicitly introduces (packages, tiers sold as offerings, etc.) — list those only in serviceUpdates.added. Do NOT drop intake services unless the brief explicitly says to remove/replace them — then list those titles in serviceUpdates.removed with a short reason citing the brief. Never invent unrelated services that the brief did not mention.
 - ENGAGEMENT ENGINE: this site uses a "${engagementLabel}" (${engagementModel}). Embed EXACTLY this HTML comment on the home page (literal characters, NO attributes):
   ${WIDGET_PLACEHOLDER}
-  Place it inside the designed conversion / estimate / book / order section. Optionally repeat on contact. The mount must be transparent and flush — NEVER paint background, border, box-shadow, or heavy padding on the element containing the comment (the widget paints its own card). Extra services from the brief must still be featured on the marketing site; the platform will sync them into the engagement engine separately.
+  Place it inside the designed conversion / estimate / book / order section. Optionally repeat on contact. The mount must be transparent and flush — NEVER paint background, border, box-shadow, or heavy padding on the element containing the comment (the widget paints its own card). Map any "quote estimator", "book a bay", or multi-step form from a brief onto this conversion band + tel CTA — do NOT emit HTML forms.
 - INTAKE PAGES & COPY: ship EXACTLY these paths: ${opts.pageHints}. Preserve client facts from intakePages / about / seo; rewrite for sharpness, never invent testimonials/stats/awards.
+
+ALLOWED INTERACTIVITY (CSS-only — scripts are stripped and wasted):
+- :hover / :focus-within lifts, sticky nav, scroll-behavior, CSS transitions/keyframes.
+- details/summary for FAQ or process expanders.
+- :target or checkbox+sibling patterns for simple tab/filter UIs (no JavaScript).
+- Static before/after IMAGE PAIRS (side-by-side or stacked with Before/After labels) when two real photo URLs exist; otherwise skip.
+- FORBIDDEN (will be stripped): <script>, on* handlers, <form>, range-driven before/after sliders, SVG painters/visualizers driven by JS, multi-step quote/booking wizards. Prefer the engagement engine instead.
 
 ${
   hasImages
@@ -690,12 +781,12 @@ Output ONLY valid JSON matching this schema (no markdown fences):
     "added": [{ "title": "New service from brief", "description": "optional short description" }],
     "removed": [{ "title": "Only when brief explicitly removes it", "reason": "explicit brief instruction: ..." }]
   },
-  "reply": "3-5 sentences for the admin: how you interpreted their brief, the design direction, palette/type pairing, confirmation that intake services + any brief-added services + ${engagementLabel} are present"
+  "reply": "3-5 sentences: state the signature concept, design direction, palette/type pairing, and confirm intake services + any brief-added services + ${engagementLabel} are present"
 }
 
 PLATFORM CONSTRAINTS (the renderer enforces these — violations get stripped and break the site):
 - HTML is BODY CONTENT ONLY — no <html>/<head>/<body> wrappers. Semantic tags (header, nav, main, section, footer).
-- STRIPPED BY SANITIZER: <script>, <iframe>, <object>, <embed>, <form>, all on* attributes, javascript: URLs. There is NO JavaScript. All interactivity must be pure CSS (:hover, :focus-within, details/summary, CSS transitions, scroll-behavior).
+- STRIPPED BY SANITIZER: <script>, <iframe>, <object>, <embed>, <form>, all on* attributes, javascript: URLs. There is NO JavaScript.
 - Contact uses tel:/mailto: + address/hours + engagement widget — NEVER an HTML form.
 - CSS is scoped at render (:root/html/body → wrapper). No @import. @media, @keyframes, @font-face are fine.
 - FONTS: <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=...&display=swap"> as the FIRST element of EVERY page's html.
@@ -713,10 +804,10 @@ ANTI-AI-LOOK RULES — instant failures:
 
 INSTEAD, ALWAYS:
 - Characterful Google Fonts pairing chosen for THIS brief/brand; oversized editorial headlines; ~65ch body measure.
-- One signature accent; neutrals from the brand world; at least one full-bleed photo moment from provided URLs.
+- Signature concept carried through accents, CTAs, and footer; neutrals from the brand world; at least one full-bleed photo moment from provided URLs when available.
 - Varied section rhythm, asymmetric splits, generous whitespace, designed footer.
 
-SIZE BUDGET (hard): globalCss ≤ 9000 chars. Home html ≤ 11000 chars. Other pages ≤ 7000 chars each. Total ≤ 48000 chars. JSON must be complete and valid.`
+SIZE BUDGET (hard): globalCss ≤ 11000 chars. Home html ≤ 14000 chars. Other pages ≤ 7000 chars each. Total ≤ 55000 chars. JSON must be complete and valid.`
 
   const userPrompt = `Full redesign for "${opts.brandName}".
 
