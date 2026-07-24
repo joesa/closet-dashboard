@@ -28,6 +28,8 @@ type Status = {
   draftDiffPages?: string[];
   job?: CustomBuildJob | null;
   jobActive?: boolean;
+  /** True once this tenant has ever started a Full redesign. */
+  fullRedesignEver?: boolean;
 };
 
 type NextStep = {
@@ -431,6 +433,12 @@ export default function AdminCustomBuild({
 
   const draftAhead = !!(status?.draftAhead ?? (status?.draft && status.renderMode !== 'custom'));
   const diffPages = status?.draftDiffPages || [];
+  const isLivePublished =
+    status?.renderMode === 'custom' && !!status.published && !draftAhead;
+  // Full redesign is powerful/expensive — hide until this tenant has started
+  // one at least once. New sites (!hasBase) can still start via this button.
+  const showFullRedesign =
+    !hasBase || !!(status?.fullRedesignEver || status?.job?.intent === 'full');
 
   const pagePreviewUrl = (path: string) => {
     if (!draftPreviewUrl) return null;
@@ -452,8 +460,13 @@ export default function AdminCustomBuild({
           </h3>
           <p className="mt-1 text-sm text-neutral-400 max-w-2xl">
             Start by cloning this tenant’s <em>current live site</em> into a draft, then make{' '}
-            <strong className="text-neutral-300 font-medium">surgical edits</strong>. Use Full
-            redesign only when you want an entirely new AI design. Draft → preview → publish.
+            <strong className="text-neutral-300 font-medium">surgical edits</strong>
+            {showFullRedesign ? (
+              <>
+                . Use Full redesign only when you want an entirely new AI design
+              </>
+            ) : null}
+            . Draft → preview → publish.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -893,30 +906,32 @@ export default function AdminCustomBuild({
         >
           {hasBase ? 'Re-clone live site' : 'Generate from scratch'}
         </button>
-        <button
-          type="button"
-          disabled={loading}
-          onClick={() => {
-            if (
-              !confirm(
-                'Full redesign asks AI for an entirely new layout/CSS (not a copy of the live site). Continue?'
-              )
-            ) {
-              return;
-            }
-            void run('generate', {
-              prompt:
-                prompt.trim() ||
-                'Create a distinctive, conversion-focused custom site.',
-              mode,
-              intent: 'full',
-            });
-          }}
-          className="px-4 py-2 border border-neutral-600 hover:bg-neutral-800 disabled:opacity-50 text-neutral-300 text-sm font-medium rounded-lg transition-colors"
-          title="AI invents a new design — only use when you want a drastic change"
-        >
-          Full redesign
-        </button>
+        {showFullRedesign ? (
+          <button
+            type="button"
+            disabled={loading}
+            onClick={() => {
+              if (
+                !confirm(
+                  'Full redesign asks AI for an entirely new layout/CSS (not a copy of the live site). Continue?'
+                )
+              ) {
+                return;
+              }
+              void run('generate', {
+                prompt:
+                  prompt.trim() ||
+                  'Create a distinctive, conversion-focused custom site.',
+                mode,
+                intent: 'full',
+              });
+            }}
+            className="px-4 py-2 border border-neutral-600 hover:bg-neutral-800 disabled:opacity-50 text-neutral-300 text-sm font-medium rounded-lg transition-colors"
+            title="AI invents a new design — only use when you want a drastic change"
+          >
+            Full redesign
+          </button>
+        ) : null}
         {draftPreviewUrl ? (
           <a
             href={draftPreviewUrl}
@@ -929,21 +944,31 @@ export default function AdminCustomBuild({
         ) : null}
         <button
           type="button"
-          disabled={loading || !status?.draft}
+          disabled={loading || !status?.draft || isLivePublished}
           onClick={() => {
             if (!confirm('Publish this draft? The live site will switch to custom render mode.')) return;
             void run('publish');
           }}
-          className={`px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white text-sm font-medium rounded-lg transition-colors ${
-            draftAhead ? 'ring-2 ring-emerald-300/70 ring-offset-2 ring-offset-neutral-900' : ''
+          className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+            isLivePublished
+              ? 'bg-emerald-900/50 border border-emerald-500/40 text-emerald-200 cursor-default'
+              : `bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white ${
+                  draftAhead ? 'ring-2 ring-emerald-300/70 ring-offset-2 ring-offset-neutral-900' : ''
+                }`
           }`}
           title={
-            draftAhead
-              ? 'Draft has unpublished changes — click to push them live'
-              : 'Publish the current draft to the live site'
+            isLivePublished
+              ? 'Draft matches the live published site'
+              : draftAhead
+                ? 'Draft has unpublished changes — click to push them live'
+                : 'Publish the current draft to the live site'
           }
         >
-          {draftAhead ? 'Publish draft (updates live)' : 'Publish draft'}
+          {isLivePublished
+            ? 'Published'
+            : draftAhead
+              ? 'Publish draft (updates live)'
+              : 'Publish draft'}
         </button>
         <button
           type="button"

@@ -12,6 +12,7 @@ import { diffCustomDraftPages } from '@/lib/ai/customDraftDiff'
 import { isCustomSiteConfig } from '@/lib/customSite'
 import {
   getCustomBuildJob,
+  hasEverFullRedesign,
   isCustomBuildJob,
   isCustomBuildJobActive,
   setCustomBuildJob,
@@ -81,6 +82,7 @@ export async function POST(
         draftDiffPages,
         job,
         jobActive: isCustomBuildJobActive(job),
+        fullRedesignEver: hasEverFullRedesign(job),
       })
     }
 
@@ -158,6 +160,7 @@ export async function POST(
           reply: null,
           started_at: new Date().toISOString(),
           finished_at: null,
+          ever_full: true as const,
         }
         await setCustomBuildJob(tenantId, job)
 
@@ -350,5 +353,6 @@ export async function GET(
       : null,
     job,
     jobActive: isCustomBuildJobActive(job),
+    fullRedesignEver: hasEverFullRedesign(job),
   })
 }

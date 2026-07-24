@@ -18,6 +18,7 @@ export async function processCustomBuildJob(tenantId: string): Promise<void> {
     ...current,
     status: 'processing',
     started_at: current.started_at || new Date().toISOString(),
+    ever_full: current.ever_full || current.intent === 'full' || undefined,
   }
   await setCustomBuildJob(tenantId, claimed)
 
@@ -38,6 +39,7 @@ export async function processCustomBuildJob(tenantId: string): Promise<void> {
       changedPages: result.changedPages,
       error: null,
       finished_at: new Date().toISOString(),
+      ever_full: true,
     })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
@@ -48,6 +50,7 @@ export async function processCustomBuildJob(tenantId: string): Promise<void> {
       images: undefined,
       error: message,
       finished_at: new Date().toISOString(),
+      ever_full: claimed.ever_full || claimed.intent === 'full' || undefined,
     })
   }
 }

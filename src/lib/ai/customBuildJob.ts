@@ -19,6 +19,18 @@ export type CustomBuildJob = {
   changedPages?: string[]
   started_at: string
   finished_at?: string | null
+  /**
+   * Sticky flag: once a Full redesign has been started for this tenant,
+   * keep it so the admin UI can show the Full redesign button again later
+   * even if the latest job was surgical.
+   */
+  ever_full?: boolean
+}
+
+/** True once this tenant has ever queued/run a Full redesign. */
+export function hasEverFullRedesign(job: CustomBuildJob | null | undefined): boolean {
+  if (!job) return false
+  return job.ever_full === true || job.intent === 'full'
 }
 
 export function isCustomBuildJob(value: unknown): value is CustomBuildJob {
