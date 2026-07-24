@@ -293,15 +293,17 @@ export async function generateCustomSiteDraft(opts: {
   const seo = (cfg.seo_config || {}) as Record<string, unknown>
   const brandName = (cfg.brand_name || tenant.business_name || 'Business') as string
 
+  // Full redesigns must ship EVERY page the prospect chose on intake — the
+  // old slice(0,3) cap silently dropped pages and made rebuilds look thin.
   const requestedSlugs = pagesConfig
     .map((p: { slug?: string }) => (typeof p.slug === 'string' ? p.slug : ''))
     .filter(Boolean)
-    .slice(0, 3)
+    .slice(0, 8)
   const pageHints =
     requestedSlugs.length > 0
       ? ['/', ...requestedSlugs.map((s: string) => (s.startsWith('/') ? s : `/${s}`))]
           .filter((v, i, a) => a.indexOf(v) === i)
-          .slice(0, 4)
+          .slice(0, 9)
           .join(', ')
       : '/, /about, /services, /contact'
 
@@ -335,6 +337,44 @@ export async function generateCustomSiteDraft(opts: {
     })),
   }
 
+  // Full redesigns get the complete intake content — every page the prospect
+  // requested with its section copy and images — so nothing they submitted is
+  // dropped from the rebuilt site. (Surgical edits already carry the live
+  // site JSON, so they keep the lean context.)
+  const intakePages = pagesConfig.slice(0, 8).map((p: Record<string, unknown>) => {
+    const hero = (p.hero || {}) as Record<string, unknown>
+    const blocks = Array.isArray(p.content_blocks) ? p.content_blocks : []
+    return {
+      slug: typeof p.slug === 'string' ? p.slug : '',
+      title: typeof p.title === 'string' ? p.title : '',
+      hero: {
+        headline: typeof hero.headline === 'string' ? hero.headline : undefined,
+        subheadline: typeof hero.subheadline === 'string' ? hero.subheadline : undefined,
+        backgroundImage:
+          typeof hero.backgroundImage === 'string' ? hero.backgroundImage : undefined,
+      },
+      sections: blocks.slice(0, 10).map((b: Record<string, unknown>) => ({
+        type: typeof b.type === 'string' ? b.type : 'text',
+        heading: typeof b.heading === 'string' ? b.heading : '',
+        body: typeof b.body === 'string' ? b.body.slice(0, 2000) : '',
+        image: typeof b.image === 'string' ? b.image : undefined,
+        images: Array.isArray(b.images)
+          ? (b.images as unknown[])
+              .filter((u): u is string => typeof u === 'string')
+              .slice(0, 16)
+          : undefined,
+        items: Array.isArray(b.items)
+          ? (b.items as Array<Record<string, unknown>>).slice(0, 12).map((it) => ({
+              title: typeof it.title === 'string' ? it.title : '',
+              description:
+                typeof it.description === 'string' ? it.description.slice(0, 500) : '',
+              image: typeof it.image === 'string' ? it.image : undefined,
+            }))
+          : undefined,
+      })),
+    }
+  })
+
   const result =
     intent === 'surgical' && base
       ? await runSurgicalGenerate({
@@ -349,7 +389,12 @@ export async function generateCustomSiteDraft(opts: {
           prompt: opts.prompt,
           mode,
           pageHints,
-          context,
+          context: {
+            ...context,
+            /** Every intake page with its full section content — build them all. */
+            intakePages,
+            navLinks: Array.isArray(cfg.nav_links) ? cfg.nav_links : undefined,
+          },
         })
 
   const sanitized = sanitizeCustomConfig(result.config)
@@ -443,54 +488,82 @@ async function runFullGenerate(opts: {
   changedPages: string[]
   extraWarnings: string[]
 }> {
-  const systemPrompt = `You are an expert web designer building a COMPLETE custom marketing website from scratch as raw HTML + CSS.
+  // Full redesigns route to Claude Fable 5 (design quality); Gemini is the
+  // fallback when no Anthropic key is configured.
+  const useClaude = !!process.env.ANTHROPIC_API_KEY
+
+  const systemPrompt = `You are a world-class UI/UX Design Architect and Brand Designer. You build bespoke, production-ready marketing websites for real local businesses as raw HTML + CSS. The result must read like a top independent design studio built it on a $1M budget — and must NEVER look AI-generated.
+
+Run this layered pipeline INTERNALLY before writing any code. Do NOT output the analysis — only the final JSON.
+
+1. PRODUCT UNDERSTANDING — Identify the business type, its real customers, what earns their trust, and the single conversion goal: the embedded engagement widget (quote / booking / order).
+2. DESIGN FRAMEWORK SELECTION — Choose a specific design language that fits THIS business. Examples: premium local trade → warm editorial with strong photography; luxury service → cinematic minimalism, dark and quiet; modern studio → Swiss typography, grid-driven; heritage brand → classic serif editorial. Aim for the craft level of Stripe, Linear, Apple and high-end independent studios — but never dress a local service business as a SaaS product.
+3. DESIGN TOKENS — Define the palette (background, ink, ONE signature accent drawn from the business's world), a full type scale (display / h1 / h2 / body / caption), a spacing scale (e.g. 8 / 16 / 24 / 40 / 64 / 96 / 128px), radii, borders, shadows. Emit them as CSS variables on :root in globalCss and use them everywhere.
+4. LAYOUT & GRID — 12-column responsive grid, max-width container, generous whitespace, deliberate asymmetry. Clear hierarchy and varied section rhythm: full-bleed photo, split editorial, oversized type moment, quiet detail rows.
+5. COMPONENT LIBRARY — Design once, reuse everywhere: header/nav, hero, service rows, process, gallery, CTA band, footer. Coherent across all pages.
+6. PAGE ARCHITECTURE — Build EVERY page listed below using ALL the intake content in the business context (context.intakePages carries every section the client submitted: copy, images, service items). Rework the copy to be sharper, but do not drop the client's content or facts.
+7. FINAL OUTPUT — the JSON below. Nothing else.
 
 Output ONLY valid JSON matching this schema (no markdown fences):
 {
   "mode": "${opts.mode}",
-  "globalCss": "string — shared CSS for the whole site (keep under ~4KB)",
+  "globalCss": "string — shared CSS (design tokens on :root + shared components)",
   "pages": {
-    "/": { "html": "string — body HTML for home", "css": "optional page CSS", "title": "page title", "description": "meta description" },
-    "/about": { "html": "...", "title": "..." }
+    "/": { "html": "body HTML", "css": "optional page-specific CSS", "title": "SEO title", "description": "meta description" },
+    "/about": { "html": "...", "title": "...", "description": "..." }
   },
-  "reply": "2-4 sentence summary of what you built for the admin"
+  "reply": "3-5 sentences for the admin: the design direction you chose, palette, type pairing, and anything to review"
 }
 
-Hard rules:
-1. Generate a DISTINCT, bespoke design — NOT a clone of a generic template. Unique layout, typography, color palette for THIS business.
-2. Include EXACTLY these pages (no more): ${opts.pageHints}. Always include "/".
-3. HTML is BODY CONTENT ONLY (no <html>/<head>/<body> wrappers). Use semantic tags (header, nav, main, section, footer).
-4. Embed EXACTLY this HTML comment on the home page (literal characters — NO attributes, NO theme=):
-   ${WIDGET_PLACEHOLDER}
-   Put it INSIDE the quote / "Start Your Project" section. Do NOT invent variants like <!-- CLOSET_WIDGET theme="dark" -->.
-   Do NOT leave an empty .widget-container — the comment must be the only child of that mount.
-   CRITICAL: Do NOT style a grey/card outer box around the widget. No background, border, box-shadow, or large padding on .widget-container / .closet-widget-slot / quote mounts. The engagement widget paints its own calculator card — the mount must be transparent and flush (section spacing only).
-5. Use absolute https:// image URLs when referencing images (prefer ones already on the site if provided in context). Do not invent broken localhost URLs.
-6. CSS must be self-contained. No @import. Prefer CSS variables for the palette. Never paint card chrome on the widget mount.
-7. mode="${opts.mode}" — ${
-    opts.mode === 'inline'
-      ? 'INLINE mode: NO <script> tags, NO onclick/on* handlers, NO javascript: URLs.'
-      : 'IFRAME mode: scripts allowed but prefer progressive enhancement; keep the widget placeholder.'
-  }
-8. Internal links must be root-relative paths that match your pages keys.
-9. Make it mobile-responsive.
-10. CRITICAL SIZE LIMIT: keep each page html under ~2500 characters and globalCss under ~4000 characters. The JSON MUST be complete and valid.`
+PLATFORM CONSTRAINTS (the renderer enforces these — violations get stripped and break the site):
+- Pages: include EXACTLY these paths (no more, no fewer): ${opts.pageHints}. Always include "/".
+- HTML is BODY CONTENT ONLY — no <html>/<head>/<body> wrappers. Semantic tags (header, nav, main, section, footer).
+- STRIPPED BY SANITIZER: <script>, <iframe>, <object>, <embed>, <form>, all on* attributes, javascript: URLs. There is NO JavaScript. All interactivity must be pure CSS (:hover, :focus-within, details/summary accordions, CSS transitions, scroll-behavior).
+- Because <form> is stripped: the contact page uses tel:/mailto: links, the address, hours, and the engagement widget — NEVER an HTML form.
+- CSS is scoped to the site wrapper at render: selectors :root, html, body are rewritten to the wrapper, so define variables on :root and page background on body as usual. @import is stripped — do not use it. @media, @keyframes, @font-face are fine.
+- FONTS: load Google Fonts by placing <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=...&display=swap"> as the FIRST element of EVERY page's html (each page is a separate document; @import will not work).
+- ENGAGEMENT WIDGET: embed EXACTLY this HTML comment on the home page (literal characters, NO attributes):
+  ${WIDGET_PLACEHOLDER}
+  Place it inside the conversion section (e.g. "Get an estimate"), styled as a designed section of the page. You may also place one on the contact page. The mount must be transparent and flush: NEVER paint background, border, box-shadow, or heavy padding on the element containing the comment — the widget renders its own card.
+- IMAGES: use ONLY https URLs that appear in the business context (services, intakePages sections, mediaLibrary). NEVER invent URLs, hotlink stock sites, or use placeholder services. When no image fits a section, design it typographically instead.
+- Internal links are root-relative and must match the pages keys exactly. Every page gets the same header nav (with a current-page state) and the same designed footer with real contact details from context.
+- Mobile-first responsive. Test your grid collapses cleanly at ~768px and ~420px.
 
-  const userPrompt = `Build a brand-new custom website from scratch for "${opts.brandName}".
+ANTI-AI-LOOK RULES — the following are instant failures:
+- Purple/indigo/teal SaaS gradients, glassmorphism, neon glows.
+- Emoji as icons, icon-font glyphs, or ✓/★ characters as decoration.
+- Three identical rounded cards with soft drop shadows repeated for every section.
+- Center-aligning every block; identical padding on every section.
+- Default typography (Inter, Poppins, Roboto, system-ui as the display face).
+- Filler clichés: "Elevate your…", "Unlock", "Seamless", "Look no further", "We've got you covered", "Your one-stop shop".
+- Invented testimonials, star ratings, review counts, statistics, awards, or "X years in business" — use ONLY facts present in the business context.
+- Lorem ipsum or TODO placeholders anywhere.
 
-Admin request / creative direction:
-${opts.prompt || 'Create a distinctive, conversion-focused marketing site that feels unique to this business.'}
+INSTEAD, ALWAYS:
+- Pair a characterful display face with a refined text face from Google Fonts (e.g. Fraunces, Instrument Serif, Libre Caslon Text, Newsreader, Bricolage Grotesque, Space Grotesk, Sora, Manrope — choose to fit THIS brand, vary between projects).
+- Oversized editorial headlines with tight leading; body copy at a measured line length (~65ch).
+- One signature accent used sparingly; neutrals sampled from the business's world (not pure #fff/#000 unless the direction calls for it).
+- Large photography from the provided URLs; at least one full-bleed image moment.
+- Varied section design, asymmetric splits, generous whitespace, and a properly designed footer (not an afterthought).
 
-Business context:
+SIZE BUDGET (hard): globalCss ≤ 9000 chars. Home page html ≤ 11000 chars. Each other page html ≤ 7000 chars. Total response ≤ 48000 chars. The JSON MUST be complete and valid — finish every string you start.`
+
+  const userPrompt = `Build a brand-new bespoke website for "${opts.brandName}".
+
+Admin creative direction (optional):
+${opts.prompt || 'No specific direction — choose the strongest design framework for this business and execute it at the highest level.'}
+
+Business context (the client's real content — use all of it):
 ${JSON.stringify(opts.context, null, 2)}`
 
   const parsed = await callModelJson({
     systemPrompt,
     userPrompt,
     temperature: 0.7,
-    // gemini-pro-latest is a thinking model: maxOutputTokens includes hidden
-    // reasoning tokens, so a tight cap truncates the JSON mid-string.
-    maxOutputTokens: 32768,
+    // Claude streams up to this cap; Gemini counts hidden thinking tokens
+    // against it, so both need generous headroom.
+    maxOutputTokens: useClaude ? 60000 : 32768,
+    preferredProvider: useClaude ? 'anthropic' : undefined,
   })
 
   const config: CustomSiteConfig = {
@@ -662,6 +735,7 @@ async function callModelJson(opts: {
   userPrompt: string
   temperature: number
   maxOutputTokens: number
+  preferredProvider?: 'anthropic' | 'gemini'
 }): Promise<Record<string, unknown>> {
   let lastText = ''
   let lastParseErr: unknown = null
@@ -680,6 +754,7 @@ async function callModelJson(opts: {
         jsonMode: true,
         temperature: attempt === 0 ? opts.temperature : 0.2,
         maxOutputTokens: opts.maxOutputTokens,
+        preferredProvider: opts.preferredProvider,
       })
       text = result.text
     } catch (err) {

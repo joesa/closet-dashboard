@@ -10,7 +10,7 @@ export type SuggestIdealCustomersInput = {
 
 export type SuggestIdealCustomersResult = {
   options: string[]
-  source: 'default' | 'openai' | 'gemini'
+  source: 'default' | 'openai' | 'gemini' | 'anthropic'
 }
 
 /** Static fallback — used when Gemini is unavailable, fails, or input is too sparse. */

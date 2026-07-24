@@ -75,7 +75,7 @@ function sanitizeOptions(raw: unknown): QuizOption[] {
 export async function generateQuizConfig(
   input: GenerateQuizConfigInput,
   opts?: { useGemini?: boolean }
-): Promise<{ config: QuizConfig; source: 'openai' | 'gemini' | 'fallback' }> {
+): Promise<{ config: QuizConfig; source: 'openai' | 'gemini' | 'anthropic' | 'fallback' }> {
   const useGemini = opts?.useGemini !== false && !!process.env.GEMINI_API_KEY
   const industry = (input.industry || '').trim()
   const services = (input.services ?? []).filter((s) => s && s.trim().length > 0)

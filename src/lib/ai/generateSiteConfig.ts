@@ -318,7 +318,7 @@ function describeFromUrl(rawUrl: string): string {
 
 export type GenerateSiteConfigResult = {
   data: Record<string, unknown>
-  source: 'openai' | 'gemini' | 'url' | 'url-fallback'
+  source: 'openai' | 'gemini' | 'anthropic' | 'url' | 'url-fallback'
   scraped: boolean
 }
 

@@ -1,7 +1,9 @@
 import { GoogleGenerativeAI, type GenerationConfig } from '@google/generative-ai'
+import Anthropic from '@anthropic-ai/sdk'
 
 /**
- * Shared text-generation provider that uses Gemini 3.5 Flash for all content.
+ * Shared text-generation provider. Gemini handles routine content; Claude
+ * Fable 5 (opt-in via preferredProvider) handles premium design generation.
  *
  * Server-only — never import in client components.
  */
@@ -13,7 +15,7 @@ export type TextGenerationOpts = {
   systemPrompt?: string
   /** When true, request structured JSON output. */
   jsonMode: boolean
-  /** Sampling temperature (default 0.5). */
+  /** Sampling temperature (default 0.5). Ignored by Claude Fable 5 (adaptive thinking). */
   temperature?: number
   /** Maximum output tokens (default 2048). */
   maxOutputTokens?: number
@@ -22,11 +24,66 @@ export type TextGenerationOpts = {
    * screenshots). `data` is raw base64 WITHOUT the `data:...;base64,` prefix.
    */
   images?: Array<{ mimeType: string; data: string }>
+  /**
+   * 'anthropic' routes to Claude Fable 5 when ANTHROPIC_API_KEY is set,
+   * silently falling back to Gemini otherwise. Default is Gemini.
+   */
+  preferredProvider?: 'anthropic' | 'gemini'
 }
 
 export type TextGenerationResult = {
   text: string
-  provider: 'openai' | 'gemini'
+  provider: 'openai' | 'gemini' | 'anthropic'
+}
+
+/** Anthropic's flagship design/reasoning model (no date suffix — exact ID). */
+const CLAUDE_MODEL = 'claude-fable-5'
+
+async function generateWithClaude(opts: TextGenerationOpts): Promise<string> {
+  const apiKey = process.env.ANTHROPIC_API_KEY
+  if (!apiKey) {
+    throw new Error('Missing ANTHROPIC_API_KEY for text generation')
+  }
+
+  const client = new Anthropic({ apiKey })
+
+  const content: Anthropic.ContentBlockParam[] = [
+    { type: 'text', text: opts.prompt },
+  ]
+  for (const img of opts.images ?? []) {
+    content.push({
+      type: 'image',
+      source: {
+        type: 'base64',
+        media_type: img.mimeType as
+          | 'image/jpeg'
+          | 'image/png'
+          | 'image/gif'
+          | 'image/webp',
+        data: img.data,
+      },
+    })
+  }
+
+  // Stream so long generations don't hit the SDK's non-streaming time limit.
+  // Fable 5 uses adaptive thinking; custom temperature is not supported.
+  const stream = client.messages.stream({
+    model: CLAUDE_MODEL,
+    max_tokens: Math.max(opts.maxOutputTokens ?? 8192, 8192),
+    system: opts.systemPrompt,
+    messages: [{ role: 'user', content }],
+  })
+
+  const message = await stream.finalMessage()
+  const text = message.content
+    .map((block) => (block.type === 'text' ? block.text : ''))
+    .join('')
+    .trim()
+
+  if (!text) {
+    throw new Error(`Claude returned no content (stop: ${message.stop_reason})`)
+  }
+  return text
 }
 
 async function generateWithGemini(opts: TextGenerationOpts): Promise<string> {
@@ -86,11 +143,17 @@ async function generateWithGemini(opts: TextGenerationOpts): Promise<string> {
 }
 
 /**
- * Generate text content using Gemini 3.5 Flash.
+ * Generate text content. Routes to Claude Fable 5 when the caller prefers
+ * Anthropic and a key is configured; otherwise Gemini.
  */
 export async function generateTextWithFallback(
   opts: TextGenerationOpts
 ): Promise<TextGenerationResult> {
+  if (opts.preferredProvider === 'anthropic' && process.env.ANTHROPIC_API_KEY) {
+    const text = await generateWithClaude(opts)
+    return { text, provider: 'anthropic' }
+  }
+
   if (process.env.GEMINI_API_KEY) {
     const text = await generateWithGemini(opts)
     return { text, provider: 'gemini' }

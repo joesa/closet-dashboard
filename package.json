@@ -17,6 +17,7 @@
     "backfill:widget-domain:apply": "node scripts/backfill-widget-domain.mjs --apply"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.114.0",
     "@ditchtheform/pricing": "file:./packages/pricing",
     "@google/generative-ai": "^0.24.1",
     "@sentry/nextjs": "^10.66.0",
