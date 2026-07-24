@@ -11,8 +11,9 @@ import { cloneCurrentSiteToDraft } from '@/lib/ai/cloneEngineSite'
 import { diffCustomDraftPages } from '@/lib/ai/customDraftDiff'
 import { isCustomSiteConfig } from '@/lib/customSite'
 
-// Vercel Hobby allows up to 60s; keep generation compact to fit.
-export const maxDuration = 60
+// Full generates on a thinking model (plus one retry) can run well past 60s.
+// Fluid compute allows 300s even on Hobby — match the other long AI routes.
+export const maxDuration = 300
 export const runtime = 'nodejs'
 
 /**
