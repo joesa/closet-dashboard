@@ -3,6 +3,11 @@
 import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
+import {
+  MAX_ADMIN_IMAGE_ATTACHMENTS,
+  fileToAdminImageDataUrl,
+} from '@/lib/adminImageAttach'
+
 type Message = {
   role: 'admin' | 'assistant';
   content: string;
@@ -15,27 +20,10 @@ type Message = {
   liveNow?: boolean;
 };
 
-const MAX_ATTACHMENTS = 4;
+const MAX_ATTACHMENTS = MAX_ADMIN_IMAGE_ATTACHMENTS;
 
-/**
- * Downscale an image file to a chat-friendly data URL. Screenshots are often
- * 4-8MB PNGs; resizing to ≤1600px JPEG keeps the request small without losing
- * the detail the model needs to read a layout problem.
- */
 async function fileToDataUrl(file: File): Promise<string> {
-  const bitmap = await createImageBitmap(file);
-  const maxDim = 1600;
-  const scale = Math.min(1, maxDim / Math.max(bitmap.width, bitmap.height));
-  const width = Math.round(bitmap.width * scale);
-  const height = Math.round(bitmap.height * scale);
-  const canvas = document.createElement('canvas');
-  canvas.width = width;
-  canvas.height = height;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) throw new Error('Could not process image');
-  ctx.drawImage(bitmap, 0, 0, width, height);
-  bitmap.close();
-  return canvas.toDataURL('image/jpeg', 0.85);
+  return fileToAdminImageDataUrl(file);
 }
 
 /**

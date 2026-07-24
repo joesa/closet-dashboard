@@ -17,6 +17,7 @@ import {
   setCustomBuildJob,
 } from '@/lib/ai/customBuildJob'
 import { processCustomBuildJob } from '@/lib/ai/processCustomBuildJob'
+import { normalizeAdminImageDataUrls } from '@/lib/adminImageAttach'
 
 // Full generates on Claude Fable 5 routinely take 3–5 minutes. Fluid compute
 // allows 300s; we return immediately and finish the work in `after()`.
@@ -120,7 +121,9 @@ export async function POST(
 
     if (action === 'generate') {
       const prompt = typeof body.prompt === 'string' ? body.prompt.trim().slice(0, 4000) : ''
-      const mode = body.mode === 'iframe' ? 'iframe' : body.mode === 'inline' ? 'inline' : undefined
+      const mode: 'inline' | 'iframe' | undefined =
+        body.mode === 'iframe' ? 'iframe' : body.mode === 'inline' ? 'inline' : undefined
+      const images = normalizeAdminImageDataUrls(body.images)
       // Prefer explicit intent; legacy iterate:true → surgical.
       // Default without intent used to be full (AI redesign) — callers must
       // send intent explicitly. UI uses clone for baseline, full for redesign.
@@ -150,6 +153,7 @@ export async function POST(
           intent: 'full' as const,
           prompt,
           mode,
+          images: images.length ? images : undefined,
           error: null,
           reply: null,
           started_at: new Date().toISOString(),
@@ -162,7 +166,12 @@ export async function POST(
           action: 'site.custom_build_generate_queued',
           targetType: 'tenant',
           targetId: tenantId,
-          metadata: { prompt: prompt.slice(0, 500), intent: 'full', mode },
+          metadata: {
+            prompt: prompt.slice(0, 500),
+            intent: 'full',
+            mode,
+            imageCount: images.length,
+          },
         })
 
         after(async () => {
@@ -176,7 +185,7 @@ export async function POST(
         return NextResponse.json({
           async: true,
           intent: 'full',
-          job,
+          job: { ...job, images: undefined },
           jobActive: true,
           reply:
             'Full redesign started — Claude Fable 5 usually takes 3–5 minutes. This panel will refresh when the draft is ready.',
@@ -193,6 +202,7 @@ export async function POST(
         prompt,
         mode,
         intent,
+        images: images.length ? images : undefined,
       })
 
       await logAdminAction({
@@ -208,6 +218,7 @@ export async function POST(
           pageKeys: Object.keys(result.draft.pages || {}),
           warnings: result.warnings,
           errors: result.errors,
+          imageCount: images.length,
         },
       })
 

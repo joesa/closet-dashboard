@@ -2,6 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import {
+  MAX_ADMIN_IMAGE_ATTACHMENTS,
+  fileToAdminImageDataUrl,
+} from '@/lib/adminImageAttach';
 
 type CustomBuildJob = {
   status: 'queued' | 'processing' | 'succeeded' | 'failed';
@@ -72,8 +76,28 @@ export default function AdminCustomBuild({
   const [uploading, setUploading] = useState(false);
   const [uploadKind, setUploadKind] = useState<'video' | 'image' | 'file' | 'auto'>('auto');
   const [uploadApply, setUploadApply] = useState<'none' | 'video_home' | 'append_home'>('none');
+  const [attachments, setAttachments] = useState<string[]>([]);
+  const promptFileRef = useRef<HTMLInputElement>(null);
 
   const hasBase = !!(status?.draft || status?.published);
+
+  const addPromptImages = async (files: FileList | File[]) => {
+    setError('');
+    try {
+      const imageFiles = [...files].filter((f) => f.type.startsWith('image/'));
+      if (imageFiles.length === 0) return;
+      const room = MAX_ADMIN_IMAGE_ATTACHMENTS - attachments.length;
+      if (imageFiles.length > room) {
+        setError(`Up to ${MAX_ADMIN_IMAGE_ATTACHMENTS} images per request.`);
+      }
+      const dataUrls = await Promise.all(
+        imageFiles.slice(0, room).map((f) => fileToAdminImageDataUrl(f))
+      );
+      if (dataUrls.length) setAttachments((prev) => [...prev, ...dataUrls]);
+    } catch {
+      setError('Could not read that image — try a PNG or JPEG.');
+    }
+  };
 
   const refreshAssets = useCallback(async () => {
     try {
@@ -311,11 +335,17 @@ export default function AdminCustomBuild({
     setChangedPages([]);
     setLastIntent(null);
     setNextStep(null);
+    const imagesForRequest =
+      action === 'generate' && attachments.length > 0 ? attachments : undefined;
     try {
       const res = await fetch(`/api/admin/sites/${tenantId}/custom-build`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action, ...extra }),
+        body: JSON.stringify({
+          action,
+          ...extra,
+          ...(imagesForRequest ? { images: imagesForRequest } : {}),
+        }),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -326,6 +356,7 @@ export default function AdminCustomBuild({
             : detail
         );
       }
+      if (imagesForRequest) setAttachments([]);
       if (typeof json.reply === 'string') setReply(json.reply);
       if (Array.isArray(json.warnings)) setWarnings(json.warnings);
       if (Array.isArray(json.changedPages)) setChangedPages(json.changedPages);
@@ -727,17 +758,85 @@ export default function AdminCustomBuild({
         <label className="block text-xs font-semibold text-neutral-500 uppercase tracking-wide mb-2">
           What should AI do?
         </label>
-        <textarea
-          className="w-full min-h-[100px] rounded-lg border border-neutral-700 bg-black/40 px-3 py-2 text-sm text-white placeholder:text-neutral-600 focus:outline-none focus:border-violet-500/60"
-          value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
-          placeholder={
-            hasBase
-              ? 'Surgical: e.g. “Add the uploaded video after the hero” or “Simplify the headline to Welcome to Acme”. Videos use Media & files automatically.'
-              : 'Optional notes for a Full redesign later. First click “Generate from scratch” to clone the current site.'
-          }
-          disabled={loading}
-        />
+        {attachments.length > 0 && (
+          <div className="mb-2 flex flex-wrap gap-2">
+            {attachments.map((src, i) => (
+              <div key={`${i}-${src.slice(-12)}`} className="relative">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={src}
+                  alt={`Attachment ${i + 1}`}
+                  className="h-16 w-16 rounded-md border border-neutral-700 object-cover"
+                />
+                <button
+                  type="button"
+                  onClick={() =>
+                    setAttachments((prev) => prev.filter((_, idx) => idx !== i))
+                  }
+                  disabled={loading}
+                  className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full border border-neutral-600 bg-neutral-800 text-xs text-neutral-300 hover:bg-red-500/80 hover:text-white disabled:opacity-40"
+                  aria-label={`Remove attachment ${i + 1}`}
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="flex gap-2">
+          <input
+            ref={promptFileRef}
+            type="file"
+            accept="image/*"
+            multiple
+            className="hidden"
+            onChange={(e) => {
+              if (e.target.files?.length) void addPromptImages(e.target.files);
+              e.target.value = '';
+            }}
+          />
+          <button
+            type="button"
+            aria-label="Attach image"
+            title="Attach or paste a screenshot / reference image"
+            onClick={() => promptFileRef.current?.click()}
+            disabled={loading || attachments.length >= MAX_ADMIN_IMAGE_ATTACHMENTS}
+            className="self-start rounded-lg border border-neutral-700 bg-black/50 px-3 py-3 text-sm text-neutral-300 transition-colors hover:border-neutral-500 hover:text-white disabled:opacity-50"
+          >
+            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 01-6.364-6.364l10.94-10.94A3 3 0 1119.5 7.372L8.552 18.32m.009-.01l-.01.01m5.699-9.941l-7.81 7.81a1.5 1.5 0 002.112 2.13"
+              />
+            </svg>
+          </button>
+          <textarea
+            className="min-h-[100px] w-full flex-1 rounded-lg border border-neutral-700 bg-black/40 px-3 py-2 text-sm text-white placeholder:text-neutral-600 focus:outline-none focus:border-violet-500/60"
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            onPaste={(e) => {
+              const files = [...e.clipboardData.items]
+                .filter((item) => item.type.startsWith('image/'))
+                .map((item) => item.getAsFile())
+                .filter((f): f is File => !!f);
+              if (files.length) {
+                e.preventDefault();
+                void addPromptImages(files);
+              }
+            }}
+            placeholder={
+              hasBase
+                ? 'Surgical: e.g. “Add the uploaded video after the hero” or “Simplify the headline…”. Attach/paste a screenshot or reference image for Full redesign / surgical edits.'
+                : 'Optional notes for a Full redesign. Attach/paste a reference image, then Generate from scratch or Full redesign.'
+            }
+            disabled={loading}
+          />
+        </div>
+        <p className="mt-1.5 text-[11px] text-neutral-600">
+          Paste (Ctrl/Cmd+V) or attach up to {MAX_ADMIN_IMAGE_ATTACHMENTS} images — used as visual
+          references for Full redesign and surgical edits.
+        </p>
       </div>
 
       <div className="flex flex-wrap items-center gap-4">
@@ -758,7 +857,7 @@ export default function AdminCustomBuild({
       <div className="flex flex-wrap gap-3">
         <button
           type="button"
-          disabled={loading || !hasBase || !prompt.trim()}
+          disabled={loading || !hasBase || (!prompt.trim() && attachments.length === 0)}
           onClick={() =>
             void run('generate', {
               prompt: prompt.trim(),

@@ -11,6 +11,8 @@ export type CustomBuildJob = {
   intent: 'full' | 'surgical'
   prompt: string
   mode?: 'inline' | 'iframe'
+  /** Reference images as data URLs — cleared when the job finishes. */
+  images?: string[]
   error?: string | null
   reply?: string | null
   warnings?: string[]

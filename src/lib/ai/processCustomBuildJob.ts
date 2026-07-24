@@ -27,10 +27,12 @@ export async function processCustomBuildJob(tenantId: string): Promise<void> {
       prompt: current.prompt || '',
       mode: current.mode,
       intent: current.intent === 'surgical' ? 'surgical' : 'full',
+      images: Array.isArray(current.images) ? current.images : undefined,
     })
     await setCustomBuildJob(tenantId, {
       ...claimed,
       status: 'succeeded',
+      images: undefined,
       reply: result.reply,
       warnings: result.warnings,
       changedPages: result.changedPages,
@@ -43,6 +45,7 @@ export async function processCustomBuildJob(tenantId: string): Promise<void> {
     await setCustomBuildJob(tenantId, {
       ...claimed,
       status: 'failed',
+      images: undefined,
       error: message,
       finished_at: new Date().toISOString(),
     })

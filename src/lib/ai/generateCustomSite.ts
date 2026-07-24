@@ -1,3 +1,4 @@
+import { parseAdminImageDataUrl } from '@/lib/adminImageAttach'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { generateTextWithFallback } from '@/lib/ai/aiTextProvider'
 import {
@@ -225,6 +226,11 @@ export async function generateCustomSiteDraft(opts: {
   intent?: CustomBuildIntent
   /** @deprecated use intent: 'surgical' */
   iterate?: boolean
+  /**
+   * Optional reference images as data URLs (`data:image/...;base64,...`) —
+   * screenshots, moodboards, or layouts to imitate.
+   */
+  images?: string[]
 }): Promise<GenerateCustomSiteResult> {
   const supabase = getSupabaseAdmin()
   const { data: tenant, error } = await supabase
@@ -278,7 +284,7 @@ export async function generateCustomSiteDraft(opts: {
     )
   }
 
-  if (intent === 'surgical' && base) {
+  if (intent === 'surgical' && base && !(opts.images && opts.images.length > 0)) {
     const mediaShortcut = await trySurgicalVideoShortcut({
       tenantId: opts.tenantId,
       prompt: opts.prompt || '',
@@ -286,6 +292,11 @@ export async function generateCustomSiteDraft(opts: {
     })
     if (mediaShortcut) return mediaShortcut
   }
+
+  const attachmentImages = (opts.images || [])
+    .map(parseAdminImageDataUrl)
+    .filter((v): v is { mimeType: string; data: string } => !!v)
+    .slice(0, 4)
 
   const mode = opts.mode || base?.mode || 'inline'
   const products = Array.isArray(cfg.products_config) ? cfg.products_config : []
@@ -383,6 +394,7 @@ export async function generateCustomSiteDraft(opts: {
           mode,
           base,
           context,
+          images: attachmentImages,
         })
       : await runFullGenerate({
           brandName,
@@ -395,6 +407,7 @@ export async function generateCustomSiteDraft(opts: {
             intakePages,
             navLinks: Array.isArray(cfg.nav_links) ? cfg.nav_links : undefined,
           },
+          images: attachmentImages,
         })
 
   const sanitized = sanitizeCustomConfig(result.config)
@@ -500,6 +513,7 @@ async function runFullGenerate(opts: {
   mode: 'inline' | 'iframe'
   pageHints: string
   context: Record<string, unknown>
+  images?: Array<{ mimeType: string; data: string }>
 }): Promise<{
   config: CustomSiteConfig
   reply: string
@@ -509,6 +523,7 @@ async function runFullGenerate(opts: {
   // Full redesigns route to Claude Fable 5 (design quality); Gemini is the
   // fallback when no Anthropic key is configured.
   const useClaude = !!process.env.ANTHROPIC_API_KEY
+  const hasImages = !!(opts.images && opts.images.length > 0)
 
   const systemPrompt = `You are a world-class UI/UX Design Architect and Brand Designer. You build bespoke, production-ready marketing websites for real local businesses as raw HTML + CSS. The result must read like a top independent design studio built it on a $1M budget — and must NEVER look AI-generated.
 
@@ -521,6 +536,16 @@ Run this layered pipeline INTERNALLY before writing any code. Do NOT output the 
 5. COMPONENT LIBRARY — Design once, reuse everywhere: header/nav, hero, service rows, process, gallery, CTA band, footer. Coherent across all pages.
 6. PAGE ARCHITECTURE — Build EVERY page listed below using ALL the intake content in the business context (context.intakePages carries every section the client submitted: copy, images, service items). Rework the copy to be sharper, but do not drop the client's content or facts.
 7. FINAL OUTPUT — the JSON below. Nothing else.
+${
+  hasImages
+    ? `
+ATTACHED REFERENCE IMAGES:
+- The admin attached image(s) with this request (moodboard, competitor, screenshot, or layout to imitate).
+- Study palette, typography, spacing, hierarchy, and composition carefully.
+- Match the *feel* and craft level — do NOT copy trademarks, logos, or proprietary artwork from the references.
+- Prefer the attached direction over generic defaults when they conflict.`
+    : ''
+}
 
 Output ONLY valid JSON matching this schema (no markdown fences):
 {
@@ -569,8 +594,8 @@ SIZE BUDGET (hard): globalCss ≤ 9000 chars. Home page html ≤ 11000 chars. Ea
   const userPrompt = `Build a brand-new bespoke website for "${opts.brandName}".
 
 Admin creative direction (optional):
-${opts.prompt || 'No specific direction — choose the strongest design framework for this business and execute it at the highest level.'}
-
+${opts.prompt || (hasImages ? 'Match the attached reference image(s) — use them as the primary design direction.' : 'No specific direction — choose the strongest design framework for this business and execute it at the highest level.')}
+${hasImages ? `\n${opts.images!.length} reference image(s) are attached to this message — study them before designing.\n` : ''}
 Business context (the client's real content — use all of it):
 ${JSON.stringify(opts.context, null, 2)}`
 
@@ -582,6 +607,7 @@ ${JSON.stringify(opts.context, null, 2)}`
     // against it, so both need generous headroom.
     maxOutputTokens: useClaude ? 60000 : 32768,
     preferredProvider: useClaude ? 'anthropic' : undefined,
+    images: opts.images,
   })
 
   const config: CustomSiteConfig = {
@@ -612,6 +638,7 @@ async function runSurgicalGenerate(opts: {
   mode: 'inline' | 'iframe'
   base: CustomSiteConfig
   context: Record<string, unknown>
+  images?: Array<{ mimeType: string; data: string }>
 }): Promise<{
   config: CustomSiteConfig
   reply: string
@@ -619,6 +646,7 @@ async function runSurgicalGenerate(opts: {
   extraWarnings: string[]
 }> {
   const pageKeys = Object.keys(opts.base.pages || {})
+  const hasImages = !!(opts.images && opts.images.length > 0)
   const systemPrompt = `You are a precise website editor. You make SURGICAL edits to an existing custom HTML/CSS site.
 
 The admin already has a finished design. Your job is to apply ONLY what they asked for.
@@ -645,12 +673,17 @@ Hard rules:
 8. HTML is BODY CONTENT ONLY. No <script> in inline mode. No javascript: URLs.
 9. Keep each returned html under ~2500 characters. JSON must be complete and valid.
 10. If the request is ambiguous ("make it nicer") and does not specify what to change, set pages to {} and explain in reply that you need a more specific instruction — do NOT invent a redesign.
-11. When the admin asks to add/embed a video (or says they don't see the video), use a URL from mediaLibrary in the business context — do NOT ask them to paste a URL that is already listed there. Insert a <video controls><source src="URL" type="video/mp4"></video> block after the hero on "/".`
+11. When the admin asks to add/embed a video (or says they don't see the video), use a URL from mediaLibrary in the business context — do NOT ask them to paste a URL that is already listed there. Insert a <video controls><source src="URL" type="video/mp4"></video> block after the hero on "/".
+${
+  hasImages
+    ? `12. ATTACHED IMAGES: the admin attached screenshot(s) or reference(s). Use them to understand the problem or target look. You cannot host those attached files on the site — only reuse https URLs already in the site/mediaLibrary. Describe visual issues from the attachments accurately before editing.`
+    : ''
+}`
 
   const userPrompt = `Surgical edit for "${opts.brandName}".
 
 Admin request (apply ONLY this):
-${opts.prompt || 'No specific change requested — return an empty pages object and ask for clarification.'}
+${opts.prompt || (hasImages ? 'See the attached image(s) — apply the implied fix or match the reference as closely as the existing design allows.' : 'No specific change requested — return an empty pages object and ask for clarification.')}
 
 Existing custom site JSON (source of truth — preserve everything not explicitly changed):
 ${JSON.stringify(opts.base).slice(0, 70000)}
@@ -666,6 +699,7 @@ ${JSON.stringify(opts.context, null, 2)}`
     temperature: 0.3,
     // Thinking tokens count against this cap — keep generous headroom.
     maxOutputTokens: 24576,
+    images: opts.images,
   })
 
   const patch: SurgicalPatch = {
@@ -754,6 +788,7 @@ async function callModelJson(opts: {
   temperature: number
   maxOutputTokens: number
   preferredProvider?: 'anthropic' | 'gemini'
+  images?: Array<{ mimeType: string; data: string }>
 }): Promise<Record<string, unknown>> {
   let lastText = ''
   let lastParseErr: unknown = null
@@ -773,6 +808,7 @@ async function callModelJson(opts: {
         temperature: attempt === 0 ? opts.temperature : 0.2,
         maxOutputTokens: opts.maxOutputTokens,
         preferredProvider: opts.preferredProvider,
+        images: opts.images,
       })
       text = result.text
     } catch (err) {
