@@ -827,8 +827,8 @@ export default function AdminCustomBuild({
             }}
             placeholder={
               hasBase
-                ? 'Surgical: e.g. “Add the uploaded video after the hero” or “Simplify the headline…”. Attach/paste a screenshot or reference image for Full redesign / surgical edits.'
-                : 'Optional notes for a Full redesign. Attach/paste a reference image, then Generate from scratch or Full redesign.'
+                ? 'Full redesign brief or surgical edit. e.g. “Swiss editorial, charcoal + copper, oversized type — keep all our detailing services and the quote engine.” Attach/paste a reference image if you have one.'
+                : 'Optional Full redesign brief (style, mood, references). Attach/paste an image, then Generate from scratch or Full redesign. Intake services + engagement engine always stay.'
             }
             disabled={loading}
           />

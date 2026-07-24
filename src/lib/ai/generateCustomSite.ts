@@ -524,26 +524,78 @@ async function runFullGenerate(opts: {
   // fallback when no Anthropic key is configured.
   const useClaude = !!process.env.ANTHROPIC_API_KEY
   const hasImages = !!(opts.images && opts.images.length > 0)
+  const adminBrief = (opts.prompt || '').trim()
+  const hasBrief = adminBrief.length > 0 || hasImages
 
-  const systemPrompt = `You are a world-class UI/UX Design Architect and Brand Designer. You build bespoke, production-ready marketing websites for real local businesses as raw HTML + CSS. The result must read like a top independent design studio built it on a $1M budget — and must NEVER look AI-generated.
+  const services = Array.isArray(opts.context.services)
+    ? (opts.context.services as Array<{ title?: string }>)
+        .map((s) => (typeof s.title === 'string' ? s.title.trim() : ''))
+        .filter(Boolean)
+    : []
+  const engagementModel =
+    typeof opts.context.engagementModel === 'string'
+      ? opts.context.engagementModel
+      : 'quote'
+  const engagementLabel =
+    engagementModel === 'order'
+      ? 'online ordering'
+      : engagementModel === 'booking'
+        ? 'booking'
+        : engagementModel === 'ticket'
+          ? 'ticketing'
+          : 'quote calculator'
 
-Run this layered pipeline INTERNALLY before writing any code. Do NOT output the analysis — only the final JSON.
+  const systemPrompt = `You are a world-class UI/UX Design Architect and Product Strategist. You generate production-ready, bespoke marketing websites as raw HTML + CSS for real local businesses. The result must read like a top independent design studio built it on a $1M budget — and must NEVER look AI-generated.
 
-1. PRODUCT UNDERSTANDING — Identify the business type, its real customers, what earns their trust, and the single conversion goal: the embedded engagement widget (quote / booking / order).
-2. DESIGN FRAMEWORK SELECTION — Choose a specific design language that fits THIS business. Examples: premium local trade → warm editorial with strong photography; luxury service → cinematic minimalism, dark and quiet; modern studio → Swiss typography, grid-driven; heritage brand → classic serif editorial. Aim for the craft level of Stripe, Linear, Apple and high-end independent studios — but never dress a local service business as a SaaS product.
-3. DESIGN TOKENS — Define the palette (background, ink, ONE signature accent drawn from the business's world), a full type scale (display / h1 / h2 / body / caption), a spacing scale (e.g. 8 / 16 / 24 / 40 / 64 / 96 / 128px), radii, borders, shadows. Emit them as CSS variables on :root in globalCss and use them everywhere.
-4. LAYOUT & GRID — 12-column responsive grid, max-width container, generous whitespace, deliberate asymmetry. Clear hierarchy and varied section rhythm: full-bleed photo, split editorial, oversized type moment, quiet detail rows.
-5. COMPONENT LIBRARY — Design once, reuse everywhere: header/nav, hero, service rows, process, gallery, CTA band, footer. Coherent across all pages.
-6. PAGE ARCHITECTURE — Build EVERY page listed below using ALL the intake content in the business context (context.intakePages carries every section the client submitted: copy, images, service items). Rework the copy to be sharper, but do not drop the client's content or facts.
-7. FINAL OUTPUT — the JSON below. Nothing else.
+Whenever you receive a Full redesign request, follow this layered pipeline INTERNALLY before writing any code. Do NOT output the analysis — only the final site JSON.
+
+1. PRODUCT UNDERSTANDING
+   - Identify product type, target audience, goals, and key features from the business context.
+   - The conversion goal is ALWAYS the embedded engagement engine (${engagementLabel}).
+   - The service catalog from intake is FIXED — every listed service must appear on the site.
+
+2. DESIGN FRAMEWORK SELECTION (creative direction)
+   - If the admin provided a creative brief and/or reference images, that brief is the PRIMARY design direction. It may completely redirect the aesthetic (e.g. brutalist, Swiss editorial, cinematic luxury, heritage, industrial, coastal, etc.).
+   - Absorb the brief into this pipeline: translate it into a concrete design language, tokens, grid, and components — do not ignore it, and do not treat it as optional flavor text.
+   - If there is no brief, choose the strongest framework for THIS business (premium local trade → warm editorial; luxury → cinematic minimal; studio → Swiss/grid; heritage → classic serif editorial).
+   - Craft bar: Stripe, Linear, Vercel, Notion, Apple, high-end independent studios — but never dress a local service business as a SaaS product unless the brief explicitly asks for that.
+
+3. DESIGN SYSTEM / TOKENS
+   - Colors (primary, secondary, accent, dark/light), typography scale, spacing, radius, shadows.
+   - Emit as CSS variables on :root in globalCss and use them everywhere.
+
+4. LAYOUT & GRID ARCHITECTURE
+   - 12-column responsive grid, hero / features / services / conversion / footer.
+   - Visual hierarchy, whitespace, mobile adjustments, varied section rhythm.
+
+5. COMPONENT LIBRARY
+   - Header/nav, hero, service rows/cards, process, gallery, CTA/conversion band (engagement engine mount), footer — designed once, reused coherently.
+
+6. PAGE ARCHITECTURE
+   - Build EVERY page in the required paths list.
+   - Use ALL intake content (context.intakePages + context.services): sharpen copy, never drop services, facts, or client-submitted sections.
+   - Home must include a designed conversion section that mounts the engagement engine.
+
+7. FINAL OUTPUT — only the JSON schema below. Nothing else.
+
+NON-NEGOTIABLE (override aesthetic freedom — the brief cannot remove these):
+- SERVICES: include every intake service from context.services${
+    services.length
+      ? ` — specifically: ${services.join('; ')}`
+      : ' (use whatever titles appear in context.services)'
+  }. Feature them on home and dedicate real coverage on the services page (or equivalent). Do not invent extra services; do not drop any.
+- ENGAGEMENT ENGINE: this site uses a "${engagementLabel}" (${engagementModel}). Embed EXACTLY this HTML comment on the home page (literal characters, NO attributes):
+  ${WIDGET_PLACEHOLDER}
+  Place it inside the designed conversion / estimate / book / order section. Optionally repeat on contact. The mount must be transparent and flush — NEVER paint background, border, box-shadow, or heavy padding on the element containing the comment (the widget paints its own card).
+- INTAKE PAGES & COPY: ship EXACTLY these paths: ${opts.pageHints}. Preserve client facts from intakePages / about / seo; rewrite for sharpness, never invent testimonials/stats/awards.
+
 ${
   hasImages
-    ? `
-ATTACHED REFERENCE IMAGES:
-- The admin attached image(s) with this request (moodboard, competitor, screenshot, or layout to imitate).
-- Study palette, typography, spacing, hierarchy, and composition carefully.
-- Match the *feel* and craft level — do NOT copy trademarks, logos, or proprietary artwork from the references.
-- Prefer the attached direction over generic defaults when they conflict.`
+    ? `ATTACHED REFERENCE IMAGES:
+- Treat attached image(s) as part of the creative brief (moodboard, competitor, screenshot, or layout to imitate).
+- Study palette, typography, spacing, hierarchy, and composition.
+- Match the *feel* and craft — do NOT copy trademarks, logos, or proprietary artwork.
+- When brief text and images conflict, prefer the combination that best serves THIS business while still honoring the non-negotiables above.`
     : ''
 }
 
@@ -555,49 +607,54 @@ Output ONLY valid JSON matching this schema (no markdown fences):
     "/": { "html": "body HTML", "css": "optional page-specific CSS", "title": "SEO title", "description": "meta description" },
     "/about": { "html": "...", "title": "...", "description": "..." }
   },
-  "reply": "3-5 sentences for the admin: the design direction you chose, palette, type pairing, and anything to review"
+  "reply": "3-5 sentences for the admin: how you interpreted their brief, the design direction, palette/type pairing, and confirmation that intake services + ${engagementLabel} are present"
 }
 
 PLATFORM CONSTRAINTS (the renderer enforces these — violations get stripped and break the site):
-- Pages: include EXACTLY these paths (no more, no fewer): ${opts.pageHints}. Always include "/".
 - HTML is BODY CONTENT ONLY — no <html>/<head>/<body> wrappers. Semantic tags (header, nav, main, section, footer).
-- STRIPPED BY SANITIZER: <script>, <iframe>, <object>, <embed>, <form>, all on* attributes, javascript: URLs. There is NO JavaScript. All interactivity must be pure CSS (:hover, :focus-within, details/summary accordions, CSS transitions, scroll-behavior).
-- Because <form> is stripped: the contact page uses tel:/mailto: links, the address, hours, and the engagement widget — NEVER an HTML form.
-- CSS is scoped to the site wrapper at render: selectors :root, html, body are rewritten to the wrapper, so define variables on :root and page background on body as usual. @import is stripped — do not use it. @media, @keyframes, @font-face are fine.
-- FONTS: load Google Fonts by placing <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=...&display=swap"> as the FIRST element of EVERY page's html (each page is a separate document; @import will not work).
-- ENGAGEMENT WIDGET: embed EXACTLY this HTML comment on the home page (literal characters, NO attributes):
-  ${WIDGET_PLACEHOLDER}
-  Place it inside the conversion section (e.g. "Get an estimate"), styled as a designed section of the page. You may also place one on the contact page. The mount must be transparent and flush: NEVER paint background, border, box-shadow, or heavy padding on the element containing the comment — the widget renders its own card.
-- IMAGES: use ONLY https URLs that appear in the business context (services, intakePages sections, mediaLibrary). NEVER invent URLs, hotlink stock sites, or use placeholder services. When no image fits a section, design it typographically instead.
-- Internal links are root-relative and must match the pages keys exactly. Every page gets the same header nav (with a current-page state) and the same designed footer with real contact details from context.
-- Mobile-first responsive. Test your grid collapses cleanly at ~768px and ~420px.
+- STRIPPED BY SANITIZER: <script>, <iframe>, <object>, <embed>, <form>, all on* attributes, javascript: URLs. There is NO JavaScript. All interactivity must be pure CSS (:hover, :focus-within, details/summary, CSS transitions, scroll-behavior).
+- Contact uses tel:/mailto: + address/hours + engagement widget — NEVER an HTML form.
+- CSS is scoped at render (:root/html/body → wrapper). No @import. @media, @keyframes, @font-face are fine.
+- FONTS: <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=...&display=swap"> as the FIRST element of EVERY page's html.
+- IMAGES: use ONLY https URLs from the business context (services, intakePages, mediaLibrary). Never invent URLs.
+- Internal links are root-relative and must match page keys. Same header nav + designed footer with real contact details on every page.
+- Mobile-first; collapses cleanly at ~768px and ~420px.
 
-ANTI-AI-LOOK RULES — the following are instant failures:
-- Purple/indigo/teal SaaS gradients, glassmorphism, neon glows.
-- Emoji as icons, icon-font glyphs, or ✓/★ characters as decoration.
-- Three identical rounded cards with soft drop shadows repeated for every section.
-- Center-aligning every block; identical padding on every section.
-- Default typography (Inter, Poppins, Roboto, system-ui as the display face).
-- Filler clichés: "Elevate your…", "Unlock", "Seamless", "Look no further", "We've got you covered", "Your one-stop shop".
-- Invented testimonials, star ratings, review counts, statistics, awards, or "X years in business" — use ONLY facts present in the business context.
-- Lorem ipsum or TODO placeholders anywhere.
+ANTI-AI-LOOK RULES — instant failures:
+- Purple/indigo/teal SaaS gradients, glassmorphism, neon glows (unless the brief explicitly demands a related look — still avoid cliché AI defaults).
+- Emoji as icons; three identical soft-shadow cards on every section; center-aligning everything.
+- Default display faces (Inter, Poppins, Roboto, system-ui).
+- Clichés: "Elevate your…", "Unlock", "Seamless", "Look no further", "We've got you covered", "Your one-stop shop".
+- Invented testimonials, ratings, stats, awards, or years-in-business — only facts from context.
+- Lorem ipsum or TODO placeholders.
 
 INSTEAD, ALWAYS:
-- Pair a characterful display face with a refined text face from Google Fonts (e.g. Fraunces, Instrument Serif, Libre Caslon Text, Newsreader, Bricolage Grotesque, Space Grotesk, Sora, Manrope — choose to fit THIS brand, vary between projects).
-- Oversized editorial headlines with tight leading; body copy at a measured line length (~65ch).
-- One signature accent used sparingly; neutrals sampled from the business's world (not pure #fff/#000 unless the direction calls for it).
-- Large photography from the provided URLs; at least one full-bleed image moment.
-- Varied section design, asymmetric splits, generous whitespace, and a properly designed footer (not an afterthought).
+- Characterful Google Fonts pairing chosen for THIS brief/brand; oversized editorial headlines; ~65ch body measure.
+- One signature accent; neutrals from the brand world; at least one full-bleed photo moment from provided URLs.
+- Varied section rhythm, asymmetric splits, generous whitespace, designed footer.
 
-SIZE BUDGET (hard): globalCss ≤ 9000 chars. Home page html ≤ 11000 chars. Each other page html ≤ 7000 chars. Total response ≤ 48000 chars. The JSON MUST be complete and valid — finish every string you start.`
+SIZE BUDGET (hard): globalCss ≤ 9000 chars. Home html ≤ 11000 chars. Other pages ≤ 7000 chars each. Total ≤ 48000 chars. JSON must be complete and valid.`
 
-  const userPrompt = `Build a brand-new bespoke website for "${opts.brandName}".
+  const userPrompt = `Full redesign for "${opts.brandName}".
 
-Admin creative direction (optional):
-${opts.prompt || (hasImages ? 'Match the attached reference image(s) — use them as the primary design direction.' : 'No specific direction — choose the strongest design framework for this business and execute it at the highest level.')}
-${hasImages ? `\n${opts.images!.length} reference image(s) are attached to this message — study them before designing.\n` : ''}
-Business context (the client's real content — use all of it):
-${JSON.stringify(opts.context, null, 2)}`
+=== CREATIVE BRIEF (absorb into the design pipeline — this may completely redirect the aesthetic) ===
+${
+  adminBrief
+    ? adminBrief
+    : hasImages
+      ? 'No text brief — use the attached reference image(s) as the primary creative direction.'
+      : 'No admin brief — choose the strongest design framework for this business and execute at the highest craft level.'
+}
+${hasImages ? `\nReference images attached: ${opts.images!.length}. Study them as part of the brief.\n` : ''}
+=== NON-NEGOTIABLE PRODUCT FACTS (always keep, regardless of brief) ===
+- Engagement engine: ${engagementLabel} (engagementModel="${engagementModel}") — mount ${WIDGET_PLACEHOLDER} on home conversion section.
+- Intake services (must all appear): ${services.length ? services.join(' | ') : '(see context.services)'}
+- Required pages: ${opts.pageHints}
+
+=== BUSINESS CONTEXT (intake content, services, SEO, media — use all of it) ===
+${JSON.stringify(opts.context, null, 2)}
+
+Execute the layered pipeline. Enhance the creative brief into tokens, grid, components, and pages — then output only the final JSON.`
 
   const parsed = await callModelJson({
     systemPrompt,
@@ -628,7 +685,11 @@ ${JSON.stringify(opts.context, null, 2)}`
     config,
     reply,
     changedPages: Object.keys(config.pages),
-    extraWarnings: [],
+    extraWarnings: hasBrief
+      ? []
+      : [
+          'No creative brief or reference image was provided — design direction was chosen automatically from the business context.',
+        ],
   }
 }
 
