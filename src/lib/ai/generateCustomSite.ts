@@ -26,6 +26,13 @@ import {
   inferSiteAppearanceMode,
   pickWidgetThemeForSite,
 } from '@/lib/widgetThemes'
+import {
+  mergeIntakeServicesWithBriefUpdates,
+  parseServiceUpdates,
+  type ProductRow,
+  type ServiceUpdates,
+} from '@/lib/ai/mergeBriefServices'
+import { appendEngagementServices } from '@/lib/ai/appendEngagementServices'
 
 export type CustomBuildIntent = 'full' | 'surgical'
 
@@ -431,12 +438,54 @@ export async function generateCustomSiteDraft(opts: {
     )
   }
 
+  // Full redesign: merge brief-introduced services into products_config + engine.
+  let mergedProducts: ProductRow[] | null = null
+  if (intent === 'full') {
+    const serviceUpdates =
+      'serviceUpdates' in result && result.serviceUpdates
+        ? result.serviceUpdates
+        : { added: [], removed: [] }
+    const mergeResult = mergeIntakeServicesWithBriefUpdates(
+      products as ProductRow[],
+      serviceUpdates
+    )
+    mergedProducts = mergeResult.products
+    if (mergeResult.added.length) {
+      warnings.push(
+        `Added services from brief: ${mergeResult.added.map((a) => a.title).join(', ')}.`
+      )
+    }
+    if (mergeResult.removed.length) {
+      warnings.push(
+        `Removed intake services (explicit brief): ${mergeResult.removed.map((r) => r.title).join(', ')}.`
+      )
+    }
+    const htmlBlob = Object.values(sanitized.pages || {})
+      .map((p) => `${p.html || ''} ${p.title || ''}`)
+      .join('\n')
+      .toLowerCase()
+    for (const p of mergeResult.products) {
+      const title = typeof p.title === 'string' ? p.title.trim() : ''
+      if (!title) continue
+      if (!htmlBlob.includes(title.toLowerCase())) {
+        warnings.push(
+          `Service “${title}” is in the catalog but may be missing from redesign HTML — check home/services pages.`
+        )
+      }
+    }
+  }
+
+  const siteUpdate: Record<string, unknown> = {
+    custom_config_draft: sanitized,
+    custom_updated_at: new Date().toISOString(),
+  }
+  if (mergedProducts) {
+    siteUpdate.products_config = mergedProducts
+  }
+
   const { error: updateErr } = await supabase
     .from('site_configs')
-    .update({
-      custom_config_draft: sanitized,
-      custom_updated_at: new Date().toISOString(),
-    })
+    .update(siteUpdate)
     .eq('tenant_id', opts.tenantId)
 
   if (updateErr) throw new Error(`Failed to save draft: ${updateErr.message}`)
@@ -488,6 +537,34 @@ export async function generateCustomSiteDraft(opts: {
     } catch (themeErr) {
       console.warn('[generateCustomSite] widget theme auto-pick failed:', themeErr)
     }
+
+    // Append brief-added (and any newly merged) services into the engagement engine.
+    if (mergedProducts) {
+      try {
+        const engineSync = await appendEngagementServices({
+          supabase,
+          tenantId: opts.tenantId,
+          contractorId: tenant.widget_id as string,
+          engagementModel:
+            typeof cfg.engagement_model === 'string' ? cfg.engagement_model : 'quote',
+          services: mergedProducts.map((p) => ({
+            title: typeof p.title === 'string' ? p.title : '',
+            description:
+              typeof p.description === 'string' ? p.description : undefined,
+          })),
+        })
+        warnings.push(...engineSync.warnings)
+        if (engineSync.appended.length) {
+          reply = `${reply}\n\nEngagement engine updated with: ${engineSync.appended.join(', ')}.`
+          warnings.push(
+            `Engagement engine gained: ${engineSync.appended.join(', ')}.`
+          )
+        }
+      } catch (engineErr) {
+        console.warn('[generateCustomSite] engagement service sync failed:', engineErr)
+        warnings.push('Could not sync new services into the engagement engine.')
+      }
+    }
   }
 
   return {
@@ -519,6 +596,7 @@ async function runFullGenerate(opts: {
   reply: string
   changedPages: string[]
   extraWarnings: string[]
+  serviceUpdates: ServiceUpdates
 }> {
   // Full redesigns route to Claude Fable 5 (design quality); Gemini is the
   // fallback when no Anthropic key is configured.
@@ -552,7 +630,7 @@ Whenever you receive a Full redesign request, follow this layered pipeline INTER
 1. PRODUCT UNDERSTANDING
    - Identify product type, target audience, goals, and key features from the business context.
    - The conversion goal is ALWAYS the embedded engagement engine (${engagementLabel}).
-   - The service catalog from intake is FIXED — every listed service must appear on the site.
+   - Intake services are the baseline catalog — keep every one unless the brief explicitly removes/replaces it. If the creative brief names additional sellable services or packages, ADD them to the site and report them in serviceUpdates.added.
 
 2. DESIGN FRAMEWORK SELECTION (creative direction)
    - If the admin provided a creative brief and/or reference images, that brief is the PRIMARY design direction. It may completely redirect the aesthetic (e.g. brutalist, Swiss editorial, cinematic luxury, heritage, industrial, coastal, etc.).
@@ -573,7 +651,8 @@ Whenever you receive a Full redesign request, follow this layered pipeline INTER
 
 6. PAGE ARCHITECTURE
    - Build EVERY page in the required paths list.
-   - Use ALL intake content (context.intakePages + context.services): sharpen copy, never drop services, facts, or client-submitted sections.
+   - Use ALL intake content (context.intakePages + context.services): sharpen copy, never drop services, facts, or client-submitted sections unless the brief explicitly removes a service.
+   - Feature intake services PLUS any brief-added services on home and the services page.
    - Home must include a designed conversion section that mounts the engagement engine.
 
 7. FINAL OUTPUT — only the JSON schema below. Nothing else.
@@ -583,10 +662,10 @@ NON-NEGOTIABLE (override aesthetic freedom — the brief cannot remove these):
     services.length
       ? ` — specifically: ${services.join('; ')}`
       : ' (use whatever titles appear in context.services)'
-  }. Feature them on home and dedicate real coverage on the services page (or equivalent). Do not invent extra services; do not drop any.
+  }. Feature them on home and dedicate real coverage on the services page (or equivalent). You MAY add services the creative brief explicitly introduces (packages, tiers sold as offerings, etc.) — list those only in serviceUpdates.added. Do NOT drop intake services unless the brief explicitly says to remove/replace them — then list those titles in serviceUpdates.removed with a short reason citing the brief. Never invent unrelated services that the brief did not mention.
 - ENGAGEMENT ENGINE: this site uses a "${engagementLabel}" (${engagementModel}). Embed EXACTLY this HTML comment on the home page (literal characters, NO attributes):
   ${WIDGET_PLACEHOLDER}
-  Place it inside the designed conversion / estimate / book / order section. Optionally repeat on contact. The mount must be transparent and flush — NEVER paint background, border, box-shadow, or heavy padding on the element containing the comment (the widget paints its own card).
+  Place it inside the designed conversion / estimate / book / order section. Optionally repeat on contact. The mount must be transparent and flush — NEVER paint background, border, box-shadow, or heavy padding on the element containing the comment (the widget paints its own card). Extra services from the brief must still be featured on the marketing site; the platform will sync them into the engagement engine separately.
 - INTAKE PAGES & COPY: ship EXACTLY these paths: ${opts.pageHints}. Preserve client facts from intakePages / about / seo; rewrite for sharpness, never invent testimonials/stats/awards.
 
 ${
@@ -607,7 +686,11 @@ Output ONLY valid JSON matching this schema (no markdown fences):
     "/": { "html": "body HTML", "css": "optional page-specific CSS", "title": "SEO title", "description": "meta description" },
     "/about": { "html": "...", "title": "...", "description": "..." }
   },
-  "reply": "3-5 sentences for the admin: how you interpreted their brief, the design direction, palette/type pairing, and confirmation that intake services + ${engagementLabel} are present"
+  "serviceUpdates": {
+    "added": [{ "title": "New service from brief", "description": "optional short description" }],
+    "removed": [{ "title": "Only when brief explicitly removes it", "reason": "explicit brief instruction: ..." }]
+  },
+  "reply": "3-5 sentences for the admin: how you interpreted their brief, the design direction, palette/type pairing, confirmation that intake services + any brief-added services + ${engagementLabel} are present"
 }
 
 PLATFORM CONSTRAINTS (the renderer enforces these — violations get stripped and break the site):
@@ -637,7 +720,7 @@ SIZE BUDGET (hard): globalCss ≤ 9000 chars. Home html ≤ 11000 chars. Other p
 
   const userPrompt = `Full redesign for "${opts.brandName}".
 
-=== CREATIVE BRIEF (absorb into the design pipeline — this may completely redirect the aesthetic) ===
+=== CREATIVE BRIEF (absorb into the design pipeline — this may completely redirect the aesthetic; may also introduce extra services to ADD) ===
 ${
   adminBrief
     ? adminBrief
@@ -647,8 +730,9 @@ ${
 }
 ${hasImages ? `\nReference images attached: ${opts.images!.length}. Study them as part of the brief.\n` : ''}
 === NON-NEGOTIABLE PRODUCT FACTS (always keep, regardless of brief) ===
-- Engagement engine: ${engagementLabel} (engagementModel="${engagementModel}") — mount ${WIDGET_PLACEHOLDER} on home conversion section.
-- Intake services (must all appear): ${services.length ? services.join(' | ') : '(see context.services)'}
+- Engagement engine: ${engagementLabel} (engagementModel="${engagementModel}") — mount ${WIDGET_PLACEHOLDER} on home conversion section. Never omit it.
+- Intake services (must all appear unless brief explicitly removes them): ${services.length ? services.join(' | ') : '(see context.services)'}
+- If the brief names additional services/packages, feature them on the site AND list them in serviceUpdates.added.
 - Required pages: ${opts.pageHints}
 
 === BUSINESS CONTEXT (intake content, services, SEO, media — use all of it) ===
@@ -681,10 +765,13 @@ Execute the layered pipeline. Enhance the creative brief into tokens, grid, comp
       ? parsed.reply.trim()
       : 'Custom draft generated. Preview it, then publish when ready.'
 
+  const serviceUpdates = parseServiceUpdates(parsed.serviceUpdates)
+
   return {
     config,
     reply,
     changedPages: Object.keys(config.pages),
+    serviceUpdates,
     extraWarnings: hasBrief
       ? []
       : [

@@ -463,7 +463,9 @@ export default function AdminCustomBuild({
             <strong className="text-neutral-300 font-medium">surgical edits</strong>
             {showFullRedesign ? (
               <>
-                . Use Full redesign only when you want an entirely new AI design
+                . Use Full redesign for a new AI design — intake services stay unless you
+                explicitly remove them; services named in the brief are added to the site
+                and engagement engine
               </>
             ) : null}
             . Draft → preview → publish.
@@ -840,8 +842,8 @@ export default function AdminCustomBuild({
             }}
             placeholder={
               hasBase
-                ? 'Full redesign brief or surgical edit. e.g. “Swiss editorial, charcoal + copper, oversized type — keep all our detailing services and the quote engine.” Attach/paste a reference image if you have one.'
-                : 'Optional Full redesign brief (style, mood, references). Attach/paste an image, then Generate from scratch or Full redesign. Intake services + engagement engine always stay.'
+                ? 'Full redesign brief or surgical edit. e.g. “Swiss editorial, charcoal + copper — keep intake services, add ceramic coating, keep the quote engine.” Attach/paste a reference image if you have one.'
+                : 'Optional Full redesign brief (style, mood, references). Attach/paste an image, then Generate from scratch or Full redesign. Intake services stay; brief may add services to site + engine.'
             }
             disabled={loading}
           />

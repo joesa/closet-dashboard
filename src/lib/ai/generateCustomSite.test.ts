@@ -59,3 +59,14 @@ describe('extractCssAccent', () => {
     expect(extractCssAccent('body{color:#111}')).toBeNull()
   })
 })
+
+describe('full redesign additive service policy', () => {
+  it('prompts allow brief-added services and forbid silent drops', async () => {
+    const { readFileSync } = await import('fs')
+    const { join } = await import('path')
+    const src = readFileSync(join(__dirname, 'generateCustomSite.ts'), 'utf8')
+    expect(src).toContain('You MAY add services the creative brief explicitly introduces')
+    expect(src).toContain('serviceUpdates')
+    expect(src).not.toContain('Do not invent extra services; do not drop any.')
+  })
+})
