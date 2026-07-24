@@ -724,6 +724,25 @@ export function inferSiteAppearanceMode(
   html: string,
   css: string
 ): 'light' | 'dark' {
+  // Prefer the design-token --bg when present — cream paper sites often also
+  // declare dark section tokens (#131518) that would otherwise tip the vote.
+  const bgToken = (css || '').match(/--bg\s*:\s*(#[0-9a-fA-F]{3,8})\b/)
+  if (bgToken) {
+    const hex = bgToken[1].toLowerCase()
+    const expanded =
+      hex.length === 4
+        ? `#${hex[1]}${hex[1]}${hex[2]}${hex[2]}${hex[3]}${hex[3]}`
+        : hex
+    const r = parseInt(expanded.slice(1, 3), 16)
+    const g = parseInt(expanded.slice(3, 5), 16)
+    const b = parseInt(expanded.slice(5, 7), 16)
+    if ([r, g, b].every((n) => Number.isFinite(n))) {
+      // Relative luminance — light paper vs dark canvas.
+      const lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255
+      return lum >= 0.45 ? 'light' : 'dark'
+    }
+  }
+
   const blob = `${css || ''}\n${html || ''}`.toLowerCase()
   const darkHits = (
     blob.match(
@@ -765,8 +784,22 @@ const INDUSTRY_THEME_BOOST: Array<{ re: RegExp; ids: string[] }> = [
     ids: ['noir-brass', 'inkwell', 'pearl', 'ivory-brass', 'obsidian'],
   },
   {
-    re: /auto|garage|detail|tow/i,
-    ids: ['graphite', 'ember-forge', 'steelworks', 'harbor-night', 'smoke'],
+    // Include car wash / ceramic / tint so light cream redesigns don't fall
+    // through to a random purple pack (e.g. Lavender Mist) off a stale slate hex.
+    re: /auto|garage|detail|tow|car\s*wash|ceramic|tint|mobile\s+(auto|detail|wash)/i,
+    ids: [
+      'terracotta',
+      'slate-studio',
+      'cement',
+      'sandstone',
+      'rosewood',
+      'graphite',
+      'ember-forge',
+      'steelworks',
+      'harbor-night',
+      'smoke',
+      'copper-loft',
+    ],
   },
 ]
 

@@ -428,24 +428,35 @@ export async function generateCustomSiteDraft(opts: {
 
   if (updateErr) throw new Error(`Failed to save draft: ${updateErr.message}`)
 
+  // Bust the websites app cache so Preview draft shows the new HTML immediately
+  // instead of waiting up to 60s for unstable_cache to expire.
+  try {
+    const { revalidateTenantSiteCache } = await import('@/lib/tenants/revalidateTenantSite')
+    await revalidateTenantSiteCache(opts.tenantId)
+  } catch (revalErr) {
+    console.warn('[generateCustomSite] draft revalidate failed:', revalErr)
+  }
+
   // Full redesign / from-scratch: auto-pick a matched calculator theme so the
   // engagement widget blends with the new site (dark CTA → dark pack, etc.).
   let reply = result.reply
   if (intent === 'full' && tenant.widget_id) {
     try {
       const homeHtml = sanitized.pages['/']?.html || sanitized.pages['']?.html || ''
-      const appearance = inferSiteAppearanceMode(
-        homeHtml,
-        sanitized.globalCss || ''
-      )
+      const globalCss = sanitized.globalCss || ''
+      const appearance = inferSiteAppearanceMode(homeHtml, globalCss)
       const { data: settingsRow } = await supabase
         .from('contractor_settings')
         .select('primary_color_hex, industry')
         .eq('id', tenant.widget_id)
         .maybeSingle()
+      // Prefer the redesign's own accent token over the (often stale) contractor
+      // primary — e.g. burnt-copper --acc beats a leftover slate #94a3b8.
+      const cssAccent = extractCssAccent(globalCss)
       const picked = pickWidgetThemeForSite({
         mode: appearance,
-        brandColor: settingsRow?.primary_color_hex as string | null,
+        brandColor:
+          cssAccent || (settingsRow?.primary_color_hex as string | null) || null,
         industryHint: [
           settingsRow?.industry,
           brandName,
@@ -474,6 +485,13 @@ export async function generateCustomSiteDraft(opts: {
     intent,
     changedPages: result.changedPages,
   }
+}
+
+/** Pull --acc / --accent from generated globalCss for widget theme matching. */
+export function extractCssAccent(css: string): string | null {
+  if (!css) return null
+  const m = css.match(/--acc(?:ent)?\s*:\s*(#[0-9a-fA-F]{3,8})\b/)
+  return m?.[1] || null
 }
 
 async function runFullGenerate(opts: {

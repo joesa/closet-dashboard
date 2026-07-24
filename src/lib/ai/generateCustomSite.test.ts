@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { mergeCustomPatch } from './generateCustomSite'
+import { extractCssAccent, mergeCustomPatch } from './generateCustomSite'
 import type { CustomSiteConfig } from '@/lib/customSite'
 
 const base: CustomSiteConfig = {
@@ -41,5 +41,21 @@ describe('mergeCustomPatch', () => {
   it('applies globalCss when provided as a string', () => {
     const { merged } = mergeCustomPatch(base, { globalCss: ':root{--c:red}' })
     expect(merged.globalCss).toBe(':root{--c:red}')
+  })
+})
+
+describe('extractCssAccent', () => {
+  it('reads --acc from design tokens', () => {
+    expect(extractCssAccent(':root{--bg:#f4f1ea;--acc:#c05a1e;--ink:#111}')).toBe(
+      '#c05a1e'
+    )
+  })
+
+  it('reads --accent as a fallback name', () => {
+    expect(extractCssAccent('--accent: #a67c2d;')).toBe('#a67c2d')
+  })
+
+  it('returns null when no accent token exists', () => {
+    expect(extractCssAccent('body{color:#111}')).toBeNull()
   })
 })

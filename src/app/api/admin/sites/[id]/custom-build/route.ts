@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server'
+import { NextResponse, after } from 'next/server'
 import { getCurrentAdmin, logAdminAction } from '@/lib/admin'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import {
@@ -10,9 +10,16 @@ import {
 import { cloneCurrentSiteToDraft } from '@/lib/ai/cloneEngineSite'
 import { diffCustomDraftPages } from '@/lib/ai/customDraftDiff'
 import { isCustomSiteConfig } from '@/lib/customSite'
+import {
+  getCustomBuildJob,
+  isCustomBuildJob,
+  isCustomBuildJobActive,
+  setCustomBuildJob,
+} from '@/lib/ai/customBuildJob'
+import { processCustomBuildJob } from '@/lib/ai/processCustomBuildJob'
 
-// Full generates on a thinking model (plus one retry) can run well past 60s.
-// Fluid compute allows 300s even on Hobby — match the other long AI routes.
+// Full generates on Claude Fable 5 routinely take 3–5 minutes. Fluid compute
+// allows 300s; we return immediately and finish the work in `after()`.
 export const maxDuration = 300
 export const runtime = 'nodejs'
 
@@ -22,10 +29,11 @@ export const runtime = 'nodejs'
  * Actions:
  *  - clone     → copy current live site into custom_config_draft (no AI redesign)
  *  - generate  → AI builds/iterates custom_config_draft (never goes live)
+ *                Full redesign is async (returns { async: true } + job status)
  *  - publish   → copy draft → custom_config, set render_mode=custom, revalidate
  *  - revert    → set render_mode=engine (keeps draft + published artifacts)
  *  - discard   → clear custom_config_draft
- *  - status    → return current render_mode + draft/published page keys
+ *  - status    → return current render_mode + draft/published page keys + job
  */
 export async function POST(
   req: Request,
@@ -46,7 +54,9 @@ export async function POST(
       const supabase = getSupabaseAdmin()
       const { data, error } = await supabase
         .from('site_configs')
-        .select('render_mode, custom_config, custom_config_draft, custom_updated_at')
+        .select(
+          'render_mode, custom_config, custom_config_draft, custom_updated_at, custom_build_job'
+        )
         .eq('tenant_id', tenantId)
         .single()
       if (error || !data) {
@@ -55,6 +65,7 @@ export async function POST(
       const draft = isCustomSiteConfig(data.custom_config_draft) ? data.custom_config_draft : null
       const published = isCustomSiteConfig(data.custom_config) ? data.custom_config : null
       const draftDiffPages = diffCustomDraftPages(draft, published)
+      const job = isCustomBuildJob(data.custom_build_job) ? data.custom_build_job : null
       return NextResponse.json({
         renderMode: data.render_mode === 'custom' ? 'custom' : 'engine',
         customUpdatedAt: data.custom_updated_at,
@@ -67,6 +78,8 @@ export async function POST(
         /** True when draft HTML differs from what visitors see (or nothing published yet). */
         draftAhead: !!(draft && (!published || draftDiffPages.length > 0)),
         draftDiffPages,
+        job,
+        jobActive: isCustomBuildJobActive(job),
       })
     }
 
@@ -117,6 +130,63 @@ export async function POST(
           : body.iterate === true
             ? 'surgical'
             : 'full'
+
+      // Full redesign: queue + finish in `after()` so the browser never sits
+      // on a 4–5 minute request that Vercel kills with a 504.
+      if (intent === 'full') {
+        const existing = await getCustomBuildJob(tenantId)
+        if (isCustomBuildJobActive(existing)) {
+          return NextResponse.json({
+            async: true,
+            intent: 'full',
+            job: existing,
+            jobActive: true,
+            reply: 'A full redesign is already running — hang tight, this panel will update when it finishes.',
+          })
+        }
+
+        const job = {
+          status: 'queued' as const,
+          intent: 'full' as const,
+          prompt,
+          mode,
+          error: null,
+          reply: null,
+          started_at: new Date().toISOString(),
+          finished_at: null,
+        }
+        await setCustomBuildJob(tenantId, job)
+
+        await logAdminAction({
+          actor: adminUser,
+          action: 'site.custom_build_generate_queued',
+          targetType: 'tenant',
+          targetId: tenantId,
+          metadata: { prompt: prompt.slice(0, 500), intent: 'full', mode },
+        })
+
+        after(async () => {
+          try {
+            await processCustomBuildJob(tenantId)
+          } catch (err) {
+            console.error('[custom-build after] process failed:', err)
+          }
+        })
+
+        return NextResponse.json({
+          async: true,
+          intent: 'full',
+          job,
+          jobActive: true,
+          reply:
+            'Full redesign started — Claude Fable 5 usually takes 3–5 minutes. This panel will refresh when the draft is ready.',
+          nextStep: {
+            preview: false,
+            publish: false,
+            message: 'Redesign running in the background. Leave this page open or come back shortly.',
+          },
+        })
+      }
 
       const result = await generateCustomSiteDraft({
         tenantId,
@@ -244,7 +314,9 @@ export async function GET(
   const supabase = getSupabaseAdmin()
   const { data, error } = await supabase
     .from('site_configs')
-    .select('render_mode, custom_config, custom_config_draft, custom_updated_at')
+    .select(
+      'render_mode, custom_config, custom_config_draft, custom_updated_at, custom_build_job'
+    )
     .eq('tenant_id', tenantId)
     .single()
 
@@ -254,6 +326,7 @@ export async function GET(
 
   const draft = isCustomSiteConfig(data.custom_config_draft) ? data.custom_config_draft : null
   const published = isCustomSiteConfig(data.custom_config) ? data.custom_config : null
+  const job = isCustomBuildJob(data.custom_build_job) ? data.custom_build_job : null
 
   return NextResponse.json({
     renderMode: data.render_mode === 'custom' ? 'custom' : 'engine',
@@ -264,5 +337,7 @@ export async function GET(
     published: published
       ? { mode: published.mode, pageKeys: Object.keys(published.pages || {}) }
       : null,
+    job,
+    jobActive: isCustomBuildJobActive(job),
   })
 }

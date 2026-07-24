@@ -23,10 +23,19 @@ describe('inferSiteAppearanceMode', () => {
     ).toBe('dark')
   })
 
-  it('detects light custom CSS', () => {
+  it('detects light from cream --bg even when dark section tokens exist', () => {
     expect(
-      inferSiteAppearanceMode('<main>', 'body{background:#ffffff;color:#222}')
+      inferSiteAppearanceMode(
+        '<section class="hero dark">',
+        ':root{--bg:#f4f1ea;--dark:#131518;--acc:#c05a1e}'
+      )
     ).toBe('light')
+  })
+
+  it('detects dark from near-black --bg', () => {
+    expect(
+      inferSiteAppearanceMode('<main>', ':root{--bg:#0e1014;--ink:#f5f5f5}')
+    ).toBe('dark')
   })
 })
 
@@ -58,6 +67,23 @@ describe('pickWidgetThemeForSite', () => {
       'gallery-white',
       'cloud-linen',
       'porcelain',
+    ]).toContain(picked.id)
+  })
+
+  it('prefers warm auto/car-wash themes over lavender for light sites', () => {
+    const picked = pickWidgetThemeForSite({
+      mode: 'light',
+      brandColor: '#c05a1e',
+      industryHint: 'Wehora Car Wash mobile detailing',
+    })
+    expect(picked.mode).toBe('light')
+    expect(picked.id).not.toBe('lavender-mist')
+    expect([
+      'terracotta',
+      'slate-studio',
+      'cement',
+      'sandstone',
+      'rosewood',
     ]).toContain(picked.id)
   })
 })

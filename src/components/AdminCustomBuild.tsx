@@ -1,7 +1,19 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+
+type CustomBuildJob = {
+  status: 'queued' | 'processing' | 'succeeded' | 'failed';
+  intent?: 'full' | 'surgical';
+  prompt?: string;
+  error?: string | null;
+  reply?: string | null;
+  warnings?: string[];
+  changedPages?: string[];
+  started_at?: string;
+  finished_at?: string | null;
+};
 
 type Status = {
   renderMode: 'engine' | 'custom';
@@ -10,6 +22,8 @@ type Status = {
   published: { mode: string; pageKeys: string[] } | null;
   draftAhead?: boolean;
   draftDiffPages?: string[];
+  job?: CustomBuildJob | null;
+  jobActive?: boolean;
 };
 
 type NextStep = {
@@ -95,6 +109,54 @@ export default function AdminCustomBuild({
     void refresh();
     void refreshAssets();
   }, [refresh, refreshAssets]);
+
+  // Poll while a Full redesign is running in the background.
+  const jobWasActiveRef = useRef(false);
+  useEffect(() => {
+    const job = status?.job;
+    const active =
+      status?.jobActive || job?.status === 'queued' || job?.status === 'processing';
+    if (active) {
+      jobWasActiveRef.current = true;
+      setLoading(true);
+      setInfo(
+        job?.status === 'processing'
+          ? 'Full redesign in progress (Claude Fable 5, usually 3–5 minutes)…'
+          : 'Full redesign queued…'
+      );
+      const id = window.setInterval(() => {
+        void refresh();
+      }, 4000);
+      return () => window.clearInterval(id);
+    }
+
+    // Only surface terminal state when we observed this job running in-session
+    // (avoid replaying an old succeeded/failed job every page load).
+    if (!jobWasActiveRef.current || !job) return;
+    jobWasActiveRef.current = false;
+
+    if (job.status === 'succeeded') {
+      setLoading(false);
+      setError('');
+      if (typeof job.reply === 'string' && job.reply.trim()) setReply(job.reply);
+      if (Array.isArray(job.warnings)) setWarnings(job.warnings);
+      if (Array.isArray(job.changedPages)) setChangedPages(job.changedPages);
+      setLastIntent('full');
+      setInfo(
+        'Full redesign saved to DRAFT only. Preview draft → Publish draft. The public site stays unchanged until Publish.'
+      );
+      setNextStep({
+        preview: true,
+        publish: true,
+        message:
+          'Draft ready. Click Preview draft to review, then Publish draft to make it live.',
+      });
+    } else if (job.status === 'failed') {
+      setLoading(false);
+      setError(job.error || 'Full redesign failed — try again.');
+      setInfo('');
+    }
+  }, [status?.jobActive, status?.job, refresh]);
 
   const uploadFile = async (file: File) => {
     setUploading(true);
@@ -295,6 +357,17 @@ export default function AdminCustomBuild({
             ? json.reply
             : 'Cloned the current live site into the custom draft.'
         );
+      } else if (action === 'generate' && json.async) {
+        // Full redesign runs in the background — keep loading + poll via refresh.
+        setInfo(
+          typeof json.reply === 'string'
+            ? json.reply
+            : 'Full redesign started — usually 3–5 minutes. This panel will update when ready.'
+        );
+        await refresh();
+        router.refresh();
+        // Don't clear loading here — the poll effect owns it until the job finishes.
+        return;
       } else if (action === 'generate' && json.intent === 'full') {
         setInfo(
           'Full redesign saved to DRAFT only. Preview draft → Publish draft. The public site stays unchanged until Publish.'
@@ -310,9 +383,10 @@ export default function AdminCustomBuild({
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Request failed');
-    } finally {
       setLoading(false);
+      return;
     }
+    setLoading(false);
   };
 
   const draftPreviewUrl =
