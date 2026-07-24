@@ -223,6 +223,53 @@ export function extractJson(text: string): string {
   return t
 }
 
+/**
+ * Best-effort recovery for JSON cut off mid-stream (e.g. Gemini hitting
+ * maxOutputTokens while "thinking" tokens ate the budget). Closes any open
+ * string, drops a dangling trailing key/comma, then closes open brackets.
+ * Run the result through JSON.parse inside a try — repair is not guaranteed.
+ */
+export function repairTruncatedJson(json: string): string {
+  const start = json.indexOf('{')
+  let out = start >= 0 ? json.slice(start) : json
+  const stack: string[] = []
+  let insideString = false
+  let escaped = false
+  for (let i = 0; i < out.length; i++) {
+    const ch = out[i]
+    if (insideString) {
+      if (escaped) escaped = false
+      else if (ch === '\\') escaped = true
+      else if (ch === '"') insideString = false
+      continue
+    }
+    if (ch === '"') insideString = true
+    else if (ch === '{' || ch === '[') stack.push(ch)
+    else if (ch === '}' || ch === ']') stack.pop()
+  }
+  if (insideString) {
+    // A truncated string value is useless as-is; drop the whole dangling
+    // `"key": "partial…` (or bare `"partial…` array element) instead of
+    // closing it mid-word.
+    if (escaped) out = out.slice(0, -1)
+    const withoutKeyValue = out.replace(
+      /,?\s*"([^"\\]|\\.)*"\s*:\s*"([^"\\]|\\.)*$/,
+      ''
+    )
+    out =
+      withoutKeyValue !== out
+        ? withoutKeyValue
+        : out.replace(/,?\s*"([^"\\]|\\.)*$/, '')
+  }
+  // Dangling `"key":` with no value, or trailing comma.
+  out = out.replace(/,?\s*"([^"\\]|\\.)*"\s*:\s*$/, '')
+  out = out.replace(/,\s*$/, '')
+  while (stack.length) {
+    out += stack.pop() === '{' ? '}' : ']'
+  }
+  return out
+}
+
 export function sanitizeJsonString(json: string): string {
   let insideString = false
   let escaped = false

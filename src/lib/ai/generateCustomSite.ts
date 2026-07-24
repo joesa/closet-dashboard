@@ -1,6 +1,10 @@
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { generateTextWithFallback } from '@/lib/ai/aiTextProvider'
-import { extractJson, sanitizeJsonString } from '@/lib/ai/generateSiteConfig'
+import {
+  extractJson,
+  repairTruncatedJson,
+  sanitizeJsonString,
+} from '@/lib/ai/generateSiteConfig'
 import {
   htmlHasInjectableWidget,
   isCustomSiteConfig,
@@ -484,7 +488,9 @@ ${JSON.stringify(opts.context, null, 2)}`
     systemPrompt,
     userPrompt,
     temperature: 0.7,
-    maxOutputTokens: 8192,
+    // gemini-pro-latest is a thinking model: maxOutputTokens includes hidden
+    // reasoning tokens, so a tight cap truncates the JSON mid-string.
+    maxOutputTokens: 32768,
   })
 
   const config: CustomSiteConfig = {
@@ -567,7 +573,8 @@ ${JSON.stringify(opts.context, null, 2)}`
     systemPrompt,
     userPrompt,
     temperature: 0.3,
-    maxOutputTokens: 6144,
+    // Thinking tokens count against this cap — keep generous headroom.
+    maxOutputTokens: 24576,
   })
 
   const patch: SurgicalPatch = {
@@ -636,39 +643,71 @@ ${JSON.stringify(opts.context, null, 2)}`
   }
 }
 
+function parseModelJson(text: string): Record<string, unknown> {
+  try {
+    return JSON.parse(sanitizeJsonString(extractJson(text))) as Record<string, unknown>
+  } catch {
+    // Output was likely cut off mid-stream — repair (close open strings /
+    // brackets) works on the raw text, not the extractJson slice, because
+    // truncated output often has no final `}` for extractJson to find.
+    return JSON.parse(sanitizeJsonString(repairTruncatedJson(text))) as Record<
+      string,
+      unknown
+    >
+  }
+}
+
 async function callModelJson(opts: {
   systemPrompt: string
   userPrompt: string
   temperature: number
   maxOutputTokens: number
 }): Promise<Record<string, unknown>> {
-  let text: string
-  try {
-    const result = await generateTextWithFallback({
-      prompt: opts.userPrompt,
-      systemPrompt: opts.systemPrompt,
-      jsonMode: true,
-      temperature: opts.temperature,
-      maxOutputTokens: opts.maxOutputTokens,
-    })
-    text = result.text
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err)
-    if (/GEMINI_API_KEY/i.test(msg)) {
-      throw new Error('AI is not configured (missing GEMINI_API_KEY on the server).')
+  let lastText = ''
+  let lastParseErr: unknown = null
+
+  // Attempt 1 as requested; attempt 2 retries colder with an explicit
+  // validity nudge — recovers most transient bad-JSON generations.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    let text: string
+    try {
+      const result = await generateTextWithFallback({
+        prompt: opts.userPrompt,
+        systemPrompt:
+          attempt === 0
+            ? opts.systemPrompt
+            : `${opts.systemPrompt}\n\nIMPORTANT: Your previous attempt returned invalid/incomplete JSON. Respond with COMPLETE, strictly valid JSON only. Keep HTML/CSS compact so the response fits.`,
+        jsonMode: true,
+        temperature: attempt === 0 ? opts.temperature : 0.2,
+        maxOutputTokens: opts.maxOutputTokens,
+      })
+      text = result.text
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      if (/GEMINI_API_KEY/i.test(msg)) {
+        throw new Error('AI is not configured (missing GEMINI_API_KEY on the server).')
+      }
+      throw new Error(`AI generation failed: ${msg}`)
     }
-    throw new Error(`AI generation failed: ${msg}`)
+
+    lastText = text
+    try {
+      return parseModelJson(text)
+    } catch (err) {
+      lastParseErr = err
+      console.warn(
+        `[generateCustomSite] attempt ${attempt + 1} returned unparseable JSON (${text.length} chars) — ${
+          attempt === 0 ? 'retrying once' : 'giving up'
+        }`
+      )
+    }
   }
 
-  try {
-    return JSON.parse(sanitizeJsonString(extractJson(text))) as Record<string, unknown>
-  } catch (err) {
-    throw new Error(
-      `Model returned unparseable/truncated JSON (${text.length} chars). Try a shorter, more specific prompt. ${
-        err instanceof Error ? err.message : 'parse error'
-      }`
-    )
-  }
+  throw new Error(
+    `Model returned unparseable/truncated JSON (${lastText.length} chars). Try a shorter, more specific prompt. ${
+      lastParseErr instanceof Error ? lastParseErr.message : 'parse error'
+    }`
+  )
 }
 
 export async function publishCustomSiteDraft(tenantId: string): Promise<{

@@ -1,6 +1,10 @@
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { generateTextWithFallback } from '@/lib/ai/aiTextProvider'
-import { extractJson, sanitizeJsonString } from '@/lib/ai/generateSiteConfig'
+import {
+  extractJson,
+  repairTruncatedJson,
+  sanitizeJsonString,
+} from '@/lib/ai/generateSiteConfig'
 import {
   THEME_SLUGS,
   LAYOUT_SLUGS,
@@ -409,7 +413,11 @@ export async function runAdminSiteChat(
   try {
     parsed = JSON.parse(sanitizeJsonString(extractJson(text)))
   } catch {
-    throw new Error('The AI returned an unparseable response — please try again.')
+    try {
+      parsed = JSON.parse(sanitizeJsonString(repairTruncatedJson(text)))
+    } catch {
+      throw new Error('The AI returned an unparseable response — please try again.')
+    }
   }
   const reply =
     typeof parsed.reply === 'string' && parsed.reply.trim()
