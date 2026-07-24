@@ -11,11 +11,11 @@ import { cloneCurrentSiteToDraft } from '@/lib/ai/cloneEngineSite'
 import { diffCustomDraftPages } from '@/lib/ai/customDraftDiff'
 import { isCustomSiteConfig } from '@/lib/customSite'
 import {
-  getCustomBuildJob,
+  getAndReconcileCustomBuildJob,
   hasEverFullRedesign,
-  isCustomBuildJob,
   isCustomBuildJobActive,
   setCustomBuildJob,
+  shouldRequeueCustomBuildJob,
 } from '@/lib/ai/customBuildJob'
 import { processCustomBuildJob } from '@/lib/ai/processCustomBuildJob'
 import { normalizeAdminImageDataUrls } from '@/lib/adminImageAttach'
@@ -67,7 +67,17 @@ export async function POST(
       const draft = isCustomSiteConfig(data.custom_config_draft) ? data.custom_config_draft : null
       const published = isCustomSiteConfig(data.custom_config) ? data.custom_config : null
       const draftDiffPages = diffCustomDraftPages(draft, published)
-      const job = isCustomBuildJob(data.custom_build_job) ? data.custom_build_job : null
+      // Expire abandoned jobs (serverless kill leaves status=processing forever).
+      const job = await getAndReconcileCustomBuildJob(tenantId)
+      if (shouldRequeueCustomBuildJob(job)) {
+        after(async () => {
+          try {
+            await processCustomBuildJob(tenantId)
+          } catch (err) {
+            console.error('[custom-build status requeue] process failed:', err)
+          }
+        })
+      }
       return NextResponse.json({
         renderMode: data.render_mode === 'custom' ? 'custom' : 'engine',
         customUpdatedAt: data.custom_updated_at,
@@ -80,7 +90,7 @@ export async function POST(
         /** True when draft HTML differs from what visitors see (or nothing published yet). */
         draftAhead: !!(draft && (!published || draftDiffPages.length > 0)),
         draftDiffPages,
-        job,
+        job: job ? { ...job, images: undefined } : null,
         jobActive: isCustomBuildJobActive(job),
         fullRedesignEver: hasEverFullRedesign(job),
       })
@@ -139,12 +149,12 @@ export async function POST(
       // Full redesign: queue + finish in `after()` so the browser never sits
       // on a 4–5 minute request that Vercel kills with a 504.
       if (intent === 'full') {
-        const existing = await getCustomBuildJob(tenantId)
+        const existing = await getAndReconcileCustomBuildJob(tenantId)
         if (isCustomBuildJobActive(existing)) {
           return NextResponse.json({
             async: true,
             intent: 'full',
-            job: existing,
+            job: existing ? { ...existing, images: undefined } : existing,
             jobActive: true,
             reply: 'A full redesign is already running — hang tight, this panel will update when it finishes.',
           })
@@ -340,7 +350,16 @@ export async function GET(
 
   const draft = isCustomSiteConfig(data.custom_config_draft) ? data.custom_config_draft : null
   const published = isCustomSiteConfig(data.custom_config) ? data.custom_config : null
-  const job = isCustomBuildJob(data.custom_build_job) ? data.custom_build_job : null
+  const job = await getAndReconcileCustomBuildJob(tenantId)
+  if (shouldRequeueCustomBuildJob(job)) {
+    after(async () => {
+      try {
+        await processCustomBuildJob(tenantId)
+      } catch (err) {
+        console.error('[custom-build GET requeue] process failed:', err)
+      }
+    })
+  }
 
   return NextResponse.json({
     renderMode: data.render_mode === 'custom' ? 'custom' : 'engine',
@@ -351,7 +370,7 @@ export async function GET(
     published: published
       ? { mode: published.mode, pageKeys: Object.keys(published.pages || {}) }
       : null,
-    job,
+    job: job ? { ...job, images: undefined } : null,
     jobActive: isCustomBuildJobActive(job),
     fullRedesignEver: hasEverFullRedesign(job),
   })

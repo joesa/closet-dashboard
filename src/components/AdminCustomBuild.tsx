@@ -137,11 +137,12 @@ export default function AdminCustomBuild({
   }, [refresh, refreshAssets]);
 
   // Poll while a Full redesign is running in the background.
+  // Trust server `jobActive` (stale jobs are expired server-side) — do not
+  // re-derive from status alone or a killed `processing` job locks the UI forever.
   const jobWasActiveRef = useRef(false);
   useEffect(() => {
     const job = status?.job;
-    const active =
-      status?.jobActive || job?.status === 'queued' || job?.status === 'processing';
+    const active = status?.jobActive === true;
     if (active) {
       jobWasActiveRef.current = true;
       setLoading(true);
@@ -156,9 +157,13 @@ export default function AdminCustomBuild({
       return () => window.clearInterval(id);
     }
 
-    // Only surface terminal state when we observed this job running in-session
-    // (avoid replaying an old succeeded/failed job every page load).
-    if (!jobWasActiveRef.current || !job) return;
+    // Surface terminal state when we watched this job, or it just finished
+    // (e.g. server expired a stuck job on first poll after page load).
+    if (!job) return;
+    const finishedMs = job.finished_at ? Date.parse(job.finished_at) : NaN;
+    const justFinished =
+      Number.isFinite(finishedMs) && Date.now() - finishedMs < 2 * 60 * 1000;
+    if (!jobWasActiveRef.current && !justFinished) return;
     jobWasActiveRef.current = false;
 
     if (job.status === 'succeeded') {

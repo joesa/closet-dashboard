@@ -27,6 +27,12 @@ export type CustomBuildJob = {
   ever_full?: boolean
 }
 
+/** Vercel maxDuration is 300s — treat anything older as abandoned. */
+export const CUSTOM_BUILD_JOB_STALE_MS = 8 * 60 * 1000
+
+/** Re-kick `after()` if a job sits in queued without being claimed. */
+export const CUSTOM_BUILD_JOB_REQUEUE_MS = 45 * 1000
+
 /** True once this tenant has ever queued/run a Full redesign. */
 export function hasEverFullRedesign(job: CustomBuildJob | null | undefined): boolean {
   if (!job) return false
@@ -43,6 +49,46 @@ export function isCustomBuildJob(value: unknown): value is CustomBuildJob {
       v.status === 'failed') &&
     typeof v.started_at === 'string'
   )
+}
+
+export function jobAgeMs(
+  job: CustomBuildJob | null | undefined,
+  nowMs: number = Date.now()
+): number {
+  if (!job?.started_at) return 0
+  const started = Date.parse(job.started_at)
+  if (!Number.isFinite(started)) return 0
+  return Math.max(0, nowMs - started)
+}
+
+export function isCustomBuildJobStale(
+  job: CustomBuildJob | null | undefined,
+  nowMs: number = Date.now()
+): boolean {
+  if (!job) return false
+  if (job.status !== 'queued' && job.status !== 'processing') return false
+  return jobAgeMs(job, nowMs) >= CUSTOM_BUILD_JOB_STALE_MS
+}
+
+/**
+ * If a queued/processing job outlived the serverless budget, mark it failed
+ * so the admin UI unlocks. Returns the (possibly updated) job.
+ */
+export function expireStaleCustomBuildJob(
+  job: CustomBuildJob | null,
+  nowMs: number = Date.now()
+): CustomBuildJob | null {
+  if (!job || !isCustomBuildJobStale(job, nowMs)) return job
+  return {
+    ...job,
+    status: 'failed',
+    images: undefined,
+    error:
+      job.error ||
+      'Full redesign timed out (server stopped after ~5 minutes). Click Full redesign to try again — a shorter brief or fewer reference images can help.',
+    finished_at: new Date(nowMs).toISOString(),
+    ever_full: job.ever_full || job.intent === 'full' || undefined,
+  }
 }
 
 export async function getCustomBuildJob(
@@ -70,7 +116,38 @@ export async function setCustomBuildJob(
   if (error) throw new Error(`Failed to update custom build job: ${error.message}`)
 }
 
+/**
+ * Load job, expire if stale (persist), return the live job for API responses.
+ */
+export async function getAndReconcileCustomBuildJob(
+  tenantId: string
+): Promise<CustomBuildJob | null> {
+  const current = await getCustomBuildJob(tenantId)
+  const reconciled = expireStaleCustomBuildJob(current)
+  if (
+    reconciled &&
+    current &&
+    reconciled.status === 'failed' &&
+    current.status !== 'failed'
+  ) {
+    await setCustomBuildJob(tenantId, reconciled)
+  }
+  return reconciled
+}
+
 /** True when a redesign is still running (UI should poll). */
 export function isCustomBuildJobActive(job: CustomBuildJob | null | undefined): boolean {
-  return !!job && (job.status === 'queued' || job.status === 'processing')
+  if (!job) return false
+  if (isCustomBuildJobStale(job)) return false
+  return job.status === 'queued' || job.status === 'processing'
+}
+
+/** True when queued long enough that `after()` likely never claimed it. */
+export function shouldRequeueCustomBuildJob(
+  job: CustomBuildJob | null | undefined,
+  nowMs: number = Date.now()
+): boolean {
+  if (!job || job.status !== 'queued') return false
+  if (isCustomBuildJobStale(job, nowMs)) return false
+  return jobAgeMs(job, nowMs) >= CUSTOM_BUILD_JOB_REQUEUE_MS
 }
