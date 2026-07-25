@@ -215,6 +215,24 @@ export function wantsWholeHeroImageVisible(prompt: string): boolean {
   )
 }
 
+/** Prefer cover when the admin wants the photo to fill the hero band edge-to-edge. */
+export function wantsHeroImageToFillSection(prompt: string): boolean {
+  return /\b(cover|covers|fill|fills|full[- ]?bleed|edge[- ]?to[- ]?edge)\b[\s\S]{0,48}\b(hero|banner|section|area|background|width)\b|\b(hero|banner|section|background)\b[\s\S]{0,48}\b(cover|covers|fill|fills|full[- ]?bleed)\b|\bbackground-size\s*:\s*cover\b|\bobject-fit\s*:\s*cover\b/i.test(
+    prompt || ''
+  )
+}
+
+/**
+ * Resolve background-size for a surgical hero image swap.
+ * Filling the hero wins when both "cover the hero" and "show the whole image"
+ * are asked — a square photo cannot do both in a wide hero band.
+ */
+export function resolveHeroImageFit(prompt: string): 'contain' | 'cover' {
+  if (wantsHeroImageToFillSection(prompt)) return 'cover'
+  if (wantsWholeHeroImageVisible(prompt)) return 'contain'
+  return 'cover'
+}
+
 /**
  * Rewrite the first hero-like section's background (or leading hero <img>) to
  * the given CDN URL. Deterministic — used so Surgical Edit does not depend on
@@ -228,10 +246,12 @@ export function applyHeroImageToHomeHtml(
   const safeUrl = imageUrl.trim().replace(/[<>"'\\\s]/g, '')
   if (!html || !safeUrl) return html
 
+  // Cover needs a real band height so a square/portrait CDN photo fills the
+  // full hero width; otherwise a short content-sized hero looks "squeezed."
   const fitStyles =
     fit === 'contain'
       ? `background-image:url(${safeUrl}); background-size: contain; background-position: center; background-repeat: no-repeat; background-color: #1a1f1e; min-height: clamp(420px, 62vh, 720px);`
-      : `background-image:url(${safeUrl}); background-size: cover; background-position: center; background-repeat: no-repeat;`
+      : `background-image:url(${safeUrl}); background-size: cover; background-position: center; background-repeat: no-repeat; min-height: clamp(420px, 56vh, 680px);`
 
   const heroOpen =
     /<section\b(?=[^>]*\b(?:class|id)\s*=\s*["'][^"']*\b(?:hero|banner|splash)\b)[^>]*>/i.exec(
@@ -477,9 +497,10 @@ async function trySurgicalHeroImageShortcut(opts: {
     return null
   }
 
-  const fit: 'contain' | 'cover' = wantsWholeHeroImageVisible(opts.prompt)
-    ? 'contain'
-    : 'cover'
+  const fit = resolveHeroImageFit(opts.prompt)
+  const askedBoth =
+    wantsHeroImageToFillSection(opts.prompt) &&
+    wantsWholeHeroImageVisible(opts.prompt)
 
   const draft = cloneCustomConfig(opts.base)
   const home = draft.pages['/'] || Object.values(draft.pages)[0]
@@ -502,15 +523,27 @@ async function trySurgicalHeroImageShortcut(opts: {
   const changed =
     before !== home.html || (opts.base.globalCss || '') !== (draft.globalCss || '')
 
+  const fitNote =
+    fit === 'contain'
+      ? 'contain fit — full photo visible, may letterbox on the sides'
+      : 'cover fit — fills the whole hero (square/portrait photos may crop top/bottom)'
+  const bothNote = askedBoth
+    ? ' Your prompt asked to both fill the hero and show the whole image; used cover so the hero is edge-to-edge.'
+    : ''
+
   return persistSurgicalShortcutDraft({
     tenantId: opts.tenantId,
     draft,
     changedPages: changed ? ['/'] : [],
     warnings: changed
-      ? []
+      ? askedBoth
+        ? [
+            'Asked for both “fill the hero” and “show the whole image” — used cover (fill). Say “contain / letterbox” if you prefer side bars instead of cropping.',
+          ]
+        : []
       : ['Hero already used this image — refreshed fit/size settings.'],
     reply: changed
-      ? `Set the home hero background to your attached image (${fit === 'contain' ? 'full image visible, not cropped' : 'cover fill'}). Preview draft to confirm, then Publish when ready.`
+      ? `Set the home hero background to your attached image (${fitNote}).${bothNote} Preview draft to confirm, then Publish when ready.`
       : 'Hero image was already set to that file — refreshed sizing. Preview draft to confirm.',
   })
 }
@@ -752,9 +785,7 @@ export async function generateCustomSiteDraft(opts: {
       attachedAssetUrls.find((u) => looksLikeImageUrl(u)) || attachedAssetUrls[0]
     const homeHtml = result.config.pages['/']?.html || ''
     if (heroUrl && !homeHtml.includes(heroUrl)) {
-      const fit: 'contain' | 'cover' = wantsWholeHeroImageVisible(opts.prompt || '')
-        ? 'contain'
-        : 'cover'
+      const fit = resolveHeroImageFit(opts.prompt || '')
       const fixed = cloneCustomConfig(result.config)
       const home = fixed.pages['/']
       if (home) {

@@ -8,6 +8,7 @@ import {
   extractCssAccent,
   looksLikeHeroImageSurgicalRequest,
   mergeCustomPatch,
+  resolveHeroImageFit,
   wantsWholeHeroImageVisible,
 } from './generateCustomSite'
 import type { CustomSiteConfig } from '@/lib/customSite'
@@ -238,6 +239,15 @@ describe('surgical hero image helpers', () => {
     )
   })
 
+  it('prefers cover when asked to fill the hero, even if also asked to show the whole image', () => {
+    expect(resolveHeroImageFit('whole image can be seen and not cropped')).toBe('contain')
+    expect(
+      resolveHeroImageFit(
+        'Use this image for the Hero. Make sure the image covers the whole Hero and the whole image can be seen'
+      )
+    ).toBe('cover')
+  })
+
   it('swaps hero background-image and applies contain fit', () => {
     const html = `<section class="hero" style="background-image:url(${oldUrl})"><div class="wrap"><h1>Hi</h1></div></section>`
     const out = applyHeroImageToHomeHtml(html, newUrl, 'contain')
@@ -245,6 +255,14 @@ describe('surgical hero image helpers', () => {
     expect(out).not.toContain(oldUrl)
     expect(out).toMatch(/background-size:\s*contain/i)
     expect(out).toMatch(/min-height:/i)
+  })
+
+  it('applies cover with min-height so the hero band fills edge-to-edge', () => {
+    const html = `<section class="hero" style="background-image:url(${oldUrl})"><div class="wrap"><h1>Hi</h1></div></section>`
+    const out = applyHeroImageToHomeHtml(html, newUrl, 'cover')
+    expect(out).toMatch(/background-size:\s*cover/i)
+    expect(out).toMatch(/min-height:/i)
+    expect(out).not.toMatch(/background-size:\s*contain/i)
   })
 
   it('updates global .hero background-size to match fit', () => {
