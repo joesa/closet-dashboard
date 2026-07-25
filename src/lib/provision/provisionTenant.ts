@@ -38,6 +38,7 @@ import {
   buildProvisionSignature,
   biasLayoutForEngagement,
 } from '@/lib/provision/siteSignature'
+import { platformFromEmail } from '@/lib/fromEmail'
 import { attachVercelDomain } from '@/lib/vercel-domains'
 import {
   buildDefaultAbout,
@@ -1330,7 +1331,7 @@ export async function provisionTenant(
         : `<p>Your custom site is live.</p>`
 
     await resend.emails.send({
-      from: process.env.INTAKE_FROM_EMAIL || 'DitchTheForm <admin@ditchtheform.com>',
+      from: platformFromEmail(),
       to: [ownerEmail],
       subject: isWidgetOnly
         ? 'Your DitchTheForm Calculator is ready to embed'

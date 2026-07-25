@@ -1,8 +1,8 @@
 import { Resend } from 'resend'
 import { formatUsd } from '@/lib/intake/tiers'
+import { platformFromEmail } from '@/lib/fromEmail'
 
-const FROM =
-  process.env.INTAKE_FROM_EMAIL || 'DitchTheForm <admin@ditchtheform.com>'
+const FROM = platformFromEmail()
 
 export async function sendIntakeLaunchPaymentEmail(opts: {
   to: string

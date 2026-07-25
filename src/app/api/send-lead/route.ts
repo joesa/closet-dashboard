@@ -2,6 +2,7 @@ import { Resend } from 'resend'
 import { corsHeaders, handleOptions } from '@/lib/cors'
 import { assertEntitled } from '@/lib/gate'
 import { DEMO_CONTRACTOR_ID, isAllowedDemoOrigin } from '@/lib/demo'
+import { platformFromEmail } from '@/lib/fromEmail'
 import { checkRateLimit, hashIpForRateLimit } from '@/lib/rate-limit'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { sendSms } from '@/lib/twilio-sms'
@@ -398,7 +399,7 @@ export async function POST(request: Request) {
     const resend = new Resend(process.env.RESEND_API_KEY)
 
     const { data, error } = await resend.emails.send({
-      from: 'DitchTheForm <admin@ditchtheform.com>',
+      from: platformFromEmail(),
       to: [toEmail],
       replyTo: body.customerEmail,
       subject: `🏠 New Quote Lead: ${body.customerName} — ${fmt(calculatedLow)}–${fmt(calculatedHigh)}`,

@@ -5,6 +5,7 @@ import { assertEntitled } from '@/lib/gate'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { checkRateLimit, hashIpForRateLimit } from '@/lib/rate-limit'
 
+import { platformFromEmail } from '@/lib/fromEmail'
 import { sendSms } from '@/lib/twilio-sms'
 import { splitName } from '@/lib/nameUtils'
 
@@ -101,7 +102,7 @@ export async function POST(request: Request) {
       </html>`
       
       const { error: emailError } = await resend.emails.send({
-        from: process.env.INTAKE_FROM_EMAIL || 'DitchTheForm <admin@ditchtheform.com>',
+        from: platformFromEmail(),
         to: [toEmail],
         subject: `New booking request from ${name} on ${date}`,
         html: emailHtml,

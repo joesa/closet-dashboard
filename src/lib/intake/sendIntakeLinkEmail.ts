@@ -1,7 +1,7 @@
 import { Resend } from 'resend'
+import { platformFromEmail } from '@/lib/fromEmail'
 
-const FROM =
-  process.env.INTAKE_FROM_EMAIL || 'DitchTheForm <admin@ditchtheform.com>'
+const FROM = platformFromEmail()
 
 export async function sendIntakeLinkEmail(opts: {
   to: string
