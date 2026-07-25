@@ -10,7 +10,7 @@ import { syncTenantLaunchAccess } from '@/lib/intake/syncTenantLaunchAccess'
 import type { ProspectIntakeRow } from '@/lib/intake/getIntakeByToken'
 
 function siteOrigin(): string {
-  return (process.env.NEXT_PUBLIC_SITE_URL || 'https://www.closetquotes.com').replace(/\/$/, '')
+  return (process.env.NEXT_PUBLIC_SITE_URL || 'https://www.ditchtheform.com').replace(/\/$/, '')
 }
 
 async function loadIntake(id: string) {

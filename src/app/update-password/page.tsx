@@ -32,7 +32,7 @@ export default function UpdatePasswordPage() {
         // server-side; this just keeps the UX clean.
         setIsDemoUser(true)
         setError(
-          'This is the shared demo account. Its password is fixed and managed by the ClosetQuote team.'
+          'This is the shared demo account. Its password is fixed and managed by the DitchTheForm team.'
         )
       }
       setCheckingSession(false)
@@ -56,7 +56,7 @@ export default function UpdatePasswordPage() {
 
     if (isDemoUser) {
       setError(
-        'This is the shared demo account. Its password is fixed and managed by the ClosetQuote team.'
+        'This is the shared demo account. Its password is fixed and managed by the DitchTheForm team.'
       )
       return
     }

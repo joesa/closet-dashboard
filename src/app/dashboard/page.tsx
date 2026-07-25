@@ -253,7 +253,9 @@ export default function DashboardPage() {
       } else {
         // First time — create a fresh form with user_id attached
         // Check for an affiliate referral stored during signup
-        const ref = localStorage.getItem('closetquote_ref')
+        const ref =
+          localStorage.getItem('ditchtheform_ref') ||
+          localStorage.getItem('closetquote_ref')
         const initialForm: ContractorSettings = {
           ...createInitialForm(),
           user_id: uid,
@@ -262,7 +264,10 @@ export default function DashboardPage() {
         setForm(initialForm)
 
         // Clear the ref so it isn't re-applied on future visits
-        if (ref) localStorage.removeItem('closetquote_ref')
+        if (ref) {
+          localStorage.removeItem('ditchtheform_ref')
+          localStorage.removeItem('closetquote_ref')
+        }
       }
 
       setAuthChecked(true)
@@ -1489,7 +1494,7 @@ export default function DashboardPage() {
             </div>
             <p className="mb-5 text-sm text-zinc-500">
               Paste this snippet into your website&apos;s HTML to display the
-              ClosetQuote Estimate Calculator widget.
+              DitchTheForm Estimate Calculator widget.
             </p>
 
             <div>
@@ -1529,7 +1534,7 @@ export default function DashboardPage() {
 
       {/* ─── Footer ─── */}
       <footer className="mt-auto border-t border-white/[0.04] py-6 text-center text-xs text-zinc-600">
-        © {new Date().getFullYear()} ClosetQuote · All rights reserved
+        © {new Date().getFullYear()} DitchTheForm · All rights reserved
       </footer>
     </div>
   )

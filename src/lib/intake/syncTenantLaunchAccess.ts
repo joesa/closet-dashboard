@@ -11,7 +11,7 @@ export type TenantSiteStatus =
   | 'widget_only'
 
 function dashboardOrigin(): string {
-  return (process.env.NEXT_PUBLIC_SITE_URL || 'https://www.closetquotes.com').replace(
+  return (process.env.NEXT_PUBLIC_SITE_URL || 'https://www.ditchtheform.com').replace(
     /\/$/,
     ''
   )

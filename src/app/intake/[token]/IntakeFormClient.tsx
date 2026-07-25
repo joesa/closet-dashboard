@@ -521,7 +521,7 @@ export default function IntakeFormClient({
     };
   }, []);
 
-  const draftKey = `closetquote-intake-draft-${token}`;
+  const draftKey = `ditchtheform-intake-draft-${token}`;
   const draftRestored = useRef(false);
 
   useEffect(() => {

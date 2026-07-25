@@ -4,7 +4,7 @@ import type { ProspectIntakeRow } from '@/lib/intake/getIntakeByToken'
 import { isLaunchBuildPaid } from '@/lib/intake/intakePaymentStage'
 
 function dashboardOrigin(): string {
-  return (process.env.NEXT_PUBLIC_SITE_URL || 'https://www.closetquotes.com').replace(
+  return (process.env.NEXT_PUBLIC_SITE_URL || 'https://www.ditchtheform.com').replace(
     /\/$/,
     ''
   )

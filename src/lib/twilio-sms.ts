@@ -119,8 +119,8 @@ export type SmsTemplate = {
   body: string
 }
 
-const BRAND = process.env.BRAND_NAME || 'ClosetQuote'
-const BRAND_DOMAIN = process.env.BRAND_DOMAIN || 'closetquotes.com'
+const BRAND = process.env.BRAND_NAME || 'DitchTheForm'
+const BRAND_DOMAIN = process.env.BRAND_DOMAIN || 'ditchtheform.com'
 const INDUSTRY = process.env.INDUSTRY_NAME || 'closet'
 
 export const PIPELINE_B_SMS_TEMPLATES: SmsTemplate[] = [

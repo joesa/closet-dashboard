@@ -104,7 +104,7 @@ export async function POST(request: Request) {
           {
             error: 'demo_restricted',
             message:
-              'The ClosetQuote demo widget can only run on closetquotes.com. Sign up for a free 30-day account at https://closet-dashboard-orcin.vercel.app/signup to embed it on your own site.',
+              'The DitchTheForm demo widget can only run on ditchtheform.com. Sign up for a free 30-day account at https://closet-dashboard-orcin.vercel.app/signup to embed it on your own site.',
           },
           403
         )

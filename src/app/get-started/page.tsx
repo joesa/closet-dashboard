@@ -177,7 +177,7 @@ function GetStartedForm() {
         <p className="mt-4 text-center text-xs text-gray-500">
           Already have a website?{' '}
           <Link href="/signup?from=get-started" className="font-medium text-indigo-600 hover:underline">
-            Leave this form and set up ClosetQuote Pro (widget only) →
+            Leave this form and set up DitchTheForm Pro (widget only) →
           </Link>
         </p>
 

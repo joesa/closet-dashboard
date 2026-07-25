@@ -1,4 +1,4 @@
-# Billing runbook (ClosetQuote)
+# Billing runbook (DitchTheForm)
 
 Ops reference for intake, site builds, and Stripe. Automated flows are in-app; use Dashboard fallbacks when needed.
 
@@ -9,9 +9,9 @@ Ops reference for intake, site builds, and Stripe. Automated flows are in-app; u
 - Run locally (test): `npm run stripe:catalog` with `STRIPE_SECRET_KEY` from `.env.local`
 - Run for production: same command with **live** secret key; copy price IDs to Vercel
 - Verify: `npm run stripe:verify` and production `GET /api/admin/stripe-health`
-- Archive duplicate **May 21** ClosetQuote Pro product in Dashboard; keep **Jun 1** `cq_pro_*` prices in env
+- Archive duplicate **May 21** DitchTheForm Pro product in Dashboard; keep **Jun 1** `cq_pro_*` prices in env
 
-## Widget (ClosetQuote Pro)
+## Widget (DitchTheForm Pro)
 
 | Flow | Path |
 |------|------|
@@ -40,4 +40,4 @@ Ops reference for intake, site builds, and Stripe. Automated flows are in-app; u
 
 - Admin intakes: `/admin/intakes` and `/admin/intakes/[id]`
 - Stripe events: `/admin/stripe-events`
-- Contact: admin@closetquotes.com
+- Contact: admin@ditchtheform.com

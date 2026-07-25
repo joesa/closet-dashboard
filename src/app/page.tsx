@@ -959,19 +959,19 @@ function PricingSection() {
               name: 'Lumina',
               style: 'Minimalist / Luxury',
               image: '/lumina_mockup.png',
-              link: 'https://lumina.closetquotes.com',
+              link: 'https://lumina.ditchtheform.com',
             },
             {
               name: 'Ironclad',
               style: 'Bold / Industrial',
               image: '/ironclad_mockup.png',
-              link: 'https://ironclad.closetquotes.com',
+              link: 'https://ironclad.ditchtheform.com',
             },
             {
               name: 'Hearth & Home',
               style: 'Warm / Traditional',
               image: '/hearth_home_mockup.png',
-              link: 'https://hearth.closetquotes.com',
+              link: 'https://hearth.ditchtheform.com',
             },
           ].map((demo) => (
             <a

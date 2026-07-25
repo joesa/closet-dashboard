@@ -11,7 +11,7 @@ if (!url || !key) {
 
 const TENANT_ID = 'f7901bb4-bed4-4086-ba78-cc226adbcfd7';
 const INTAKE_ID = 'f6f6ff39-f7e3-4001-a0de-a07e3cf94696';
-const TEST_ADMIN_EMAIL = 'local-test-admin@closetquotes.com';
+const TEST_ADMIN_EMAIL = 'local-test-admin@ditchtheform.com';
 
 const supabase = createClient(url, key, { auth: { persistSession: false } });
 

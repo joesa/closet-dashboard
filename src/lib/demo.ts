@@ -1,9 +1,10 @@
 /**
  * Demo account constants.
  *
- * The public demo contractor (demo@closetquotes.com) is shared on the
- * landing page widget, in the Loom walkthrough, and as a public login
- * for prospects to test-drive the dashboard.
+ * The public demo contractor is shared on the landing page widget, in
+ * the Loom walkthrough, and as a public login for prospects to
+ * test-drive the dashboard. Email stays on the legacy mailbox until the
+ * Supabase auth user is migrated to demo@ditchtheform.com.
  *
  * Server code that needs to reseed/protect this account reads
  * DEMO_CONTRACTOR_ID. Client code (banners, widget gating) reads the
@@ -22,6 +23,7 @@ export const DEMO_CONTRACTOR_ID =
  * /api/cron/reset-demo job, so leaking the password is by design.
  */
 export const DEMO_LOGIN = {
+  // Must match the existing Supabase auth user until migrated.
   email: 'demo@closetquotes.com',
   password: 'TryClosetQuote2026!',
 }
@@ -47,6 +49,9 @@ export const DEMO_ALLOWED_ORIGINS: string[] = Array.from(
     [
       'https://closet-dashboard-orcin.vercel.app',
       'https://closet-widget.vercel.app',
+      'https://ditchtheform.com',
+      'https://www.ditchtheform.com',
+      // Legacy brand domain during DNS cutover
       'https://closetquotes.com',
       'https://www.closetquotes.com',
       // basic-closet-demo (sample contractor site that embeds the demo widget)
@@ -64,7 +69,7 @@ export const DEMO_ALLOWED_ORIGINS: string[] = Array.from(
  * behalf of the demo contractor.
  *
  * Exact matches from DEMO_ALLOWED_ORIGINS always pass. Additionally any
- * `*.closetquotes.com` subdomain (Lumina / Ironclad / Hearth demos) is allowed
+ * `*.ditchtheform.com` subdomain (Lumina / Ironclad / Hearth demos) is allowed
  * so aesthetic storefronts can exercise the shared demo widget.
  */
 export function isAllowedDemoOrigin(origin: string | null | undefined): boolean {
@@ -84,7 +89,12 @@ export function isAllowedDemoOrigin(origin: string | null | undefined): boolean 
     }
   }
   if (DEMO_ALLOWED_ORIGINS.includes(normalized)) return true
-  return host === 'closetquotes.com' || host.endsWith('.closetquotes.com')
+  return (
+    host === 'ditchtheform.com' ||
+    host.endsWith('.ditchtheform.com') ||
+    host === 'closetquotes.com' ||
+    host.endsWith('.closetquotes.com')
+  )
 }
 
 /**

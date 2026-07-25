@@ -19,7 +19,7 @@ export function getStripe(): Stripe {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     apiVersion: (process.env.STRIPE_API_VERSION as any) || undefined,
     typescript: true,
-    appInfo: { name: 'ClosetQuote', version: '0.1.0' },
+    appInfo: { name: 'DitchTheForm', version: '0.1.0' },
   })
   return _stripe
 }

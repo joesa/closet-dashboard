@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Create ClosetQuote Stripe catalog (products + prices) with stable lookup_keys.
+ * Create DitchTheForm Stripe catalog (products + prices) with stable lookup_keys.
  * Idempotent: re-run safely; skips existing lookup_keys.
  *
  * Usage: node scripts/stripe-setup-catalog.mjs
@@ -68,12 +68,12 @@ async function ensureProduct({ lookup_key, name, description }) {
   let product = await findProductByLookupKey(lookup_key)
   if (!product && lookup_key === 'cq_pro') {
     const listed = await stripe.products.list({ limit: 100, active: true })
-    product = listed.data.find((p) => p.name === 'ClosetQuote Pro') ?? null
+    product = listed.data.find((p) => p.name === 'DitchTheForm Pro') ?? null
     if (product) {
       await stripe.products.update(product.id, {
-        metadata: { ...product.metadata, app: 'closetquote', lookup_key },
+        metadata: { ...product.metadata, app: 'ditchtheform', lookup_key },
       })
-      console.log(`  product reused (by name): ClosetQuote Pro → ${product.id}`)
+      console.log(`  product reused (by name): DitchTheForm Pro → ${product.id}`)
     }
   }
   if (product) {
@@ -83,7 +83,7 @@ async function ensureProduct({ lookup_key, name, description }) {
   product = await stripe.products.create({
     name,
     description,
-    metadata: { app: 'closetquote', lookup_key },
+    metadata: { app: 'ditchtheform', lookup_key },
   })
   console.log(`  product created: ${lookup_key} → ${product.id}`)
   return product
@@ -113,16 +113,16 @@ async function ensurePrice({ productId, lookup_key, unit_amount, recurring, nick
   return price
 }
 
-console.log('ClosetQuote Stripe catalog setup\n')
+console.log('DitchTheForm Stripe catalog setup\n')
 console.log(
   `Amounts: Standard ${STANDARD_CENTS}c | Premium ${PREMIUM_CENTS}c (deposit ${DEPOSIT_CENTS}c, balance ${BALANCE_CENTS}c) | Maintenance ${MAINT_MONTHLY}c/mo ${MAINT_YEARLY}c/yr | Pro ${PRO_MONTHLY}c/mo ${PRO_YEARLY}c/yr\n`
 )
 
-// ── ClosetQuote Pro (widget) ─────────────────────────────────────────────
-console.log('ClosetQuote Pro')
+// ── DitchTheForm Pro (widget) ─────────────────────────────────────────────
+console.log('DitchTheForm Pro')
 const proProduct = await ensureProduct({
   lookup_key: 'cq_pro',
-  name: 'ClosetQuote Pro',
+  name: 'DitchTheForm Pro',
   description:
     'Interactive closet quote widget for your existing website. Unlimited SMS & email leads.',
 })
@@ -147,7 +147,7 @@ envOut.STRIPE_PRICE_YEARLY = proYearly.id
 console.log('\nStandard site build')
 const standardProduct = await ensureProduct({
   lookup_key: 'cq_standard_build',
-  name: 'ClosetQuote Standard Site Build',
+  name: 'DitchTheForm Standard Site Build',
   description:
     'One-time custom marketing site + embedded quote calculator with stock imagery. Pay when satisfied before launch.',
 })
@@ -163,7 +163,7 @@ envOut.STRIPE_PRICE_STANDARD_BUILD = standardPrice.id
 console.log('\nAI Premium site build')
 const premiumProduct = await ensureProduct({
   lookup_key: 'cq_ai_premium_build',
-  name: 'ClosetQuote AI Premium Site Build',
+  name: 'DitchTheForm AI Premium Site Build',
   description:
     'Custom site with AI hero & product imagery. 30% deposit on intake; balance due before launch if satisfied.',
 })
@@ -193,9 +193,9 @@ envOut.STRIPE_PRICE_AI_PREMIUM_BALANCE = premiumBalance.id
 console.log('\nSite maintenance')
 const maintProduct = await ensureProduct({
   lookup_key: 'cq_site_maintenance',
-  name: 'ClosetQuote Site Maintenance',
+  name: 'DitchTheForm Site Maintenance',
   description:
-    'Managed hosting, SSL, updates, and ClosetQuote Pro after your site launches.',
+    'Managed hosting, SSL, updates, and DitchTheForm Pro after your site launches.',
 })
 const maintMonthly = await ensurePrice({
   productId: maintProduct.id,

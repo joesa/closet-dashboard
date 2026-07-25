@@ -2,7 +2,7 @@ import { maxPagesForTier } from '@/lib/catalog/sitePages'
 
 export type IntakeTierSlug = 'standard' | 'ai_premium'
 
-/** Managed hosting + ClosetQuote Pro after the one-time site build. */
+/** Managed hosting + DitchTheForm Pro after the one-time site build. */
 export type SiteMaintenancePricing = {
   monthlyCents: number
   yearlyCents: number
@@ -49,9 +49,9 @@ export function formatUsd(cents: number): string {
 
 /**
  * Ongoing site maintenance (both build tiers). Defaults: $149/mo or $1,490/yr
- * (two months free vs monthly — same structure as ClosetQuote Pro widget yearly).
+ * (two months free vs monthly — same structure as DitchTheForm Pro widget yearly).
  */
-/** ClosetQuote Pro widget-only subscription (existing website). */
+/** DitchTheForm Pro widget-only subscription (existing website). */
 export function getWidgetSubscriptionPricing(): SiteMaintenancePricing {
   const monthlyCents = parseCents('WIDGET_SUBSCRIPTION_MONTHLY_CENTS', 9900)
   const yearlyCents = parseCents('WIDGET_SUBSCRIPTION_YEARLY_CENTS', 99000)

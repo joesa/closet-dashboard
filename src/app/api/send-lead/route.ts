@@ -150,7 +150,7 @@ function buildEmailHtml(
         <tr>
           <td style="background:#fafafa;padding:20px 40px;border-top:1px solid #eee;">
             <p style="margin:0;color:#9ca3af;font-size:11px;text-align:center;">
-              Sent by <strong>ClosetQuote</strong> · This is an automated lead notification.
+              Sent by <strong>DitchTheForm</strong> · This is an automated lead notification.
             </p>
           </td>
         </tr>
@@ -222,7 +222,7 @@ export async function POST(request: Request) {
           {
             error: 'demo_restricted',
             message:
-              'The ClosetQuote demo widget can only run on closetquotes.com. Sign up for a free 30-day account at https://closet-dashboard-orcin.vercel.app/signup to embed it on your own site.',
+              'The DitchTheForm demo widget can only run on ditchtheform.com. Sign up for a free 30-day account at https://closet-dashboard-orcin.vercel.app/signup to embed it on your own site.',
           },
           403
         )
@@ -398,7 +398,7 @@ export async function POST(request: Request) {
     const resend = new Resend(process.env.RESEND_API_KEY)
 
     const { data, error } = await resend.emails.send({
-      from: 'ClosetQuote <admin@closetquotes.com>',
+      from: 'DitchTheForm <admin@ditchtheform.com>',
       to: [toEmail],
       replyTo: body.customerEmail,
       subject: `🏠 New Quote Lead: ${body.customerName} — ${fmt(calculatedLow)}–${fmt(calculatedHigh)}`,

@@ -10,7 +10,7 @@ export const runtime = 'nodejs'
  * POST /api/intake/pro/start
  *
  * Creates a widget-only intake record pre-loaded with `widget_config_hints`
- * from the ClosetQuote Pro intake wizard. This is called immediately after
+ * from the DitchTheForm Pro intake wizard. This is called immediately after
  * the user creates their Supabase auth account in step 5 of the wizard.
  *
  * Applies widget_config_hints to the contractor's existing trial row immediately

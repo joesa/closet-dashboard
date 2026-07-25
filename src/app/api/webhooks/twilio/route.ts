@@ -42,13 +42,13 @@ function isPositiveReply(message: string): boolean {
 const DEMO_REPLY = `Great to hear from you! Here are 3 live demo sites I built for closet contractors — each one includes the built-in quote calculator that texts leads to your phone:
 
 Lumina Custom Closets (luxury minimal)
-→ https://lumina.closetquotes.com
+→ https://lumina.ditchtheform.com
 
 Ironclad Storage Co. (bold industrial)
-→ https://ironclad.closetquotes.com
+→ https://ironclad.ditchtheform.com
 
 Hearth & Home Spaces (classic warm)
-→ https://hearth.closetquotes.com
+→ https://hearth.ditchtheform.com
 
 Try the quote calculator on any of them — pick your room, materials, and watch it generate an instant estimate. That's exactly what your future customers would see.
 

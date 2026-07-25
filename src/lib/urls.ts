@@ -19,7 +19,7 @@ export const WIDGET_CDN_URL = defaultWidgetScriptUrl()
 export const PUBLIC_API_URL =
   process.env.NEXT_PUBLIC_APP_URL?.trim() ||
   process.env.NEXT_PUBLIC_SITE_URL?.trim()?.replace(/\/$/, '') ||
-  'https://www.closetquotes.com'
+  'https://www.ditchtheform.com'
 
 export function widgetEmbedScriptTag(): string {
   return `<script src="${WIDGET_CDN_URL}"></script>`

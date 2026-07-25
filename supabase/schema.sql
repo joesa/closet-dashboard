@@ -1,4 +1,4 @@
--- ClosetQuote: contractor_settings table
+-- DitchTheForm: contractor_settings table
 -- Paste this into the Supabase SQL Editor (https://supabase.com/dashboard → SQL Editor)
 
 -- 1. Create the table
@@ -53,7 +53,7 @@ create trigger set_updated_at
   execute function public.handle_updated_at();
 
 -- -----------------------------------------------------------------------------
--- ClosetQuote: contractor_addons table
+-- DitchTheForm: contractor_addons table
 -- -----------------------------------------------------------------------------
 
 -- 1. Create the table

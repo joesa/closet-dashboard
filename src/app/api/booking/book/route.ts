@@ -101,7 +101,7 @@ export async function POST(request: Request) {
       </html>`
       
       const { error: emailError } = await resend.emails.send({
-        from: process.env.INTAKE_FROM_EMAIL || 'DitchTheForm <admin@closetquotes.com>',
+        from: process.env.INTAKE_FROM_EMAIL || 'DitchTheForm <admin@ditchtheform.com>',
         to: [toEmail],
         subject: `New booking request from ${name} on ${date}`,
         html: emailHtml,

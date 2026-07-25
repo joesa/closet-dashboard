@@ -105,21 +105,21 @@ export async function createIntakeCheckoutSession(opts: {
       catalogCents = catalogDeposit
       priceId = resolveOneTimePriceId(env.aiPremiumDeposit, amountCents, catalogCents)
       metaKind = 'intake_deposit'
-      productName = 'ClosetQuote AI Premium — 30% deposit'
+      productName = 'DitchTheForm AI Premium — 30% deposit'
       description = `30% upfront (${formatUsd(amountCents)}) of ${formatUsd(row.tier_total_cents)} total.`
     } else if (kind === 'balance') {
       amountCents = remainder
       catalogCents = remainder
       priceId = resolveOneTimePriceId(env.aiPremiumBalance, amountCents, catalogCents)
       metaKind = 'intake_balance'
-      productName = 'ClosetQuote AI Premium — balance'
+      productName = 'DitchTheForm AI Premium — balance'
       description = `Balance (${formatUsd(amountCents)}) due before launch.`
     } else {
       amountCents = row.tier_total_cents
       catalogCents = row.tier_total_cents
       priceId = resolveOneTimePriceId(env.standardBuild, amountCents, catalogCents)
       metaKind = 'intake_standard_build'
-      productName = 'ClosetQuote Standard site build'
+      productName = 'DitchTheForm Standard site build'
       description = `One-time build (${formatUsd(amountCents)}) — pay when satisfied.`
     }
 

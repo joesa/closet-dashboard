@@ -223,7 +223,7 @@ export async function POST(request: Request) {
     // ── Send email via Resend ──
     const resend = new Resend(process.env.RESEND_API_KEY)
     const { error: emailError } = await resend.emails.send({
-      from: process.env.INTAKE_FROM_EMAIL || 'DitchTheForm <admin@closetquotes.com>',
+      from: process.env.INTAKE_FROM_EMAIL || 'DitchTheForm <admin@ditchtheform.com>',
       to: [toEmail],
       subject: `New order from ${body.customerName} — ${fmt(total)}`,
       html: buildOrderEmailHtml(

@@ -96,7 +96,7 @@ export default async function BillingPage({
             <>
               <div className="mb-10 text-center">
                 <h1 className="text-4xl font-bold tracking-tighter text-white sm:text-5xl">
-                  This is the ClosetQuote demo account.
+                  This is the DitchTheForm demo account.
                 </h1>
                 <p className="mx-auto mt-4 max-w-md text-base text-slate-400">
                   The demo is free forever and isn’t tied to a subscription, so
@@ -122,7 +122,7 @@ export default async function BillingPage({
               </div>
 
               <p className="mt-6 text-center text-xs text-slate-600">
-                Questions? <a href="mailto:admin@closetquotes.com" className="underline hover:text-slate-400">admin@closetquotes.com</a>
+                Questions? <a href="mailto:admin@ditchtheform.com" className="underline hover:text-slate-400">admin@ditchtheform.com</a>
               </p>
             </>
           ) : (
@@ -130,7 +130,7 @@ export default async function BillingPage({
               <div className="mb-10 text-center">
                 <h1 className="text-4xl font-bold tracking-tighter text-white sm:text-5xl">
                   {isActive
-                    ? 'You’re on ClosetQuote Pro.'
+                    ? 'You’re on DitchTheForm Pro.'
                     : inTrial
                       ? 'Your free trial is active.'
                       : needsSetup
@@ -144,7 +144,7 @@ export default async function BillingPage({
                       ? `You have ${ent.daysLeftInTrial} day${ent.daysLeftInTrial === 1 ? '' : 's'} left. Subscribe anytime, or continue to your dashboard.`
                       : needsSetup
                         ? 'We could not find your contractor profile. Return to signup or contact support.'
-                        : 'To keep generating interactive quotes and capturing SMS leads, upgrade to ClosetQuote Pro.'}
+                        : 'To keep generating interactive quotes and capturing SMS leads, upgrade to DitchTheForm Pro.'}
                 </p>
                 {justCanceled && !isActive && (
                   <p className="mt-3 text-sm text-amber-300">
@@ -166,7 +166,7 @@ export default async function BillingPage({
               </div>
 
               <p className="mt-6 text-center text-xs text-slate-600">
-                Questions? <a href="mailto:admin@closetquotes.com" className="underline hover:text-slate-400">admin@closetquotes.com</a>
+                Questions? <a href="mailto:admin@ditchtheform.com" className="underline hover:text-slate-400">admin@ditchtheform.com</a>
               </p>
             </>
           )}

@@ -1,7 +1,7 @@
 import { Resend } from 'resend'
 
 const FROM =
-  process.env.INTAKE_FROM_EMAIL || 'ClosetQuote <admin@closetquotes.com>'
+  process.env.INTAKE_FROM_EMAIL || 'DitchTheForm <admin@ditchtheform.com>'
 
 export async function sendIntakeLinkEmail(opts: {
   to: string
@@ -58,9 +58,9 @@ export async function sendIntakeLinkEmail(opts: {
   await resend.emails.send({
     from: FROM,
     to: [opts.to],
-    subject: `Complete your ClosetQuote setup for ${who}`,
+    subject: `Complete your DitchTheForm setup for ${who}`,
     html: `
-      <h1>ClosetQuote setup</h1>
+      <h1>DitchTheForm setup</h1>
       <p>We need a few details to build your quote calculator${opts.verifyUrl ? ' and website' : ''}.</p>
       ${tierBlock}
       <p>If you did not request this, you can ignore this email.</p>

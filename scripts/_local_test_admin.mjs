@@ -10,7 +10,7 @@ if (!url || !key) {
   process.exit(1);
 }
 
-const EMAIL = 'local-test-admin@closetquotes.com';
+const EMAIL = 'local-test-admin@ditchtheform.com';
 const PASSWORD = 'LocalTest!2026-cq';
 const action = process.argv[2] || 'create';
 

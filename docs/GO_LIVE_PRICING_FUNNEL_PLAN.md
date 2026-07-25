@@ -10,11 +10,11 @@ locked model** (matches current landing, env defaults, and Stripe catalog).
 
 | Offering | One-time | Recurring (after launch) | Day-1 Stripe |
 |----------|----------|---------------------------|--------------|
-| **ClosetQuote Pro** (has a site) | — | $99/mo or $990/yr (2 mo free) | Subscription checkout |
+| **DitchTheForm Pro** (has a site) | — | $99/mo or $990/yr (2 mo free) | Subscription checkout |
 | **Standard site build** | $999 | $149/mo or $1,490/yr maintenance* | Build + maintenance checkout |
 | **AI Premium site build** | $1,999 total | Same maintenance* | $600 deposit† + balance + maintenance |
 
-\* Maintenance includes ClosetQuote Pro + managed hosting (state clearly on cards).  
+\* Maintenance includes DitchTheForm Pro + managed hosting (state clearly on cards).  
 † Deposit = 30% of $1,999 → **$599.70** (UI shows **$600**); balance **$1,399.30** (UI **$1,399**).
 
 **Env (cents)** — keep in Vercel + `.env.example`:
@@ -91,9 +91,9 @@ flowchart TB
 | Run `npm run stripe:catalog` with **live** `STRIPE_SECRET_KEY` | Creates mirror of test catalog |
 | Set all `STRIPE_PRICE_*` on **Vercel production** | Match script output |
 | Set all `INTAKE_*`, `WIDGET_*`, `SITE_MAINTENANCE_*` | Same as `.env.example` |
-| Single `NEXT_PUBLIC_SITE_URL` | `https://www.closetquotes.com` (remove duplicate localhost in prod) |
-| Webhook | Live endpoint `https://www.closetquotes.com/api/webhooks/stripe` + live `STRIPE_WEBHOOK_SECRET` |
-| Archive duplicate product | Stripe Dashboard → archive **May 21** “ClosetQuote Pro”; keep **Jun 1** `cq_pro` product |
+| Single `NEXT_PUBLIC_SITE_URL` | `https://www.ditchtheform.com` (remove duplicate localhost in prod) |
+| Webhook | Live endpoint `https://www.ditchtheform.com/api/webhooks/stripe` + live `STRIPE_WEBHOOK_SECRET` |
+| Archive duplicate product | Stripe Dashboard → archive **May 21** “DitchTheForm Pro”; keep **Jun 1** `cq_pro` product |
 
 **Verify:** `npm run stripe:verify` against live env locally; `GET /api/admin/stripe-health` in prod.
 
@@ -119,7 +119,7 @@ flowchart TB
 |------|--------|
 | Hero secondary CTA | “Need a full site? From $999” → `/#pricing` |
 | Pricing toggle hint | Under monthly/yearly: “Applies to Pro subscription and site maintenance. Build fees are one-time.” |
-| Site-build cards | Explicit: “Maintenance includes ClosetQuote Pro — no separate $99 widget fee.” |
+| Site-build cards | Explicit: “Maintenance includes DitchTheForm Pro — no separate $99 widget fee.” |
 | Nav “Start Free” | Keep; optional dropdown later: Trial / Get a site |
 
 **Files:** `src/app/page.tsx`
@@ -132,7 +132,7 @@ Create `docs/ops/BILLING_RUNBOOK.md`:
 2. **Premium balance ($1,399)**: Until P2 automated — Payment Link or Checkout with `STRIPE_PRICE_AI_PREMIUM_BALANCE`.
 3. **Standard $999** (satisfied): Same — `STRIPE_PRICE_STANDARD_BUILD` Payment Link.
 4. **Maintenance start**: Payment Link `STRIPE_PRICE_SITE_MAINTENANCE_*` or P2 flow; tie to `stripe_customer_id` on contractor after provision.
-5. **Escalation**: admin@closetquotes.com, link to `/admin/intakes`, `/admin/stripe-events`.
+5. **Escalation**: admin@ditchtheform.com, link to `/admin/intakes`, `/admin/stripe-events`.
 
 ### P1.3 — Admin visibility
 

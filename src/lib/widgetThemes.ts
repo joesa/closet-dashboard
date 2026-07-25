@@ -65,7 +65,7 @@ export const WIDGET_THEMES: WidgetThemeTokens[] = [
     id: 'alabaster',
     name: 'Alabaster',
     mode: 'light',
-    description: 'Warm gallery white — original ClosetQuote look',
+    description: 'Warm gallery white — original DitchTheForm look',
     brand: '#5a6e5a',
     surfaceBase: '#f8f7f5',
     surfaceElevated: '#ffffff',

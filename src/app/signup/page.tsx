@@ -34,7 +34,7 @@ function SignUpForm() {
   useEffect(() => {
     const ref = searchParams.get('ref')
     if (ref) {
-      localStorage.setItem('closetquote_ref', ref)
+      localStorage.setItem('ditchtheform_ref', ref)
     }
   }, [searchParams])
 
