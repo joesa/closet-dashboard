@@ -2,9 +2,13 @@ import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'fs'
 import { join } from 'path'
 import {
+  applyHeroFitToGlobalCss,
+  applyHeroImageToHomeHtml,
   assessFullRedesignCraft,
   extractCssAccent,
+  looksLikeHeroImageSurgicalRequest,
   mergeCustomPatch,
+  wantsWholeHeroImageVisible,
 } from './generateCustomSite'
 import type { CustomSiteConfig } from '@/lib/customSite'
 
@@ -69,8 +73,9 @@ describe('extractCssAccent', () => {
 describe('full redesign additive service policy', () => {
   it('prompts allow brief-added services and forbid silent drops', () => {
     const src = readFileSync(join(__dirname, 'generateCustomSite.ts'), 'utf8')
-    expect(src).toContain('You MAY add services the creative brief explicitly introduces')
-    expect(src).toContain('serviceUpdates')
+    expect(src).toContain('REQUIRED SERVICE ADDS')
+    expect(src).toContain('serviceUpdates.added')
+    expect(src).toContain('Do NOT drop intake services unless the brief explicitly removes')
     expect(src).not.toContain('Do not invent extra services; do not drop any.')
   })
 })
@@ -212,5 +217,45 @@ describe('full redesign brief enhancement', () => {
     expect(src).toContain('OPTIMIZED CREATIVE BRIEF')
     expect(src).toContain('ADMIN SEED')
     expect(src).toContain('DIRECTION LOCK')
+  })
+})
+
+describe('surgical hero image helpers', () => {
+  const oldUrl =
+    'https://example.supabase.co/storage/v1/object/public/site-assets/custom/t/old.jpg'
+  const newUrl =
+    'https://example.supabase.co/storage/v1/object/public/site-assets/custom/t/new.png'
+
+  it('detects hero + attached image instructions', () => {
+    expect(
+      looksLikeHeroImageSurgicalRequest(
+        'Use this image attached for the Hero image on the main page. Make sure the whole image can be seen'
+      )
+    ).toBe(true)
+    expect(looksLikeHeroImageSurgicalRequest('Fix the typo in the headline')).toBe(false)
+    expect(wantsWholeHeroImageVisible('whole image can be seen and not enlarged out of view')).toBe(
+      true
+    )
+  })
+
+  it('swaps hero background-image and applies contain fit', () => {
+    const html = `<section class="hero" style="background-image:url(${oldUrl})"><div class="wrap"><h1>Hi</h1></div></section>`
+    const out = applyHeroImageToHomeHtml(html, newUrl, 'contain')
+    expect(out).toContain(newUrl)
+    expect(out).not.toContain(oldUrl)
+    expect(out).toMatch(/background-size:\s*contain/i)
+    expect(out).toMatch(/min-height:/i)
+  })
+
+  it('updates global .hero background-size to match fit', () => {
+    const css = '.hero{position:relative;background-size:cover;background-position:center;}'
+    expect(applyHeroFitToGlobalCss(css, 'contain')).toContain('background-size:contain')
+  })
+
+  it('wires a deterministic hero shortcut before the surgical model path', () => {
+    const src = readFileSync(join(__dirname, 'generateCustomSite.ts'), 'utf8')
+    expect(src).toContain('trySurgicalHeroImageShortcut')
+    expect(src).toContain('applyHeroImageToHomeHtml')
+    expect(src).toContain('Model omitted the attached hero URL')
   })
 })

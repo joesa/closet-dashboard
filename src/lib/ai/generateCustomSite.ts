@@ -170,6 +170,204 @@ function looksLikeVideoSurgicalRequest(prompt: string): boolean {
   )
 }
 
+function looksLikeImageUrl(url: string): boolean {
+  if (looksLikeVideoUrl(url)) return false
+  return (
+    /\.(jpe?g|png|webp|gif|avif)(\?|$)/i.test(url) ||
+    /\/storage\/v1\/object\/public\/site-assets\//i.test(url)
+  )
+}
+
+/** Admin asked to set/replace the home hero (or main background) image. */
+export function looksLikeHeroImageSurgicalRequest(prompt: string): boolean {
+  const p = prompt || ''
+  if (looksLikeVideoSurgicalRequest(p) && !/\b(hero|banner|background)\b/i.test(p)) {
+    return false
+  }
+  if (
+    /\b(hero|banner|splash)\b/i.test(p) &&
+    /\b(image|photo|picture|pic|background|bg)\b/i.test(p)
+  ) {
+    return true
+  }
+  if (
+    /\b(background|header|main\s+page|homepage|home\s+page)\b/i.test(p) &&
+    /\b(image|photo|picture|pic)\b/i.test(p)
+  ) {
+    return true
+  }
+  // "use this/attached image for the hero / on the main page"
+  if (
+    /\b(use|set|make|put|replace|swap|change)\b[\s\S]{0,80}\b(this|the|attached|uploaded)\b[\s\S]{0,80}\b(image|photo|picture|pic)\b/i.test(
+      p
+    ) &&
+    /\b(hero|banner|splash|background|home|main\s+page|homepage)\b/i.test(p)
+  ) {
+    return true
+  }
+  return false
+}
+
+/** Prefer contain when the admin wants the whole subject visible (not cropped). */
+export function wantsWholeHeroImageVisible(prompt: string): boolean {
+  return /\b(whole|entire|full)\b[\s\S]{0,40}\b(image|photo|picture|subject)\b|\b(not|don't|do\s+not|without)\b[\s\S]{0,40}\b(crop|cropped|enlarged|zoom|zoomed|cut\s+off|out\s+of\s+view)\b|\bobject-fit\s*:\s*contain\b|\bbackground-size\s*:\s*contain\b|\b(letterbox|contain)\b/i.test(
+    prompt || ''
+  )
+}
+
+/**
+ * Rewrite the first hero-like section's background (or leading hero <img>) to
+ * the given CDN URL. Deterministic — used so Surgical Edit does not depend on
+ * the model rewriting an 8k+ home page under a tiny JSON budget.
+ */
+export function applyHeroImageToHomeHtml(
+  html: string,
+  imageUrl: string,
+  fit: 'contain' | 'cover' = 'cover'
+): string {
+  const safeUrl = imageUrl.trim().replace(/[<>"'\\\s]/g, '')
+  if (!html || !safeUrl) return html
+
+  const fitStyles =
+    fit === 'contain'
+      ? `background-image:url(${safeUrl}); background-size: contain; background-position: center; background-repeat: no-repeat; background-color: #1a1f1e; min-height: clamp(420px, 62vh, 720px);`
+      : `background-image:url(${safeUrl}); background-size: cover; background-position: center; background-repeat: no-repeat;`
+
+  const heroOpen =
+    /<section\b(?=[^>]*\b(?:class|id)\s*=\s*["'][^"']*\b(?:hero|banner|splash)\b)[^>]*>/i.exec(
+      html
+    ) || /<header\b(?=[^>]*\b(?:class|id)\s*=\s*["'][^"']*\b(?:hero|banner|splash)\b)[^>]*>/i.exec(
+      html
+    )
+
+  if (heroOpen && heroOpen.index != null) {
+    const openTag = heroOpen[0]
+    const start = heroOpen.index
+    const end = start + openTag.length
+    let nextOpen = openTag
+
+    if (/\bstyle\s*=\s*"/i.test(nextOpen)) {
+      nextOpen = nextOpen.replace(/\bstyle\s*=\s*"([^"]*)"/i, (_m, style: string) => {
+        let s = style
+          .replace(/background-image\s*:\s*url\((['"]?)[^)]+\1\)\s*;?/gi, '')
+          .replace(/background-size\s*:\s*[^;]+;?/gi, '')
+          .replace(/background-position\s*:\s*[^;]+;?/gi, '')
+          .replace(/background-repeat\s*:\s*[^;]+;?/gi, '')
+          .replace(/background-color\s*:\s*[^;]+;?/gi, '')
+          .replace(/min-height\s*:\s*[^;]+;?/gi, '')
+          .replace(/background\s*:\s*[^;]+;?/gi, '')
+          .replace(/;\s*;/g, ';')
+          .replace(/^\s*;\s*|\s*;\s*$/g, '')
+          .trim()
+        const merged = s ? `${s}; ${fitStyles}` : fitStyles
+        return `style="${merged}"`
+      })
+    } else if (/\bstyle\s*=\s*'/i.test(nextOpen)) {
+      nextOpen = nextOpen.replace(/\bstyle\s*=\s*'([^']*)'/i, (_m, style: string) => {
+        let s = style
+          .replace(/background-image\s*:\s*url\((['"]?)[^)]+\1\)\s*;?/gi, '')
+          .replace(/background-size\s*:\s*[^;]+;?/gi, '')
+          .replace(/background-position\s*:\s*[^;]+;?/gi, '')
+          .replace(/background-repeat\s*:\s*[^;]+;?/gi, '')
+          .replace(/background-color\s*:\s*[^;]+;?/gi, '')
+          .replace(/min-height\s*:\s*[^;]+;?/gi, '')
+          .replace(/background\s*:\s*[^;]+;?/gi, '')
+          .replace(/;\s*;/g, ';')
+          .replace(/^\s*;\s*|\s*;\s*$/g, '')
+          .trim()
+        const merged = s ? `${s}; ${fitStyles}` : fitStyles
+        return `style='${merged}'`
+      })
+    } else {
+      nextOpen = nextOpen.replace(/>$/, ` style="${fitStyles}">`)
+    }
+
+    let out = html.slice(0, start) + nextOpen + html.slice(end)
+
+    // If the hero uses an <img> as the visual (not only CSS background), update
+    // the first image inside that section too.
+    const sectionEnd = out.indexOf('</section>', start)
+    if (sectionEnd > start) {
+      const before = out.slice(0, start)
+      const section = out.slice(start, sectionEnd)
+      const after = out.slice(sectionEnd)
+      const swapped = section.replace(
+        /(<img\b[^>]*\bsrc\s*=\s*)(["'])([^"']*)(\2)/i,
+        `$1$2${safeUrl}$4`
+      )
+      out = before + swapped + after
+    }
+    return out
+  }
+
+  // Fallback: first background-image:url(...) on the page (cloned sites often
+  // put the hero bg on the first section even without a "hero" class).
+  if (/background-image\s*:\s*url\(/i.test(html)) {
+    return html.replace(
+      /background-image\s*:\s*url\((['"]?)[^)]+\1\)/i,
+      `background-image:url(${safeUrl})`
+    )
+  }
+
+  return html
+}
+
+/** Keep global `.hero{background-size:...}` in sync with the inline fit choice. */
+export function applyHeroFitToGlobalCss(
+  css: string,
+  fit: 'contain' | 'cover'
+): string {
+  if (!css) return css
+  if (/\.hero\s*\{[^}]*background-size\s*:/i.test(css)) {
+    return css.replace(
+      /(\.hero\s*\{[^}]*?background-size\s*:\s*)(cover|contain|auto|[\d.]+%|[\d.]+px)/gi,
+      `$1${fit}`
+    )
+  }
+  // Inject into the first .hero{...} rule when present.
+  if (/\.hero\s*\{/i.test(css)) {
+    return css.replace(/\.hero\s*\{/i, `.hero{background-size:${fit};`)
+  }
+  return `${css}\n.hero{background-size:${fit};background-position:center;}`
+}
+
+async function persistSurgicalShortcutDraft(opts: {
+  tenantId: string
+  draft: CustomSiteConfig
+  reply: string
+  changedPages: string[]
+  warnings?: string[]
+}): Promise<GenerateCustomSiteResult> {
+  const sanitized = sanitizeCustomConfig(opts.draft)
+  const supabase = getSupabaseAdmin()
+  const { error: updateErr } = await supabase
+    .from('site_configs')
+    .update({
+      custom_config_draft: sanitized,
+      custom_updated_at: new Date().toISOString(),
+    })
+    .eq('tenant_id', opts.tenantId)
+  if (updateErr) throw new Error(`Failed to save draft: ${updateErr.message}`)
+
+  try {
+    const { revalidateTenantSiteCache } = await import(
+      '@/lib/tenants/revalidateTenantSite'
+    )
+    await revalidateTenantSiteCache(opts.tenantId)
+  } catch (revalErr) {
+    console.warn('[generateCustomSite] shortcut revalidate failed:', revalErr)
+  }
+
+  return {
+    draft: sanitized,
+    warnings: opts.warnings || [],
+    errors: [],
+    reply: opts.reply,
+    intent: 'surgical',
+    changedPages: opts.changedPages,
+  }
+}
+
 /**
  * Deterministic surgical path for video: use URL from the prompt, else the
  * newest video in the tenant Media library. Avoids the LLM asking for a URL
@@ -214,6 +412,16 @@ async function trySurgicalVideoShortcut(opts: {
   const homeAfter = draft.pages['/']?.html || ''
   const changed = homeBefore !== homeAfter
 
+  // ensureHomeVideoAfterHero already persisted — still bust websites cache.
+  try {
+    const { revalidateTenantSiteCache } = await import(
+      '@/lib/tenants/revalidateTenantSite'
+    )
+    await revalidateTenantSiteCache(opts.tenantId)
+  } catch (revalErr) {
+    console.warn('[generateCustomSite] video shortcut revalidate failed:', revalErr)
+  }
+
   return {
     draft,
     warnings: changed
@@ -226,6 +434,85 @@ async function trySurgicalVideoShortcut(opts: {
     intent: 'surgical',
     changedPages: changed ? ['/'] : [],
   }
+}
+
+/**
+ * Deterministic surgical path for hero image swaps. Uses attached CDN URLs
+ * (or a URL in the prompt) so "use this image as the hero" does not depend on
+ * the model rewriting the whole home page under the surgical JSON budget.
+ */
+async function trySurgicalHeroImageShortcut(opts: {
+  tenantId: string
+  prompt: string
+  base: CustomSiteConfig
+  attachedAssetUrls: string[]
+}): Promise<GenerateCustomSiteResult | null> {
+  if (!looksLikeHeroImageSurgicalRequest(opts.prompt)) return null
+
+  const fromPrompt = extractHttpUrl(opts.prompt)
+  let imageUrl =
+    fromPrompt && looksLikeImageUrl(fromPrompt) ? fromPrompt : null
+
+  if (!imageUrl) {
+    imageUrl = opts.attachedAssetUrls.find((u) => looksLikeImageUrl(u)) || null
+  }
+
+  // Only fall back to Media library when the admin did not attach a prompt
+  // image and explicitly points at an uploaded/library file — never guess
+  // the newest upload (that often picks the wrong photo).
+  if (
+    !imageUrl &&
+    opts.attachedAssetUrls.length === 0 &&
+    /\b(media\s*library|uploaded|cdn\s*url)\b/i.test(opts.prompt)
+  ) {
+    const images = await listTenantMediaAssets(opts.tenantId, {
+      kind: 'image',
+      includeEngine: false,
+    }).catch(() => [])
+    imageUrl = images[0]?.url || null
+  }
+
+  if (!imageUrl) {
+    // No persisted URL yet (e.g. legacy data-URL-only attach) — let the LLM path try.
+    return null
+  }
+
+  const fit: 'contain' | 'cover' = wantsWholeHeroImageVisible(opts.prompt)
+    ? 'contain'
+    : 'cover'
+
+  const draft = cloneCustomConfig(opts.base)
+  const home = draft.pages['/'] || Object.values(draft.pages)[0]
+  if (!home) {
+    return {
+      draft: opts.base,
+      warnings: [],
+      errors: [],
+      reply: 'Home page missing from the custom draft — clone or full redesign first.',
+      intent: 'surgical',
+      changedPages: [],
+    }
+  }
+
+  const before = home.html || ''
+  home.html = applyHeroImageToHomeHtml(before, imageUrl, fit)
+  draft.pages['/'] = home
+  draft.globalCss = applyHeroFitToGlobalCss(draft.globalCss || '', fit)
+
+  const changed =
+    before !== home.html || (opts.base.globalCss || '') !== (draft.globalCss || '')
+
+  return persistSurgicalShortcutDraft({
+    tenantId: opts.tenantId,
+    draft,
+    changedPages: changed ? ['/'] : [],
+    warnings: changed
+      ? []
+      : ['Hero already used this image — refreshed fit/size settings.'],
+    reply: changed
+      ? `Set the home hero background to your attached image (${fit === 'contain' ? 'full image visible, not cropped' : 'cover fill'}). Preview draft to confirm, then Publish when ready.`
+      : 'Hero image was already set to that file — refreshed sizing. Preview draft to confirm.',
+  })
 }
 
 /**
@@ -315,6 +602,18 @@ export async function generateCustomSiteDraft(opts: {
   const hydratedImages = await hydrateAdminImagesForModel(opts.images)
   const attachmentImages = hydratedImages.vision
   const attachedAssetUrls = hydratedImages.assetUrls
+
+  // Hero image swaps are deterministic when we have a CDN URL — do not ask the
+  // model to rewrite an 8k+ home page under the surgical JSON budget.
+  if (intent === 'surgical' && base) {
+    const heroShortcut = await trySurgicalHeroImageShortcut({
+      tenantId: opts.tenantId,
+      prompt: opts.prompt || '',
+      base,
+      attachedAssetUrls,
+    })
+    if (heroShortcut) return heroShortcut
+  }
 
   const mode = opts.mode || base?.mode || 'inline'
   const products = Array.isArray(cfg.products_config) ? cfg.products_config : []
@@ -417,7 +716,7 @@ export async function generateCustomSiteDraft(opts: {
     }
   })
 
-  const result =
+  let result =
     intent === 'surgical' && base
       ? await runSurgicalGenerate({
           brandName,
@@ -440,6 +739,43 @@ export async function generateCustomSiteDraft(opts: {
           },
           images: attachmentImages,
         })
+
+  // Backstop: if the admin asked for a hero image swap and the model missed the
+  // attached CDN URL, force-apply it so Preview draft cannot keep the old photo.
+  if (
+    intent === 'surgical' &&
+    base &&
+    looksLikeHeroImageSurgicalRequest(opts.prompt || '') &&
+    attachedAssetUrls.length > 0
+  ) {
+    const heroUrl =
+      attachedAssetUrls.find((u) => looksLikeImageUrl(u)) || attachedAssetUrls[0]
+    const homeHtml = result.config.pages['/']?.html || ''
+    if (heroUrl && !homeHtml.includes(heroUrl)) {
+      const fit: 'contain' | 'cover' = wantsWholeHeroImageVisible(opts.prompt || '')
+        ? 'contain'
+        : 'cover'
+      const fixed = cloneCustomConfig(result.config)
+      const home = fixed.pages['/']
+      if (home) {
+        home.html = applyHeroImageToHomeHtml(home.html || '', heroUrl, fit)
+        fixed.pages['/'] = home
+        fixed.globalCss = applyHeroFitToGlobalCss(fixed.globalCss || '', fit)
+        result = {
+          ...result,
+          config: fixed,
+          changedPages: Array.from(new Set([...(result.changedPages || []), '/'])),
+          reply:
+            (result.reply ? `${result.reply} ` : '') +
+            `Applied attached hero image with background-size:${fit}.`,
+          extraWarnings: [
+            ...(result.extraWarnings || []),
+            'Model omitted the attached hero URL — applied it deterministically.',
+          ],
+        }
+      }
+    }
+  }
 
   const sanitized = sanitizeCustomConfig(result.config)
   ensureWidgetPlaceholder(sanitized)
@@ -1058,6 +1394,16 @@ async function runSurgicalGenerate(opts: {
 }> {
   const pageKeys = Object.keys(opts.base.pages || {})
   const hasImages = !!(opts.images && opts.images.length > 0)
+  const attachedUrls = Array.isArray(opts.context.attachedAssetUrls)
+    ? (opts.context.attachedAssetUrls as unknown[]).filter(
+        (u): u is string => typeof u === 'string' && /^https?:\/\//i.test(u)
+      )
+    : []
+  const mediaOrHeroSwap =
+    hasImages ||
+    attachedUrls.length > 0 ||
+    looksLikeHeroImageSurgicalRequest(opts.prompt || '') ||
+    looksLikeVideoSurgicalRequest(opts.prompt || '')
   const systemPrompt = `You are a precise website editor. You make SURGICAL edits to an existing custom HTML/CSS site.
 
 The admin already has a finished design. Your job is to apply ONLY what they asked for.
@@ -1075,25 +1421,35 @@ Output ONLY valid JSON matching this schema (no markdown fences):
 
 Hard rules:
 1. Apply ONLY the admin's request. Do NOT redesign, restyle, rebrand, or restructure unless they explicitly asked for that.
-2. PRESERVE layout, structure, CSS classes, colors, imagery, navigation, and the widget placeholder (${WIDGET_PLACEHOLDER}) unless asked to change them.
-3. Prefer text/copy edits inside existing markup — swap wording, keep the same tags and classes.
+2. PRESERVE layout, structure, CSS classes, colors, navigation, and the widget placeholder (${WIDGET_PLACEHOLDER}) unless asked to change them. Imagery is preserved UNLESS the admin asked to change a hero/photo/background — then you MUST replace that media URL.
+3. Prefer text/copy edits inside existing markup — swap wording, keep the same tags and classes. For hero/image swaps, keep the same section markup and only change the image URL + background-size/object-fit as requested.
 4. Return ONLY pages you actually changed under "pages". List every untouched path in "unchangedPages".
-5. Set "globalCss" to null unless they explicitly asked to change site-wide styles. Never invent a new palette unprompted.
+5. Set "globalCss" to null unless they explicitly asked to change site-wide styles OR you must update .hero background-size to match a hero image fit request. Never invent a new palette unprompted.
 6. If a page is unchanged, omit it from "pages" entirely (do not echo the full original HTML).
 7. mode stays "${opts.mode}". Do not change render mode.
 8. HTML is BODY CONTENT ONLY. No <script> in inline mode. No javascript: URLs.
-9. Keep each returned html under ~2500 characters. JSON must be complete and valid.
+9. ${
+    mediaOrHeroSwap
+      ? 'For hero/image/video edits you MAY return the full home-page html (up to ~20000 characters) so the media URL lands correctly. JSON must still be complete and valid.'
+      : 'Keep each returned html under ~2500 characters for text-only edits. JSON must be complete and valid.'
+  }
 10. If the request is ambiguous ("make it nicer") and does not specify what to change, set pages to {} and explain in reply that you need a more specific instruction — do NOT invent a redesign.
 11. When the admin asks to add/embed a video (or says they don't see the video), use a URL from mediaLibrary in the business context — do NOT ask them to paste a URL that is already listed there. Insert a <video controls><source src="URL" type="video/mp4"></video> block after the hero on "/".
 ${
-  hasImages
-    ? `12. ATTACHED IMAGES: the admin attached image(s). Prefer context.attachedAssetUrls / mediaLibrary https URLs — those are already on the CDN and MUST be used verbatim when placing the image on the site (hero, section, etc.). Use vision to understand crop/composition; keep the whole subject visible (object-fit:contain or carefully framed cover). Do not invent other image URLs for those placements.`
+  hasImages || attachedUrls.length
+    ? `12. ATTACHED IMAGES: the admin attached image(s). Prefer context.attachedAssetUrls / mediaLibrary https URLs — those are already on the CDN and MUST be used verbatim when placing the image on the site (hero, section, etc.). Use vision to understand crop/composition; keep the whole subject visible (background-size:contain / object-fit:contain, or carefully framed cover when they ask to fill). Do not invent other image URLs for those placements.`
     : ''
 }`
 
+  const attachedBlock = attachedUrls.length
+    ? `ATTACHED CDN ASSET URLS (use these exact https URLs when placing images):\n${attachedUrls
+        .map((u, i) => `${i + 1}. ${u}`)
+        .join('\n')}\n\n`
+    : ''
+
   const userPrompt = `Surgical edit for "${opts.brandName}".
 
-Admin request (apply ONLY this):
+${attachedBlock}Admin request (apply ONLY this):
 ${opts.prompt || (hasImages ? 'See the attached image(s) — apply the implied fix or match the reference as closely as the existing design allows.' : 'No specific change requested — return an empty pages object and ask for clarification.')}
 
 Existing custom site JSON (source of truth — preserve everything not explicitly changed):
@@ -1110,6 +1466,8 @@ ${JSON.stringify(opts.context, null, 2)}`
     temperature: 0.3,
     // Thinking tokens count against this cap — keep generous headroom.
     maxOutputTokens: 24576,
+    preferredProvider: hasImages || attachedUrls.length ? 'anthropic' : undefined,
+    anthropicModel: hasImages || attachedUrls.length ? CLAUDE_SONNET_MODEL : undefined,
     images: opts.images,
   })
 
