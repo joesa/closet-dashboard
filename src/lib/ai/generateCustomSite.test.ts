@@ -204,3 +204,13 @@ describe('full redesign anti-AI bias', () => {
     expect(src).not.toContain('Next.js + Tailwind')
   })
 })
+
+describe('full redesign brief enhancement', () => {
+  it('wires enhanceFullRedesignBrief before site generation', () => {
+    const src = readFileSync(join(__dirname, 'generateCustomSite.ts'), 'utf8')
+    expect(src).toContain('enhanceFullRedesignBrief')
+    expect(src).toContain('OPTIMIZED CREATIVE BRIEF')
+    expect(src).toContain('ADMIN SEED')
+    expect(src).toContain('DIRECTION LOCK')
+  })
+})

@@ -2,6 +2,10 @@ import { parseAdminImageDataUrl } from '@/lib/adminImageAttach'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { generateTextWithFallback } from '@/lib/ai/aiTextProvider'
 import {
+  buildIntakeHintsForBrief,
+  enhanceFullRedesignBrief,
+} from '@/lib/ai/enhanceFullRedesignBrief'
+import {
   extractJson,
   repairTruncatedJson,
   sanitizeJsonString,
@@ -731,11 +735,30 @@ async function runFullGenerate(opts: {
           ? 'ticketing'
           : 'quote calculator'
 
+  const seoCtx =
+    opts.context.seo && typeof opts.context.seo === 'object'
+      ? (opts.context.seo as Record<string, unknown>)
+      : {}
+  const enhanced = await enhanceFullRedesignBrief({
+    brandName: opts.brandName,
+    adminBrief,
+    hasImages,
+    engagementLabel,
+    services,
+    city: typeof seoCtx.city === 'string' ? seoCtx.city : undefined,
+    region: typeof seoCtx.region === 'string' ? seoCtx.region : undefined,
+    themeHint:
+      typeof opts.context.themeHint === 'string' ? opts.context.themeHint : undefined,
+    intakeHints: buildIntakeHintsForBrief(opts.context),
+  })
+
   const systemPrompt = `You are a senior design lead at a small studio known for giving every client a visual identity that could not be mistaken for anyone else's. Clients come to you because they rejected work that felt templated or machine-generated. You produce production-ready marketing sites as raw HTML + CSS for real local businesses on this platform.
 
 # Core rule: nothing you produce may look AI-generated
 
-AI design clusters around recognizable defaults. Know the tells and design away from them unless the brief explicitly asks for one. The substitute for defaults is subject-derived design — the product's materials, tools, artifacts, vernacular, locality, and audience. Name the subject, audience, and the page's single job first; derive every choice from those. Client brief words always win when they pin a direction; where an axis is free, do not spend that freedom on a default.
+AI design clusters around recognizable defaults. Know the tells and design away from them unless the brief explicitly asks for one. The substitute for defaults is subject-derived design — the product's materials, tools, artifacts, vernacular, locality, and audience. Name the subject, audience, and the page's single job first; derive every choice from those.
+
+The user message includes an OPTIMIZED CREATIVE BRIEF (expanded from the admin seed + intake) plus the raw ADMIN SEED. Execute the optimized brief for palette, type, signature element, and layout. When the ADMIN SEED is specific (named colors, dual-lane, services to add, layout asks), those specifics win over the optimizer's fillers.
 
 Banned defaults (unless the brief explicitly requests them):
 - Purple-to-blue / indigo / teal SaaS gradients, or gradients used instead of a real palette decision
@@ -759,11 +782,11 @@ Final check: if any part could be find-and-replaced onto a different product, re
 
 Pass 1 — Direction (before tokens or HTML):
 1. Understand the product: type, audience, business goal, the one action this site drives (always the engagement engine below — never invent HTML forms / multi-step estimators / booking wizards).
-2. Set direction in plain words: 2–3 sentences of visual personality rooted in the subject's world + ONE signature element this design will be remembered by. Brief and/or reference images are PRIMARY when present — absorb them fully; they may redirect the whole aesthetic.
+2. Lock the OPTIMIZED CREATIVE BRIEF: signature concept, material world, palette hexes, type pairing, signature element. Reference images (if any) refine that direction — absorb mood/composition, do not copy trademarks.
 3. Self-check: would ten AI tools given this brief plausibly produce the same direction? If yes, revise before coding. State the winning signature concept in the JSON "reply".
 
 Pass 2 — System + site (then emit JSON only):
-4. Tokens in globalCss :root — 4–6 named hex roles with subject fit; --df/--bf (real Google Fonts); optional mono only if it fits; one --acc (second accent ONLY for true dual-lane); spacing/radius/shadow consistent with direction (precision brands ≠ soft 24px radii).
+4. Tokens in globalCss :root — implement the optimized palette (adjust only for AA contrast / brief overrides); --df/--bf from the brief's Google Fonts; optional mono only if it fits; one --acc (second accent ONLY for true dual-lane); spacing/radius/shadow consistent with direction (precision brands ≠ soft 24px radii).
 5. Shared chrome: sticky header with real shop name + nav + phone + primary CTA; designed footer with real contact; .wrap .eyebrow .btn(+variants). One atmospheric device that fits (paper grain, wash, photo bleed, hairline grid, air — not mandatory neon seams).
 6. Home (adapt, don't pad): branded header → hero (one sharp promise + primary CTA; second CTA only if dual-lane is real) → services covering ALL intake + brief-added services → proof/gallery from REAL urls only → process/why-us from facts only → conversion band with engagement engine → footer.
 7. Build EVERY required path with the same header/footer. Services page: deep coverage of every service. Contact: tel:/mailto: + hours/address + optional second widget mount — never an HTML form. Use ALL intakePages + services copy; sharpen, don't invent.
@@ -819,17 +842,37 @@ Output ONLY valid JSON (no markdown fences, no preamble):
 
 SIZE BUDGET (hard — keep compact so generation finishes): globalCss ≤ 9000 chars. Home html ≤ 12000 chars. Other pages ≤ 6000 chars each. Total ≤ 48000 chars. Complete valid JSON only — no truncated strings.`
 
+  const paletteLine = enhanced.palette
+    .map((p) => `${p.role} ${p.hex}`)
+    .join(', ')
   const userPrompt = `Full redesign for "${opts.brandName}".
 
-CREATIVE BRIEF (primary aesthetic direction; may also ADD services):
+ADMIN SEED (honor every specific instruction — colors, layout, services to add):
 ${
   adminBrief
     ? adminBrief
     : hasImages
-      ? 'No text brief — use attached reference image(s) as primary creative direction.'
-      : 'No admin brief — invent a distinctive subject-derived concept for THIS trade/locality. Avoid banned AI defaults (dark+neon, cream+terracotta serif, purple SaaS) unless they truly fit.'
+      ? '(no text — reference images + optimized brief drive direction)'
+      : '(empty — optimized brief was invented from intake only)'
 }
-${hasImages ? `Reference images attached: ${opts.images!.length}.\n` : ''}
+
+OPTIMIZED CREATIVE BRIEF (expanded from admin seed + intake; execute this for bespoke, non-AI look):
+${enhanced.optimizedBrief}
+
+DIRECTION LOCK:
+- Signature: ${enhanced.signatureConcept}
+- Material world: ${enhanced.materialWorld}
+- Palette: ${paletteLine || '(see optimized brief)'}
+- Type: ${enhanced.typography.display} + ${enhanced.typography.body} — ${enhanced.typography.why}
+- Signature element: ${enhanced.signatureElement}
+- Copy register: ${enhanced.copyRegister}
+- Avoid: ${enhanced.avoidDefaults.join('; ') || 'AI default clusters'}
+- Services to add from seed: ${
+    enhanced.servicesToAdd.length
+      ? enhanced.servicesToAdd.join(' | ')
+      : '(none unless ADMIN SEED names them)'
+  }
+${hasImages ? `\nReference images attached: ${opts.images!.length}. Absorb mood into the optimized direction.\n` : ''}
 KEEP ALWAYS:
 - Engagement: ${engagementLabel} (${engagementModel}) — mount ${WIDGET_PLACEHOLDER} on home conversion section.
 - Intake services: ${services.length ? services.join(' | ') : '(see context.services)'}
@@ -839,7 +882,7 @@ KEEP ALWAYS:
 BUSINESS CONTEXT (intake, services, SEO, media — use all of it):
 ${JSON.stringify(opts.context)}
 
-Run Pass 1 then Pass 2 internally. Output only the final JSON.`
+Execute OPTIMIZED CREATIVE BRIEF + ADMIN SEED specifics. Output only the final JSON.`
 
   const parsed = await callModelJson({
     systemPrompt,
@@ -860,23 +903,37 @@ Run Pass 1 then Pass 2 internally. Output only the final JSON.`
         : {},
   }
 
-  const reply =
+  const modelReply =
     typeof parsed.reply === 'string' && parsed.reply.trim()
       ? parsed.reply.trim()
       : 'Custom draft generated. Preview it, then publish when ready.'
+  const reply = `Optimized direction (${enhanced.source}): ${enhanced.signatureConcept}\n\n${modelReply}`
 
   const serviceUpdates = parseServiceUpdates(parsed.serviceUpdates)
+  // Merge enhancer-detected adds if the model omitted them but seed named them.
+  for (const title of enhanced.servicesToAdd) {
+    if (!serviceUpdates.added.some((s) => s.title.toLowerCase() === title.toLowerCase())) {
+      serviceUpdates.added.push({ title })
+    }
+  }
+
+  const extraWarnings: string[] = [
+    `Creative brief enhanced from ${
+      adminBrief ? 'your prompt + intake' : 'intake'
+    } (${enhanced.source}) before generation — palette/type/signature locked for bespoke, non-AI look.`,
+  ]
+  if (!hasBrief) {
+    extraWarnings.push(
+      'No admin text or reference image — direction was invented from intake; add a short seed next time to steer it.'
+    )
+  }
 
   return {
     config,
     reply,
     changedPages: Object.keys(config.pages),
     serviceUpdates,
-    extraWarnings: hasBrief
-      ? []
-      : [
-          'No creative brief or reference image was provided — design direction was chosen automatically from the business context.',
-        ],
+    extraWarnings,
   }
 }
 

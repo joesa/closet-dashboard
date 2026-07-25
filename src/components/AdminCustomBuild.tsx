@@ -909,16 +909,16 @@ export default function AdminCustomBuild({
             }}
             placeholder={
               hasBase
-                ? 'Lead with visual direction (materials/world + one signature idea), then any service adds. e.g. “Vinyl-chip chart palette, shop-bay honesty, copper on brushed steel — keep intake services, add ceramic coating.” Shorter briefs finish more reliably. Attach a reference image if you have one.'
-                : 'Optional brief: subject-derived style + signature idea (not a long checklist). Attach an image, then Generate from scratch or Full redesign. Intake services stay; brief may add services to site + engine.'
+                ? 'Any seed works — even “cleaner, more premium” — we expand it from intake into a bespoke direction (palette, type, signature). Add specifics when you have them (colors, services to add). e.g. “copper on brushed steel — add ceramic coating.”'
+                : 'Optional seed (style words or a full brief). Full redesign expands it from intake into a bespoke, non-AI direction. Intake services + engagement engine stay; seed may add services.'
             }
             disabled={loading}
           />
         </div>
         <p className="mt-1.5 text-[11px] text-neutral-600">
           Paste (Ctrl/Cmd+V) or attach up to {MAX_ADMIN_IMAGE_ATTACHMENTS} images as visual
-          references. For Full redesign, prefer a short subject-derived brief (palette world + one
-          signature idea) over long checklists — intake services and the engagement engine are kept
+          references. Full redesign enhances your seed with intake (colors, type, signature) so the
+          site stays bespoke and free of AI-default tells. Intake services + engagement engine stay
           automatically.
         </p>
       </div>
