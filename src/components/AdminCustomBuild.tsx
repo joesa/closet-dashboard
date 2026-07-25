@@ -909,15 +909,17 @@ export default function AdminCustomBuild({
             }}
             placeholder={
               hasBase
-                ? 'Full redesign brief or surgical edit. e.g. “Swiss editorial, charcoal + copper — keep intake services, add ceramic coating, keep the quote engine.” Attach/paste a reference image if you have one.'
-                : 'Optional Full redesign brief (style, mood, references). Attach/paste an image, then Generate from scratch or Full redesign. Intake services stay; brief may add services to site + engine.'
+                ? 'Lead with visual direction (materials/world + one signature idea), then any service adds. e.g. “Vinyl-chip chart palette, shop-bay honesty, copper on brushed steel — keep intake services, add ceramic coating.” Shorter briefs finish more reliably. Attach a reference image if you have one.'
+                : 'Optional brief: subject-derived style + signature idea (not a long checklist). Attach an image, then Generate from scratch or Full redesign. Intake services stay; brief may add services to site + engine.'
             }
             disabled={loading}
           />
         </div>
         <p className="mt-1.5 text-[11px] text-neutral-600">
-          Paste (Ctrl/Cmd+V) or attach up to {MAX_ADMIN_IMAGE_ATTACHMENTS} images — used as visual
-          references for Full redesign and surgical edits.
+          Paste (Ctrl/Cmd+V) or attach up to {MAX_ADMIN_IMAGE_ATTACHMENTS} images as visual
+          references. For Full redesign, prefer a short subject-derived brief (palette world + one
+          signature idea) over long checklists — intake services and the engagement engine are kept
+          automatically.
         </p>
       </div>
 

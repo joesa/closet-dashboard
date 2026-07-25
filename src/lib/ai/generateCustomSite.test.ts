@@ -78,23 +78,24 @@ describe('full redesign additive service policy', () => {
 describe('full redesign craft uplift prompt', () => {
   const src = readFileSync(join(__dirname, 'generateCustomSite.ts'), 'utf8')
 
-  it('requires a signature concept step', () => {
-    expect(src).toContain('SIGNATURE CONCEPT')
-    expect(src).toContain('State this signature concept clearly in the JSON "reply"')
+  it('requires a signature concept from subject-derived direction', () => {
+    expect(src).toContain('signature concept')
+    expect(src).toContain('subject-derived design')
+    expect(src).toContain('Pass 1 — Direction')
   })
 
   it('includes CSS-only cookbook and bans JS form estimators', () => {
-    expect(src).toContain('ALLOWED INTERACTIVITY (CSS-only')
+    expect(src).toContain('ALLOWED CSS-only interactivity')
     expect(src).toContain('details/summary')
-    expect(src).toContain('FORBIDDEN (will be stripped)')
+    expect(src).toContain('FORBIDDEN:')
     expect(src).toContain('multi-step quote/booking wizards')
-    expect(src).toContain('Map any "quote estimator"')
+    expect(src).toContain('Map any brief "quote estimator"')
   })
 
-  it('raises size budgets for denser home craft', () => {
-    expect(src).toContain('globalCss ≤ 11000 chars')
-    expect(src).toContain('Home html ≤ 14000 chars')
-    expect(src).toContain('Total ≤ 55000 chars')
+  it('keeps compact size budgets for serverless time limits', () => {
+    expect(src).toContain('globalCss ≤ 9000 chars')
+    expect(src).toContain('Home html ≤ 12000 chars')
+    expect(src).toContain('Total ≤ 48000 chars')
   })
 })
 
@@ -151,6 +152,23 @@ describe('assessFullRedesignCraft', () => {
     expect(tips.some((t) => /dark \+ neon|AI default/i.test(t))).toBe(true)
   })
 
+  it('flags cream+terracotta AI default when brief did not ask for it', () => {
+    const tips = assessFullRedesignCraft({
+      config: {
+        mode: 'inline',
+        globalCss: ':root{--paper:#f4f1ea;--acc:#c05a1e}',
+        pages: {
+          '/': {
+            html: `<link href="https://fonts.googleapis.com/css2?family=Libre+Baskerville&display=swap" rel="stylesheet">
+<section></section><section></section><section></section><section></section>`,
+          },
+        },
+      },
+      brief: 'mobile detailing in clarksville',
+    })
+    expect(tips.some((t) => /cream paper \+ terracotta/i.test(t))).toBe(true)
+  })
+
   it('stays quiet for a token-rich multi-section home', () => {
     const tips = assessFullRedesignCraft({
       config: {
@@ -172,11 +190,17 @@ describe('assessFullRedesignCraft', () => {
 })
 
 describe('full redesign anti-AI bias', () => {
-  it('prompt bans dark-neon auto default and Vantage cyan/gold example', () => {
+  it('prompt bans AI default clusters and requires subject-derived design', () => {
     const src = readFileSync(join(__dirname, 'generateCustomSite.ts'), 'utf8')
-    expect(src).toContain('NEVER default to dark charcoal + neon lime/cyan/gold')
-    expect(src).toContain('Do NOT converge on "premium dark local trade"')
+    expect(src).toContain('subject-derived design')
+    expect(src).toContain('Banned defaults')
+    expect(src).toContain('Cream/off-white + high-contrast serif')
+    expect(src).toContain('NEVER default to dark charcoal + neon')
+    expect(src).toContain('ENGAGEMENT ENGINE')
+    expect(src).toContain('WIDGET_PLACEHOLDER')
     expect(src).not.toContain('cyan = how it looks / gold = how it runs')
     expect(src).not.toContain('carbon-ish overlay')
+    expect(src).not.toContain('Builder prompt')
+    expect(src).not.toContain('Next.js + Tailwind')
   })
 })
