@@ -78,6 +78,8 @@ export default function AdminCustomBuild({
   /** Persisted CDN https URLs for prompt attachments (uploaded before generate). */
   const [attachments, setAttachments] = useState<string[]>([]);
   const [attaching, setAttaching] = useState(false);
+  /** Media file list is collapsed by default to keep the AI controls above the fold. */
+  const [mediaListOpen, setMediaListOpen] = useState(false);
   const promptFileRef = useRef<HTMLInputElement>(null);
   /** True while UI is waiting on an async Full redesign job (not surgical/clone). */
   const waitingOnJobRef = useRef(false);
@@ -765,7 +767,7 @@ export default function AdminCustomBuild({
           ) : status?.draft ? (
             <>
               <p className="text-neutral-200">
-                Mode: <span className="font-mono text-violet-300">{status.draft.mode}</span>
+                Render: <span className="font-mono text-violet-300">{status.draft.mode}</span>
               </p>
               <p className="text-neutral-400 mt-1">
                 Pages: {status.draft.pageKeys.join(', ') || '(none)'}
@@ -784,7 +786,7 @@ export default function AdminCustomBuild({
           ) : status?.published ? (
             <>
               <p className="text-neutral-200">
-                Mode: <span className="font-mono text-violet-300">{status.published.mode}</span>
+                Render: <span className="font-mono text-violet-300">{status.published.mode}</span>
               </p>
               <p className="text-neutral-400 mt-1">
                 Pages: {status.published.pageKeys.join(', ') || '(none)'}
@@ -797,15 +799,29 @@ export default function AdminCustomBuild({
       </div>
 
       <div className="rounded-lg border border-neutral-800 bg-black/30 p-4 space-y-3">
-        <div>
-          <div className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">
-            Media &amp; files (Supabase CDN)
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <div className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">
+              Media &amp; files (Supabase CDN)
+            </div>
+            <p className="mt-1 text-xs text-neutral-500">
+              Upload videos, images, or docs for this custom site. Files land in{' '}
+              <code className="text-neutral-400">site-assets/custom/{'{tenantId}'}/</code> and
+              get a permanent public URL you can paste into surgical edits.
+            </p>
           </div>
-          <p className="mt-1 text-xs text-neutral-500">
-            Upload videos, images, or docs for this custom site. Files land in{' '}
-            <code className="text-neutral-400">site-assets/custom/{'{tenantId}'}/</code> and
-            get a permanent public URL you can paste into surgical edits.
-          </p>
+          <button
+            type="button"
+            onClick={() => setMediaListOpen((o) => !o)}
+            aria-expanded={mediaListOpen}
+            className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-neutral-700 text-xs font-medium text-neutral-300 hover:bg-neutral-800 hover:text-white transition-colors"
+          >
+            <span aria-hidden className="text-neutral-500">
+              {mediaListOpen ? '▾' : '▸'}
+            </span>
+            {mediaListOpen ? 'Hide files' : 'Show files'}
+            <span className="text-neutral-500">({assets.length})</span>
+          </button>
         </div>
 
         <div className="flex flex-wrap items-end gap-3">
@@ -858,69 +874,80 @@ export default function AdminCustomBuild({
               onChange={(e) => {
                 const f = e.target.files?.[0];
                 e.target.value = '';
-                if (f) void uploadFile(f);
+                if (f) {
+                  setMediaListOpen(true);
+                  void uploadFile(f);
+                }
               }}
             />
           </label>
         </div>
 
-        {assets.length > 0 ? (
-          <ul className="divide-y divide-neutral-800 border border-neutral-800 rounded-lg overflow-hidden max-h-64 overflow-y-auto">
-            {assets.map((a) => (
-              <li
-                key={a.path}
-                className="flex flex-wrap items-center gap-2 px-3 py-2 text-sm bg-black/20"
-              >
-                <span
-                  className={`shrink-0 px-1.5 py-0.5 rounded text-[10px] uppercase font-semibold ${
-                    a.kind === 'video'
-                      ? 'bg-rose-500/20 text-rose-300'
-                      : a.kind === 'image'
-                        ? 'bg-sky-500/20 text-sky-300'
-                        : 'bg-neutral-700 text-neutral-300'
-                  }`}
+        {mediaListOpen ? (
+          assets.length > 0 ? (
+            <ul className="divide-y divide-neutral-800 border border-neutral-800 rounded-lg overflow-hidden max-h-64 overflow-y-auto">
+              {assets.map((a) => (
+                <li
+                  key={a.path}
+                  className="flex flex-wrap items-center gap-2 px-3 py-2 text-sm bg-black/20"
                 >
-                  {a.kind}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <div className="text-neutral-200 truncate" title={a.name}>
-                    {a.name}
+                  <span
+                    className={`shrink-0 px-1.5 py-0.5 rounded text-[10px] uppercase font-semibold ${
+                      a.kind === 'video'
+                        ? 'bg-rose-500/20 text-rose-300'
+                        : a.kind === 'image'
+                          ? 'bg-sky-500/20 text-sky-300'
+                          : 'bg-neutral-700 text-neutral-300'
+                    }`}
+                  >
+                    {a.kind}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-neutral-200 truncate" title={a.name}>
+                      {a.name}
+                    </div>
+                    <div className="text-[11px] text-neutral-500 font-mono truncate" title={a.url}>
+                      {a.url}
+                    </div>
                   </div>
-                  <div className="text-[11px] text-neutral-500 font-mono truncate" title={a.url}>
-                    {a.url}
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  className="text-xs text-violet-300 hover:text-violet-200"
-                  onClick={() => void copyUrl(a.url)}
-                  disabled={uploading}
-                >
-                  Copy URL
-                </button>
-                {a.kind === 'video' ? (
                   <button
                     type="button"
-                    className="text-xs text-amber-300 hover:text-amber-200 disabled:opacity-40"
-                    disabled={uploading || !hasBase}
-                    onClick={() => void applyExisting(a, 'video_home')}
+                    className="text-xs text-violet-300 hover:text-violet-200"
+                    onClick={() => void copyUrl(a.url)}
+                    disabled={uploading}
                   >
-                    Use as home video
+                    Copy URL
                   </button>
-                ) : null}
-                <button
-                  type="button"
-                  className="text-xs text-neutral-400 hover:text-neutral-200 disabled:opacity-40"
-                  disabled={uploading || !hasBase}
-                  onClick={() => void applyExisting(a, 'append_home')}
-                >
-                  Append to home
-                </button>
-              </li>
-            ))}
-          </ul>
+                  {a.kind === 'video' ? (
+                    <button
+                      type="button"
+                      className="text-xs text-amber-300 hover:text-amber-200 disabled:opacity-40"
+                      disabled={uploading || !hasBase}
+                      onClick={() => void applyExisting(a, 'video_home')}
+                    >
+                      Use as home video
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    className="text-xs text-neutral-400 hover:text-neutral-200 disabled:opacity-40"
+                    disabled={uploading || !hasBase}
+                    onClick={() => void applyExisting(a, 'append_home')}
+                  >
+                    Append to home
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-xs text-neutral-600">No uploads yet for this site.</p>
+          )
         ) : (
-          <p className="text-xs text-neutral-600">No uploads yet for this site.</p>
+          <p className="text-xs text-neutral-600">
+            File list collapsed
+            {assets.length > 0 ? ` — ${assets.length} file${assets.length === 1 ? '' : 's'} hidden.` : '.'}{' '}
+            Click <span className="text-neutral-400">Show files</span> to browse URLs.
+          </p>
         )}
       </div>
 
@@ -1017,8 +1044,53 @@ export default function AdminCustomBuild({
       </div>
 
       <div className="flex flex-wrap items-center gap-4">
-        <label className="flex items-center gap-2 text-sm text-neutral-300">
+        <div className="flex flex-wrap items-center gap-2 text-sm text-neutral-300">
           <span className="text-xs text-neutral-500 uppercase">Mode</span>
+          {!mounted ? (
+            <span className="inline-flex items-center px-2.5 py-1 rounded-md border border-neutral-700 bg-black/40 text-xs text-neutral-500">
+              …
+            </span>
+          ) : draftAhead || (status?.draft && !isLivePublished) ? (
+            <>
+              <span
+                className="inline-flex items-center px-2.5 py-1 rounded-md border border-amber-500/40 bg-amber-500/15 text-xs font-semibold text-amber-100"
+                title="You are editing a draft. The live site is unchanged until you publish."
+              >
+                Draft
+              </span>
+              <button
+                type="button"
+                disabled={loading || !status?.draft}
+                onClick={() => {
+                  if (!confirm('Publish this draft? The live site will switch to custom render mode.')) {
+                    return;
+                  }
+                  void run('publish');
+                }}
+                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white text-xs font-semibold rounded-lg transition-colors"
+                title="Push the current draft to the live site"
+              >
+                Publish Draft
+              </button>
+            </>
+          ) : isLivePublished ? (
+            <span
+              className="inline-flex items-center px-2.5 py-1 rounded-md border border-emerald-500/40 bg-emerald-500/15 text-xs font-semibold text-emerald-100"
+              title="Draft matches the live published custom site."
+            >
+              Published
+            </span>
+          ) : (
+            <span
+              className="inline-flex items-center px-2.5 py-1 rounded-md border border-neutral-700 bg-black/40 text-xs font-medium text-neutral-400"
+              title="No custom draft yet — clone or generate one first."
+            >
+              No draft
+            </span>
+          )}
+        </div>
+        <label className="flex items-center gap-2 text-sm text-neutral-300">
+          <span className="text-xs text-neutral-500 uppercase">Render</span>
           <select
             className="bg-black/50 border border-neutral-700 text-white text-sm rounded px-3 py-1.5"
             value={mode}
