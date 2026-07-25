@@ -29,6 +29,51 @@ import { normalizeAdminImageRefs } from '@/lib/adminImageAttach'
 export const maxDuration = 300
 export const runtime = 'nodejs'
 
+async function loadCustomBuildStatus(tenantId: string) {
+  const supabase = getSupabaseAdmin()
+  const { data, error } = await supabase
+    .from('site_configs')
+    .select(
+      'render_mode, custom_config, custom_config_draft, custom_updated_at, custom_build_job'
+    )
+    .eq('tenant_id', tenantId)
+    .single()
+  if (error || !data) return null
+
+  const draft = isCustomSiteConfig(data.custom_config_draft)
+    ? data.custom_config_draft
+    : null
+  const published = isCustomSiteConfig(data.custom_config) ? data.custom_config : null
+  const draftDiffPages = diffCustomDraftPages(draft, published)
+  const job = await getAndReconcileCustomBuildJob(tenantId)
+  if (shouldRequeueCustomBuildJob(job)) {
+    after(async () => {
+      try {
+        await processCustomBuildJob(tenantId)
+      } catch (err) {
+        console.error('[custom-build status requeue] process failed:', err)
+      }
+    })
+  }
+
+  return {
+    renderMode: data.render_mode === 'custom' ? ('custom' as const) : ('engine' as const),
+    customUpdatedAt: data.custom_updated_at,
+    draft: draft
+      ? { mode: draft.mode, pageKeys: Object.keys(draft.pages || {}) }
+      : null,
+    published: published
+      ? { mode: published.mode, pageKeys: Object.keys(published.pages || {}) }
+      : null,
+    /** True when draft HTML differs from what visitors see (or nothing published yet). */
+    draftAhead: !!(draft && (!published || draftDiffPages.length > 0)),
+    draftDiffPages,
+    job: job ? { ...job, images: undefined } : null,
+    jobActive: isCustomBuildJobActive(job),
+    fullRedesignEver: hasEverFullRedesign(job),
+  }
+}
+
 /**
  * Admin custom-site build API.
  *
@@ -57,47 +102,11 @@ export async function POST(
     const action = typeof body.action === 'string' ? body.action : 'status'
 
     if (action === 'status') {
-      const supabase = getSupabaseAdmin()
-      const { data, error } = await supabase
-        .from('site_configs')
-        .select(
-          'render_mode, custom_config, custom_config_draft, custom_updated_at, custom_build_job'
-        )
-        .eq('tenant_id', tenantId)
-        .single()
-      if (error || !data) {
+      const status = await loadCustomBuildStatus(tenantId)
+      if (!status) {
         return NextResponse.json({ error: 'Site config not found' }, { status: 404 })
       }
-      const draft = isCustomSiteConfig(data.custom_config_draft) ? data.custom_config_draft : null
-      const published = isCustomSiteConfig(data.custom_config) ? data.custom_config : null
-      const draftDiffPages = diffCustomDraftPages(draft, published)
-      // Expire abandoned jobs (serverless kill leaves status=processing forever).
-      const job = await getAndReconcileCustomBuildJob(tenantId)
-      if (shouldRequeueCustomBuildJob(job)) {
-        after(async () => {
-          try {
-            await processCustomBuildJob(tenantId)
-          } catch (err) {
-            console.error('[custom-build status requeue] process failed:', err)
-          }
-        })
-      }
-      return NextResponse.json({
-        renderMode: data.render_mode === 'custom' ? 'custom' : 'engine',
-        customUpdatedAt: data.custom_updated_at,
-        draft: draft
-          ? { mode: draft.mode, pageKeys: Object.keys(draft.pages || {}) }
-          : null,
-        published: published
-          ? { mode: published.mode, pageKeys: Object.keys(published.pages || {}) }
-          : null,
-        /** True when draft HTML differs from what visitors see (or nothing published yet). */
-        draftAhead: !!(draft && (!published || draftDiffPages.length > 0)),
-        draftDiffPages,
-        job: job ? { ...job, images: undefined } : null,
-        jobActive: isCustomBuildJobActive(job),
-        fullRedesignEver: hasEverFullRedesign(job),
-      })
+      return NextResponse.json(status)
     }
 
     if (action === 'clone') {
@@ -363,43 +372,9 @@ export async function GET(
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const supabase = getSupabaseAdmin()
-  const { data, error } = await supabase
-    .from('site_configs')
-    .select(
-      'render_mode, custom_config, custom_config_draft, custom_updated_at, custom_build_job'
-    )
-    .eq('tenant_id', tenantId)
-    .single()
-
-  if (error || !data) {
+  const status = await loadCustomBuildStatus(tenantId)
+  if (!status) {
     return NextResponse.json({ error: 'Site config not found' }, { status: 404 })
   }
-
-  const draft = isCustomSiteConfig(data.custom_config_draft) ? data.custom_config_draft : null
-  const published = isCustomSiteConfig(data.custom_config) ? data.custom_config : null
-  const job = await getAndReconcileCustomBuildJob(tenantId)
-  if (shouldRequeueCustomBuildJob(job)) {
-    after(async () => {
-      try {
-        await processCustomBuildJob(tenantId)
-      } catch (err) {
-        console.error('[custom-build GET requeue] process failed:', err)
-      }
-    })
-  }
-
-  return NextResponse.json({
-    renderMode: data.render_mode === 'custom' ? 'custom' : 'engine',
-    customUpdatedAt: data.custom_updated_at,
-    draft: draft
-      ? { mode: draft.mode, pageKeys: Object.keys(draft.pages || {}) }
-      : null,
-    published: published
-      ? { mode: published.mode, pageKeys: Object.keys(published.pages || {}) }
-      : null,
-    job: job ? { ...job, images: undefined } : null,
-    jobActive: isCustomBuildJobActive(job),
-    fullRedesignEver: hasEverFullRedesign(job),
-  })
+  return NextResponse.json(status)
 }

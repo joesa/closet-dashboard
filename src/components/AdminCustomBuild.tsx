@@ -588,10 +588,17 @@ export default function AdminCustomBuild({
     ? previewUrl.split('?')[0].replace(/\/$/, '') || previewUrl
     : null;
 
-  const draftAhead = !!(status?.draftAhead ?? (status?.draft && status.renderMode !== 'custom'));
+  // Prefer server draftAhead (compares draft HTML vs published). Never treat a
+  // missing flag as "in sync" when renderMode is custom — that hid Publish Draft.
+  const draftAhead =
+    typeof status?.draftAhead === 'boolean'
+      ? status.draftAhead
+      : !!(status?.draft && (!status.published || status.renderMode !== 'custom'));
   const diffPages = status?.draftDiffPages || [];
   const isLivePublished =
     status?.renderMode === 'custom' && !!status.published && !draftAhead;
+  const canPublishDraft = !!status?.draft && draftAhead;
+  const canRepublish = isLivePublished && !!status?.draft;
   // Full redesign is powerful/expensive — hide until this tenant has started
   // one at least once. New sites (!hasBase) can still start via this button.
   const showFullRedesign =
@@ -1050,36 +1057,72 @@ export default function AdminCustomBuild({
             <span className="inline-flex items-center px-2.5 py-1 rounded-md border border-neutral-700 bg-black/40 text-xs text-neutral-500">
               …
             </span>
-          ) : draftAhead || (status?.draft && !isLivePublished) ? (
+          ) : canPublishDraft ? (
             <>
               <span
                 className="inline-flex items-center px-2.5 py-1 rounded-md border border-amber-500/40 bg-amber-500/15 text-xs font-semibold text-amber-100"
-                title="You are editing a draft. The live site is unchanged until you publish."
+                title={
+                  diffPages.length
+                    ? `Draft differs from live on: ${diffPages.join(', ')}`
+                    : 'You are editing a draft. The live site is unchanged until you publish.'
+                }
               >
                 Draft
+                {diffPages.length > 0 ? (
+                  <span className="ml-1.5 font-normal text-amber-200/80">
+                    ({diffPages.filter((p) => p.startsWith('/')).slice(0, 3).join(', ')}
+                    {diffPages.filter((p) => p.startsWith('/')).length > 3 ? '…' : ''})
+                  </span>
+                ) : null}
               </span>
               <button
                 type="button"
                 disabled={loading || !status?.draft}
                 onClick={() => {
-                  if (!confirm('Publish this draft? The live site will switch to custom render mode.')) {
+                  if (
+                    !confirm(
+                      'Publish this draft? Visitors will see the draft version on the live site.'
+                    )
+                  ) {
                     return;
                   }
                   void run('publish');
                 }}
-                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white text-xs font-semibold rounded-lg transition-colors"
+                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white text-xs font-semibold rounded-lg transition-colors ring-2 ring-emerald-300/50 ring-offset-2 ring-offset-neutral-900"
                 title="Push the current draft to the live site"
               >
                 Publish Draft
               </button>
             </>
           ) : isLivePublished ? (
-            <span
-              className="inline-flex items-center px-2.5 py-1 rounded-md border border-emerald-500/40 bg-emerald-500/15 text-xs font-semibold text-emerald-100"
-              title="Draft matches the live published custom site."
-            >
-              Published
-            </span>
+            <>
+              <span
+                className="inline-flex items-center px-2.5 py-1 rounded-md border border-emerald-500/40 bg-emerald-500/15 text-xs font-semibold text-emerald-100"
+                title="Draft matches the live published custom site."
+              >
+                Published
+              </span>
+              {canRepublish ? (
+                <button
+                  type="button"
+                  disabled={loading}
+                  onClick={() => {
+                    if (
+                      !confirm(
+                        'Republish the current draft to the live site? Useful to bust caches if the public page looks stale.'
+                      )
+                    ) {
+                      return;
+                    }
+                    void run('publish');
+                  }}
+                  className="px-3 py-1.5 border border-emerald-500/40 hover:bg-emerald-500/15 text-emerald-100 text-xs font-semibold rounded-lg transition-colors disabled:opacity-40"
+                  title="Re-push draft to live and clear the site cache"
+                >
+                  Republish
+                </button>
+              ) : null}
+            </>
           ) : (
             <span
               className="inline-flex items-center px-2.5 py-1 rounded-md border border-neutral-700 bg-black/40 text-xs font-medium text-neutral-400"
@@ -1189,34 +1232,60 @@ export default function AdminCustomBuild({
             Preview draft
           </a>
         ) : null}
-        <button
-          type="button"
-          disabled={loading || !status?.draft || isLivePublished}
-          onClick={() => {
-            if (!confirm('Publish this draft? The live site will switch to custom render mode.')) return;
-            void run('publish');
-          }}
-          className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
-            isLivePublished
-              ? 'bg-emerald-900/50 border border-emerald-500/40 text-emerald-200 cursor-default'
-              : `bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white ${
-                  draftAhead ? 'ring-2 ring-emerald-300/70 ring-offset-2 ring-offset-neutral-900' : ''
-                }`
-          }`}
-          title={
-            isLivePublished
-              ? 'Draft matches the live published site'
-              : draftAhead
-                ? 'Draft has unpublished changes — click to push them live'
-                : 'Publish the current draft to the live site'
-          }
-        >
-          {isLivePublished
-            ? 'Published'
-            : draftAhead
-              ? 'Publish draft (updates live)'
-              : 'Publish draft'}
-        </button>
+        {canPublishDraft ? (
+          <button
+            type="button"
+            disabled={loading}
+            onClick={() => {
+              if (
+                !confirm(
+                  'Publish this draft? Visitors will see the draft version on the live site.'
+                )
+              ) {
+                return;
+              }
+              void run('publish');
+            }}
+            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white text-sm font-medium rounded-lg transition-colors ring-2 ring-emerald-300/70 ring-offset-2 ring-offset-neutral-900"
+            title="Draft has unpublished changes — click to push them live"
+          >
+            Publish Draft
+          </button>
+        ) : canRepublish ? (
+          <button
+            type="button"
+            disabled={loading}
+            onClick={() => {
+              if (
+                !confirm(
+                  'Republish the current draft to the live site? Useful to bust caches if the public page looks stale.'
+                )
+              ) {
+                return;
+              }
+              void run('publish');
+            }}
+            className="px-4 py-2 border border-emerald-500/40 hover:bg-emerald-500/15 text-emerald-100 text-sm font-medium rounded-lg transition-colors disabled:opacity-40"
+            title="Re-push draft to live and clear the site cache"
+          >
+            Republish
+          </button>
+        ) : status?.draft ? (
+          <button
+            type="button"
+            disabled={loading}
+            onClick={() => {
+              if (!confirm('Publish this draft? The live site will switch to custom render mode.')) {
+                return;
+              }
+              void run('publish');
+            }}
+            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white text-sm font-medium rounded-lg transition-colors"
+            title="Publish the current draft to the live site"
+          >
+            Publish Draft
+          </button>
+        ) : null}
         <button
           type="button"
           disabled={loading || status?.renderMode !== 'custom'}
