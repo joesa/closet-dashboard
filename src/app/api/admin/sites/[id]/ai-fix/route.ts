@@ -3,11 +3,14 @@ import { requireAdmin, logAdminAction } from '@/lib/admin'
 import { autoFixTenantSite } from '@/lib/validation/autoFixSiteIssues'
 
 /**
- * Admin clicks "Fix with AI" on a failed validation report: applies every
- * deterministic repair available for the current issues (theme/layout
- * mismatch, missing nav, duplicate design, broken images), re-validates, and
+ * Admin clicks "Fix with AI" on a validation issue (or "Fix all"): applies
+ * deterministic repairs for fixable issues (theme/layout mismatch, missing
+ * nav, duplicate design, broken images, process steps), re-validates, and
  * returns an AI-written plain-English summary of what changed / what still
  * needs manual attention.
+ *
+ * Optional JSON body: `{ "codes": ["theme_layout_mismatch"] }` to fix only
+ * those issue codes. Omit / empty = fix every fixable issue.
  */
 export async function POST(
   req: Request,
@@ -18,7 +21,17 @@ export async function POST(
   try {
     const adminUser = await requireAdmin()
 
-    const result = await autoFixTenantSite(tenantId)
+    let codes: string[] | undefined
+    try {
+      const body = (await req.json()) as { codes?: unknown }
+      if (Array.isArray(body?.codes)) {
+        codes = body.codes.filter((c): c is string => typeof c === 'string' && !!c.trim())
+      }
+    } catch {
+      // Empty body is fine — fix all.
+    }
+
+    const result = await autoFixTenantSite(tenantId, codes?.length ? { codes } : undefined)
 
     await logAdminAction({
       actor: adminUser,
@@ -29,6 +42,7 @@ export async function POST(
         status: result.report.status,
         fixesApplied: result.fixesApplied.length,
         remainingIssues: result.report.issues.length,
+        codes: codes || null,
       },
     })
 

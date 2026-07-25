@@ -26,20 +26,43 @@ const STATUS_STYLES: Record<string, string> = {
 export default function SiteValidationPanel({ tenantId, status, issues, validatedAt }: Props) {
   const router = useRouter();
   const [loading, setLoading] = useState<'validate' | 'fix' | null>(null);
+  const [fixingCode, setFixingCode] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [aiNote, setAiNote] = useState<string | null>(null);
 
-  const call = async (kind: 'validate' | 'fix') => {
-    setLoading(kind);
+  const runAiFix = async (codes?: string[]) => {
+    setLoading('fix');
+    setFixingCode(codes?.[0] ?? null);
     setError('');
     setAiNote(null);
     try {
-      const res = await fetch(`/api/admin/sites/${tenantId}/${kind === 'validate' ? 'validate' : 'ai-fix'}`, {
+      const res = await fetch(`/api/admin/sites/${tenantId}/ai-fix`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(codes?.length ? { codes } : {}),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Request failed');
+      if (typeof json.aiNote === 'string') setAiNote(json.aiNote);
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Request failed');
+    } finally {
+      setLoading(null);
+      setFixingCode(null);
+    }
+  };
+
+  const callValidate = async () => {
+    setLoading('validate');
+    setError('');
+    setAiNote(null);
+    try {
+      const res = await fetch(`/api/admin/sites/${tenantId}/validate`, {
         method: 'POST',
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Request failed');
-      if (kind === 'fix' && typeof json.aiNote === 'string') setAiNote(json.aiNote);
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Request failed');
@@ -51,6 +74,7 @@ export default function SiteValidationPanel({ tenantId, status, issues, validate
   const errorIssues = issues.filter((i) => i.severity === 'error');
   const warningIssues = issues.filter((i) => i.severity === 'warning');
   const hasFixable = issues.some((i) => i.fixable);
+  const busy = loading !== null;
 
   return (
     <section className="bg-neutral-900 border border-neutral-800 rounded-xl p-6 space-y-4">
@@ -61,7 +85,7 @@ export default function SiteValidationPanel({ tenantId, status, issues, validate
             status ? STATUS_STYLES[status] : 'bg-neutral-800 text-neutral-400 border-neutral-700'
           }`}
         >
-          {status === 'passed' && 'All checks passed'}
+          {status === 'passed' && (warningIssues.length > 0 ? `${warningIssues.length} warning${warningIssues.length === 1 ? '' : 's'}` : 'All checks passed')}
           {status === 'failed' && `${errorIssues.length} issue${errorIssues.length === 1 ? '' : 's'} found`}
           {status === 'pending' && 'Validation pending'}
           {!status && 'Not yet validated'}
@@ -72,6 +96,12 @@ export default function SiteValidationPanel({ tenantId, status, issues, validate
         <p className="text-sm text-neutral-400">
           This site is <strong>not yet ready for preview and approval</strong> until validation passes.
           {status === 'failed' && ' Review the issues below, then use AI to fix what it can, or fix manually and re-validate.'}
+        </p>
+      )}
+
+      {status === 'passed' && hasFixable && (
+        <p className="text-sm text-neutral-400">
+          Validation passed with AI-fixable warnings. Click <strong>Fix with AI</strong> on an issue to apply the repair now.
         </p>
       )}
 
@@ -89,25 +119,38 @@ export default function SiteValidationPanel({ tenantId, status, issues, validate
 
       {issues.length > 0 && (
         <ul className="space-y-2">
-          {[...errorIssues, ...warningIssues].map((issue, i) => (
-            <li
-              key={`${issue.code}-${i}`}
-              className={`text-sm rounded-lg border px-4 py-3 ${
-                issue.severity === 'error'
-                  ? 'border-red-500/20 bg-red-500/5 text-red-300'
-                  : 'border-amber-500/20 bg-amber-500/5 text-amber-300'
-              }`}
-            >
-              <div className="flex items-start justify-between gap-3">
-                <span>{issue.message}</span>
-                {issue.fixable && (
-                  <span className="shrink-0 text-xs font-medium text-neutral-400 bg-neutral-800 px-2 py-0.5 rounded">
-                    AI-fixable
-                  </span>
-                )}
-              </div>
-            </li>
-          ))}
+          {[...errorIssues, ...warningIssues].map((issue, i) => {
+            const rowBusy = busy && fixingCode === issue.code;
+            return (
+              <li
+                key={`${issue.code}-${i}`}
+                className={`text-sm rounded-lg border px-4 py-3 ${
+                  issue.severity === 'error'
+                    ? 'border-red-500/20 bg-red-500/5 text-red-300'
+                    : 'border-amber-500/20 bg-amber-500/5 text-amber-300'
+                }`}
+              >
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <span className="min-w-0 flex-1">{issue.message}</span>
+                  {issue.fixable && (
+                    <div className="shrink-0 flex items-center gap-2">
+                      <span className="text-xs font-medium text-neutral-400 bg-neutral-800 px-2 py-0.5 rounded">
+                        AI-fixable
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => void runAiFix([issue.code])}
+                        disabled={busy}
+                        className="px-3 py-1 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold rounded-md transition-colors disabled:opacity-50"
+                      >
+                        {rowBusy ? 'Fixing…' : 'Fix with AI'}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </li>
+            );
+          })}
         </ul>
       )}
 
@@ -123,20 +166,20 @@ export default function SiteValidationPanel({ tenantId, status, issues, validate
       <div className="flex flex-wrap gap-3">
         <button
           type="button"
-          onClick={() => call('validate')}
-          disabled={loading !== null}
+          onClick={() => void callValidate()}
+          disabled={busy}
           className="px-4 py-2 bg-neutral-800 hover:bg-neutral-700 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
         >
           {loading === 'validate' ? 'Validating…' : status ? 'Re-validate' : 'Run Validation'}
         </button>
-        {status === 'failed' && hasFixable && (
+        {hasFixable && (
           <button
             type="button"
-            onClick={() => call('fix')}
-            disabled={loading !== null}
+            onClick={() => void runAiFix()}
+            disabled={busy}
             className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
           >
-            {loading === 'fix' ? 'Fixing…' : '✨ Fix with AI'}
+            {loading === 'fix' && !fixingCode ? 'Fixing…' : '✨ Fix all with AI'}
           </button>
         )}
       </div>

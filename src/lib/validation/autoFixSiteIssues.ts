@@ -32,9 +32,16 @@ const DEFAULT_ANCHOR_NAV = (ctaLabel: string) => [
  * one genuinely-subjective part: writing a short, human-readable summary of
  * what changed and what still needs manual attention, for the admin UI.
  */
-export async function autoFixTenantSite(tenantId: string): Promise<AutoFixResult> {
+export async function autoFixTenantSite(
+  tenantId: string,
+  opts?: { codes?: string[] }
+): Promise<AutoFixResult> {
   const supabase = getSupabaseAdmin()
   const before = await validateTenantSite(tenantId)
+  const onlyCodes =
+    Array.isArray(opts?.codes) && opts.codes.length > 0
+      ? new Set(opts.codes.filter((c) => typeof c === 'string' && c.trim()))
+      : null
 
   const { data: tenant } = await supabase
     .from('tenants')
@@ -70,6 +77,7 @@ export async function autoFixTenantSite(tenantId: string): Promise<AutoFixResult
       if (issue.severity === 'error') unfixedIssues.push(issue.message)
       continue
     }
+    if (onlyCodes && !onlyCodes.has(issue.code)) continue
 
     switch (issue.code) {
       case 'theme_layout_mismatch': {
