@@ -1,6 +1,9 @@
 import { parseAdminImageDataUrl } from '@/lib/adminImageAttach'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
-import { generateTextWithFallback } from '@/lib/ai/aiTextProvider'
+import {
+  CLAUDE_SONNET_MODEL,
+  generateTextWithFallback,
+} from '@/lib/ai/aiTextProvider'
 import {
   buildIntakeHintsForBrief,
   enhanceFullRedesignBrief,
@@ -710,8 +713,9 @@ async function runFullGenerate(opts: {
   extraWarnings: string[]
   serviceUpdates: ServiceUpdates
 }> {
-  // Full redesigns route to Claude Fable 5 (design quality); Gemini is the
-  // fallback when no Anthropic key is configured.
+  // Full redesigns use Claude Sonnet 5 by default — Fable 5's adaptive
+  // thinking routinely exceeds the ~5 minute serverless budget. Override with
+  // CUSTOM_SITE_CLAUDE_MODEL=claude-fable-5 if you want the frontier model.
   const useClaude = !!process.env.ANTHROPIC_API_KEY
   const hasImages = !!(opts.images && opts.images.length > 0)
   const adminBrief = (opts.prompt || '').trim()
@@ -884,15 +888,49 @@ ${JSON.stringify(opts.context)}
 
 Execute OPTIMIZED CREATIVE BRIEF + ADMIN SEED specifics. Output only the final JSON.`
 
-  const parsed = await callModelJson({
-    systemPrompt,
-    userPrompt,
-    temperature: 0.7,
-    // Compact JSON target (~48k chars) + abort budget — 28k is enough with thinking.
-    maxOutputTokens: useClaude ? 28000 : 32768,
-    preferredProvider: useClaude ? 'anthropic' : undefined,
-    images: opts.images,
-  })
+  const extraWarnings: string[] = [
+    `Creative brief enhanced from ${
+      adminBrief ? 'your prompt + intake' : 'intake'
+    } (${enhanced.source}) before generation — palette/type/signature locked for bespoke, non-AI look.`,
+  ]
+  if (!hasBrief) {
+    extraWarnings.push(
+      'No admin text or reference image — direction was invented from intake; add a short seed next time to steer it.'
+    )
+  }
+
+  let parsed: Record<string, unknown>
+  try {
+    parsed = await callModelJson({
+      systemPrompt,
+      userPrompt,
+      temperature: 0.7,
+      // Compact JSON — Sonnet finishes faster with a tighter cap.
+      maxOutputTokens: useClaude ? 24000 : 32768,
+      preferredProvider: useClaude ? 'anthropic' : undefined,
+      anthropicModel: CLAUDE_SONNET_MODEL,
+      images: opts.images,
+    })
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    // Last-resort: if Claude still times out, try Gemini so the admin isn't stuck.
+    if (/timed out/i.test(msg) && process.env.GEMINI_API_KEY) {
+      console.warn('[runFullGenerate] Claude timed out — falling back to Gemini')
+      extraWarnings.push(
+        'Primary model timed out — finished with Gemini fallback (preview carefully).'
+      )
+      parsed = await callModelJson({
+        systemPrompt,
+        userPrompt,
+        temperature: 0.65,
+        maxOutputTokens: 32768,
+        preferredProvider: 'gemini',
+        images: opts.images,
+      })
+    } else {
+      throw err
+    }
+  }
 
   const config: CustomSiteConfig = {
     mode: parsed.mode === 'iframe' ? 'iframe' : 'inline',
@@ -915,17 +953,6 @@ Execute OPTIMIZED CREATIVE BRIEF + ADMIN SEED specifics. Output only the final J
     if (!serviceUpdates.added.some((s) => s.title.toLowerCase() === title.toLowerCase())) {
       serviceUpdates.added.push({ title })
     }
-  }
-
-  const extraWarnings: string[] = [
-    `Creative brief enhanced from ${
-      adminBrief ? 'your prompt + intake' : 'intake'
-    } (${enhanced.source}) before generation — palette/type/signature locked for bespoke, non-AI look.`,
-  ]
-  if (!hasBrief) {
-    extraWarnings.push(
-      'No admin text or reference image — direction was invented from intake; add a short seed next time to steer it.'
-    )
   }
 
   return {
@@ -1093,6 +1120,7 @@ async function callModelJson(opts: {
   temperature: number
   maxOutputTokens: number
   preferredProvider?: 'anthropic' | 'gemini'
+  anthropicModel?: string
   images?: Array<{ mimeType: string; data: string }>
 }): Promise<Record<string, unknown>> {
   let lastText = ''
@@ -1113,6 +1141,7 @@ async function callModelJson(opts: {
         temperature: attempt === 0 ? opts.temperature : 0.2,
         maxOutputTokens: opts.maxOutputTokens,
         preferredProvider: opts.preferredProvider,
+        anthropicModel: opts.anthropicModel,
         images: opts.images,
       })
       text = result.text

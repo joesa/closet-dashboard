@@ -3,7 +3,10 @@ import Anthropic from '@anthropic-ai/sdk'
 
 /**
  * Shared text-generation provider. Gemini handles routine content; Claude
- * Fable 5 (opt-in via preferredProvider) handles premium design generation.
+ * (opt-in via preferredProvider) handles premium design generation.
+ *
+ * Full redesign defaults to Claude Sonnet 5 — Fable 5's adaptive thinking
+ * routinely exceeds our ~5 minute serverless budget on multi-page JSON.
  *
  * Server-only — never import in client components.
  */
@@ -25,19 +28,27 @@ export type TextGenerationOpts = {
    */
   images?: Array<{ mimeType: string; data: string }>
   /**
-   * 'anthropic' routes to Claude Fable 5 when ANTHROPIC_API_KEY is set,
+   * 'anthropic' routes to Claude when ANTHROPIC_API_KEY is set,
    * silently falling back to Gemini otherwise. Default is Gemini.
    */
   preferredProvider?: 'anthropic' | 'gemini'
+  /**
+   * Override Claude model id. Defaults to CUSTOM_SITE_CLAUDE_MODEL or
+   * claude-sonnet-5 (fast enough for Full redesign inside Vercel limits).
+   */
+  anthropicModel?: string
 }
 
 export type TextGenerationResult = {
   text: string
   provider: 'openai' | 'gemini' | 'anthropic'
+  model?: string
 }
 
-/** Anthropic's flagship design/reasoning model (no date suffix — exact ID). */
-const CLAUDE_MODEL = 'claude-fable-5'
+/** Fast production default — finishes Full redesign inside the 5m budget. */
+export const CLAUDE_SONNET_MODEL = 'claude-sonnet-5'
+/** Slower frontier model — deep craft, often too slow for one-shot site JSON. */
+export const CLAUDE_FABLE_MODEL = 'claude-fable-5'
 
 /**
  * Abort Claude before Vercel's hard 300s kill so callers can persist a failed
@@ -45,12 +56,28 @@ const CLAUDE_MODEL = 'claude-fable-5'
  */
 const CLAUDE_ABORT_MS = 270_000
 
-async function generateWithClaude(opts: TextGenerationOpts): Promise<string> {
+export function resolveClaudeModel(override?: string): string {
+  const fromOpts = override?.trim()
+  if (fromOpts) return fromOpts
+  const fromEnv = process.env.CUSTOM_SITE_CLAUDE_MODEL?.trim()
+  if (fromEnv) return fromEnv
+  return CLAUDE_SONNET_MODEL
+}
+
+function isFableModel(model: string): boolean {
+  return /fable/i.test(model)
+}
+
+async function generateWithClaude(opts: TextGenerationOpts): Promise<{
+  text: string
+  model: string
+}> {
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) {
     throw new Error('Missing ANTHROPIC_API_KEY for text generation')
   }
 
+  const model = resolveClaudeModel(opts.anthropicModel)
   const client = new Anthropic({ apiKey })
 
   const content: Anthropic.ContentBlockParam[] = [
@@ -72,16 +99,20 @@ async function generateWithClaude(opts: TextGenerationOpts): Promise<string> {
   }
 
   // Stream so long generations don't hit the SDK's non-streaming time limit.
-  // Fable 5 uses adaptive thinking; custom temperature is not supported.
-  const stream = client.messages.stream(
-    {
-      model: CLAUDE_MODEL,
-      max_tokens: Math.max(opts.maxOutputTokens ?? 8192, 8192),
-      system: opts.systemPrompt,
-      messages: [{ role: 'user', content }],
-    },
-    { signal: AbortSignal.timeout(CLAUDE_ABORT_MS) }
-  )
+  // Fable uses adaptive thinking and rejects custom temperature.
+  const body: Anthropic.MessageCreateParams = {
+    model,
+    max_tokens: Math.max(opts.maxOutputTokens ?? 8192, 8192),
+    system: opts.systemPrompt,
+    messages: [{ role: 'user', content }],
+  }
+  if (!isFableModel(model) && typeof opts.temperature === 'number') {
+    body.temperature = opts.temperature
+  }
+
+  const stream = client.messages.stream(body, {
+    signal: AbortSignal.timeout(CLAUDE_ABORT_MS),
+  })
 
   try {
     const message = await stream.finalMessage()
@@ -93,13 +124,13 @@ async function generateWithClaude(opts: TextGenerationOpts): Promise<string> {
     if (!text) {
       throw new Error(`Claude returned no content (stop: ${message.stop_reason})`)
     }
-    return text
+    return { text, model }
   } catch (err) {
     const name = err instanceof Error ? err.name : ''
     const msg = err instanceof Error ? err.message : String(err)
     if (name === 'AbortError' || /aborted|timeout/i.test(msg)) {
       throw new Error(
-        'Full redesign timed out after ~4.5 minutes (model still generating). Try a shorter brief or fewer reference images.'
+        `Full redesign timed out after ~4.5 minutes on ${model} (still generating). Try again, use a shorter brief, or set CUSTOM_SITE_CLAUDE_MODEL=claude-sonnet-5.`
       )
     }
     throw err
@@ -163,20 +194,20 @@ async function generateWithGemini(opts: TextGenerationOpts): Promise<string> {
 }
 
 /**
- * Generate text content. Routes to Claude Fable 5 when the caller prefers
- * Anthropic and a key is configured; otherwise Gemini.
+ * Generate text content. Routes to Claude when the caller prefers Anthropic
+ * and a key is configured; otherwise Gemini.
  */
 export async function generateTextWithFallback(
   opts: TextGenerationOpts
 ): Promise<TextGenerationResult> {
   if (opts.preferredProvider === 'anthropic' && process.env.ANTHROPIC_API_KEY) {
-    const text = await generateWithClaude(opts)
-    return { text, provider: 'anthropic' }
+    const { text, model } = await generateWithClaude(opts)
+    return { text, provider: 'anthropic', model }
   }
 
   if (process.env.GEMINI_API_KEY) {
     const text = await generateWithGemini(opts)
-    return { text, provider: 'gemini' }
+    return { text, provider: 'gemini', model: 'gemini-pro-latest' }
   }
 
   throw new Error('Missing GEMINI_API_KEY — cannot generate text')

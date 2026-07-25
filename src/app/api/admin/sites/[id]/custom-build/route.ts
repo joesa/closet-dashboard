@@ -23,8 +23,9 @@ import {
 } from '@/lib/ai/processCustomBuildJob'
 import { normalizeAdminImageDataUrls } from '@/lib/adminImageAttach'
 
-// Full generates on Claude Fable 5 routinely take 3–5 minutes. Fluid compute
-// allows 300s; we return immediately and finish the work in `after()`.
+// Full generates on Claude Sonnet 5 usually finish in 1–3 minutes (Fable 5
+// often exceeds the budget). Fluid compute allows 300s; we return immediately
+// and finish the work in `after()`.
 export const maxDuration = 300
 export const runtime = 'nodejs'
 
@@ -204,7 +205,7 @@ export async function POST(
           job: { ...job, images: undefined },
           jobActive: true,
           reply:
-            'Full redesign started — Claude Fable 5 usually takes 3–5 minutes. This panel will refresh when the draft is ready.',
+            'Full redesign started — Claude Sonnet 5 usually takes 1–3 minutes. This panel will refresh when the draft is ready.',
           nextStep: {
             preview: false,
             publish: false,
