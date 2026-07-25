@@ -1,4 +1,4 @@
-import { parseAdminImageDataUrl } from '@/lib/adminImageAttach'
+import { hydrateAdminImagesForModel } from '@/lib/ai/hydrateAdminImages'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import {
   CLAUDE_SONNET_MODEL,
@@ -246,8 +246,8 @@ export async function generateCustomSiteDraft(opts: {
   /** @deprecated use intent: 'surgical' */
   iterate?: boolean
   /**
-   * Optional reference images as data URLs (`data:image/...;base64,...`) —
-   * screenshots, moodboards, or layouts to imitate.
+   * Optional images: preferred persisted https CDN URLs, or legacy data URLs.
+   * CDN URLs are reused in site HTML; all refs are hydrated for model vision.
    */
   images?: string[]
 }): Promise<GenerateCustomSiteResult> {
@@ -312,10 +312,9 @@ export async function generateCustomSiteDraft(opts: {
     if (mediaShortcut) return mediaShortcut
   }
 
-  const attachmentImages = (opts.images || [])
-    .map(parseAdminImageDataUrl)
-    .filter((v): v is { mimeType: string; data: string } => !!v)
-    .slice(0, 4)
+  const hydratedImages = await hydrateAdminImagesForModel(opts.images)
+  const attachmentImages = hydratedImages.vision
+  const attachedAssetUrls = hydratedImages.assetUrls
 
   const mode = opts.mode || base?.mode || 'inline'
   const products = Array.isArray(cfg.products_config) ? cfg.products_config : []
@@ -359,13 +358,25 @@ export async function generateCustomSiteDraft(opts: {
       city: seo.addressLocality,
       region: seo.addressRegion,
     },
+    /**
+     * Prompt attachments already uploaded to the CDN — use these exact URLs
+     * when the admin asks to place an image (hero, gallery, etc.).
+     */
+    attachedAssetUrls,
     /** Uploaded CDN assets the admin can reference without pasting URLs. */
     // Cap media list so Full redesign prompts stay within the serverless time budget.
-    mediaLibrary: mediaLibrary.slice(0, 24).map((a) => ({
-      kind: a.kind,
-      name: a.name,
-      url: a.url,
-    })),
+    mediaLibrary: [
+      ...attachedAssetUrls.map((url, i) => ({
+        kind: 'image' as const,
+        name: `prompt-attachment-${i + 1}`,
+        url,
+      })),
+      ...mediaLibrary.slice(0, 24).map((a) => ({
+        kind: a.kind,
+        name: a.name,
+        url: a.url,
+      })),
+    ],
   }
 
   // Full redesigns get the complete intake content — every page the prospect
@@ -723,8 +734,13 @@ async function runFullGenerate(opts: {
   // CUSTOM_SITE_CLAUDE_MODEL=claude-fable-5 if you want the frontier model.
   const useClaude = !!process.env.ANTHROPIC_API_KEY
   const hasImages = !!(opts.images && opts.images.length > 0)
+  const attachedAssetUrls = Array.isArray(opts.context.attachedAssetUrls)
+    ? (opts.context.attachedAssetUrls as unknown[])
+        .filter((u): u is string => typeof u === 'string' && /^https:\/\//i.test(u))
+        .slice(0, 4)
+    : []
   const adminBrief = (opts.prompt || '').trim()
-  const hasBrief = adminBrief.length > 0 || hasImages
+  const hasBrief = adminBrief.length > 0 || hasImages || attachedAssetUrls.length > 0
 
   const services = Array.isArray(opts.context.services)
     ? (opts.context.services as Array<{ title?: string }>)
@@ -751,7 +767,7 @@ async function runFullGenerate(opts: {
   const enhanced = await enhanceFullRedesignBrief({
     brandName: opts.brandName,
     adminBrief,
-    hasImages,
+    hasImages: hasImages || attachedAssetUrls.length > 0,
     engagementLabel,
     services,
     city: typeof seoCtx.city === 'string' ? seoCtx.city : undefined,
@@ -822,15 +838,17 @@ INTAKE — ship EXACTLY these paths: ${opts.pageHints}. Preserve client facts fr
 - STRIPPED: script, iframe, object, embed, form, on* attributes, javascript: URLs. There is NO JavaScript.
 - CSS scoped at render. No @import. @media, @keyframes, @font-face OK.
 - FIRST node of every page html: <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=...&display=swap">
-- Images: ONLY https URLs from context (services, intakePages, mediaLibrary). Never invent URLs.
+- Images: ONLY https URLs from context (attachedAssetUrls, services, intakePages, mediaLibrary). Never invent URLs.
 - Root-relative internal links matching page keys.
 
 ALLOWED CSS-only interactivity: :hover/:focus-within, sticky nav, scroll-behavior, transitions/keyframes, details/summary, :target or checkbox+sibling tabs/filters, static before/after image pairs when two real photo URLs exist. FORBIDDEN: script, on*, form, range sliders, JS painters, multi-step quote/booking wizards.
 
 ${
-  hasImages
-    ? `REFERENCE IMAGES — part of the creative brief. Match feel/craft (palette, type, spacing, hierarchy). Do not copy trademarks/logos/proprietary art.`
-    : ''
+  attachedAssetUrls.length
+    ? `ATTACHED CDN ASSETS (already uploaded — use these EXACT https URLs in HTML when the brief asks for a hero/photo; object-fit:contain or cover so the whole subject stays in view; do not invent other image URLs for those placements):\n${attachedAssetUrls.map((u, i) => `${i + 1}. ${u}`).join('\n')}`
+    : hasImages
+      ? `REFERENCE IMAGES — part of the creative brief (vision only). Match feel/craft. Do not invent image URLs; only use https URLs from context.mediaLibrary.`
+      : ''
 }
 
 # Output
@@ -881,7 +899,13 @@ DIRECTION LOCK:
       ? enhanced.servicesToAdd.join(' | ')
       : '(none unless ADMIN SEED names them)'
   }
-${hasImages ? `\nReference images attached: ${opts.images!.length}. Absorb mood into the optimized direction.\n` : ''}
+${
+  attachedAssetUrls.length
+    ? `\nATTACHED CDN ASSETS (place with these exact URLs when the admin asks — e.g. hero):\n${attachedAssetUrls.map((u) => `- ${u}`).join('\n')}\n`
+    : hasImages
+      ? `\nReference images attached for vision (${opts.images!.length}). Absorb mood; only use https URLs from context for HTML.\n`
+      : ''
+}
 KEEP ALWAYS:
 - Engagement: ${engagementLabel} (${engagementModel}) — mount ${WIDGET_PLACEHOLDER} on home conversion section.
 - Intake services: ${services.length ? services.join(' | ') : '(see context.services)'}
@@ -1063,7 +1087,7 @@ Hard rules:
 11. When the admin asks to add/embed a video (or says they don't see the video), use a URL from mediaLibrary in the business context — do NOT ask them to paste a URL that is already listed there. Insert a <video controls><source src="URL" type="video/mp4"></video> block after the hero on "/".
 ${
   hasImages
-    ? `12. ATTACHED IMAGES: the admin attached screenshot(s) or reference(s). Use them to understand the problem or target look. You cannot host those attached files on the site — only reuse https URLs already in the site/mediaLibrary. Describe visual issues from the attachments accurately before editing.`
+    ? `12. ATTACHED IMAGES: the admin attached image(s). Prefer context.attachedAssetUrls / mediaLibrary https URLs — those are already on the CDN and MUST be used verbatim when placing the image on the site (hero, section, etc.). Use vision to understand crop/composition; keep the whole subject visible (object-fit:contain or carefully framed cover). Do not invent other image URLs for those placements.`
     : ''
 }`
 

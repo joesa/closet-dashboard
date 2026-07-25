@@ -1,9 +1,14 @@
 /**
  * Shared helpers for admin UI image attachments (Custom Build + Site Chat).
- * Client-only — uses canvas / createImageBitmap.
+ * `fileToAdminImageDataUrl` is client-only (canvas). Parse/normalize are isomorphic.
  */
 
 export const MAX_ADMIN_IMAGE_ATTACHMENTS = 4
+
+const HTTPS_IMAGE_RE =
+  /^https:\/\/[^\s"'<>]+\.(?:png|jpe?g|webp|gif)(?:\?[^\s"'<>]*)?$/i
+const HTTPS_STORAGE_RE =
+  /^https:\/\/[^\s"'<>]+\/storage\/v1\/object\/public\/[^\s"'<>]+$/i
 
 /**
  * Downscale an image file to a chat/generate-friendly data URL. Screenshots
@@ -39,18 +44,33 @@ export function parseAdminImageDataUrl(
   return { mimeType, data: m[2] }
 }
 
+/** True for a public https image URL (CDN / common extensions). */
+export function isAdminImageHttpsUrl(url: string): boolean {
+  const u = url.trim()
+  if (!/^https:\/\//i.test(u)) return false
+  return HTTPS_IMAGE_RE.test(u) || HTTPS_STORAGE_RE.test(u)
+}
+
 /**
  * Normalize an untrusted `images` array from an admin API body into at most
- * MAX_ADMIN_IMAGE_ATTACHMENTS valid data URLs.
+ * MAX_ADMIN_IMAGE_ATTACHMENTS refs — data URLs and/or persisted https CDN URLs.
  */
-export function normalizeAdminImageDataUrls(raw: unknown): string[] {
+export function normalizeAdminImageRefs(raw: unknown): string[] {
   if (!Array.isArray(raw)) return []
   const out: string[] = []
   for (const item of raw) {
     if (out.length >= MAX_ADMIN_IMAGE_ATTACHMENTS) break
     if (typeof item !== 'string') continue
-    if (!parseAdminImageDataUrl(item)) continue
-    out.push(item)
+    const s = item.trim()
+    if (!s) continue
+    if (parseAdminImageDataUrl(s) || isAdminImageHttpsUrl(s)) {
+      out.push(s)
+    }
   }
   return out
+}
+
+/** @deprecated use normalizeAdminImageRefs — kept for older callers. */
+export function normalizeAdminImageDataUrls(raw: unknown): string[] {
+  return normalizeAdminImageRefs(raw).filter((s) => !!parseAdminImageDataUrl(s))
 }

@@ -21,7 +21,7 @@ import {
   cancelCustomBuildJob,
   processCustomBuildJob,
 } from '@/lib/ai/processCustomBuildJob'
-import { normalizeAdminImageDataUrls } from '@/lib/adminImageAttach'
+import { normalizeAdminImageRefs } from '@/lib/adminImageAttach'
 
 // Full generates on Claude Sonnet 5 usually finish in 1–3 minutes (Fable 5
 // often exceeds the budget). Fluid compute allows 300s; we return immediately
@@ -139,7 +139,11 @@ export async function POST(
       const prompt = typeof body.prompt === 'string' ? body.prompt.trim().slice(0, 4000) : ''
       const mode: 'inline' | 'iframe' | undefined =
         body.mode === 'iframe' ? 'iframe' : body.mode === 'inline' ? 'inline' : undefined
-      const images = normalizeAdminImageDataUrls(body.images)
+      // Prefer persisted CDN https URLs; still accept legacy data URLs.
+      const images = normalizeAdminImageRefs([
+        ...(Array.isArray(body.imageUrls) ? body.imageUrls : []),
+        ...(Array.isArray(body.images) ? body.images : []),
+      ])
       // Prefer explicit intent; legacy iterate:true → surgical.
       // Default without intent used to be full (AI redesign) — callers must
       // send intent explicitly. UI uses clone for baseline, full for redesign.

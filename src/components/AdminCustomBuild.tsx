@@ -2,10 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import {
-  MAX_ADMIN_IMAGE_ATTACHMENTS,
-  fileToAdminImageDataUrl,
-} from '@/lib/adminImageAttach';
+import { MAX_ADMIN_IMAGE_ATTACHMENTS } from '@/lib/adminImageAttach';
 
 type CustomBuildJob = {
   status: 'queued' | 'processing' | 'succeeded' | 'failed';
@@ -78,7 +75,9 @@ export default function AdminCustomBuild({
   const [uploading, setUploading] = useState(false);
   const [uploadKind, setUploadKind] = useState<'video' | 'image' | 'file' | 'auto'>('auto');
   const [uploadApply, setUploadApply] = useState<'none' | 'video_home' | 'append_home'>('none');
+  /** Persisted CDN https URLs for prompt attachments (uploaded before generate). */
   const [attachments, setAttachments] = useState<string[]>([]);
+  const [attaching, setAttaching] = useState(false);
   const promptFileRef = useRef<HTMLInputElement>(null);
   /** True while UI is waiting on an async Full redesign job (not surgical/clone). */
   const waitingOnJobRef = useRef(false);
@@ -90,8 +89,82 @@ export default function AdminCustomBuild({
     (loading &&
       (status?.job?.status === 'queued' || status?.job?.status === 'processing'));
 
+  /** Upload an image to the tenant CDN; returns the public URL. */
+  const persistPromptImage = async (file: File): Promise<string> => {
+    const useDirect = file.size > 3.5 * 1024 * 1024;
+    if (useDirect) {
+      const signRes = await fetch(`/api/admin/sites/${tenantId}/custom-assets`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'sign',
+          fileName: file.name || 'attachment.jpg',
+          mime: file.type || 'image/jpeg',
+          size: file.size,
+          kind: 'image',
+        }),
+      });
+      const signJson = await signRes.json().catch(() => ({}));
+      if (!signRes.ok) {
+        throw new Error(signJson.error || `Could not start upload (${signRes.status})`);
+      }
+      const u = signJson.upload as {
+        signedUrl: string
+        publicUrl: string
+        path: string
+        contentType: string
+        kind: string
+      };
+      const putRes = await fetch(u.signedUrl, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': u.contentType || file.type || 'image/jpeg',
+        },
+        body: file,
+      });
+      if (!putRes.ok) {
+        throw new Error(`Direct upload to storage failed (${putRes.status})`);
+      }
+      const completeRes = await fetch(`/api/admin/sites/${tenantId}/custom-assets`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'complete',
+          url: u.publicUrl,
+          path: u.path,
+          kind: 'image',
+          label: file.name || 'prompt-attachment',
+          mime: u.contentType,
+          size: file.size,
+          apply: 'none',
+        }),
+      });
+      const completeJson = await completeRes.json().catch(() => ({}));
+      if (!completeRes.ok) {
+        throw new Error(completeJson.error || `Finalize failed (${completeRes.status})`);
+      }
+      return u.publicUrl;
+    }
+
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('kind', 'image');
+    fd.append('apply', 'none');
+    fd.append('label', file.name || 'prompt-attachment');
+    const res = await fetch(`/api/admin/sites/${tenantId}/custom-assets`, {
+      method: 'POST',
+      body: fd,
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(json.error || `Upload failed (${res.status})`);
+    const url = json.asset?.url as string | undefined;
+    if (!url) throw new Error('Upload succeeded but no CDN URL was returned');
+    return url;
+  };
+
   const addPromptImages = async (files: FileList | File[]) => {
     setError('');
+    setAttaching(true);
     try {
       const imageFiles = [...files].filter((f) => f.type.startsWith('image/'));
       if (imageFiles.length === 0) return;
@@ -99,12 +172,27 @@ export default function AdminCustomBuild({
       if (imageFiles.length > room) {
         setError(`Up to ${MAX_ADMIN_IMAGE_ATTACHMENTS} images per request.`);
       }
-      const dataUrls = await Promise.all(
-        imageFiles.slice(0, room).map((f) => fileToAdminImageDataUrl(f))
+      const urls: string[] = [];
+      for (const file of imageFiles.slice(0, room)) {
+        urls.push(await persistPromptImage(file));
+      }
+      if (urls.length) {
+        setAttachments((prev) => [...prev, ...urls]);
+        setInfo(
+          urls.length === 1
+            ? 'Image uploaded to CDN — it will be used by URL in the next AI request.'
+            : `${urls.length} images uploaded to CDN — they will be used by URL in the next AI request.`
+        );
+        await refreshAssets();
+      }
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Could not upload that image — try a PNG or JPEG.'
       );
-      if (dataUrls.length) setAttachments((prev) => [...prev, ...dataUrls]);
-    } catch {
-      setError('Could not read that image — try a PNG or JPEG.');
+    } finally {
+      setAttaching(false);
     }
   };
 
@@ -395,7 +483,7 @@ export default function AdminCustomBuild({
     setChangedPages([]);
     setLastIntent(null);
     setNextStep(null);
-    const imagesForRequest =
+    const imageUrlsForRequest =
       action === 'generate' && attachments.length > 0 ? attachments : undefined;
     try {
       const res = await fetch(`/api/admin/sites/${tenantId}/custom-build`, {
@@ -404,7 +492,7 @@ export default function AdminCustomBuild({
         body: JSON.stringify({
           action,
           ...extra,
-          ...(imagesForRequest ? { images: imagesForRequest } : {}),
+          ...(imageUrlsForRequest ? { imageUrls: imageUrlsForRequest } : {}),
         }),
       });
       const json = await res.json().catch(() => ({}));
@@ -416,7 +504,7 @@ export default function AdminCustomBuild({
             : detail
         );
       }
-      if (imagesForRequest) setAttachments([]);
+      if (imageUrlsForRequest) setAttachments([]);
       if (typeof json.reply === 'string') setReply(json.reply);
       if (Array.isArray(json.warnings)) setWarnings(json.warnings);
       if (Array.isArray(json.changedPages)) setChangedPages(json.changedPages);
@@ -882,16 +970,22 @@ export default function AdminCustomBuild({
             aria-label="Attach image"
             title="Attach or paste a screenshot / reference image"
             onClick={() => promptFileRef.current?.click()}
-            disabled={loading || attachments.length >= MAX_ADMIN_IMAGE_ATTACHMENTS}
+            disabled={
+              loading || attaching || attachments.length >= MAX_ADMIN_IMAGE_ATTACHMENTS
+            }
             className="self-start rounded-lg border border-neutral-700 bg-black/50 px-3 py-3 text-sm text-neutral-300 transition-colors hover:border-neutral-500 hover:text-white disabled:opacity-50"
           >
-            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 01-6.364-6.364l10.94-10.94A3 3 0 1119.5 7.372L8.552 18.32m.009-.01l-.01.01m5.699-9.941l-7.81 7.81a1.5 1.5 0 002.112 2.13"
-              />
-            </svg>
+            {attaching ? (
+              <span className="text-xs text-violet-300">…</span>
+            ) : (
+              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 01-6.364-6.364l10.94-10.94A3 3 0 1119.5 7.372L8.552 18.32m.009-.01l-.01.01m5.699-9.941l-7.81 7.81a1.5 1.5 0 002.112 2.13"
+                />
+              </svg>
+            )}
           </button>
           <textarea
             className="min-h-[100px] w-full flex-1 rounded-lg border border-neutral-700 bg-black/40 px-3 py-2 text-sm text-white placeholder:text-neutral-600 focus:outline-none focus:border-violet-500/60"
@@ -912,14 +1006,13 @@ export default function AdminCustomBuild({
                 ? 'Any seed works — even “cleaner, more premium” — we expand it from intake into a bespoke direction (palette, type, signature). Add specifics when you have them (colors, services to add). e.g. “copper on brushed steel — add ceramic coating.”'
                 : 'Optional seed (style words or a full brief). Full redesign expands it from intake into a bespoke, non-AI direction. Intake services + engagement engine stay; seed may add services.'
             }
-            disabled={loading}
+            disabled={loading || attaching}
           />
         </div>
         <p className="mt-1.5 text-[11px] text-neutral-600">
-          Paste (Ctrl/Cmd+V) or attach up to {MAX_ADMIN_IMAGE_ATTACHMENTS} images as visual
-          references. Full redesign enhances your seed with intake (colors, type, signature) so the
-          site stays bespoke and free of AI-default tells. Intake services + engagement engine stay
-          automatically.
+          Paste (Ctrl/Cmd+V) or attach up to {MAX_ADMIN_IMAGE_ATTACHMENTS} images — each is uploaded
+          to the CDN first, then the public URL is sent to AI (so hero/photo requests can use the
+          real link). Intake services + engagement engine stay automatically.
         </p>
       </div>
 
