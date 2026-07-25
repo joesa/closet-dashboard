@@ -18,7 +18,7 @@ export type TextGenerationOpts = {
   systemPrompt?: string
   /** When true, request structured JSON output. */
   jsonMode: boolean
-  /** Sampling temperature (default 0.5). Ignored by Claude Fable 5 (adaptive thinking). */
+  /** Sampling temperature (default 0.5). Ignored for Claude — Sonnet/Fable reject it. */
   temperature?: number
   /** Maximum output tokens (default 2048). */
   maxOutputTokens?: number
@@ -64,10 +64,6 @@ export function resolveClaudeModel(override?: string): string {
   return CLAUDE_SONNET_MODEL
 }
 
-function isFableModel(model: string): boolean {
-  return /fable/i.test(model)
-}
-
 async function generateWithClaude(opts: TextGenerationOpts): Promise<{
   text: string
   model: string
@@ -99,20 +95,16 @@ async function generateWithClaude(opts: TextGenerationOpts): Promise<{
   }
 
   // Stream so long generations don't hit the SDK's non-streaming time limit.
-  // Fable uses adaptive thinking and rejects custom temperature.
-  const body: Anthropic.MessageCreateParams = {
-    model,
-    max_tokens: Math.max(opts.maxOutputTokens ?? 8192, 8192),
-    system: opts.systemPrompt,
-    messages: [{ role: 'user', content }],
-  }
-  if (!isFableModel(model) && typeof opts.temperature === 'number') {
-    body.temperature = opts.temperature
-  }
-
-  const stream = client.messages.stream(body, {
-    signal: AbortSignal.timeout(CLAUDE_ABORT_MS),
-  })
+  // Do not send temperature — Claude Sonnet 5 / Fable 5 reject it as deprecated.
+  const stream = client.messages.stream(
+    {
+      model,
+      max_tokens: Math.max(opts.maxOutputTokens ?? 8192, 8192),
+      system: opts.systemPrompt,
+      messages: [{ role: 'user', content }],
+    },
+    { signal: AbortSignal.timeout(CLAUDE_ABORT_MS) }
+  )
 
   try {
     const message = await stream.finalMessage()
