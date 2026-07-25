@@ -30,6 +30,11 @@ describe('expireStaleCustomBuildJob', () => {
     expect(out?.finished_at).toBeTruthy()
   })
 
+  it('expires shortly after the 5 minute serverless budget', () => {
+    expect(CUSTOM_BUILD_JOB_STALE_MS).toBeLessThanOrEqual(6 * 60 * 1000)
+    expect(CUSTOM_BUILD_JOB_STALE_MS).toBeGreaterThan(5 * 60 * 1000)
+  })
+
   it('leaves fresh queued jobs alone', () => {
     const now = Date.now()
     const current = job({

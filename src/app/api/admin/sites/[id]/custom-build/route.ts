@@ -17,7 +17,10 @@ import {
   setCustomBuildJob,
   shouldRequeueCustomBuildJob,
 } from '@/lib/ai/customBuildJob'
-import { processCustomBuildJob } from '@/lib/ai/processCustomBuildJob'
+import {
+  cancelCustomBuildJob,
+  processCustomBuildJob,
+} from '@/lib/ai/processCustomBuildJob'
 import { normalizeAdminImageDataUrls } from '@/lib/adminImageAttach'
 
 // Full generates on Claude Fable 5 routinely take 3–5 minutes. Fluid compute
@@ -313,6 +316,26 @@ export async function POST(
         targetId: tenantId,
       })
       return NextResponse.json({ ok: true })
+    }
+
+    if (action === 'cancel') {
+      const job = await cancelCustomBuildJob(
+        tenantId,
+        'Full redesign cancelled. Click Full redesign to try again.'
+      )
+      await logAdminAction({
+        actor: adminUser,
+        action: 'site.custom_build_cancel',
+        targetType: 'tenant',
+        targetId: tenantId,
+        metadata: { previousStatus: job?.status },
+      })
+      return NextResponse.json({
+        ok: true,
+        job: job ? { ...job, images: undefined } : null,
+        jobActive: false,
+        reply: job?.error || 'Cancelled.',
+      })
     }
 
     return NextResponse.json({ error: `Unknown action: ${action}` }, { status: 400 })

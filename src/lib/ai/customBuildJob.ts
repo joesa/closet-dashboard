@@ -27,8 +27,11 @@ export type CustomBuildJob = {
   ever_full?: boolean
 }
 
-/** Vercel maxDuration is 300s — treat anything older as abandoned. */
-export const CUSTOM_BUILD_JOB_STALE_MS = 8 * 60 * 1000
+/**
+ * Vercel maxDuration is 300s. Expire shortly after so a hard-killed worker
+ * cannot leave the admin UI stuck on Working for many extra minutes.
+ */
+export const CUSTOM_BUILD_JOB_STALE_MS = 5.5 * 60 * 1000
 
 /** Re-kick `after()` if a job sits in queued without being claimed. */
 export const CUSTOM_BUILD_JOB_REQUEUE_MS = 45 * 1000

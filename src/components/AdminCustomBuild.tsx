@@ -80,8 +80,15 @@ export default function AdminCustomBuild({
   const [uploadApply, setUploadApply] = useState<'none' | 'video_home' | 'append_home'>('none');
   const [attachments, setAttachments] = useState<string[]>([]);
   const promptFileRef = useRef<HTMLInputElement>(null);
+  /** True while UI is waiting on an async Full redesign job (not surgical/clone). */
+  const waitingOnJobRef = useRef(false);
 
   const hasBase = !!(status?.draft || status?.published);
+  const jobActive = status?.jobActive === true;
+  const showCancelRedesign =
+    jobActive ||
+    (loading &&
+      (status?.job?.status === 'queued' || status?.job?.status === 'processing'));
 
   const addPromptImages = async (files: FileList | File[]) => {
     setError('');
@@ -114,7 +121,7 @@ export default function AdminCustomBuild({
     }
   }, [tenantId]);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (): Promise<Status | null> => {
     try {
       const res = await fetch(`/api/admin/sites/${tenantId}/custom-build`);
       const json = await res.json().catch(() => ({}));
@@ -125,10 +132,37 @@ export default function AdminCustomBuild({
       } else if (json.published?.mode === 'iframe' || json.published?.mode === 'inline') {
         setMode(json.published.mode);
       }
+      return json as Status;
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load status');
+      return null;
     }
   }, [tenantId]);
+
+  const cancelJob = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/admin/sites/${tenantId}/custom-build`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'cancel' }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || `Cancel failed (${res.status})`);
+      waitingOnJobRef.current = false;
+      setLoading(false);
+      setError(
+        typeof json.reply === 'string'
+          ? json.reply
+          : 'Full redesign cancelled. Click Full redesign to try again.'
+      );
+      setInfo('');
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Cancel failed');
+      setLoading(false);
+      waitingOnJobRef.current = false;
+    }
+  }, [tenantId, refresh]);
 
   useEffect(() => {
     setMounted(true);
@@ -145,12 +179,21 @@ export default function AdminCustomBuild({
     const active = status?.jobActive === true;
     if (active) {
       jobWasActiveRef.current = true;
+      waitingOnJobRef.current = true;
       setLoading(true);
+      const startedMs = job?.started_at ? Date.parse(job.started_at) : NaN;
+      const ageMs = Number.isFinite(startedMs) ? Date.now() - startedMs : 0;
+      const ageMin = Math.max(1, Math.round(ageMs / 60000));
       setInfo(
         job?.status === 'processing'
-          ? 'Full redesign in progress (Claude Fable 5, usually 3–5 minutes)…'
+          ? `Full redesign in progress (Claude Fable 5, usually 3–5 minutes)… ~${ageMin}m elapsed`
           : 'Full redesign queued…'
       );
+      // Client watchdog: if the worker was hard-killed, don't wait for stale expiry.
+      if (ageMs >= 5.5 * 60 * 1000) {
+        void cancelJob();
+        return;
+      }
       const id = window.setInterval(() => {
         void refresh();
       }, 4000);
@@ -159,12 +202,19 @@ export default function AdminCustomBuild({
 
     // Surface terminal state when we watched this job, or it just finished
     // (e.g. server expired a stuck job on first poll after page load).
-    if (!job) return;
+    if (!job) {
+      if (waitingOnJobRef.current) {
+        waitingOnJobRef.current = false;
+        setLoading(false);
+      }
+      return;
+    }
     const finishedMs = job.finished_at ? Date.parse(job.finished_at) : NaN;
     const justFinished =
       Number.isFinite(finishedMs) && Date.now() - finishedMs < 2 * 60 * 1000;
-    if (!jobWasActiveRef.current && !justFinished) return;
+    if (!jobWasActiveRef.current && !justFinished && !waitingOnJobRef.current) return;
     jobWasActiveRef.current = false;
+    waitingOnJobRef.current = false;
 
     if (job.status === 'succeeded') {
       setLoading(false);
@@ -186,8 +236,11 @@ export default function AdminCustomBuild({
       setLoading(false);
       setError(job.error || 'Full redesign failed — try again.');
       setInfo('');
+    } else {
+      // Safety: server says inactive but no terminal status — unlock UI.
+      setLoading(false);
     }
-  }, [status?.jobActive, status?.job, refresh]);
+  }, [status?.jobActive, status?.job, refresh, cancelJob]);
 
   const uploadFile = async (file: File) => {
     setUploading(true);
@@ -397,14 +450,23 @@ export default function AdminCustomBuild({
         );
       } else if (action === 'generate' && json.async) {
         // Full redesign runs in the background — keep loading + poll via refresh.
+        waitingOnJobRef.current = true;
         setInfo(
           typeof json.reply === 'string'
             ? json.reply
             : 'Full redesign started — usually 3–5 minutes. This panel will update when ready.'
         );
-        await refresh();
+        const next = await refresh();
         router.refresh();
-        // Don't clear loading here — the poll effect owns it until the job finishes.
+        if (!next?.jobActive) {
+          waitingOnJobRef.current = false;
+          setLoading(false);
+          if (next?.job?.status === 'failed') {
+            setError(next.job.error || 'Full redesign failed — try again.');
+            setInfo('');
+          }
+        }
+        // Don't clear loading while jobActive — the poll effect owns it.
         return;
       } else if (action === 'generate' && json.intent === 'full') {
         setInfo(
@@ -875,25 +937,36 @@ export default function AdminCustomBuild({
       </div>
 
       <div className="flex flex-wrap gap-3">
-        <button
-          type="button"
-          disabled={loading || !hasBase || (!prompt.trim() && attachments.length === 0)}
-          onClick={() =>
-            void run('generate', {
-              prompt: prompt.trim(),
-              mode,
-              intent: 'surgical',
-            })
-          }
-          className="px-4 py-2 bg-violet-600 hover:bg-violet-500 disabled:opacity-40 text-white text-sm font-medium rounded-lg transition-colors"
-          title={
-            hasBase
-              ? 'Apply only the requested change to the existing custom site'
-              : 'Generate a custom site first'
-          }
-        >
-          {loading ? 'Working…' : 'Edit surgically'}
-        </button>
+        {showCancelRedesign ? (
+          <button
+            type="button"
+            onClick={() => void cancelJob()}
+            className="px-4 py-2 bg-violet-600 hover:bg-violet-500 text-white text-sm font-medium rounded-lg transition-colors"
+            title="Stop waiting and unlock the panel (background job is abandoned)"
+          >
+            Cancel redesign
+          </button>
+        ) : (
+          <button
+            type="button"
+            disabled={loading || !hasBase || (!prompt.trim() && attachments.length === 0)}
+            onClick={() =>
+              void run('generate', {
+                prompt: prompt.trim(),
+                mode,
+                intent: 'surgical',
+              })
+            }
+            className="px-4 py-2 bg-violet-600 hover:bg-violet-500 disabled:opacity-40 text-white text-sm font-medium rounded-lg transition-colors"
+            title={
+              hasBase
+                ? 'Apply only the requested change to the existing custom site'
+                : 'Generate a custom site first'
+            }
+          >
+            {loading ? 'Working…' : 'Edit surgically'}
+          </button>
+        )}
         <button
           type="button"
           disabled={loading}

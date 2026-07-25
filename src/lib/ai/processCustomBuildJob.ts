@@ -12,7 +12,10 @@ import {
  */
 export async function processCustomBuildJob(tenantId: string): Promise<void> {
   const current = await getCustomBuildJob(tenantId)
-  if (!current || current.status !== 'queued') return
+  if (!current || current.status !== 'queued') {
+    console.info('[processCustomBuildJob] skip', tenantId, current?.status ?? 'none')
+    return
+  }
 
   const claimed: CustomBuildJob = {
     ...current,
@@ -21,6 +24,7 @@ export async function processCustomBuildJob(tenantId: string): Promise<void> {
     ever_full: current.ever_full || current.intent === 'full' || undefined,
   }
   await setCustomBuildJob(tenantId, claimed)
+  console.info('[processCustomBuildJob] claimed', tenantId)
 
   try {
     const result = await generateCustomSiteDraft({
@@ -41,9 +45,10 @@ export async function processCustomBuildJob(tenantId: string): Promise<void> {
       finished_at: new Date().toISOString(),
       ever_full: true,
     })
+    console.info('[processCustomBuildJob] succeeded', tenantId, result.changedPages)
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
-    console.error('[processCustomBuildJob]', tenantId, message)
+    console.error('[processCustomBuildJob] failed', tenantId, message)
     await setCustomBuildJob(tenantId, {
       ...claimed,
       status: 'failed',
@@ -53,4 +58,24 @@ export async function processCustomBuildJob(tenantId: string): Promise<void> {
       ever_full: claimed.ever_full || claimed.intent === 'full' || undefined,
     })
   }
+}
+
+/** Mark a queued/processing job failed so the admin UI unlocks. */
+export async function cancelCustomBuildJob(
+  tenantId: string,
+  reason = 'Full redesign cancelled.'
+): Promise<CustomBuildJob | null> {
+  const current = await getCustomBuildJob(tenantId)
+  if (!current) return null
+  if (current.status !== 'queued' && current.status !== 'processing') return current
+  const cancelled: CustomBuildJob = {
+    ...current,
+    status: 'failed',
+    images: undefined,
+    error: reason,
+    finished_at: new Date().toISOString(),
+    ever_full: current.ever_full || current.intent === 'full' || undefined,
+  }
+  await setCustomBuildJob(tenantId, cancelled)
+  return cancelled
 }

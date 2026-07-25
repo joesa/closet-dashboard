@@ -863,7 +863,9 @@ Execute the layered pipeline. Enhance the creative brief into tokens, grid, comp
     temperature: 0.7,
     // Claude streams up to this cap; Gemini counts hidden thinking tokens
     // against it, so both need generous headroom.
-    maxOutputTokens: useClaude ? 60000 : 32768,
+    // Keep headroom under the ~4.5 min Claude abort / 5 min Vercel budget.
+    // Site JSON size budget is ~55k chars (~15k tokens); 32k is enough with thinking.
+    maxOutputTokens: useClaude ? 32000 : 32768,
     preferredProvider: useClaude ? 'anthropic' : undefined,
     images: opts.images,
   })

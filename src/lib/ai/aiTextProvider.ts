@@ -39,6 +39,12 @@ export type TextGenerationResult = {
 /** Anthropic's flagship design/reasoning model (no date suffix — exact ID). */
 const CLAUDE_MODEL = 'claude-fable-5'
 
+/**
+ * Abort Claude before Vercel's hard 300s kill so callers can persist a failed
+ * job. Leave ~30s for JSON parse + DB writes after the model returns.
+ */
+const CLAUDE_ABORT_MS = 270_000
+
 async function generateWithClaude(opts: TextGenerationOpts): Promise<string> {
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) {
@@ -67,23 +73,37 @@ async function generateWithClaude(opts: TextGenerationOpts): Promise<string> {
 
   // Stream so long generations don't hit the SDK's non-streaming time limit.
   // Fable 5 uses adaptive thinking; custom temperature is not supported.
-  const stream = client.messages.stream({
-    model: CLAUDE_MODEL,
-    max_tokens: Math.max(opts.maxOutputTokens ?? 8192, 8192),
-    system: opts.systemPrompt,
-    messages: [{ role: 'user', content }],
-  })
+  const stream = client.messages.stream(
+    {
+      model: CLAUDE_MODEL,
+      max_tokens: Math.max(opts.maxOutputTokens ?? 8192, 8192),
+      system: opts.systemPrompt,
+      messages: [{ role: 'user', content }],
+    },
+    { signal: AbortSignal.timeout(CLAUDE_ABORT_MS) }
+  )
 
-  const message = await stream.finalMessage()
-  const text = message.content
-    .map((block) => (block.type === 'text' ? block.text : ''))
-    .join('')
-    .trim()
+  try {
+    const message = await stream.finalMessage()
+    const text = message.content
+      .map((block) => (block.type === 'text' ? block.text : ''))
+      .join('')
+      .trim()
 
-  if (!text) {
-    throw new Error(`Claude returned no content (stop: ${message.stop_reason})`)
+    if (!text) {
+      throw new Error(`Claude returned no content (stop: ${message.stop_reason})`)
+    }
+    return text
+  } catch (err) {
+    const name = err instanceof Error ? err.name : ''
+    const msg = err instanceof Error ? err.message : String(err)
+    if (name === 'AbortError' || /aborted|timeout/i.test(msg)) {
+      throw new Error(
+        'Full redesign timed out after ~4.5 minutes (model still generating). Try a shorter brief or fewer reference images.'
+      )
+    }
+    throw err
   }
-  return text
 }
 
 async function generateWithGemini(opts: TextGenerationOpts): Promise<string> {
