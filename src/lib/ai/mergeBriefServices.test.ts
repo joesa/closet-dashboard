@@ -40,7 +40,7 @@ describe('mergeIntakeServicesWithBriefUpdates', () => {
     expect(result.removed).toEqual([])
   })
 
-  it('appends brief services without dropping intake', () => {
+  it('appends brief services without dropping intake (no invented/pool image)', () => {
     const result = mergeIntakeServicesWithBriefUpdates(intake, {
       added: [{ title: 'Ceramic Coating', description: 'Multi-year protection' }],
     })
@@ -49,10 +49,20 @@ describe('mergeIntakeServicesWithBriefUpdates', () => {
       'Interior Detail',
       'Ceramic Coating',
     ])
-    expect(result.products[2].image).toBe('https://cdn.example/a.jpg')
+    expect(result.products[2].image).toBeUndefined()
     expect(result.added).toEqual([
       { title: 'Ceramic Coating', description: 'Multi-year protection' },
     ])
+  })
+
+  it('attaches CDN image from imageByTitle for brief adds', () => {
+    const result = mergeIntakeServicesWithBriefUpdates(
+      intake,
+      { added: [{ title: 'Vehicle Wrapping', description: 'Vinyl wraps' }] },
+      { 'vehicle wrapping': 'https://cdn.example/wrap.png' }
+    )
+    expect(result.products[2].image).toBe('https://cdn.example/wrap.png')
+    expect(result.added[0].image).toBe('https://cdn.example/wrap.png')
   })
 
   it('does not duplicate case-insensitively', () => {

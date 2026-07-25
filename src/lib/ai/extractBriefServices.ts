@@ -210,7 +210,8 @@ function escapeHtml(s: string): string {
  */
 export function injectMissingServicesIntoHtml(
   html: string,
-  missing: ExtractedBriefService[]
+  missing: ExtractedBriefService[],
+  imageByTitle?: Record<string, string>
 ): string {
   if (!html || !missing.length) return html
 
@@ -222,15 +223,24 @@ export function injectMissingServicesIntoHtml(
           .slice(0, 3)
           .toUpperCase() || `S${i + 1}`
       )
-      return `<div class="ticket" data-brief-added="1"><span class="svc-code">${code}</span><h3>${escapeHtml(s.title)}</h3><p>${escapeHtml(s.description)}</p></div>`
+      const imgUrl = imageByTitle?.[s.title.trim().toLowerCase()]
+      const img =
+        typeof imgUrl === 'string' && imgUrl.startsWith('https')
+          ? `<img src="${escapeHtml(imgUrl)}" alt="${escapeHtml(s.title)}" loading="lazy" data-brief-service-image="1" />`
+          : ''
+      return `<div class="ticket" data-brief-added="1">${img}<span class="svc-code">${code}</span><h3>${escapeHtml(s.title)}</h3><p>${escapeHtml(s.description)}</p></div>`
     })
     .join('\n')
 
   const articleCards = missing
-    .map(
-      (s) =>
-        `<article class="svc-card" data-brief-added="1"><h3>${escapeHtml(s.title)}</h3><p>${escapeHtml(s.description)}</p></article>`
-    )
+    .map((s) => {
+      const imgUrl = imageByTitle?.[s.title.trim().toLowerCase()]
+      const img =
+        typeof imgUrl === 'string' && imgUrl.startsWith('https')
+          ? `<img src="${escapeHtml(imgUrl)}" alt="${escapeHtml(s.title)}" loading="lazy" data-brief-service-image="1" />`
+          : ''
+      return `<article class="svc-card" data-brief-added="1">${img}<h3>${escapeHtml(s.title)}</h3><p>${escapeHtml(s.description)}</p></article>`
+    })
     .join('\n')
 
   // Append into the last ticket grid (common Full redesign pattern).

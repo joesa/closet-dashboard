@@ -46,6 +46,14 @@ import {
   type ServiceUpdates,
 } from '@/lib/ai/mergeBriefServices'
 import { appendEngagementServices } from '@/lib/ai/appendEngagementServices'
+import { generateBriefServiceImages } from '@/lib/ai/generateBriefServiceImages'
+import {
+  applyBriefServiceImagesToCustomHtml,
+  applyImagesToProducts,
+  appendImagesToPagesConfigGallery,
+  buildBriefServiceImageNotes,
+  mergeCustomBuildNotes,
+} from '@/lib/ai/applyBriefServiceImages'
 
 export type CustomBuildIntent = 'full' | 'surgical'
 
@@ -591,7 +599,8 @@ export async function generateCustomSiteDraft(opts: {
         pages_config,
         nav_links,
         custom_config_draft,
-        custom_config
+        custom_config,
+        custom_build_notes
       )
     `
     )
@@ -809,7 +818,7 @@ export async function generateCustomSiteDraft(opts: {
     }
   }
 
-  const sanitized = sanitizeCustomConfig(result.config)
+  let sanitized = sanitizeCustomConfig(result.config)
   ensureWidgetPlaceholder(sanitized)
   const check = validateCustomConfig(sanitized)
   if (!check.ok) {
@@ -830,8 +839,12 @@ export async function generateCustomSiteDraft(opts: {
     )
   }
 
-  // Full redesign: merge brief-introduced services into products_config + engine.
+  // Full redesign: merge brief-introduced services into products_config + engine,
+  // generate believable CDN images for adds not in intake, and wire those URLs
+  // into HTML + gallery + custom_build_notes.
   let mergedProducts: ProductRow[] | null = null
+  let pagesConfigUpdate: unknown | null = null
+  let customBuildNotesUpdate: unknown | null = null
   if (intent === 'full') {
     const serviceUpdates =
       'serviceUpdates' in result && result.serviceUpdates
@@ -846,6 +859,64 @@ export async function generateCustomSiteDraft(opts: {
       warnings.push(
         `Added services from brief: ${mergeResult.added.map((a) => a.title).join(', ')}.`
       )
+
+      try {
+        const generated = await generateBriefServiceImages({
+          tenantId: opts.tenantId,
+          brandName,
+          services: mergeResult.added,
+          max: 8,
+        })
+        if (generated.length) {
+          const imageByTitle: Record<string, string> = {}
+          for (const g of generated) {
+            imageByTitle[g.title.trim().toLowerCase()] = g.url
+          }
+          mergedProducts = applyImagesToProducts(mergedProducts, generated)
+          sanitized = applyBriefServiceImagesToCustomHtml(sanitized, generated)
+          pagesConfigUpdate = appendImagesToPagesConfigGallery(
+            cfg.pages_config,
+            generated.map((g) => g.url)
+          )
+          customBuildNotesUpdate = mergeCustomBuildNotes(
+            (cfg as { custom_build_notes?: unknown }).custom_build_notes,
+            buildBriefServiceImageNotes(generated)
+          )
+          warnings.push(
+            `Generated CDN images for brief-added services: ${generated
+              .map((g) => g.title)
+              .join(', ')}.`
+          )
+          // Re-inject any still-missing cards with image URLs when possible.
+          for (const key of Object.keys(sanitized.pages || {})) {
+            const page = sanitized.pages[key]
+            if (!page) continue
+            const missing = mergeResult.added.filter(
+              (a) => !htmlMentionsService(page.html || '', a.title)
+            )
+            if (!missing.length) continue
+            page.html = injectMissingServicesIntoHtml(
+              page.html || '',
+              missing.map((a) => ({
+                title: a.title,
+                description:
+                  a.description || `${a.title} offered by this business.`,
+              })),
+              imageByTitle
+            )
+            sanitized.pages[key] = page
+          }
+        } else {
+          warnings.push(
+            'Brief-added services have no new images yet (generation returned none) — catalog rows were still added.'
+          )
+        }
+      } catch (imgErr) {
+        console.warn('[generateCustomSite] brief service images failed:', imgErr)
+        warnings.push(
+          'Could not generate images for brief-added services — titles were still added to the catalog; retry Full redesign or upload photos in Media.'
+        )
+      }
     }
     if (mergeResult.removed.length) {
       warnings.push(
@@ -856,7 +927,7 @@ export async function generateCustomSiteDraft(opts: {
       .map((p) => `${p.html || ''} ${p.title || ''}`)
       .join('\n')
       .toLowerCase()
-    for (const p of mergeResult.products) {
+    for (const p of mergedProducts) {
       const title = typeof p.title === 'string' ? p.title.trim() : ''
       if (!title) continue
       if (!htmlBlob.includes(title.toLowerCase())) {
@@ -868,7 +939,7 @@ export async function generateCustomSiteDraft(opts: {
     warnings.push(
       ...assessFullRedesignCraft({
         config: sanitized,
-        serviceCount: mergeResult.products.filter(
+        serviceCount: mergedProducts.filter(
           (p) => typeof p.title === 'string' && p.title.trim()
         ).length,
         brief: opts.prompt,
@@ -876,12 +947,21 @@ export async function generateCustomSiteDraft(opts: {
     )
   }
 
+  sanitized = sanitizeCustomConfig(sanitized)
+  ensureWidgetPlaceholder(sanitized)
+
   const siteUpdate: Record<string, unknown> = {
     custom_config_draft: sanitized,
     custom_updated_at: new Date().toISOString(),
   }
   if (mergedProducts) {
     siteUpdate.products_config = mergedProducts
+  }
+  if (pagesConfigUpdate != null) {
+    siteUpdate.pages_config = pagesConfigUpdate
+  }
+  if (customBuildNotesUpdate != null) {
+    siteUpdate.custom_build_notes = customBuildNotesUpdate
   }
 
   const { error: updateErr } = await supabase

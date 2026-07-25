@@ -1,7 +1,8 @@
 /**
  * Merge intake products_config with Full redesign brief serviceUpdates.
  * Intake titles stay unless explicitly listed in `removed`. Brief `added`
- * titles are appended (no invented URLs for new images).
+ * titles are appended. Prefer real CDN URLs from `imageByTitle` / `add.image`
+ * — never invent URLs; optional pool reuse only when no generated image yet.
  */
 
 export type ProductRow = {
@@ -15,6 +16,8 @@ export type ProductRow = {
 export type BriefServiceAdd = {
   title: string
   description?: string
+  /** Optional CDN https URL (filled after brief-service image generation). */
+  image?: string
 }
 
 export type BriefServiceRemove = {
@@ -78,7 +81,8 @@ export function parseServiceUpdates(raw: unknown): ServiceUpdates {
  */
 export function mergeIntakeServicesWithBriefUpdates(
   intake: ProductRow[],
-  updates: ServiceUpdates | null | undefined
+  updates: ServiceUpdates | null | undefined,
+  imageByTitle?: Record<string, string>
 ): MergeBriefServicesResult {
   const removedList = Array.isArray(updates?.removed) ? updates!.removed! : []
   const addedList = Array.isArray(updates?.added) ? updates!.added! : []
@@ -113,9 +117,6 @@ export function mergeIntakeServicesWithBriefUpdates(
   }
 
   const actuallyAdded: BriefServiceAdd[] = []
-  const poolImage = kept.find(
-    (p) => typeof p.image === 'string' && p.image.startsWith('https')
-  )?.image as string | undefined
 
   for (const add of addedList) {
     const title = typeof add.title === 'string' ? add.title.trim() : ''
@@ -129,13 +130,20 @@ export function mergeIntakeServicesWithBriefUpdates(
       typeof add.description === 'string' && add.description.trim()
         ? add.description.trim()
         : undefined
+    const fromMap =
+      (imageByTitle && typeof imageByTitle[key] === 'string' && imageByTitle[key]) ||
+      (typeof add.image === 'string' && add.image.startsWith('https') ? add.image : undefined)
     const product: ProductRow = {
       title,
       description: description || `${title} offered by this business.`,
-      ...(poolImage ? { image: poolImage } : {}),
+      ...(fromMap ? { image: fromMap } : {}),
     }
     kept.push(product)
-    actuallyAdded.push(description ? { title, description } : { title })
+    actuallyAdded.push(
+      description
+        ? { title, description, ...(fromMap ? { image: fromMap } : {}) }
+        : { title, ...(fromMap ? { image: fromMap } : {}) }
+    )
     intakeTitles.add(key)
   }
 
