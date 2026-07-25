@@ -205,7 +205,7 @@ export async function POST(
           job: { ...job, images: undefined },
           jobActive: true,
           reply:
-            'Full redesign started — Claude Sonnet 5 usually takes 1–3 minutes. This panel will refresh when the draft is ready.',
+            'Full redesign started — usually 1–3 minutes. This panel will refresh when the draft is ready.',
           nextStep: {
             preview: false,
             publish: false,

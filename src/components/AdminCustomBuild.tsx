@@ -186,7 +186,7 @@ export default function AdminCustomBuild({
       const ageMin = Math.max(1, Math.round(ageMs / 60000));
       setInfo(
         job?.status === 'processing'
-          ? `Full redesign in progress (Claude Sonnet 5, usually 1–3 minutes)… ~${ageMin}m elapsed`
+          ? `Full redesign in progress (usually 1–3 minutes)… ~${ageMin}m elapsed`
           : 'Full redesign queued…'
       );
       // Client watchdog: if the worker was hard-killed, don't wait for stale expiry.

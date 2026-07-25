@@ -948,10 +948,11 @@ Execute OPTIMIZED CREATIVE BRIEF + ADMIN SEED specifics. Output only the final J
   const reply = `Optimized direction (${enhanced.source}): ${enhanced.signatureConcept}\n\n${modelReply}`
 
   const serviceUpdates = parseServiceUpdates(parsed.serviceUpdates)
+  const added = serviceUpdates.added ?? (serviceUpdates.added = [])
   // Merge enhancer-detected adds if the model omitted them but seed named them.
   for (const title of enhanced.servicesToAdd) {
-    if (!serviceUpdates.added.some((s) => s.title.toLowerCase() === title.toLowerCase())) {
-      serviceUpdates.added.push({ title })
+    if (!added.some((s) => s.title.toLowerCase() === title.toLowerCase())) {
+      added.push({ title })
     }
   }
 
