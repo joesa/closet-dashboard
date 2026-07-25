@@ -43,6 +43,13 @@ describe('htmlMentionsService / injectMissingServicesIntoHtml', () => {
     expect(htmlMentionsService('<h3>Oil Change</h3>', 'Vehicle Wrapping')).toBe(
       false
     )
+    // Layout class .wrap must NOT count as wrapping service
+    expect(
+      htmlMentionsService(
+        '<div class="wrap header-row"><h3>Oil Change</h3></div>',
+        'Vehicle Wrapping'
+      )
+    ).toBe(false)
     const html = '<main><section>services</section></main><footer>x</footer>'
     const next = injectMissingServicesIntoHtml(html, [
       {
@@ -52,6 +59,16 @@ describe('htmlMentionsService / injectMissingServicesIntoHtml', () => {
     ])
     expect(next).toContain('Vehicle Wrapping')
     expect(next).toContain('data-brief-added')
+    expect(next.indexOf('Vehicle Wrapping')).toBeLessThan(next.indexOf('<footer'))
+  })
+
+  it('appends into an existing ticket grid when present', () => {
+    const html =
+      '<div class="tickets"><div class="ticket"><h3>Oil Change</h3></div></div><footer>f</footer>'
+    const next = injectMissingServicesIntoHtml(html, [
+      { title: 'Vehicle Wrapping', description: 'Vinyl wraps.' },
+    ])
+    expect(next).toContain('class="ticket" data-brief-added')
     expect(next.indexOf('Vehicle Wrapping')).toBeLessThan(next.indexOf('<footer'))
   })
 })

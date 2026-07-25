@@ -159,13 +159,33 @@ export function extractServicesNamedInBrief(
   return out
 }
 
+/**
+ * Visible text of HTML for service matching — strips tags/attrs so CSS
+ * classes like `.wrap` do not false-positive as "Vehicle Wrapping".
+ */
+function htmlTextContent(html: string): string {
+  return (html || '')
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/\s+/g, ' ')
+    .toLowerCase()
+}
+
 /** True if page HTML already surfaces this service (title or wrap synonym). */
 export function htmlMentionsService(html: string, title: string): boolean {
-  const h = (html || '').toLowerCase()
+  const h = htmlTextContent(html)
   const t = norm(title)
   if (!h || !t) return false
   if (h.includes(t)) return true
-  if (/\bwrap/.test(t) && /\bwrap/.test(h)) return true
+  // Require real wrap *service* words — not the layout class "wrap".
+  if (/\bwrap/.test(t)) {
+    return /\b(wrapping|wraps|vinyl wrap|vehicle wrap|car wrap|fleet wrap|color[\s-]?change)\b/i.test(
+      h
+    )
+  }
   if (/\bbrake/.test(t) && /\bbrake/.test(h)) return true
   if (/\brotor/.test(t) && /\brotor/.test(h)) return true
   if (/\bengine/.test(t) && /\bengine/.test(h)) return true
@@ -186,6 +206,7 @@ function escapeHtml(s: string): string {
 /**
  * Inject missing brief-added services into home (and services page if present)
  * so catalog merges are visible on the custom site, not only in products_config.
+ * Prefer appending into an existing ticket/service grid when present.
  */
 export function injectMissingServicesIntoHtml(
   html: string,
@@ -193,14 +214,42 @@ export function injectMissingServicesIntoHtml(
 ): string {
   if (!html || !missing.length) return html
 
-  const cards = missing
+  const ticketCards = missing
+    .map((s, i) => {
+      const code = escapeHtml(
+        s.title
+          .replace(/[^a-zA-Z0-9]/g, '')
+          .slice(0, 3)
+          .toUpperCase() || `S${i + 1}`
+      )
+      return `<div class="ticket" data-brief-added="1"><span class="svc-code">${code}</span><h3>${escapeHtml(s.title)}</h3><p>${escapeHtml(s.description)}</p></div>`
+    })
+    .join('\n')
+
+  const articleCards = missing
     .map(
       (s) =>
         `<article class="svc-card" data-brief-added="1"><h3>${escapeHtml(s.title)}</h3><p>${escapeHtml(s.description)}</p></article>`
     )
     .join('\n')
 
-  const block = `\n<section class="services-brief-added" aria-label="Added services">\n${cards}\n</section>\n`
+  // Append into the last ticket grid (common Full redesign pattern).
+  const ticketOpen = html.search(/<div[^>]*class="[^"]*\btickets?\b[^"]*"/i)
+  if (ticketOpen >= 0) {
+    // Find closing of that tickets container: last </div> before next major section
+    // after the tickets block — insert before the container's closing tag by
+    // locating the end of the last .ticket sibling group.
+    const lastTicket = html.toLowerCase().lastIndexOf('class="ticket"')
+    if (lastTicket >= 0) {
+      const afterLast = html.indexOf('</div>', lastTicket)
+      if (afterLast >= 0) {
+        const insertAt = afterLast + '</div>'.length
+        return html.slice(0, insertAt) + '\n' + ticketCards + html.slice(insertAt)
+      }
+    }
+  }
+
+  const block = `\n<section class="services-brief-added" aria-label="Added services">\n${articleCards || ticketCards}\n</section>\n`
 
   // Prefer inserting before engagement mount / footer / end of main.
   const widgetIdx = html.search(/<!--\s*CLOSET_WIDGET|<!--\s*WIDGET/i)
