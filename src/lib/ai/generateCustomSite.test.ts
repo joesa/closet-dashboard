@@ -218,6 +218,9 @@ describe('full redesign brief enhancement', () => {
     expect(src).toContain('OPTIMIZED CREATIVE BRIEF')
     expect(src).toContain('ADMIN SEED')
     expect(src).toContain('DIRECTION LOCK')
+    expect(src).toContain('SELF-AUTHORED DESIGN DIRECTION PROMPT')
+    expect(src).toContain('FULL_REDESIGN_DESIGN_SYSTEM')
+    expect(src).toContain('buildInventedRedesignBriefNote')
   })
 })
 

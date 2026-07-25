@@ -52,8 +52,10 @@ import {
   applyImagesToProducts,
   appendImagesToPagesConfigGallery,
   buildBriefServiceImageNotes,
+  buildInventedRedesignBriefNote,
   mergeCustomBuildNotes,
 } from '@/lib/ai/applyBriefServiceImages'
+import { FULL_REDESIGN_DESIGN_SYSTEM } from '@/lib/ai/fullRedesignDesignSystem'
 
 export type CustomBuildIntent = 'full' | 'surgical'
 
@@ -846,6 +848,30 @@ export async function generateCustomSiteDraft(opts: {
   let pagesConfigUpdate: unknown | null = null
   let customBuildNotesUpdate: unknown | null = null
   if (intent === 'full') {
+    if (
+      'inventedBrief' in result &&
+      result.inventedBrief &&
+      typeof result.inventedBrief === 'object'
+    ) {
+      const invented = result.inventedBrief as {
+        signatureConcept: string
+        optimizedBrief: string
+        source: string
+      }
+      customBuildNotesUpdate = mergeCustomBuildNotes(
+        (cfg as { custom_build_notes?: unknown }).custom_build_notes,
+        [
+          buildInventedRedesignBriefNote({
+            signatureConcept: invented.signatureConcept,
+            optimizedBrief: invented.optimizedBrief,
+            source: invented.source,
+          }),
+        ]
+      )
+      warnings.push(
+        `Empty prompt — invented a full design-direction brief from intake + design system (${invented.source}): ${invented.signatureConcept}`
+      )
+    }
     const serviceUpdates =
       'serviceUpdates' in result && result.serviceUpdates
         ? result.serviceUpdates
@@ -879,7 +905,8 @@ export async function generateCustomSiteDraft(opts: {
             generated.map((g) => g.url)
           )
           customBuildNotesUpdate = mergeCustomBuildNotes(
-            (cfg as { custom_build_notes?: unknown }).custom_build_notes,
+            customBuildNotesUpdate ??
+              (cfg as { custom_build_notes?: unknown }).custom_build_notes,
             buildBriefServiceImageNotes(generated)
           )
           warnings.push(
@@ -936,13 +963,21 @@ export async function generateCustomSiteDraft(opts: {
         )
       }
     }
+    const craftBrief =
+      'inventedBrief' in result &&
+      result.inventedBrief &&
+      typeof result.inventedBrief === 'object' &&
+      typeof (result.inventedBrief as { optimizedBrief?: unknown }).optimizedBrief ===
+        'string'
+        ? (result.inventedBrief as { optimizedBrief: string }).optimizedBrief
+        : opts.prompt
     warnings.push(
       ...assessFullRedesignCraft({
         config: sanitized,
         serviceCount: mergedProducts.filter(
           (p) => typeof p.title === 'string' && p.title.trim()
         ).length,
-        brief: opts.prompt,
+        brief: craftBrief,
       })
     )
   }
@@ -1176,6 +1211,12 @@ async function runFullGenerate(opts: {
   changedPages: string[]
   extraWarnings: string[]
   serviceUpdates: ServiceUpdates
+  /** Present when admin left the seed empty — self-authored design-direction prompt. */
+  inventedBrief?: {
+    signatureConcept: string
+    optimizedBrief: string
+    source: string
+  }
 }> {
   // Full redesigns use Claude Sonnet 5 by default — Fable 5's adaptive
   // thinking routinely exceeds the ~5 minute serverless budget. Override with
@@ -1188,6 +1229,7 @@ async function runFullGenerate(opts: {
         .slice(0, 4)
     : []
   const adminBrief = (opts.prompt || '').trim()
+  const seedEmpty = !adminBrief
   const hasBrief = adminBrief.length > 0 || hasImages || attachedAssetUrls.length > 0
 
   const services = Array.isArray(opts.context.services)
@@ -1227,11 +1269,17 @@ async function runFullGenerate(opts: {
 
   const systemPrompt = `You are a senior design lead at a small studio known for giving every client a visual identity that could not be mistaken for anyone else's. Clients come to you because they rejected work that felt templated or machine-generated. You produce production-ready marketing sites as raw HTML + CSS for real local businesses on this platform.
 
+${FULL_REDESIGN_DESIGN_SYSTEM}
+
 # Core rule: nothing you produce may look AI-generated
 
 AI design clusters around recognizable defaults. Know the tells and design away from them unless the brief explicitly asks for one. The substitute for defaults is subject-derived design — the product's materials, tools, artifacts, vernacular, locality, and audience. Name the subject, audience, and the page's single job first; derive every choice from those.
 
-The user message includes an OPTIMIZED CREATIVE BRIEF (expanded from the admin seed + intake) plus the raw ADMIN SEED. Execute the optimized brief for palette, type, signature element, and layout. When the ADMIN SEED is specific (named colors, dual-lane, services to add, layout asks), those specifics win over the optimizer's fillers.
+${
+  seedEmpty || enhanced.inventedFromIntake
+    ? `The user message includes a SELF-AUTHORED DESIGN DIRECTION PROMPT invented from intake using our design system (admin left the seed empty). Treat that prompt as if the admin typed it — execute it literally for palette, type, signature element, layout, copy register, and process. Do not invent a competing direction.`
+    : `The user message includes an OPTIMIZED CREATIVE BRIEF (expanded from the admin seed + intake) plus the raw ADMIN SEED. Execute the optimized brief for palette, type, signature element, and layout. When the ADMIN SEED is specific (named colors, dual-lane, services to add, layout asks), those specifics win over the optimizer's fillers.`
+}
 
 Banned defaults (unless the brief explicitly requests them):
 - Purple-to-blue / indigo / teal SaaS gradients, or gradients used instead of a real palette decision
@@ -1320,16 +1368,47 @@ SIZE BUDGET (hard — keep compact so generation finishes): globalCss ≤ 9000 c
   const paletteLine = enhanced.palette
     .map((p) => `${p.role} ${p.hex}`)
     .join(', ')
-  const userPrompt = `Full redesign for "${opts.brandName}".
+  const userPrompt = seedEmpty || enhanced.inventedFromIntake
+    ? `Full redesign for "${opts.brandName}".
+
+ADMIN SEED: (empty)
+
+SELF-AUTHORED DESIGN DIRECTION PROMPT (invented from intake + studio design system — treat as the admin prompt; execute literally):
+${enhanced.optimizedBrief}
+
+DIRECTION LOCK:
+- Signature: ${enhanced.signatureConcept}
+- Material world: ${enhanced.materialWorld}
+- Palette: ${paletteLine || '(see self-authored prompt)'}
+- Type: ${enhanced.typography.display} + ${enhanced.typography.body} — ${enhanced.typography.why}
+- Signature element: ${enhanced.signatureElement}
+- Copy register: ${enhanced.copyRegister}
+- Avoid: ${enhanced.avoidDefaults.join('; ') || 'AI default clusters'}
+- Services to add: ${
+        enhanced.servicesToAdd.length
+          ? enhanced.servicesToAdd.join(' | ')
+          : '(none — keep intake services only)'
+      }
+${
+  attachedAssetUrls.length
+    ? `\nATTACHED CDN ASSETS (place with these exact URLs when useful — e.g. hero):\n${attachedAssetUrls.map((u) => `- ${u}`).join('\n')}\n`
+    : hasImages
+      ? `\nReference images attached for vision (${opts.images!.length}). Absorb mood; only use https URLs from context for HTML.\n`
+      : ''
+}
+KEEP ALWAYS:
+- Engagement: ${engagementLabel} (${engagementModel}) — mount ${WIDGET_PLACEHOLDER} on home conversion section.
+- Intake services: ${services.length ? services.join(' | ') : '(see context.services)'}
+- Pages: ${opts.pageHints}
+
+BUSINESS CONTEXT (intake, services, SEO, media — use all of it):
+${JSON.stringify(opts.context)}
+
+Execute the SELF-AUTHORED DESIGN DIRECTION PROMPT. Output only the final JSON.`
+    : `Full redesign for "${opts.brandName}".
 
 ADMIN SEED (honor every specific instruction — colors, layout, services to add):
-${
-  adminBrief
-    ? adminBrief
-    : hasImages
-      ? '(no text — reference images + optimized brief drive direction)'
-      : '(empty — optimized brief was invented from intake only)'
-}
+${adminBrief}
 
 OPTIMIZED CREATIVE BRIEF (expanded from admin seed + intake; execute this for bespoke, non-AI look):
 ${enhanced.optimizedBrief}
@@ -1343,10 +1422,10 @@ DIRECTION LOCK:
 - Copy register: ${enhanced.copyRegister}
 - Avoid: ${enhanced.avoidDefaults.join('; ') || 'AI default clusters'}
 - Services to add from seed: ${
-    enhanced.servicesToAdd.length
-      ? enhanced.servicesToAdd.join(' | ')
-      : '(none unless ADMIN SEED names them)'
-  }
+        enhanced.servicesToAdd.length
+          ? enhanced.servicesToAdd.join(' | ')
+          : '(none unless ADMIN SEED names them)'
+      }
 ${
   attachedAssetUrls.length
     ? `\nATTACHED CDN ASSETS (place with these exact URLs when the admin asks — e.g. hero):\n${attachedAssetUrls.map((u) => `- ${u}`).join('\n')}\n`
@@ -1366,13 +1445,13 @@ ${JSON.stringify(opts.context)}
 Execute OPTIMIZED CREATIVE BRIEF + ADMIN SEED specifics. Output only the final JSON.`
 
   const extraWarnings: string[] = [
-    `Creative brief enhanced from ${
-      adminBrief ? 'your prompt + intake' : 'intake'
-    } (${enhanced.source}) before generation — palette/type/signature locked for bespoke, non-AI look.`,
+    seedEmpty || enhanced.inventedFromIntake
+      ? `Empty admin seed — invented a full design-direction prompt from intake + design system (${enhanced.source}), then executed it.`
+      : `Creative brief enhanced from your prompt + intake (${enhanced.source}) before generation — palette/type/signature locked for bespoke, non-AI look.`,
   ]
   if (!hasBrief) {
     extraWarnings.push(
-      'No admin text or reference image — direction was invented from intake; add a short seed next time to steer it.'
+      'No admin text or reference image — self-authored direction used studio design-system rules + intake facts. Add a short seed next time to steer.'
     )
   }
 
@@ -1422,7 +1501,10 @@ Execute OPTIMIZED CREATIVE BRIEF + ADMIN SEED specifics. Output only the final J
     typeof parsed.reply === 'string' && parsed.reply.trim()
       ? parsed.reply.trim()
       : 'Custom draft generated. Preview it, then publish when ready.'
-  const reply = `Optimized direction (${enhanced.source}): ${enhanced.signatureConcept}\n\n${modelReply}`
+  const reply =
+    seedEmpty || enhanced.inventedFromIntake
+      ? `Self-authored design direction (${enhanced.source}): ${enhanced.signatureConcept}\n\n${enhanced.optimizedBrief.slice(0, 900)}${enhanced.optimizedBrief.length > 900 ? '…' : ''}\n\n${modelReply}`
+      : `Optimized direction (${enhanced.source}): ${enhanced.signatureConcept}\n\n${modelReply}`
 
   const serviceUpdates = parseServiceUpdates(parsed.serviceUpdates)
   const added = serviceUpdates.added ?? (serviceUpdates.added = [])
@@ -1488,6 +1570,14 @@ Execute OPTIMIZED CREATIVE BRIEF + ADMIN SEED specifics. Output only the final J
     changedPages: Object.keys(pages),
     serviceUpdates,
     extraWarnings,
+    inventedBrief:
+      seedEmpty || enhanced.inventedFromIntake
+        ? {
+            signatureConcept: enhanced.signatureConcept,
+            optimizedBrief: enhanced.optimizedBrief,
+            source: enhanced.source,
+          }
+        : undefined,
   }
 }
 

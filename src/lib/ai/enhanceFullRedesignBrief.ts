@@ -1,5 +1,9 @@
-import { generateTextWithFallback } from '@/lib/ai/aiTextProvider'
+import { generateTextWithFallback, CLAUDE_SONNET_MODEL } from '@/lib/ai/aiTextProvider'
 import { extractServicesNamedInBrief } from '@/lib/ai/extractBriefServices'
+import {
+  EMPTY_SEED_DIRECTION_INSTRUCTIONS,
+  FULL_REDESIGN_DESIGN_SYSTEM,
+} from '@/lib/ai/fullRedesignDesignSystem'
 
 export type EnhancedFullRedesignBrief = {
   /** One-line concept the site will be remembered by. */
@@ -20,6 +24,8 @@ export type EnhancedFullRedesignBrief = {
   avoidDefaults: string[]
   /** Ready-to-use creative brief for the site generator. */
   optimizedBrief: string
+  /** True when admin left the seed empty and we invented the full direction. */
+  inventedFromIntake: boolean
   source: 'gemini' | 'anthropic' | 'fallback'
 }
 
@@ -92,9 +98,10 @@ export function fallbackEnhancedBrief(opts: EnhanceOpts): EnhancedFullRedesignBr
   const serviceLine =
     opts.services.slice(0, 5).join(', ') || 'the services from intake'
   const seed = opts.adminBrief.trim()
+  const inventedFromIntake = !seed
   const signatureConcept = seed
     ? `${opts.brandName}: ${seed.slice(0, 120).replace(/\s+/g, ' ')}`
-    : `${opts.brandName} — honest trade craft for ${place}`
+    : `${opts.brandName} — subject-derived craft for ${place}`
   const materialWorld = opts.themeHint
     ? `Interpret theme hint "${opts.themeHint}" through real trade materials and tools for ${serviceLine}, not a stock SaaS skin.`
     : `Derive the look from the real world of ${serviceLine} in ${place} — tools, surfaces, signage, and workwear — not from web design trends.`
@@ -107,23 +114,45 @@ export function fallbackEnhancedBrief(opts: EnhanceOpts): EnhancedFullRedesignBr
     { role: 'acc', hex: '#2f5d50', use: 'primary CTA / enamel accent — not neon or terracotta' },
   ]
 
-  const optimizedBrief = [
-    `SIGNATURE CONCEPT: ${signatureConcept}`,
-    `MATERIAL WORLD: ${materialWorld}`,
-    `ADMIN SEED (honor literally when specific): ${seed || '(none — invent from intake only)'}`,
-    `PALETTE DIRECTION: ${palette.map((p) => `${p.role} ${p.hex} (${p.use})`).join('; ')}. Adjust hexes if the seed pins colors; otherwise keep subject-derived and avoid purple SaaS, cream+terracotta serif, and dark+neon auto defaults.`,
-    `TYPE: Display = something characterful for THIS trade (not Inter/Poppins/Roboto/Syne-by-habit). Body = highly readable companion. Pair must feel decided for ${opts.brandName}.`,
-    `SIGNATURE ELEMENT: One memorable chrome detail rooted in the trade (e.g. work-order ledger, vinyl chip strip, stamped metal tag) — reuse in header/hero/footer rhythm.`,
-    `COPY: Plain-spoken, specific to ${serviceLine}. No "Elevate/Seamless/Unleash" filler. CTAs name the real action (${opts.engagementLabel}).`,
-    `SERVICES: Keep all intake services. Add every offering the admin seed names that is not already in intake.`,
-    `ANTI-AI: Self-check — if ten AI tools would produce the same look, revise palette/type/signature before building.`,
-    opts.hasImages
-      ? 'REFERENCE IMAGES: Absorb mood/palette/composition; do not copy trademarks.'
-      : '',
-    opts.intakeHints ? `INTAKE HINTS: ${opts.intakeHints}` : '',
-  ]
-    .filter(Boolean)
-    .join('\n')
+  const optimizedBrief = inventedFromIntake
+    ? [
+        `1. DESIGN DIRECTION — ${signatureConcept}. Educated guess from intake for ${place}: one conversion job via ${opts.engagementLabel}; look must feel decided for ${opts.brandName}, not a template.`,
+        `2. MATERIAL WORLD — ${materialWorld}`,
+        `3. PALETTE — ${palette.map((p) => `${p.role} ${p.hex} (${p.use})`).join('; ')}. Prefer light/mid surfaces. Reject purple SaaS, cream+terracotta serif, and dark+neon auto defaults.`,
+        `4. TYPOGRAPHY — Display = characterful Google Font for THIS trade (not Inter/Poppins/Roboto/Syne-by-habit). Body = highly readable companion. Pair must feel decided for ${opts.brandName}.`,
+        `5. SIGNATURE ELEMENT — One memorable chrome detail rooted in the trade (work-order ledger strip, stamped metal tag, bay-ticket rhythm) — reuse in header/hero/footer.`,
+        `6. LAYOUT & HIERARCHY — Home: branded header → hero (one sharp promise + ${opts.engagementLabel} CTA) → all services → proof from real URLs → process/why-us from facts → conversion band with widget → footer.`,
+        `7. COPY REGISTER — Plain-spoken, specific to ${serviceLine}. No Elevate/Seamless/Unleash filler. CTAs name the real action (${opts.engagementLabel}).`,
+        `8. PROCESS — Lock this direction → emit :root tokens → shared chrome → home → every intake page → mount engagement widget → one deliberate motion → self-check anti-AI.`,
+        `9. ANTI-AI SELF-CHECK — Rejected purple gradients, cream+terracotta habit, dark+neon shop skin, three identical icon cards, Inter-by-habit. If ten AI tools would match, revise before build.`,
+        `10. ENGAGEMENT — Keep ${opts.engagementLabel}; widget mount stays; never invent HTML forms.`,
+        `SERVICES: Keep all intake services (${serviceLine}). Do not invent unrelated offerings.`,
+        opts.hasImages
+          ? 'REFERENCE IMAGES: Absorb mood/palette/composition; do not copy trademarks.'
+          : '',
+        opts.intakeHints ? `INTAKE HINTS: ${opts.intakeHints}` : '',
+        'SELF-AUTHORED: Admin left seed empty — treat this entire brief as the admin prompt.',
+      ]
+        .filter(Boolean)
+        .join('\n')
+    : [
+        `SIGNATURE CONCEPT: ${signatureConcept}`,
+        `MATERIAL WORLD: ${materialWorld}`,
+        `ADMIN SEED (honor literally when specific): ${seed}`,
+        `PALETTE DIRECTION: ${palette.map((p) => `${p.role} ${p.hex} (${p.use})`).join('; ')}. Adjust hexes if the seed pins colors; otherwise keep subject-derived and avoid purple SaaS, cream+terracotta serif, and dark+neon auto defaults.`,
+        `TYPE: Display = something characterful for THIS trade (not Inter/Poppins/Roboto/Syne-by-habit). Body = highly readable companion. Pair must feel decided for ${opts.brandName}.`,
+        `SIGNATURE ELEMENT: One memorable chrome detail rooted in the trade (e.g. work-order ledger, vinyl chip strip, stamped metal tag) — reuse in header/hero/footer rhythm.`,
+        `COPY: Plain-spoken, specific to ${serviceLine}. No "Elevate/Seamless/Unleash" filler. CTAs name the real action (${opts.engagementLabel}).`,
+        `SERVICES: Keep all intake services. Add every offering the admin seed names that is not already in intake.`,
+        `ANTI-AI: Self-check — if ten AI tools would produce the same look, revise palette/type/signature before building.`,
+        `PROCESS: Direction lock → tokens → chrome → home → intake pages → engagement mount → one motion.`,
+        opts.hasImages
+          ? 'REFERENCE IMAGES: Absorb mood/palette/composition; do not copy trademarks.'
+          : '',
+        opts.intakeHints ? `INTAKE HINTS: ${opts.intakeHints}` : '',
+      ]
+        .filter(Boolean)
+        .join('\n')
 
   return mergeExtractedServices(
     {
@@ -146,6 +175,7 @@ export function fallbackEnhancedBrief(opts: EnhanceOpts): EnhancedFullRedesignBr
         'Inter/Poppins/Roboto by habit',
       ],
       optimizedBrief,
+      inventedFromIntake,
       source: 'fallback',
     },
     opts
@@ -214,16 +244,32 @@ function normalizeEnhanced(
         ? asStringList(o.avoidDefaults)
         : fallback.avoidDefaults,
       optimizedBrief,
+      inventedFromIntake: fallback.inventedFromIntake,
       source,
     },
     opts
   )
 }
 
+const JSON_SHAPE = `{
+  "signatureConcept": "one memorable line",
+  "materialWorld": "where the look comes from in the subject's world",
+  "palette": [{"role":"bg|ink|muted|line|acc|acc2","hex":"#rrggbb","use":"where"}],
+  "typography": {"display":"Google Font","body":"Google Font","why":"why this pair"},
+  "signatureElement": "the one remembered UI/chrome detail",
+  "copyRegister": "how the brand should sound",
+  "servicesToAdd": ["EVERY sellable service named in the admin seed that is not already in intake — even if the seed is meta ('write a prompt for…'). Empty array when seed is empty"],
+  "avoidDefaults": ["which AI defaults you steered away from"],
+  "optimizedBrief": "ready-to-execute creative prompt — see length/structure rules in the system message"
+}`
+
 /**
  * Expand a simple or detailed admin Full redesign prompt into a subject-derived,
- * anti-AI creative brief grounded in intake. Uses Gemini (fast) so the main
- * Claude site generate still has budget. Falls open to a deterministic brief.
+ * anti-AI creative brief grounded in intake.
+ *
+ * Empty admin seed: Claude Sonnet invents a complete design-direction prompt
+ * using the studio design system (educated guess from intake). Non-empty seed:
+ * Gemini expands/optimizes (keeps Claude budget for the site generate).
  */
 export async function enhanceFullRedesignBrief(
   opts: EnhanceOpts
@@ -233,28 +279,34 @@ export async function enhanceFullRedesignBrief(
     return fallback
   }
 
-  const systemPrompt = `You optimize creative briefs for bespoke local-business websites. Output JSON only.
+  const seedEmpty = !opts.adminBrief.trim()
 
-Given an admin seed (may be empty, one sentence, or a long checklist) plus intake facts, produce an OPTIMIZED creative brief that:
+  const systemPrompt = seedEmpty
+    ? `You invent complete Full redesign creative prompts for bespoke local-business websites. Output JSON only.
+
+${FULL_REDESIGN_DESIGN_SYSTEM}
+
+${EMPTY_SEED_DIRECTION_INSTRUCTIONS}
+
+Return ONLY JSON:
+${JSON_SHAPE}
+
+optimizedBrief length: 350-650 words. It IS the admin prompt — write it so a site generator can execute it without further invention of direction.`
+    : `You optimize creative briefs for bespoke local-business websites. Output JSON only.
+
+${FULL_REDESIGN_DESIGN_SYSTEM}
+
+Given an admin seed (one sentence or a long checklist) plus intake facts, produce an OPTIMIZED creative brief that:
 1. Honors every specific admin instruction (colors named, layout asks, services to add).
 2. Fills every free axis from the business's real world (trade materials, tools, locality, audience) — never from AI design defaults.
 3. Chooses a concrete palette (hex), type pairing, and one signature element that could not be find-and-replaced onto another business.
 4. Explicitly steers away from AI tells unless the admin seed asks for them.
-
-Banned defaults unless seed requests them: purple-to-blue SaaS gradients; cream/off-white + terracotta serif habit; near-black + neon lime/cyan/gold; vague SaaS heroes; emoji; glassmorphism/orbs/dot-grids; three identical icon cards; Inter/Poppins/Roboto/Syne-by-habit; Elevate/Seamless/Unleash copy; dual-lane gateways unless two true disciplines.
+5. Includes a short PROCESS section (direction lock → tokens → pages → engagement → anti-AI check).
 
 Return ONLY JSON:
-{
-  "signatureConcept": "one memorable line",
-  "materialWorld": "where the look comes from in the subject's world",
-  "palette": [{"role":"bg|ink|muted|line|acc|acc2","hex":"#rrggbb","use":"where"}],
-  "typography": {"display":"Google Font","body":"Google Font","why":"why this pair"},
-  "signatureElement": "the one remembered UI/chrome detail",
-  "copyRegister": "how the brand should sound",
-  "servicesToAdd": ["EVERY sellable service named in the admin seed that is not already in intake — even if the seed is meta ('write a prompt for…', 'build a site for wrapping and brakes'). Examples: Vehicle Wrapping, Brake Service"],
-  "avoidDefaults": ["which AI defaults you steered away from"],
-  "optimizedBrief": "200-450 words: ready-to-execute creative brief — must include a REQUIRED SERVICE ADDS line listing servicesToAdd. Do not invent testimonials or fake stats."
-}`
+${JSON_SHAPE}
+
+optimizedBrief: 200-450 words; must include a REQUIRED SERVICE ADDS line listing servicesToAdd. Do not invent testimonials or fake stats.`
 
   const userPrompt = `Brand: ${opts.brandName}
 Place: ${[opts.city, opts.region].filter(Boolean).join(', ') || 'unknown'}
@@ -264,20 +316,22 @@ Theme hint: ${opts.themeHint || '(none)'}
 Has reference images: ${opts.hasImages ? 'yes' : 'no'}
 Intake hints: ${opts.intakeHints || '(none)'}
 
-ADMIN SEED (optimize this — empty means invent from intake only):
-${opts.adminBrief.trim() || '(empty)'}
+ADMIN SEED:
+${opts.adminBrief.trim() || '(EMPTY — invent a complete self-authored design-direction prompt from intake + design system)'}
 
 Produce the optimized brief JSON.`
 
   try {
+    // Empty seed: Claude Sonnet invents the direction (design-system judgment).
+    // Non-empty: Gemini expands — keep Claude budget for the full site generate.
     const { text, provider } = await generateTextWithFallback({
       systemPrompt,
       prompt: userPrompt,
       jsonMode: true,
-      temperature: 0.65,
-      maxOutputTokens: 1400,
-      // Prefer Gemini — keep Claude budget for the full site generate.
-      preferredProvider: 'gemini',
+      temperature: seedEmpty ? 0.75 : 0.65,
+      maxOutputTokens: seedEmpty ? 2200 : 1400,
+      preferredProvider: seedEmpty ? 'anthropic' : 'gemini',
+      anthropicModel: CLAUDE_SONNET_MODEL,
     })
     const parsed = extractJsonObject(text)
     return normalizeEnhanced(

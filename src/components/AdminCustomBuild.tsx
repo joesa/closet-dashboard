@@ -1037,8 +1037,8 @@ export default function AdminCustomBuild({
             }}
             placeholder={
               hasBase
-                ? 'Any seed works — even “cleaner, more premium” — we expand it from intake into a bespoke direction (palette, type, signature). Add specifics when you have them (colors, services to add). e.g. “copper on brushed steel — add ceramic coating.”'
-                : 'Optional seed (style words or a full brief). Full redesign expands it from intake into a bespoke, non-AI direction. Intake services + engagement engine stay; seed may add services.'
+                ? 'Optional. Leave blank for Full redesign to invent a full design-direction prompt from intake + our design system. Or seed it — even “cleaner, more premium” — or add specifics (colors, services). e.g. “copper on brushed steel — add ceramic coating.”'
+                : 'Optional seed. Leave blank and Full redesign invents direction from intake + design system. Or type style words / a full brief. Intake services + engagement engine stay.'
             }
             disabled={loading || attaching}
           />
@@ -1201,23 +1201,25 @@ export default function AdminCustomBuild({
             type="button"
             disabled={loading}
             onClick={() => {
+              const seed = prompt.trim();
               if (
                 !confirm(
-                  'Full redesign asks AI for an entirely new layout/CSS (not a copy of the live site). Continue?'
+                  seed
+                    ? 'Full redesign asks AI for an entirely new layout/CSS (not a copy of the live site). Continue?'
+                    : 'No prompt entered — AI will invent a full design-direction brief from intake + our design system, then build the site from that. Continue?'
                 )
               ) {
                 return;
               }
               void run('generate', {
-                prompt:
-                  prompt.trim() ||
-                  'Create a distinctive, conversion-focused custom site.',
+                // Empty seed is intentional: backend invents a self-authored direction.
+                prompt: seed,
                 mode,
                 intent: 'full',
               });
             }}
             className="px-4 py-2 border border-neutral-600 hover:bg-neutral-800 disabled:opacity-50 text-neutral-300 text-sm font-medium rounded-lg transition-colors"
-            title="AI invents a new design — only use when you want a drastic change"
+            title="AI invents a new design from your seed, or from intake + design system when blank"
           >
             Full redesign
           </button>

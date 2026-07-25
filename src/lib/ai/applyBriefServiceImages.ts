@@ -223,12 +223,38 @@ export function appendImagesToPagesConfigGallery(
   })
 }
 
-export type CustomBuildNote = {
-  at: string
-  kind: 'brief_service_image'
-  service: string
-  imageUrl: string
-  note: string
+export type CustomBuildNote =
+  | {
+      at: string
+      kind: 'brief_service_image'
+      service: string
+      imageUrl: string
+      note: string
+    }
+  | {
+      at: string
+      kind: 'invented_redesign_brief'
+      /** One-line signature concept. */
+      signatureConcept: string
+      /** Provider that invented the brief. */
+      source: string
+      /** Full self-authored design-direction prompt. */
+      note: string
+    }
+
+/** Persist the prompt invented when Full redesign runs with an empty admin seed. */
+export function buildInventedRedesignBriefNote(opts: {
+  signatureConcept: string
+  optimizedBrief: string
+  source: string
+}): CustomBuildNote {
+  return {
+    at: new Date().toISOString(),
+    kind: 'invented_redesign_brief',
+    signatureConcept: opts.signatureConcept.slice(0, 240),
+    source: opts.source,
+    note: opts.optimizedBrief.slice(0, 8000),
+  }
 }
 
 export function buildBriefServiceImageNotes(

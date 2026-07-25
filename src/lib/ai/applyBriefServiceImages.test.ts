@@ -3,6 +3,7 @@ import {
   appendImagesToGallery,
   appendImagesToPagesConfigGallery,
   applyImagesToProducts,
+  buildInventedRedesignBriefNote,
   ensureServiceCardImage,
   mergeCustomBuildNotes,
 } from './applyBriefServiceImages'
@@ -76,6 +77,25 @@ describe('applyBriefServiceImages', () => {
       },
     ])
     expect(notes).toHaveLength(1)
-    expect(notes[0].service).toBe('Wraps')
+    expect(notes[0].kind).toBe('brief_service_image')
+    if (notes[0].kind === 'brief_service_image') {
+      expect(notes[0].service).toBe('Wraps')
+    }
+  })
+
+  it('persists invented redesign brief notes', () => {
+    const notes = mergeCustomBuildNotes([], [
+      buildInventedRedesignBriefNote({
+        signatureConcept: 'Bay tickets on cool enamel',
+        optimizedBrief: '1. DESIGN DIRECTION — …\n8. PROCESS — …',
+        source: 'anthropic',
+      }),
+    ])
+    expect(notes[0].kind).toBe('invented_redesign_brief')
+    if (notes[0].kind === 'invented_redesign_brief') {
+      expect(notes[0].signatureConcept).toMatch(/Bay tickets/)
+      expect(notes[0].note).toMatch(/DESIGN DIRECTION/)
+      expect(notes[0].source).toBe('anthropic')
+    }
   })
 })

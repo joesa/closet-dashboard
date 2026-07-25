@@ -16,6 +16,7 @@ describe('fallbackEnhancedBrief', () => {
       region: 'TN',
     })
     expect(out.source).toBe('fallback')
+    expect(out.inventedFromIntake).toBe(false)
     expect(out.signatureConcept).toMatch(/clean and modern/i)
     expect(out.optimizedBrief).toMatch(/ADMIN SEED/)
     expect(out.optimizedBrief).toMatch(/Hand Wash/)
@@ -23,7 +24,7 @@ describe('fallbackEnhancedBrief', () => {
     expect(out.palette.some((p) => p.role === 'acc')).toBe(true)
   })
 
-  it('invents from intake when the seed is empty', () => {
+  it('invents a full design-direction prompt from intake when the seed is empty', () => {
     const out = fallbackEnhancedBrief({
       brandName: 'Bay Detail',
       adminBrief: '',
@@ -32,7 +33,12 @@ describe('fallbackEnhancedBrief', () => {
       services: ['PPF', 'Ceramic'],
       city: 'Nashville',
     })
+    expect(out.inventedFromIntake).toBe(true)
     expect(out.optimizedBrief).toMatch(/Bay Detail/)
+    expect(out.optimizedBrief).toMatch(/DESIGN DIRECTION/)
+    expect(out.optimizedBrief).toMatch(/PROCESS/)
+    expect(out.optimizedBrief).toMatch(/ANTI-AI SELF-CHECK/)
+    expect(out.optimizedBrief).toMatch(/SELF-AUTHORED/)
     expect(out.optimizedBrief).toMatch(/REFERENCE IMAGES/)
     expect(out.optimizedBrief).toMatch(/PPF/)
   })
