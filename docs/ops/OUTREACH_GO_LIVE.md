@@ -55,10 +55,26 @@ Keep these defaults until a pilot is clean:
 
 ## 4. Instantly Unsubscribed webhook
 
-1. Instantly → Settings → Webhooks → **Unsubscribed**
-2. URL: `https://<dashboard>/api/webhooks/instantly`
+1. Instantly → Settings → Webhooks → **lead_unsubscribed** (Unsubscribed)
+2. URL: `https://www.ditchtheform.com/api/webhooks/instantly`
 3. Auth header: `Authorization: Bearer <INSTANTLY_WEBHOOK_SECRET>`
 4. Test unsubscribe → row in `global_suppressions` (type=email)
+
+### Domain cutover checklist (closetquotes → ditchtheform)
+
+Already handled in app/env when possible:
+
+- Scraper Instantly receiver: `https://www.ditchtheform.com/api/instantly/scraper-webhook`
+- Landing URL env: `OUTREACH_LANDING_URL=https://www.ditchtheform.com/#demo`
+- Campaign names (Instantly): `DitchTheForm - Widget Cold Outreach` / `DitchTheForm - Website Agency Upsell`
+- Unsubscribed webhook URL updated to `https://www.ditchtheform.com/api/webhooks/instantly`
+
+Still verify in the Instantly UI (sequences are not fully returned by API GET):
+
+1. Open each campaign → **Sequences** / email steps.
+2. Search for `closetquotes` — replace with `https://www.ditchtheform.com` (or `#demo` landing).
+3. Check **Saved replies** / positive-reply snippets for the same.
+4. Apify actor env (if used): same Instantly webhook + `OUTREACH_LANDING_URL` as local scraper `.env`.
 
 ---
 
