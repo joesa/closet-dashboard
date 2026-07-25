@@ -1,5 +1,9 @@
 import * as cheerio from 'cheerio'
-import { generateTextWithFallback } from '@/lib/ai/aiTextProvider'
+import {
+  CLAUDE_SONNET_MODEL,
+  generateTextWithFallback,
+} from '@/lib/ai/aiTextProvider'
+import { HUMAN_COPY_VOICE_RULES } from '@/lib/ai/humanCopyVoice'
 import { LAYOUT_SLUGS, THEME_SLUGS } from '@/lib/catalog/sitePresentationCatalog'
 
 export const GENERATE_SITE_JSON_SCHEMA = {
@@ -328,8 +332,10 @@ export async function generateSiteConfigFromInput(
   pageContents?: Record<string, string> | null,
   industry?: string | null
 ): Promise<GenerateSiteConfigResult> {
-  if (!process.env.GEMINI_API_KEY) {
-    throw new Error('GEMINI_API_KEY is not configured')
+  if (!process.env.ANTHROPIC_API_KEY && !process.env.GEMINI_API_KEY) {
+    throw new Error(
+      'AI is not configured (missing ANTHROPIC_API_KEY and GEMINI_API_KEY).'
+    )
   }
 
   let scrapedText = input
@@ -374,11 +380,11 @@ export async function generateSiteConfigFromInput(
     : `business in the exact trade shown in the "Services offered" list`
   const tradeServices = trade ?? 'the services listed in the brief'
 
-  let systemPrompt = `You are an elite Luxury Brand Copywriter, Visual Art Director, and Next.js Frontend Architect.
-Your sole purpose is to generate high-end, bespoke content configurations and photorealistic image
-prompts that build premium digital storefronts looking like they cost $200,000 to design. You
-explicitly AVOID generic "AI-generated" tropes (no plastic surfaces, no warped geometry, no fake
-brand text, no uncanny symmetry, no stocky lifeless renders).
+  let systemPrompt = `You write site configs for real local service businesses: honest marketing copy plus photorealistic image prompts. Sound like a good local shop — not a SaaS landing page and not a luxury-agency press release.
+
+${HUMAN_COPY_VOICE_RULES}
+
+Image prompts must avoid AI-render tropes (no plastic surfaces, warped geometry, fake brand text, uncanny symmetry, lifeless stock CGI).
 
 BUSINESS DOMAIN (NON-NEGOTIABLE): ${domainLine}
 EVERY image prompt and all copy MUST depict real, on-the-job scenes, finished work, and environments
@@ -443,10 +449,10 @@ photorealistic, 8k resolution, wide 16:9 composition, NOT a 3D render, NOT CGI, 
 plastic surfaces, no text."
 Match each product to a real service from the business information.
 
-=== PREMIUM COPYWRITING ===
-- hero.headline: a punchy headline (about 5 words) that highlights the core value this ${tradeNoun} delivers. Make it outcome-driven and specific to the trade — NOT generic, NOT about architecture unless this IS an architecture/design firm. NEVER start with "Welcome to". Prefer "{service} in {city}" or an outcome phrase over brand-greeting openers.
-- hero.subheadline: ONE supporting sentence (12-22 words) that sits under the headline. Add concrete substance — what is delivered, for whom, and a real proof point or differentiator from the brief (e.g. years in business, area served, materials, guarantee). Specific to this trade; no filler, no repeating the headline.
-- about.description: a compelling 3-sentence brand narrative about quality, expertise, and reliability written for a ${tradeNoun}. Make it specific to this trade and brand. Do NOT use architectural, closet, or home-storage language unless those ARE the actual services listed. Ban filler phrases like "trusted local provider" and "Licensed & insured" unless those facts are explicitly in the brief.
+=== COPYWRITING ===
+- hero.headline: a punchy headline (about 5 words) that highlights the core value this ${tradeNoun} delivers. Outcome-driven and specific to the trade — NOT generic, NOT about architecture unless this IS an architecture/design firm. Prefer "{service} in {city}" or a concrete outcome over brand-greeting openers.
+- hero.subheadline: ONE supporting sentence (12-22 words) under the headline. Concrete substance — what is delivered, for whom, and a real proof point from the brief (years, area served, materials, guarantee). No filler, no repeating the headline.
+- about.description: 3 sentences about this ${tradeNoun} — who they help, how they work, one proof point. Specific to this trade and brand. Do NOT use architectural, closet, or home-storage language unless those ARE the actual services listed.
 - process: a 3-step how-it-works section. The steps array MUST contain exactly 3 steps, numbered '01', '02', '03' in that exact sequence. The title and subtitle MUST reflect the actual trade — do NOT use "Our Architectural Process" or "From Vision to Flawless Reality" unless the business is literally an architecture or design firm. Example adaptations: drain cleaning → "Book → Diagnose → Fix"; HVAC → "Assess → Recommend → Install"; roofing → "Inspect → Estimate → Install"; closets → "Design → Build → Install". Each step is a vivid one-sentence description.
 - CRITICAL — products[]: Generate EXACTLY ONE product entry for EACH service listed in the "Services offered" field of the business brief. The title MUST be that exact service name — do NOT add, remove, rename, or substitute services. If the brief lists "drain cleaning", the product title is "drain cleaning". If the brief lists 1 service, generate 1 product. The AI MUST NOT invent new services or replace the listed ones with anything else.
 - products[].description: 2 sentences about what this specific service involves and who needs it.
@@ -472,9 +478,8 @@ For each page:
 - "hero.headline": a punchy headline specific to that page. HARD LIMIT: 6 words or fewer — some
   design variants render headlines at monumental scale, and anything longer overflows the hero
   and collides with the fixed navigation bar.
-- "content_blocks": 2 to 4 blocks of RICH, SPECIFIC, PERSUASIVE selling copy tailored to this exact
-  business and niche — NEVER generic placeholders like "List the cities you serve". Write real
-  marketing copy a $200k agency would ship. Vary block types:
+- "content_blocks": 2 to 4 blocks of specific, useful selling copy for this exact business —
+  NEVER generic placeholders like "List the cities you serve". Sound human (see HUMAN VOICE). Vary block types:
     • "text" blocks: 2-4 sentence paragraphs (heading + body).
     • "image_left"/"image_right" blocks: heading + 2-4 sentence body (an image is auto-attached).
     • "grid" blocks: heading + short intro body + an "items" array of 3-6 {title, description}
@@ -499,8 +504,10 @@ ${Object.entries(pageContents)
     prompt: `User: Business Information:\n\n${scrapedText}`,
     systemPrompt,
     jsonMode: true,
-    temperature: 0.7,
+    temperature: 0.55,
     maxOutputTokens: 32768,
+    preferredProvider: 'anthropic',
+    anthropicModel: CLAUDE_SONNET_MODEL,
   })
 
   let aiData: Record<string, unknown>

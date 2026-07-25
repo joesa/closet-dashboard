@@ -221,6 +221,16 @@ describe('full redesign brief enhancement', () => {
   })
 })
 
+describe('surgical + intake copy model', () => {
+  it('routes surgical edits to Claude Sonnet with human-voice rules', () => {
+    const src = readFileSync(join(__dirname, 'generateCustomSite.ts'), 'utf8')
+    expect(src).toContain('HUMAN_COPY_VOICE_RULES_SURGICAL')
+    expect(src).toMatch(
+      /preferredProvider:\s*'anthropic'[\s\S]{0,80}anthropicModel:\s*CLAUDE_SONNET_MODEL/
+    )
+  })
+})
+
 describe('surgical hero image helpers', () => {
   const oldUrl =
     'https://example.supabase.co/storage/v1/object/public/site-assets/custom/t/old.jpg'

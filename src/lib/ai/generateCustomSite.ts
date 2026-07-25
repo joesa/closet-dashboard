@@ -4,6 +4,7 @@ import {
   CLAUDE_SONNET_MODEL,
   generateTextWithFallback,
 } from '@/lib/ai/aiTextProvider'
+import { HUMAN_COPY_VOICE_RULES_SURGICAL } from '@/lib/ai/humanCopyVoice'
 import {
   buildIntakeHintsForBrief,
   enhanceFullRedesignBrief,
@@ -1466,9 +1467,10 @@ Hard rules:
   }
 10. If the request is ambiguous ("make it nicer") and does not specify what to change, set pages to {} and explain in reply that you need a more specific instruction — do NOT invent a redesign.
 11. When the admin asks to add/embed a video (or says they don't see the video), use a URL from mediaLibrary in the business context — do NOT ask them to paste a URL that is already listed there. Insert a <video controls><source src="URL" type="video/mp4"></video> block after the hero on "/".
+12. ${HUMAN_COPY_VOICE_RULES_SURGICAL}
 ${
   hasImages || attachedUrls.length
-    ? `12. ATTACHED IMAGES: the admin attached image(s). Prefer context.attachedAssetUrls / mediaLibrary https URLs — those are already on the CDN and MUST be used verbatim when placing the image on the site (hero, section, etc.). Use vision to understand crop/composition; keep the whole subject visible (background-size:contain / object-fit:contain, or carefully framed cover when they ask to fill). Do not invent other image URLs for those placements.`
+    ? `13. ATTACHED IMAGES: the admin attached image(s). Prefer context.attachedAssetUrls / mediaLibrary https URLs — those are already on the CDN and MUST be used verbatim when placing the image on the site (hero, section, etc.). Use vision to understand crop/composition; keep the whole subject visible (background-size:contain / object-fit:contain, or carefully framed cover when they ask to fill). Do not invent other image URLs for those placements.`
     : ''
 }`
 
@@ -1497,8 +1499,8 @@ ${JSON.stringify(opts.context, null, 2)}`
     temperature: 0.3,
     // Thinking tokens count against this cap — keep generous headroom.
     maxOutputTokens: 24576,
-    preferredProvider: hasImages || attachedUrls.length ? 'anthropic' : undefined,
-    anthropicModel: hasImages || attachedUrls.length ? CLAUDE_SONNET_MODEL : undefined,
+    preferredProvider: 'anthropic',
+    anthropicModel: CLAUDE_SONNET_MODEL,
     images: opts.images,
   })
 
@@ -1615,8 +1617,10 @@ async function callModelJson(opts: {
       text = result.text
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      if (/GEMINI_API_KEY/i.test(msg)) {
-        throw new Error('AI is not configured (missing GEMINI_API_KEY on the server).')
+      if (/ANTHROPIC_API_KEY|GEMINI_API_KEY|not configured/i.test(msg)) {
+        throw new Error(
+          'AI is not configured (need ANTHROPIC_API_KEY for Claude Sonnet, or GEMINI_API_KEY as fallback).'
+        )
       }
       throw new Error(`AI generation failed: ${msg}`)
     }

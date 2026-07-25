@@ -2,11 +2,11 @@ import { GoogleGenerativeAI, type GenerationConfig } from '@google/generative-ai
 import Anthropic from '@anthropic-ai/sdk'
 
 /**
- * Shared text-generation provider. Gemini handles routine content; Claude
- * (opt-in via preferredProvider) handles premium design generation.
+ * Shared text-generation provider.
  *
- * Full redesign defaults to Claude Sonnet 5 — Fable 5's adaptive thinking
- * routinely exceeds our ~5 minute serverless budget on multi-page JSON.
+ * Intake site content, Surgical Edit, and Full redesign prefer Claude Sonnet 5
+ * when ANTHROPIC_API_KEY is set (Fable 5 is opt-in via CUSTOM_SITE_CLAUDE_MODEL
+ * — often too slow for one-shot site JSON). Gemini remains the fallback.
  *
  * Server-only — never import in client components.
  */
