@@ -36,6 +36,20 @@ describe('fallbackEnhancedBrief', () => {
     expect(out.optimizedBrief).toMatch(/REFERENCE IMAGES/)
     expect(out.optimizedBrief).toMatch(/PPF/)
   })
+
+  it('extracts wrapping from a meta redesign seed into servicesToAdd', () => {
+    const out = fallbackEnhancedBrief({
+      brandName: 'Wehora',
+      adminBrief:
+        'Provide a detail prompt for a build a bespoke website for a car wrapping and other car maintenance services such as changing brakes, rotters, oil, filters, engine fixes, etc.',
+      hasImages: false,
+      engagementLabel: 'quote calculator',
+      services: ['Mobile Auto Detailing', 'Oil Change & Maintenance'],
+    })
+    expect(out.servicesToAdd).toContain('Vehicle Wrapping')
+    expect(out.optimizedBrief).toMatch(/REQUIRED SERVICE ADDS/i)
+    expect(out.optimizedBrief).toMatch(/Vehicle Wrapping/)
+  })
 })
 
 describe('buildIntakeHintsForBrief', () => {

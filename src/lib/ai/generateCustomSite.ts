@@ -9,6 +9,11 @@ import {
   enhanceFullRedesignBrief,
 } from '@/lib/ai/enhanceFullRedesignBrief'
 import {
+  extractServicesNamedInBrief,
+  htmlMentionsService,
+  injectMissingServicesIntoHtml,
+} from '@/lib/ai/extractBriefServices'
+import {
   extractJson,
   repairTruncatedJson,
   sanitizeJsonString,
@@ -803,7 +808,7 @@ SERVICES — include every intake service from context.services${
     services.length
       ? `: ${services.join('; ')}`
       : ' (use titles in context.services)'
-  }. Feature on home + real coverage on services (or equivalent). You MAY add services the creative brief explicitly introduces — list those only in serviceUpdates.added. Do NOT drop intake services unless the brief explicitly removes/replaces them — then serviceUpdates.removed with a short reason citing the brief. Never invent unrelated services the brief did not mention.
+  }. Feature on home + real coverage on services (or equivalent). You MUST also add every service listed under REQUIRED SERVICE ADDS / servicesToAdd in the optimized brief (e.g. Vehicle Wrapping when the admin seed mentions wrapping) — feature them on home + services pages AND list them in serviceUpdates.added. Do NOT drop intake services unless the brief explicitly removes/replaces them — then serviceUpdates.removed with a short reason citing the brief. Never invent unrelated services the brief did not mention. Meta seeds like "write a prompt for a wrapping shop…" still count as naming those services.
 
 ENGAGEMENT ENGINE — this site uses "${engagementLabel}" (${engagementModel}). Embed EXACTLY this HTML comment on home (literal, no attributes):
   ${WIDGET_PLACEHOLDER}
@@ -949,17 +954,66 @@ Execute OPTIMIZED CREATIVE BRIEF + ADMIN SEED specifics. Output only the final J
 
   const serviceUpdates = parseServiceUpdates(parsed.serviceUpdates)
   const added = serviceUpdates.added ?? (serviceUpdates.added = [])
-  // Merge enhancer-detected adds if the model omitted them but seed named them.
-  for (const title of enhanced.servicesToAdd) {
+  // Deterministic extract + enhancer list — models often omit meta-seed services.
+  const extracted = extractServicesNamedInBrief(adminBrief, services)
+  const requiredAdds = [
+    ...enhanced.servicesToAdd.map((title) => ({ title })),
+    ...extracted,
+  ]
+  for (const row of requiredAdds) {
+    const title = row.title.trim()
+    if (!title) continue
     if (!added.some((s) => s.title.toLowerCase() === title.toLowerCase())) {
-      added.push({ title })
+      added.push({
+        title,
+        description:
+          'description' in row && typeof row.description === 'string'
+            ? row.description
+            : undefined,
+      })
     }
   }
 
+  // If the model left brief-added services out of HTML, inject them so Preview
+  // matches the catalog (custom sites render HTML, not products_config).
+  const pages = { ...config.pages }
+  const injectedTitles: string[] = []
+  for (const key of Object.keys(pages)) {
+    const isHome = key === '/' || key === ''
+    const isServices = /service/i.test(key)
+    if (!isHome && !isServices) continue
+    const page = pages[key]
+    if (!page?.html) continue
+    const missing = added.filter(
+      (s) => s.title && !htmlMentionsService(page.html || '', s.title)
+    )
+    if (!missing.length) continue
+    const withDesc = missing.map((s) => ({
+      title: s.title,
+      description:
+        s.description ||
+        extracted.find((e) => e.title.toLowerCase() === s.title.toLowerCase())
+          ?.description ||
+        `${s.title} offered by this business.`,
+    }))
+    pages[key] = {
+      ...page,
+      html: injectMissingServicesIntoHtml(page.html || '', withDesc),
+    }
+    for (const m of withDesc) {
+      if (!injectedTitles.includes(m.title)) injectedTitles.push(m.title)
+    }
+  }
+  if (injectedTitles.length) {
+    extraWarnings.push(
+      `Injected brief-added services into redesign HTML: ${injectedTitles.join(', ')}.`
+    )
+  }
+
   return {
-    config,
+    config: { ...config, pages },
     reply,
-    changedPages: Object.keys(config.pages),
+    changedPages: Object.keys(pages),
     serviceUpdates,
     extraWarnings,
   }

@@ -1,4 +1,5 @@
 import { generateTextWithFallback } from '@/lib/ai/aiTextProvider'
+import { extractServicesNamedInBrief } from '@/lib/ai/extractBriefServices'
 
 export type EnhancedFullRedesignBrief = {
   /** One-line concept the site will be remembered by. */
@@ -114,7 +115,7 @@ export function fallbackEnhancedBrief(opts: EnhanceOpts): EnhancedFullRedesignBr
     `TYPE: Display = something characterful for THIS trade (not Inter/Poppins/Roboto/Syne-by-habit). Body = highly readable companion. Pair must feel decided for ${opts.brandName}.`,
     `SIGNATURE ELEMENT: One memorable chrome detail rooted in the trade (e.g. work-order ledger, vinyl chip strip, stamped metal tag) — reuse in header/hero/footer rhythm.`,
     `COPY: Plain-spoken, specific to ${serviceLine}. No "Elevate/Seamless/Unleash" filler. CTAs name the real action (${opts.engagementLabel}).`,
-    `SERVICES: Keep all intake services. Only add offerings the admin seed explicitly names.`,
+    `SERVICES: Keep all intake services. Add every offering the admin seed names that is not already in intake.`,
     `ANTI-AI: Self-check — if ten AI tools would produce the same look, revise palette/type/signature before building.`,
     opts.hasImages
       ? 'REFERENCE IMAGES: Absorb mood/palette/composition; do not copy trademarks.'
@@ -124,28 +125,59 @@ export function fallbackEnhancedBrief(opts: EnhanceOpts): EnhancedFullRedesignBr
     .filter(Boolean)
     .join('\n')
 
-  return {
-    signatureConcept,
-    materialWorld,
-    palette,
-    typography: {
-      display: 'Trade-specific display (choose a real Google Font that fits)',
-      body: 'Readable companion (choose a real Google Font)',
-      why: 'Must feel decided for this brand, not a default stack',
+  return mergeExtractedServices(
+    {
+      signatureConcept,
+      materialWorld,
+      palette,
+      typography: {
+        display: 'Trade-specific display (choose a real Google Font that fits)',
+        body: 'Readable companion (choose a real Google Font)',
+        why: 'Must feel decided for this brand, not a default stack',
+      },
+      signatureElement: 'One trade-rooted chrome detail repeated with purpose',
+      copyRegister: `Plain, specific, active voice for ${opts.brandName}`,
+      servicesToAdd: [],
+      avoidDefaults: [
+        'purple-to-blue SaaS gradients',
+        'cream + terracotta serif habit',
+        'dark charcoal + neon accents',
+        'three identical icon cards',
+        'Inter/Poppins/Roboto by habit',
+      ],
+      optimizedBrief,
+      source: 'fallback',
     },
-    signatureElement: 'One trade-rooted chrome detail repeated with purpose',
-    copyRegister: `Plain, specific, active voice for ${opts.brandName}`,
-    servicesToAdd: [],
-    avoidDefaults: [
-      'purple-to-blue SaaS gradients',
-      'cream + terracotta serif habit',
-      'dark charcoal + neon accents',
-      'three identical icon cards',
-      'Inter/Poppins/Roboto by habit',
-    ],
-    optimizedBrief,
-    source: 'fallback',
+    opts
+  )
+}
+
+/** Union model/fallback servicesToAdd with deterministic extraction from the seed. */
+function mergeExtractedServices(
+  brief: EnhancedFullRedesignBrief,
+  opts: EnhanceOpts
+): EnhancedFullRedesignBrief {
+  const extracted = extractServicesNamedInBrief(opts.adminBrief, opts.services)
+  if (!extracted.length && !brief.servicesToAdd.length) return brief
+
+  const merged: string[] = []
+  const seen = new Set<string>()
+  for (const title of [
+    ...brief.servicesToAdd,
+    ...extracted.map((e) => e.title),
+  ]) {
+    const key = title.trim().toLowerCase()
+    if (!key || seen.has(key)) continue
+    seen.add(key)
+    merged.push(title.trim())
   }
+
+  let optimizedBrief = brief.optimizedBrief
+  if (merged.length && !/REQUIRED SERVICE ADDS/i.test(optimizedBrief)) {
+    optimizedBrief = `${optimizedBrief}\nREQUIRED SERVICE ADDS (must appear on home + services pages AND in serviceUpdates.added): ${merged.join(' | ')}`
+  }
+
+  return { ...brief, servicesToAdd: merged, optimizedBrief }
 }
 
 function normalizeEnhanced(
@@ -165,24 +197,27 @@ function normalizeEnhanced(
   if (!optimizedBrief) {
     return { ...fallback, source }
   }
-  return {
-    signatureConcept: asString(o.signatureConcept, fallback.signatureConcept),
-    materialWorld: asString(o.materialWorld, fallback.materialWorld),
-    palette: palette.length ? palette : fallback.palette,
-    typography: {
-      display: asString(typography.display, fallback.typography.display),
-      body: asString(typography.body, fallback.typography.body),
-      why: asString(typography.why, fallback.typography.why),
+  return mergeExtractedServices(
+    {
+      signatureConcept: asString(o.signatureConcept, fallback.signatureConcept),
+      materialWorld: asString(o.materialWorld, fallback.materialWorld),
+      palette: palette.length ? palette : fallback.palette,
+      typography: {
+        display: asString(typography.display, fallback.typography.display),
+        body: asString(typography.body, fallback.typography.body),
+        why: asString(typography.why, fallback.typography.why),
+      },
+      signatureElement: asString(o.signatureElement, fallback.signatureElement),
+      copyRegister: asString(o.copyRegister, fallback.copyRegister),
+      servicesToAdd: asStringList(o.servicesToAdd),
+      avoidDefaults: asStringList(o.avoidDefaults).length
+        ? asStringList(o.avoidDefaults)
+        : fallback.avoidDefaults,
+      optimizedBrief,
+      source,
     },
-    signatureElement: asString(o.signatureElement, fallback.signatureElement),
-    copyRegister: asString(o.copyRegister, fallback.copyRegister),
-    servicesToAdd: asStringList(o.servicesToAdd),
-    avoidDefaults: asStringList(o.avoidDefaults).length
-      ? asStringList(o.avoidDefaults)
-      : fallback.avoidDefaults,
-    optimizedBrief,
-    source,
-  }
+    opts
+  )
 }
 
 /**
@@ -216,9 +251,9 @@ Return ONLY JSON:
   "typography": {"display":"Google Font","body":"Google Font","why":"why this pair"},
   "signatureElement": "the one remembered UI/chrome detail",
   "copyRegister": "how the brand should sound",
-  "servicesToAdd": ["only if admin seed names new sellable services"],
+  "servicesToAdd": ["EVERY sellable service named in the admin seed that is not already in intake — even if the seed is meta ('write a prompt for…', 'build a site for wrapping and brakes'). Examples: Vehicle Wrapping, Brake Service"],
   "avoidDefaults": ["which AI defaults you steered away from"],
-  "optimizedBrief": "200-450 words: ready-to-execute creative brief for a site builder — include signature, palette hexes, type, layout notes, copy register, service adds, and anti-AI constraints. Do not invent testimonials or fake stats."
+  "optimizedBrief": "200-450 words: ready-to-execute creative brief — must include a REQUIRED SERVICE ADDS line listing servicesToAdd. Do not invent testimonials or fake stats."
 }`
 
   const userPrompt = `Brand: ${opts.brandName}
