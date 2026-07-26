@@ -3,8 +3,7 @@
  *
  * The public demo contractor is shared on the landing page widget, in
  * the Loom walkthrough, and as a public login for prospects to
- * test-drive the dashboard. Email stays on the legacy mailbox until the
- * Supabase auth user is migrated to demo@ditchtheform.com.
+ * test-drive the dashboard.
  *
  * Server code that needs to reseed/protect this account reads
  * DEMO_CONTRACTOR_ID. Client code (banners, widget gating) reads the
@@ -23,8 +22,7 @@ export const DEMO_CONTRACTOR_ID =
  * /api/cron/reset-demo job, so leaking the password is by design.
  */
 export const DEMO_LOGIN = {
-  // Must match the existing Supabase auth user until migrated.
-  email: 'demo@closetquotes.com',
+  email: 'demo@ditchtheform.com',
   password: 'TryClosetQuote2026!',
 }
 
