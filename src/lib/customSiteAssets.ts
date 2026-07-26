@@ -201,23 +201,24 @@ export async function uploadCustomSiteAsset(opts: {
     mime: opts.mime,
   })
 
-  const supabase = getSupabaseAdmin()
-  const body = new Uint8Array(
-    opts.buffer.buffer,
-    opts.buffer.byteOffset,
-    opts.buffer.byteLength
+  const { uploadPreparedImage } = await import('@/lib/images/uploadOptimized')
+  const ext = contentType.includes('png')
+    ? 'png'
+    : contentType.includes('webp')
+      ? 'webp'
+      : contentType.includes('jpeg') || contentType.includes('jpg')
+        ? 'jpg'
+        : contentType.includes('gif')
+          ? 'gif'
+          : 'bin'
+  const url = await uploadPreparedImage(
+    { buffer: opts.buffer, mime: contentType, ext },
+    path.includes('.') ? path : `${path}.${ext}`
   )
-  const { error } = await supabase.storage.from(SITE_ASSETS_BUCKET).upload(path, body, {
-    contentType,
-    upsert: false,
-  })
-  if (error) throw new Error(`Upload failed: ${error.message}`)
-
-  const { data } = supabase.storage.from(SITE_ASSETS_BUCKET).getPublicUrl(path)
   return {
     name,
     path,
-    url: data.publicUrl,
+    url,
     size: opts.buffer.length,
     contentType,
     kind,

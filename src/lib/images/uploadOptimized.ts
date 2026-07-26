@@ -21,25 +21,47 @@ export async function uploadOptimizedBuffer(
   return uploadPreparedImage(optimized, path)
 }
 
-/** Upload an already-optimized buffer to site-assets and return the public URL. */
+/**
+ * Upload bytes to the public site-assets bucket via the Storage REST API.
+ *
+ * Uses raw fetch + Uint8Array body on purpose. supabase-js storage upload has
+ * been observed on Vercel to persist UTF-8-mangled binaries (U+FFFD in the
+ * object) even when the local Buffer/Uint8Array was valid — which shows up as
+ * broken <img> tags for user uploads.
+ */
 export async function uploadPreparedImage(
   image: OptimizedImage,
   storagePath: string
 ): Promise<string> {
-  const supabase = getSupabaseAdmin()
-  // IMPORTANT: pass Uint8Array, not Node Buffer. On some Vercel/runtime stacks
-  // supabase-js stringifies Buffer as UTF-8, which replaces non-text bytes with
-  // U+FFFD and produces a 200 OK upload of a corrupt image (broken <img>).
-  const body = new Uint8Array(
-    image.buffer.buffer,
-    image.buffer.byteOffset,
-    image.buffer.byteLength
-  )
-  const { error } = await supabase.storage.from(SITE_ASSETS_BUCKET).upload(storagePath, body, {
-    contentType: image.mime,
-    upsert: true,
+  const baseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\/$/, '')
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  if (!baseUrl || !serviceKey) {
+    throw new Error('Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY')
+  }
+
+  // Copy into a clean ArrayBuffer-backed view (avoid Buffer pool / SharedArrayBuffer quirks).
+  const bytes = Uint8Array.from(image.buffer)
+
+  const endpoint = `${baseUrl}/storage/v1/object/${SITE_ASSETS_BUCKET}/${storagePath}`
+  const res = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${serviceKey}`,
+      apikey: serviceKey,
+      'Content-Type': image.mime,
+      'x-upsert': 'true',
+      'cache-control': 'max-age=3600',
+    },
+    body: bytes,
   })
-  if (error) throw error
+
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '')
+    throw new Error(`Storage upload failed (${res.status}): ${detail.slice(0, 300)}`)
+  }
+
+  // Prefer supabase helper for consistent public URL formatting.
+  const supabase = getSupabaseAdmin()
   return supabase.storage.from(SITE_ASSETS_BUCKET).getPublicUrl(storagePath).data.publicUrl
 }
 

@@ -473,20 +473,11 @@ export async function uploadSiteAsset(
   slug: string,
   key: string
 ): Promise<string> {
-  const supabase = getSupabaseAdmin()
-  const filePath = `${slug}/${key}.png`
-
-  const { error } = await supabase.storage
-    .from(SITE_ASSETS_BUCKET)
-    .upload(filePath, new Uint8Array(buffer), {
-      contentType: 'image/png',
-      upsert: true,
-    })
-
-  if (error) throw error
-
-  const { data } = supabase.storage.from(SITE_ASSETS_BUCKET).getPublicUrl(filePath)
-  return data.publicUrl
+  const { uploadPreparedImage } = await import('@/lib/images/uploadOptimized')
+  return uploadPreparedImage(
+    { buffer, mime: 'image/png', ext: 'png' },
+    `${slug}/${key}.png`
+  )
 }
 
 /**
