@@ -17,12 +17,13 @@ export const AUTO_BODY_SERVICES: ServiceDef[] = [
   ab('Frame & Structural Repair', 'Structural', ['garage-industrial', 'commercial-pro', 'brutalist', 'functional-utility'], ['trust-report', 'before-after', 'trust-builder', 'process-steps'], { image: IMG, description: 'Computerized frame straightening and structural repair to factory specs.' }, ['frame repair', 'frame straightening', 'structural repair', 'auto frame']),
   ab('Bumper Repair & Replacement', 'Bumpers', [...T], [...L], { image: IMG, description: 'Plastic bumper repair, repaint, and full bumper replacement.' }, ['bumper repair', 'bumper replacement', 'bumper fix', 'rear bumper', 'front bumper']),
   ab('Glass & Windshield', 'Glass', ['garage-industrial', 'functional-utility', 'modern-office', 'commercial-pro'], ['compact-quote', 'emergency-first', 'trust-builder', 'local-expert'], { image: IMG, description: 'Windshield chip repair, crack replacement, and auto glass replacement.' }, ['windshield replacement', 'windshield chip repair', 'auto glass', 'car glass']),
+  ab('Auto Wrapping', 'Wraps', ['garage-industrial', 'bold-remodel', 'commercial-pro', 'swift-mobile'], ['gallery-showcase', 'visual-impact', 'before-after', 'portfolio-first'], { image: IMG, description: 'Full and partial vinyl wraps — color-change, fleet branding, and custom graphics.' }, ['auto wrapping', 'vehicle wrap', 'car wrap', 'vinyl wrap', 'fleet wrap', 'color change wrap']),
 ]
 
 export const AUTO_BODY_INDUSTRY: IndustryDef = {
   slug: 'auto-body', label: 'Auto Body & Collision Repair',
-  keywords: ['auto body', 'collision repair', 'auto painting', 'auto paint', 'dent repair', 'pdr', 'hail damage', 'car body repair'],
-  serviceGroups: ['Collision', 'Paint', 'Dents', 'Structural', 'Bumpers', 'Glass'],
+  keywords: ['auto body', 'collision repair', 'auto painting', 'auto paint', 'dent repair', 'pdr', 'hail damage', 'car body repair', 'auto wrapping', 'vehicle wrap', 'vinyl wrap'],
+  serviceGroups: ['Collision', 'Paint', 'Dents', 'Structural', 'Bumpers', 'Glass', 'Wraps'],
   defaultThemes: ['garage-industrial', 'bold-remodel', 'commercial-pro', 'functional-utility'],
   defaultLayouts: ['before-after', 'trust-builder', 'compact-quote', 'gallery-showcase'],
   services: AUTO_BODY_SERVICES,

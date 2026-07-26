@@ -16,6 +16,11 @@ import {
   injectGalleryImagesIntoPages,
   type BasicPageConfig,
 } from '@/lib/catalog/sitePages'
+import { syncServicesPageFromProducts } from '@/lib/catalog/syncServicesPageFromProducts'
+import {
+  reconcileAiProductsToIntake,
+  type ReconcileProduct,
+} from '@/lib/ai/reconcileAiProductsToIntake'
 import {
   type ProvisionTenantInput,
   type ProvisionTenantResult,
@@ -842,13 +847,20 @@ export async function provisionTenant(
         heroImage && heroImage !== GENERIC_HERO ? heroImage : null
       const backgroundImage =
         heroSelectedUrl || operatorHero || THEME_HERO_IMAGES[finalTheme] || GENERIC_HERO
-      const aiProducts = Array.isArray(aiSiteConfig.products)
-        ? aiSiteConfig.products
-        : null
+      // Intake service labels win over AI products[]. The model often collapses
+      // 8–12 offerings into ~4 and renames them — reconcile so nothing like
+      // "Auto Wrapping" is dropped before we attach studio images.
+      const aiProductsRaw = Array.isArray(aiSiteConfig.products)
+        ? (aiSiteConfig.products as ReconcileProduct[])
+        : []
+      const reconciledProducts = reconcileAiProductsToIntake(
+        selectedServices,
+        aiProductsRaw.length > 0
+          ? aiProductsRaw
+          : (siteConfigData.products_config as ReconcileProduct[])
+      )
       const resolveAiProductImage = makeImageResolver()
-      const productsWithImages = (
-        aiProducts ?? (siteConfigData.products_config as unknown[])
-      ).map(
+      const productsWithImages = reconciledProducts.map(
         (
           p: {
             title?: string
@@ -888,9 +900,9 @@ export async function provisionTenant(
                   : defaultProductSpecs(resolvedEngagementModel, title),
             },
             image:
-              resolveAiProductImage(p.title) ||
+              resolveAiProductImage(title) ||
               p.image ||
-              (p.title && serviceCatalog[p.title]?.image) ||
+              (title && serviceCatalog[title]?.image) ||
               PRODUCT_IMAGE_POOL[i % PRODUCT_IMAGE_POOL.length],
           }
         }
@@ -971,23 +983,52 @@ export async function provisionTenant(
           title: string
           is_active?: boolean
           hero?: Record<string, unknown>
-          content_blocks?: Array<{ type?: string; image?: string }>
+          content_blocks?: Array<{
+            type?: string
+            image?: string
+            heading?: string
+            body?: string
+            items?: Array<{ title?: string; description?: string; image?: string }>
+          }>
         }
-        const sanitizedPages = (aiSiteConfig.pagesConfig as PageConfig[])
+        const syncedPages = syncServicesPageFromProducts(
+          aiSiteConfig.pagesConfig as PageConfig[],
+          productsWithImages
+        )
+        const sanitizedPages = syncedPages
           .slice(0, maxAdditionalPagesForTier(intakeTierForPages))
           .map(
           (page, pIdx) => ({
             ...page,
             hero: { ...(page.hero || {}), backgroundImage },
             content_blocks: Array.isArray(page.content_blocks)
-              ? page.content_blocks.map((block, bIdx) =>
-                  block.type === 'image_left' || block.type === 'image_right'
-                    ? {
-                        ...block,
-                        image: pool[(pIdx + bIdx) % pool.length],
-                      }
-                    : block
-                )
+              ? page.content_blocks.map((block, bIdx) => {
+                  if (block.type === 'image_left' || block.type === 'image_right') {
+                    return {
+                      ...block,
+                      image:
+                        (typeof block.image === 'string' && block.image) ||
+                        pool[(pIdx + bIdx) % pool.length],
+                    }
+                  }
+                  if (block.type === 'grid' && Array.isArray(block.items)) {
+                    return {
+                      ...block,
+                      items: block.items.map(
+                        (
+                          item: { title?: string; description?: string; image?: string },
+                          iIdx: number
+                        ) => ({
+                          ...item,
+                          image:
+                            (typeof item.image === 'string' && item.image) ||
+                            pool[(pIdx + bIdx + iIdx) % pool.length],
+                        })
+                      ),
+                    }
+                  }
+                  return block
+                })
               : page.content_blocks,
           })
         )

@@ -7,6 +7,12 @@ import {
   coerceThemeSlug,
 } from '@/lib/catalog/sitePresentationCatalog'
 import type { ProspectIntakeRow } from '@/lib/intake/getIntakeByToken'
+import { provisionServiceLabels } from '@/lib/intake/provisionServiceLabels'
+import {
+  reconcileAiProductsToIntake,
+  type ReconcileProduct,
+} from '@/lib/ai/reconcileAiProductsToIntake'
+import { syncServicesPageFromProducts } from '@/lib/catalog/syncServicesPageFromProducts'
 
 /** Merge resolved theme/layout into AI generate-site output and persist presentation audit blob. */
 export async function mergeAiSiteConfigWithPresentation(
@@ -47,9 +53,26 @@ export async function mergeAiSiteConfigWithPresentation(
   site.layoutStyle = layoutStyle
   site.defaultRoom = defaultRoom
 
+  // Intake services are authoritative — never let the model drop offerings.
+  const intakeLabels = provisionServiceLabels(row)
+  if (intakeLabels.length > 0) {
+    site.products = reconcileAiProductsToIntake(
+      intakeLabels,
+      Array.isArray(site.products) ? (site.products as ReconcileProduct[]) : []
+    )
+  }
+
+  const pagesConfig = Array.isArray(data.pagesConfig)
+    ? syncServicesPageFromProducts(
+        data.pagesConfig as Array<{ slug?: string; content_blocks?: unknown[] }>,
+        (site.products as ReconcileProduct[]) || []
+      )
+    : data.pagesConfig
+
   return {
     ...data,
     siteConfig: site,
+    pagesConfig,
     presentation: {
       theme,
       layoutStyle,

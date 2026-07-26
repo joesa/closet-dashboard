@@ -454,7 +454,7 @@ Match each product to a real service from the business information.
 - hero.subheadline: ONE supporting sentence (12-22 words) under the headline. Concrete substance — what is delivered, for whom, and a real proof point from the brief (years, area served, materials, guarantee). No filler, no repeating the headline.
 - about.description: 3 sentences about this ${tradeNoun} — who they help, how they work, one proof point. Specific to this trade and brand. Do NOT use architectural, closet, or home-storage language unless those ARE the actual services listed.
 - process: a 3-step how-it-works section. The steps array MUST contain exactly 3 steps, numbered '01', '02', '03' in that exact sequence. The title and subtitle MUST reflect the actual trade — do NOT use "Our Architectural Process" or "From Vision to Flawless Reality" unless the business is literally an architecture or design firm. Example adaptations: drain cleaning → "Book → Diagnose → Fix"; HVAC → "Assess → Recommend → Install"; roofing → "Inspect → Estimate → Install"; closets → "Design → Build → Install". Each step is a vivid one-sentence description.
-- CRITICAL — products[]: Generate EXACTLY ONE product entry for EACH service listed in the "Services offered" field of the business brief. The title MUST be that exact service name — do NOT add, remove, rename, or substitute services. If the brief lists "drain cleaning", the product title is "drain cleaning". If the brief lists 1 service, generate 1 product. The AI MUST NOT invent new services or replace the listed ones with anything else.
+- CRITICAL — products[]: Generate EXACTLY ONE product entry for EACH service listed in the "Services offered" field of the business brief — if the brief lists 12 services, products[] MUST have length 12. The title MUST be that exact service name — do NOT add, remove, rename, merge, or substitute services. Never collapse related offerings (e.g. keep both "Auto Painting" and "Auto Wrapping" as separate products). If the brief lists 1 service, generate 1 product. The AI MUST NOT invent new services or replace the listed ones with anything else.
 - products[].description: 2 sentences about what this specific service involves and who needs it.
 - products[].details.subtitle: a quality/tier label appropriate to the trade (for luxury closets: "Signature Collection"; for drain/plumbing: "Professional Grade"; for HVAC: "Certified Service"; for roofing: "Expert Install" — match the actual trade).
 - products[].details.longDescription: a detailed paragraph about this specific service: what is done, the tools or materials used, and the outcome for the customer. Never use closet "architectural build-out" language for non-closet trades.
@@ -478,15 +478,17 @@ For each page:
 - "hero.headline": a punchy headline specific to that page. HARD LIMIT: 6 words or fewer — some
   design variants render headlines at monumental scale, and anything longer overflows the hero
   and collides with the fixed navigation bar.
-- "content_blocks": 2 to 4 blocks of specific, useful selling copy for this exact business —
+- "content_blocks": specific, useful selling copy for this exact business —
   NEVER generic placeholders like "List the cities you serve". Sound human (see HUMAN VOICE). Vary block types:
     • "text" blocks: 2-4 sentence paragraphs (heading + body).
     • "image_left"/"image_right" blocks: heading + 2-4 sentence body (an image is auto-attached).
-    • "grid" blocks: heading + short intro body + an "items" array of 3-6 {title, description}
+    • "grid" blocks: heading + short intro body + an "items" array of {title, description}
       cards (great for FAQ Q&A, service lists, testimonials, process steps, or service-area cities).
-  Choose block types that fit the page: FAQ -> grid of Q&A; Services -> grid of services;
-  Testimonials -> grid of quotes; Service Areas -> grid of cities + a text intro; About/Process ->
-  text + image blocks. Fill every field with concrete, on-brand content. No lorem ipsum, no
+  Choose block types that fit the page: FAQ -> grid of Q&A; Services -> one intro text block PLUS
+  either a grid with ONE item per service in "Services offered" OR alternating image_left/image_right
+  blocks covering EVERY service (do not truncate to 3–4); Testimonials -> grid of quotes;
+  Service Areas -> grid of cities + a text intro; About/Process -> text + image blocks.
+  Fill every field with concrete, on-brand content. No lorem ipsum, no
   "describe your..." instructions, no empty bodies.`
 
   if (pageContents && Object.keys(pageContents).length > 0) {
