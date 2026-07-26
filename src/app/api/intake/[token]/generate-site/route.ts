@@ -34,7 +34,9 @@ export async function POST(
       return NextResponse.json({ error: depositErr }, { status: 403 })
     }
 
-    const limit = await checkRateLimit(hashRateKey('intake_ai_site', token), 3, 24 * 60 * 60 * 1000)
+    // Client used to auto-retry on failure and burn this quickly; keep a
+    // generous daily cap for legitimate regenerations after edits.
+    const limit = await checkRateLimit(hashRateKey('intake_ai_site', token), 12, 24 * 60 * 60 * 1000)
     if (!limit.allowed) {
       return NextResponse.json({ error: 'Too many AI brief generations today.' }, { status: 429 })
     }

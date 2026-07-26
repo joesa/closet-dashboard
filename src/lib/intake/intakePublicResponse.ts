@@ -1,6 +1,7 @@
 import type { ProspectIntakeRow } from '@/lib/intake/getIntakeByToken'
 import { canUseImageStudio, effectiveIntakeTier } from '@/lib/intake/intakeTierGates'
 import { parseImageSelections } from '@/lib/intake/imageSelections'
+import { extractProspectSiteConfig } from '@/lib/intake/mergeProspectImages'
 import { resolveIntakeBeforeAfterCategory } from '@/lib/intake/intakeBeforeAfter'
 import {
   depositStatusForTier,
@@ -26,7 +27,9 @@ export async function buildIntakePublicJson(row: ProspectIntakeRow) {
   )
   const selections = parseImageSelections(row.image_selections)
   const aiRaw = row.ai_site_config as Record<string, unknown> | null
-  const siteConfig = aiRaw?.siteConfig ?? aiRaw
+  // Logo-only metadata must not count as a site brief — otherwise the image
+  // studio skips brief generation and/or flickers in a retry loop.
+  const siteConfig = extractProspectSiteConfig(aiRaw)
   const payment = getIntakePaymentSummary(row)
   const widgetConfigHints =
     row.widget_config_hints && typeof row.widget_config_hints === 'object'

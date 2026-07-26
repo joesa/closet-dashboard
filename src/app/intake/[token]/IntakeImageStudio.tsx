@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import type { BeforeAfterMode, IntakeImageSelections } from '@/lib/intake/imageSelections';
 import { resolveBeforeAfterAfterUrl } from '@/lib/intake/imageSelections';
+import { extractProspectSiteConfig } from '@/lib/intake/mergeProspectImages';
 import { buildBeforeImagePrompt, getBeforeAfterCategory } from '@/lib/images/beforeAfterPrompt';
 import { resolveIndustrySlug } from '@/lib/catalog/serviceCatalog';
 
@@ -12,6 +13,9 @@ type SiteConfigShape = {
   hero?: { imagePrompt?: string; headline?: string };
   products?: Array<{ title?: string; imagePrompt?: string; description?: string }>;
 };
+
+/** Empty brief stub — lets the studio render with default prompts when AI brief fails. */
+const EMPTY_SITE_BRIEF: SiteConfigShape = {};
 
 type Props = {
   token: string;
@@ -170,11 +174,25 @@ export default function IntakeImageStudio({
   formState,
   isActive,
 }: Props) {
-  const [siteConfig, setSiteConfig] = useState<SiteConfigShape | null>(initialSite);
+  // Logo-only / metadata blobs are not a usable art-direction brief.
+  const [siteConfig, setSiteConfig] = useState<SiteConfigShape | null>(
+    () => extractProspectSiteConfig(initialSite)
+  );
   const [selections, setSelections] = useState(initialSelections);
   const [briefLoading, setBriefLoading] = useState(false);
+  const [briefWarning, setBriefWarning] = useState('');
   const [genLoading, setGenLoading] = useState<string | null>(null);
   const [error, setError] = useState('');
+  const briefAttemptedRef = useRef(false);
+  const autoGenStartedRef = useRef(false);
+  const selectionsRef = useRef(selections);
+  const productsRef = useRef<
+    Array<{ serviceName: string; index: number; prompt: string; description: string }>
+  >([]);
+  const heroPromptRef = useRef('');
+  const generateBatchRef = useRef<
+    ((slot: StudioSlot, prompt: string, productIndex?: number) => Promise<void>) | null
+  >(null);
   const [preview, setPreview] = useState<{
     url: string;
     slot: StudioSlot;
@@ -272,35 +290,81 @@ export default function IntakeImageStudio({
     }
   }, [initialBeforeAfterApplicable]);
 
-  const runBrief = async () => {
+  const proceedWithoutBrief = (warning: string) => {
+    setBriefWarning(warning);
+    setSiteConfig(EMPTY_SITE_BRIEF);
+    onUpdate(selections, EMPTY_SITE_BRIEF);
+  };
+
+  const runBrief = async (opts?: { manual?: boolean }) => {
+    if (briefLoading) return;
+    if (!opts?.manual && briefAttemptedRef.current) return;
+    briefAttemptedRef.current = true;
     setBriefLoading(true);
     setError('');
+    setBriefWarning('');
     try {
+      // Send only the fields generate-site reads — never gallery/logo data URLs.
+      const briefBody = {
+        pages,
+        businessName: formState?.businessName,
+        industry: formState?.industry,
+        contactName: formState?.contactName,
+        contactEmail: formState?.contactEmail,
+        contactPhone: formState?.contactPhone,
+        streetAddress: formState?.streetAddress,
+        addressLocality: formState?.addressLocality,
+        addressRegion: formState?.addressRegion,
+        postalCode: formState?.postalCode,
+        serviceArea: formState?.serviceArea,
+        notificationEmail: formState?.notificationEmail,
+        notificationPhone: formState?.notificationPhone,
+        services: formState?.services,
+        otherServices: formState?.otherServices,
+        pricingNotes: formState?.pricingNotes,
+        primaryColorHex: formState?.primaryColorHex,
+        vibe: formState?.vibe,
+        tone: formState?.tone,
+        customers: formState?.customers,
+        experience: formState?.experience,
+        differentiators: formState?.differentiators,
+        primaryCta: formState?.primaryCta,
+        desiredDomain: formState?.desiredDomain,
+        domainPurchaseRequested: formState?.domainPurchaseRequested,
+        includeQuiz: formState?.includeQuiz,
+        notes: formState?.notes,
+        pageContents: formState?.pageContents,
+      };
       const res = await fetch(`/api/intake/${token}/generate-site`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pages, ...formState }),
+        body: JSON.stringify(briefBody),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Brief generation failed');
-      const sc = (json.data?.siteConfig ?? json.data) as SiteConfigShape;
-      setSiteConfig(sc);
+      const raw = json.data?.siteConfig ?? json.data;
+      const sc = (extractProspectSiteConfig(raw) ?? raw) as SiteConfigShape;
+      setSiteConfig(sc && typeof sc === 'object' ? sc : EMPTY_SITE_BRIEF);
       if (typeof json.beforeAfterApplicable === 'boolean') {
         setServerBeforeAfterApplicable(json.beforeAfterApplicable);
       }
-      onUpdate(selections, sc);
+      onUpdate(selections, sc && typeof sc === 'object' ? sc : EMPTY_SITE_BRIEF);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Brief generation failed');
+      const message = e instanceof Error ? e.message : 'Brief generation failed';
+      // Don't block the studio — default prompts still produce usable images.
+      proceedWithoutBrief(
+        `${message} Using default image prompts so you can continue.`
+      );
     } finally {
       setBriefLoading(false);
     }
   };
 
-  // Auto-trigger brief when this step becomes active
+  // Auto-trigger brief once when this step becomes active. Never loop on failure
+  // (that caused the "Building AI brief…" flicker when rate-limited).
   React.useEffect(() => {
-    if (isActive && !siteConfig && !briefLoading) {
-      void runBrief();
-    }
+    if (!isActive || siteConfig || briefLoading || briefAttemptedRef.current) return;
+    void runBrief();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isActive, siteConfig, briefLoading]);
 
@@ -313,6 +377,12 @@ export default function IntakeImageStudio({
       setServerBeforeAfterApplicable(false);
       return;
     }
+    if (slot === 'before' && !resolveBeforeAfterAfterUrl(selectionsRef.current)) {
+      setError(
+        'Select or upload an after photo first — the before photo is derived from it.'
+      );
+      return;
+    }
     const key = slot === 'hero' ? 'hero' : slot === 'before' ? 'before' : `product-${productIndex}`;
     setGenLoading(key);
     setError('');
@@ -320,7 +390,12 @@ export default function IntakeImageStudio({
       const res = await fetch(`/api/intake/${token}/generate-images`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ slot, prompt, productIndex, serviceNames: services }),
+        body: JSON.stringify({
+          slot,
+          prompt,
+          ...(slot === 'product' ? { productIndex } : {}),
+          serviceNames: services,
+        }),
       });
       const json = await res.json();
       if (!res.ok) {
@@ -352,31 +427,38 @@ export default function IntakeImageStudio({
     }
   };
 
-  // Auto-trigger sequential image generation
-  const [autoGenStarted, setAutoGenStarted] = useState(false);
-  
+  selectionsRef.current = selections;
+  productsRef.current = products;
+  heroPromptRef.current = heroPrompt;
+  generateBatchRef.current = generateBatch;
+
+  // Auto-trigger sequential image generation once per brief — deps must NOT
+  // include selections/products or each batch completion restarts the chain.
   React.useEffect(() => {
-    if (!isActive || !siteConfig || autoGenStarted) return;
-    
+    if (!isActive || !siteConfig || autoGenStartedRef.current) return;
+    autoGenStartedRef.current = true;
+
     const runSequentialGen = async () => {
-      setAutoGenStarted(true);
-      
-      // Hero
-      if (!selections.hero.selectedUrl && (selections.hero.attemptsUsed ?? 0) === 0) {
-        await generateBatch('hero', heroPrompt);
+      const gen = generateBatchRef.current;
+      if (!gen) return;
+      const current = selectionsRef.current;
+      const hero = heroPromptRef.current;
+
+      if (!current.hero.selectedUrl && (current.hero.attemptsUsed ?? 0) === 0) {
+        await gen('hero', hero);
       }
-      
-      // Products
-      for (const p of products) {
-        const slotState = selections.products.find((x) => x.serviceName === p.serviceName);
+
+      for (const p of productsRef.current) {
+        const latest = selectionsRef.current;
+        const slotState = latest.products.find((x) => x.serviceName === p.serviceName);
         if (!slotState?.selectedUrl && (slotState?.attemptsUsed ?? 0) === 0) {
-          await generateBatch('product', p.prompt, p.index);
+          await gen('product', p.prompt, p.index);
         }
       }
     };
-    
+
     void runSequentialGen();
-  }, [isActive, siteConfig, autoGenStarted, selections, products, heroPrompt]);
+  }, [isActive, siteConfig]);
 
   const selectImage = async (
     slot: StudioSlot,
@@ -742,7 +824,7 @@ export default function IntakeImageStudio({
           id="btn-build-ai-brief"
           type="button"
           disabled={briefLoading}
-          onClick={() => void runBrief()}
+          onClick={() => void runBrief({ manual: true })}
           className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500 disabled:opacity-50"
         >
           {briefLoading ? (
@@ -757,6 +839,24 @@ export default function IntakeImageStudio({
             'Generate AI brief from your answers'
           )}
         </button>
+      )}
+
+      {briefWarning && siteConfig && (
+        <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+          {briefWarning}{' '}
+          <button
+            type="button"
+            className="font-semibold underline"
+            onClick={() => {
+              briefAttemptedRef.current = false;
+              setSiteConfig(null);
+              autoGenStartedRef.current = false;
+              void runBrief({ manual: true });
+            }}
+          >
+            Retry AI brief
+          </button>
+        </p>
       )}
 
       {siteConfig && (

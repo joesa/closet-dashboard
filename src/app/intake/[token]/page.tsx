@@ -2,6 +2,7 @@ import { getIntakeByToken } from '@/lib/intake/getIntakeByToken'
 import { buildIntakePublicJson } from '@/lib/intake/intakePublicResponse'
 import { healIntakeTierFromPayments } from '@/lib/intake/intakeTierGates'
 import { parseImageSelections } from '@/lib/intake/imageSelections'
+import { extractProspectSiteConfig } from '@/lib/intake/mergeProspectImages'
 import { getTierCatalog } from '@/lib/intake/tiers'
 import IntakeFormClient from './IntakeFormClient'
 
@@ -42,7 +43,7 @@ export default async function IntakePage({
       tierAlreadySelected={pub.tierSelected}
       canUseImageStudio={pub.canUseImageStudio}
       tierCatalog={getTierCatalog()}
-      aiSiteConfig={(aiRaw?.siteConfig ?? aiRaw) as Record<string, unknown> | null}
+      aiSiteConfig={extractProspectSiteConfig(aiRaw) as Record<string, unknown> | null}
       widgetConfigHints={healed.widget_config_hints ?? null}
       imageSelections={parseImageSelections(healed.image_selections)}
       beforeAfterApplicable={pub.beforeAfterApplicable}
