@@ -478,7 +478,7 @@ export async function uploadSiteAsset(
 
   const { error } = await supabase.storage
     .from(SITE_ASSETS_BUCKET)
-    .upload(filePath, buffer, {
+    .upload(filePath, new Uint8Array(buffer), {
       contentType: 'image/png',
       upsert: true,
     })

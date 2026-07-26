@@ -60,13 +60,50 @@ export async function POST(
 
     const kind = resolveKind(form.get('kind'))
     const stamp = Date.now()
-    const buffer = Buffer.from(await file.arrayBuffer())
+    const bytes = new Uint8Array(await file.arrayBuffer())
+    if (bytes.byteLength < 32) {
+      return NextResponse.json({ error: 'Image file is empty or invalid.' }, { status: 400 })
+    }
+    const buffer = Buffer.from(bytes)
     const url = await uploadOptimizedBuffer(
       buffer,
       `intakes/${token}/uploads/${kind}-${stamp}`,
       kind,
       file.type || 'image/jpeg'
     )
+
+    // Fail closed if storage ever mangles binary again — don't select a broken URL.
+    const probe = await fetch(url, { method: 'GET', cache: 'no-store' })
+    if (!probe.ok) {
+      return NextResponse.json({ error: 'Upload succeeded but file is not readable.' }, { status: 500 })
+    }
+    const uploaded = Buffer.from(await probe.arrayBuffer())
+    // JPEG SOI or PNG signature — reject UTF-8-corrupted payloads (contain U+FFFD).
+    const isJpeg = uploaded[0] === 0xff && uploaded[1] === 0xd8
+    const isPng =
+      uploaded[0] === 0x89 &&
+      uploaded[1] === 0x50 &&
+      uploaded[2] === 0x4e &&
+      uploaded[3] === 0x47
+    const isWebp =
+      uploaded[0] === 0x52 &&
+      uploaded[1] === 0x49 &&
+      uploaded[2] === 0x46 &&
+      uploaded[3] === 0x46 &&
+      uploaded[8] === 0x57 &&
+      uploaded[9] === 0x45 &&
+      uploaded[10] === 0x42 &&
+      uploaded[11] === 0x50
+    if (!isJpeg && !isPng && !isWebp) {
+      console.error('intake upload-image: corrupt object uploaded', {
+        url,
+        head: [...uploaded.subarray(0, 16)],
+      })
+      return NextResponse.json(
+        { error: 'Uploaded image was corrupted in storage. Please try again.' },
+        { status: 500 }
+      )
+    }
 
     return NextResponse.json({ success: true, url })
   } catch (error) {

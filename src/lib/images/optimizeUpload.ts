@@ -66,10 +66,9 @@ export async function optimizeUserImage(
     return { buffer, mime: 'image/png', ext: 'png' }
   }
 
-  // Hero/gallery/product: WebP at high quality — great compression without
-  // the mushy look of aggressive JPEG recompression on customer photos.
-  const buffer = await pipeline
-    .webp({ quality: profile.quality, effort: 4, smartSubsample: true })
-    .toBuffer()
-  return { buffer, mime: 'image/webp', ext: 'webp' }
+  // Prefer JPEG for user-uploaded photos. WebP is fine when the upload path is
+  // healthy, but JPEG is universally decodable and avoids a class of storage
+  // client bugs that corrupted WebP binaries in production.
+  const buffer = await pipeline.jpeg({ quality: profile.quality, mozjpeg: true }).toBuffer()
+  return { buffer, mime: 'image/jpeg', ext: 'jpg' }
 }

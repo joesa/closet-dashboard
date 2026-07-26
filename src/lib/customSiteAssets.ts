@@ -202,7 +202,12 @@ export async function uploadCustomSiteAsset(opts: {
   })
 
   const supabase = getSupabaseAdmin()
-  const { error } = await supabase.storage.from(SITE_ASSETS_BUCKET).upload(path, opts.buffer, {
+  const body = new Uint8Array(
+    opts.buffer.buffer,
+    opts.buffer.byteOffset,
+    opts.buffer.byteLength
+  )
+  const { error } = await supabase.storage.from(SITE_ASSETS_BUCKET).upload(path, body, {
     contentType,
     upsert: false,
   })

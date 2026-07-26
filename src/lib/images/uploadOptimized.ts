@@ -27,12 +27,18 @@ export async function uploadPreparedImage(
   storagePath: string
 ): Promise<string> {
   const supabase = getSupabaseAdmin()
-  const { error } = await supabase.storage
-    .from(SITE_ASSETS_BUCKET)
-    .upload(storagePath, image.buffer, {
-      contentType: image.mime,
-      upsert: true,
-    })
+  // IMPORTANT: pass Uint8Array, not Node Buffer. On some Vercel/runtime stacks
+  // supabase-js stringifies Buffer as UTF-8, which replaces non-text bytes with
+  // U+FFFD and produces a 200 OK upload of a corrupt image (broken <img>).
+  const body = new Uint8Array(
+    image.buffer.buffer,
+    image.buffer.byteOffset,
+    image.buffer.byteLength
+  )
+  const { error } = await supabase.storage.from(SITE_ASSETS_BUCKET).upload(storagePath, body, {
+    contentType: image.mime,
+    upsert: true,
+  })
   if (error) throw error
   return supabase.storage.from(SITE_ASSETS_BUCKET).getPublicUrl(storagePath).data.publicUrl
 }

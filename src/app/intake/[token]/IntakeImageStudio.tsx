@@ -775,10 +775,8 @@ export default function IntakeImageStudio({
     slotState: IntakeImageSelections['hero'] | IntakeImageSelections['products'][0],
     productIndex?: number
   ) => {
-    const attemptsUsed = Math.max(
-      slotState.attemptsUsed ?? 0,
-      Array.isArray(slotState.history) ? slotState.history.length : 0
-    );
+    // Only AI generations burn attempts — custom uploads live in history too.
+    const attemptsUsed = slotState.attemptsUsed ?? 0;
     const max = 5;
     const lastBatch = slotState.history?.[slotState.history.length - 1];
     const genKey = slot === 'hero' ? 'hero' : slot === 'before' ? 'before' : `product-${productIndex}`;
