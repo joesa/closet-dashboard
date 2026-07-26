@@ -10,7 +10,7 @@ import { checkRateLimit, hashRateKey } from '@/lib/rateLimit'
 import { clampPagesForTier, pageSlugsToSitemap, SITE_PAGE_SLUGS } from '@/lib/catalog/sitePages'
 import { OTHER_SERVICE_LABEL } from '@/lib/catalog/contractorServices'
 
-export const maxDuration = 60
+export const maxDuration = 120
 export const runtime = 'nodejs'
 
 export async function POST(

@@ -29,6 +29,18 @@ export async function POST(
     const { row } = loaded
 
     const body = await req.json()
+    // Reject inline data: URLs — phone photos blow past the platform body limit
+    // (413). Clients must upload via /upload-image first and send HTTPS URLs.
+    const rawBody = JSON.stringify(body)
+    if (rawBody.includes('data:image')) {
+      return NextResponse.json(
+        {
+          error:
+            'Image uploads must use /upload-image first (payload too large for inline photos).',
+        },
+        { status: 413 }
+      )
+    }
     const selections = syncProductSlots(
       parseImageSelections(body),
       resolveStudioServiceNames(row, body.serviceNames)

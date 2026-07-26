@@ -4,6 +4,7 @@ import React, { useMemo, useRef, useState } from 'react';
 import type { BeforeAfterMode, IntakeImageSelections } from '@/lib/intake/imageSelections';
 import { resolveBeforeAfterAfterUrl } from '@/lib/intake/imageSelections';
 import { extractProspectSiteConfig } from '@/lib/intake/mergeProspectImages';
+import { fileToUploadJpegBlob } from '@/lib/images/fileToUploadBlob';
 import { buildBeforeImagePrompt, getBeforeAfterCategory } from '@/lib/images/beforeAfterPrompt';
 import { resolveIndustrySlug } from '@/lib/catalog/serviceCatalog';
 
@@ -296,6 +297,34 @@ export default function IntakeImageStudio({
     onUpdate(selections, EMPTY_SITE_BRIEF);
   };
 
+  const uploadStudioFile = async (
+    file: File,
+    kind: 'hero' | 'product' | 'before' | 'after'
+  ): Promise<string> => {
+    const blob = await fileToUploadJpegBlob(file);
+    const fd = new FormData();
+    fd.append('file', blob, 'upload.jpg');
+    fd.append('kind', kind === 'after' ? 'hero' : kind);
+    const res = await fetch(`/api/intake/${token}/upload-image`, {
+      method: 'POST',
+      body: fd,
+    });
+    let json: { error?: string; url?: string } = {};
+    try {
+      json = await res.json();
+    } catch {
+      throw new Error(
+        res.status === 413
+          ? 'Image is too large to upload. Try a smaller photo.'
+          : 'Upload failed'
+      );
+    }
+    if (!res.ok || !json.url) {
+      throw new Error(json.error || 'Upload failed');
+    }
+    return json.url;
+  };
+
   const runBrief = async (opts?: { manual?: boolean }) => {
     if (briefLoading) return;
     if (!opts?.manual && briefAttemptedRef.current) return;
@@ -303,6 +332,9 @@ export default function IntakeImageStudio({
     setBriefLoading(true);
     setError('');
     setBriefWarning('');
+    const controller = new AbortController();
+    // Don't wait for a platform 504 — fall back to defaults and keep moving.
+    const abortTimer = window.setTimeout(() => controller.abort(), 55_000);
     try {
       // Send only the fields generate-site reads — never gallery/logo data URLs.
       const briefBody = {
@@ -339,10 +371,24 @@ export default function IntakeImageStudio({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(briefBody),
+        signal: controller.signal,
       });
-      const json = await res.json();
+      let json: {
+        error?: string;
+        data?: { siteConfig?: SiteConfigShape } | SiteConfigShape;
+        beforeAfterApplicable?: boolean;
+      } = {};
+      try {
+        json = await res.json();
+      } catch {
+        throw new Error(
+          res.status === 504
+            ? 'AI brief timed out'
+            : 'Brief generation failed'
+        );
+      }
       if (!res.ok) throw new Error(json.error || 'Brief generation failed');
-      const raw = json.data?.siteConfig ?? json.data;
+      const raw = (json.data as { siteConfig?: SiteConfigShape } | undefined)?.siteConfig ?? json.data;
       const sc = (extractProspectSiteConfig(raw) ?? raw) as SiteConfigShape;
       setSiteConfig(sc && typeof sc === 'object' ? sc : EMPTY_SITE_BRIEF);
       if (typeof json.beforeAfterApplicable === 'boolean') {
@@ -350,12 +396,18 @@ export default function IntakeImageStudio({
       }
       onUpdate(selections, sc && typeof sc === 'object' ? sc : EMPTY_SITE_BRIEF);
     } catch (e) {
-      const message = e instanceof Error ? e.message : 'Brief generation failed';
+      const message =
+        e instanceof Error && e.name === 'AbortError'
+          ? 'AI brief timed out'
+          : e instanceof Error
+            ? e.message
+            : 'Brief generation failed';
       // Don't block the studio — default prompts still produce usable images.
       proceedWithoutBrief(
-        `${message} Using default image prompts so you can continue.`
+        `${message}. Using default image prompts so you can continue.`
       );
     } finally {
+      window.clearTimeout(abortTimer);
       setBriefLoading(false);
     }
   };
@@ -489,83 +541,79 @@ export default function IntakeImageStudio({
   ) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    e.target.value = '';
 
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      const dataUrl = event.target?.result as string;
-      if (!dataUrl) return;
-
-      const attemptRecord = {
-        attempt: (Date.now() % 1000000), // unique pseudo-attempt ID
-        urls: [dataUrl],
-        prompt: 'Custom user upload',
-      };
-
-      let newSelections: IntakeImageSelections;
-      if (slot === 'hero') {
-        newSelections = {
-          ...selections,
-          hero: {
-            ...selections.hero,
-            selectedUrl: dataUrl,
-            selectedAttempt: attemptRecord.attempt,
-            history: [...(selections.hero.history || []), attemptRecord],
-          },
-        };
-      } else if (slot === 'before') {
-        const beforeState = selections.beforeAfter ?? { attemptsUsed: 0, history: [] };
-        newSelections = {
-          ...selections,
-          beforeAfter: {
-            ...beforeState,
-            enabled: true,
-            selectedUrl: dataUrl,
-            selectedAttempt: attemptRecord.attempt,
-            history: [...(beforeState.history || []), attemptRecord],
-          },
-        };
-      } else {
-        const productsList = [...selections.products];
-        const idx = productsList.findIndex((p) => p.productIndex === productIndex);
-        if (idx >= 0) {
-          productsList[idx] = {
-            ...productsList[idx],
-            selectedUrl: dataUrl,
-            selectedAttempt: attemptRecord.attempt,
-            history: [...(productsList[idx].history || []), attemptRecord],
-          };
-        } else if (productIndex !== undefined) {
-          productsList.push({
-            serviceName: products[productIndex]?.serviceName || `Service ${productIndex}`,
-            productIndex,
-            attemptsUsed: 0,
-            selectedUrl: dataUrl,
-            selectedAttempt: attemptRecord.attempt,
-            history: [attemptRecord],
-          });
-        }
-        newSelections = { ...selections, products: productsList };
-      }
-
-      setSelections(newSelections);
-      onUpdate(newSelections, siteConfig);
-
+    void (async () => {
+      setError('');
+      setGenLoading(slot === 'hero' ? 'hero' : slot === 'before' ? 'before' : `product-${productIndex}`);
       try {
-        const res = await fetch(`/api/intake/${token}/image-selection`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...newSelections, serviceNames: services }),
-        });
-        const json = await res.json();
-        if (res.ok && json.imageSelections) {
-          setSelections(json.imageSelections);
-          onUpdate(json.imageSelections, siteConfig);
+        const url = await uploadStudioFile(
+          file,
+          slot === 'product' ? 'product' : slot === 'before' ? 'before' : 'hero'
+        );
+        const attemptRecord = {
+          attempt: Date.now() % 1000000,
+          urls: [url],
+          prompt: 'Custom user upload',
+        };
+
+        let newSelections: IntakeImageSelections;
+        if (slot === 'hero') {
+          newSelections = {
+            ...selectionsRef.current,
+            hero: {
+              ...selectionsRef.current.hero,
+              selectedUrl: url,
+              selectedAttempt: attemptRecord.attempt,
+              history: [...(selectionsRef.current.hero.history || []), attemptRecord],
+            },
+          };
+        } else if (slot === 'before') {
+          const beforeState = selectionsRef.current.beforeAfter ?? {
+            attemptsUsed: 0,
+            history: [],
+          };
+          newSelections = {
+            ...selectionsRef.current,
+            beforeAfter: {
+              ...beforeState,
+              enabled: true,
+              selectedUrl: url,
+              selectedAttempt: attemptRecord.attempt,
+              history: [...(beforeState.history || []), attemptRecord],
+            },
+          };
+        } else {
+          const productsList = [...selectionsRef.current.products];
+          const idx = productsList.findIndex((p) => p.productIndex === productIndex);
+          if (idx >= 0) {
+            productsList[idx] = {
+              ...productsList[idx],
+              selectedUrl: url,
+              selectedAttempt: attemptRecord.attempt,
+              history: [...(productsList[idx].history || []), attemptRecord],
+            };
+          } else if (productIndex !== undefined) {
+            productsList.push({
+              serviceName: productsRef.current[productIndex]?.serviceName || `Service ${productIndex}`,
+              productIndex,
+              attemptsUsed: 0,
+              selectedUrl: url,
+              selectedAttempt: attemptRecord.attempt,
+              history: [attemptRecord],
+            });
+          }
+          newSelections = { ...selectionsRef.current, products: productsList };
         }
+
+        await persistSelections(newSelections);
       } catch (err) {
         console.error('Failed to save custom upload to server', err);
+        setError(err instanceof Error ? err.message : 'Failed to upload image');
+      } finally {
+        setGenLoading(null);
       }
-    };
-    reader.readAsDataURL(file);
+    })();
   };
 
   const persistSelections = async (next: IntakeImageSelections) => {
@@ -577,14 +625,27 @@ export default function IntakeImageStudio({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...next, serviceNames: services }),
       });
-      const json = await res.json();
-      if (res.ok && json.imageSelections) {
+      let json: { error?: string; imageSelections?: IntakeImageSelections } = {};
+      try {
+        json = await res.json();
+      } catch {
+        throw new Error(
+          res.status === 413
+            ? 'Image payload too large. Re-upload the photo and try again.'
+            : 'Failed to save image selections'
+        );
+      }
+      if (!res.ok) {
+        throw new Error(json.error || 'Failed to save image selections');
+      }
+      if (json.imageSelections) {
         setSelections(json.imageSelections);
         onUpdate(json.imageSelections, siteConfig);
         return json.imageSelections as IntakeImageSelections;
       }
     } catch (err) {
       console.error('Failed to save image selections', err);
+      setError(err instanceof Error ? err.message : 'Failed to save image selections');
     }
     return next;
   };
@@ -635,41 +696,51 @@ export default function IntakeImageStudio({
   ) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      const dataUrl = event.target?.result as string;
-      if (!dataUrl) return;
-      const beforeState = selections.beforeAfter ?? { attemptsUsed: 0, history: [] };
-      if (side === 'after') {
-        const next = await patchBeforeAfter({
-          enabled: true,
-          afterSelectedUrl: dataUrl,
-          afterUrl: dataUrl,
-        });
-        const ba = next.beforeAfter;
-        if (
-          ba?.mode === 'ai_from_after' &&
-          !ba.selectedUrl &&
-          (ba.attemptsUsed ?? 0) === 0
-        ) {
-          void generateBatch('before', '');
-        }
-      } else {
-        const attemptRecord = {
-          attempt: Date.now() % 1000000,
-          urls: [dataUrl],
-          prompt: 'Custom user upload',
-        };
-        await patchBeforeAfter({
-          enabled: true,
-          selectedUrl: dataUrl,
-          selectedAttempt: attemptRecord.attempt,
-          history: [...(beforeState.history || []), attemptRecord],
-        });
-      }
-    };
-    reader.readAsDataURL(file);
     e.target.value = '';
+
+    void (async () => {
+      setError('');
+      setGenLoading('before');
+      try {
+        const url = await uploadStudioFile(file, side);
+        const beforeState = selectionsRef.current.beforeAfter ?? {
+          attemptsUsed: 0,
+          history: [],
+        };
+        if (side === 'after') {
+          const next = await patchBeforeAfter({
+            enabled: true,
+            afterSelectedUrl: url,
+            afterUrl: url,
+          });
+          const ba = next.beforeAfter;
+          if (
+            ba?.mode === 'ai_from_after' &&
+            !ba.selectedUrl &&
+            (ba.attemptsUsed ?? 0) === 0 &&
+            resolveBeforeAfterAfterUrl(next)
+          ) {
+            void generateBatch('before', '');
+          }
+        } else {
+          const attemptRecord = {
+            attempt: Date.now() % 1000000,
+            urls: [url],
+            prompt: 'Custom user upload',
+          };
+          await patchBeforeAfter({
+            enabled: true,
+            selectedUrl: url,
+            selectedAttempt: attemptRecord.attempt,
+            history: [...(beforeState.history || []), attemptRecord],
+          });
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to upload image');
+      } finally {
+        setGenLoading(null);
+      }
+    })();
   };
 
   const setBeforeAfterEnabled = async (enabled: boolean) => {
@@ -681,11 +752,16 @@ export default function IntakeImageStudio({
 
   const setBeforeAfterMode = async (mode: BeforeAfterMode) => {
     const next = await patchBeforeAfter({ enabled: true, mode });
-    // AI path: if we already have an after (dedicated or hero), offer generation.
+    // AI path: if we already have a hosted after (dedicated or hero), offer generation.
     if (mode === 'ai_from_after') {
       const after = resolveBeforeAfterAfterUrl(next);
       const ba = next.beforeAfter;
-      if (after && !ba?.selectedUrl && (ba?.attemptsUsed ?? 0) === 0) {
+      if (
+        after &&
+        !after.startsWith('data:') &&
+        !ba?.selectedUrl &&
+        (ba?.attemptsUsed ?? 0) === 0
+      ) {
         void generateBatch('before', '');
       }
     }
