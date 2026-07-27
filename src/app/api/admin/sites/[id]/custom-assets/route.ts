@@ -150,7 +150,7 @@ export async function POST(
       }
 
       if (body.action === 'complete') {
-        // After direct PUT to Supabase — optionally apply into draft.
+        // After direct PUT to Supabase — optimize images, optionally apply into draft.
         if (!body.url?.trim() || !body.path?.trim()) {
           return NextResponse.json(
             { error: 'complete requires url and path' },
@@ -161,14 +161,37 @@ export async function POST(
           body.kind === 'video' || body.kind === 'image' || body.kind === 'file'
             ? body.kind
             : 'file'
+        let assetUrl = body.url.trim()
+        let assetPath = body.path.trim()
+        let assetSize: number | null =
+          typeof body.size === 'number' ? body.size : null
+        let assetContentType: string | null = body.mime || null
+        let assetName = String(body.label || body.fileName || 'Asset').slice(0, 120)
+
+        if (kind === 'image') {
+          const { finalizeCustomImageAfterDirectUpload } = await import(
+            '@/lib/customSiteAssets'
+          )
+          const optimized = await finalizeCustomImageAfterDirectUpload({
+            tenantId,
+            path: assetPath,
+            publicUrl: assetUrl,
+            fileName: assetName,
+          })
+          assetUrl = optimized.url
+          assetPath = optimized.path
+          assetSize = optimized.size
+          assetContentType = optimized.contentType
+          assetName = optimized.name
+        }
+
         const apply = String(body.apply || 'none').trim()
-        const label = String(body.label || 'Asset').slice(0, 120)
         const applied = await applyAssetUrl({
           tenantId,
           apply,
-          url: body.url.trim(),
+          url: assetUrl,
           kind,
-          label,
+          label: assetName,
         })
         await logAdminAction({
           actor: adminUser,
@@ -176,20 +199,21 @@ export async function POST(
           targetType: 'tenant',
           targetId: tenantId,
           metadata: {
-            path: body.path.trim(),
+            path: assetPath,
             kind,
-            size: typeof body.size === 'number' ? body.size : null,
+            size: assetSize,
             applied,
             direct: true,
+            optimized: kind === 'image',
           },
         })
         return NextResponse.json({
           asset: {
-            name: label,
-            path: body.path.trim(),
-            url: body.url.trim(),
-            size: typeof body.size === 'number' ? body.size : null,
-            contentType: body.mime || null,
+            name: assetName,
+            path: assetPath,
+            url: assetUrl,
+            size: assetSize,
+            contentType: assetContentType,
             kind,
             updatedAt: new Date().toISOString(),
           },

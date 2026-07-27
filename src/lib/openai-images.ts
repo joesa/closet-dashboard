@@ -465,19 +465,18 @@ export async function generateSquareImage(prompt: string): Promise<Buffer> {
 
 /**
  * Upload an image buffer to the public `site-assets` bucket under
- * `<slug>/<key>.png` and return its permanent public URL. `upsert` lets the
- * operator regenerate a build's images without colliding on the same path.
+ * `<slug>/<key>.jpg` (optimized) and return its permanent public URL.
+ * `upsert` lets the operator regenerate a build's images without colliding.
  */
 export async function uploadSiteAsset(
   buffer: Buffer,
   slug: string,
   key: string
 ): Promise<string> {
-  const { uploadPreparedImage } = await import('@/lib/images/uploadOptimized')
-  return uploadPreparedImage(
-    { buffer, mime: 'image/png', ext: 'png' },
-    `${slug}/${key}.png`
-  )
+  const { uploadOptimizedBuffer } = await import('@/lib/images/uploadOptimized')
+  const kind =
+    /hero|banner|cover/i.test(key) ? 'hero' : /before|after|logo/i.test(key) ? 'gallery' : 'product'
+  return uploadOptimizedBuffer(buffer, `${slug}/${key}`, kind, 'image/png')
 }
 
 /**

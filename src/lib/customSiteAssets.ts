@@ -182,6 +182,7 @@ export async function createCustomSiteAssetUpload(opts: {
  * Upload a custom-site asset to the public site-assets bucket under
  * custom/<tenantId>/<stamp>-<name> and return its permanent CDN URL.
  * Prefer createCustomSiteAssetUpload + client PUT for files over ~4MB.
+ * Images are always sharp-optimized (JPEG/mozjpeg) before storage.
  */
 export async function uploadCustomSiteAsset(opts: {
   tenantId: string
@@ -195,6 +196,30 @@ export async function uploadCustomSiteAsset(opts: {
     size: opts.buffer.length,
     kindHint: opts.kindHint,
   })
+
+  if (kind === 'image' && opts.mime !== 'image/svg+xml') {
+    const { optimizeUserImage } = await import('@/lib/images/optimizeUpload')
+    const { uploadPreparedImage } = await import('@/lib/images/uploadOptimized')
+    const imageKind = guessImageUploadKind(opts.fileName)
+    const optimized = await optimizeUserImage(opts.buffer, imageKind, opts.mime)
+    const { path, name } = buildStoragePath({
+      tenantId: opts.tenantId,
+      fileName: opts.fileName.replace(/\.[^.]+$/, `.${optimized.ext}`),
+      mime: optimized.mime,
+    })
+    const url = await uploadPreparedImage(optimized, path)
+    return {
+      name,
+      path,
+      url,
+      size: optimized.buffer.length,
+      contentType: optimized.mime,
+      kind,
+      updatedAt: new Date().toISOString(),
+      source: 'custom',
+    }
+  }
+
   const { path, name, contentType } = buildStoragePath({
     tenantId: opts.tenantId,
     fileName: opts.fileName,
@@ -225,6 +250,55 @@ export async function uploadCustomSiteAsset(opts: {
     updatedAt: new Date().toISOString(),
     source: 'custom',
   }
+}
+
+/** Infer sharp profile from a file name. */
+export function guessImageUploadKind(
+  fileName: string
+): 'logo' | 'gallery' | 'hero' | 'product' | 'general' {
+  const n = (fileName || '').toLowerCase()
+  if (/\b(logo|wordmark|brand)\b/.test(n)) return 'logo'
+  if (/\b(hero|banner|splash|cover)\b/.test(n)) return 'hero'
+  if (/\b(product|service|card)\b/.test(n)) return 'product'
+  if (/\b(gallery|portfolio|before|after)\b/.test(n)) return 'gallery'
+  return 'general'
+}
+
+/**
+ * After a direct signed PUT of an image, download → optimize → re-upload and
+ * return the optimized CDN URL (replaces the raw upload when possible).
+ */
+export async function finalizeCustomImageAfterDirectUpload(opts: {
+  tenantId: string
+  path: string
+  publicUrl: string
+  fileName?: string
+}): Promise<CustomAssetRecord> {
+  const res = await fetch(opts.publicUrl)
+  if (!res.ok) {
+    throw new Error(`Could not fetch uploaded image (${res.status})`)
+  }
+  const mime = (res.headers.get('content-type') || 'image/jpeg').split(';')[0].trim()
+  if (mime === 'image/svg+xml') {
+    return {
+      name: opts.fileName || opts.path.split('/').pop() || 'image.svg',
+      path: opts.path,
+      url: opts.publicUrl,
+      size: Number(res.headers.get('content-length') || 0) || null,
+      contentType: mime,
+      kind: 'image',
+      updatedAt: new Date().toISOString(),
+      source: 'custom',
+    }
+  }
+  const buf = Buffer.from(await res.arrayBuffer())
+  return uploadCustomSiteAsset({
+    tenantId: opts.tenantId,
+    buffer: buf,
+    fileName: opts.fileName || opts.path.split('/').pop() || 'upload.jpg',
+    mime,
+    kindHint: 'image',
+  })
 }
 
 async function listStoragePrefix(

@@ -14,11 +14,12 @@ type Profile = {
  * still look premium on the live site.
  */
 const PROFILES: Record<ImageUploadKind, Profile> = {
-  logo: { maxWidth: 800, maxHeight: 800, quality: 92 },
-  gallery: { maxWidth: 2400, maxHeight: 2400, quality: 88 },
-  hero: { maxWidth: 2560, maxHeight: 1440, quality: 90 },
-  product: { maxWidth: 1920, maxHeight: 1920, quality: 88 },
-  general: { maxWidth: 2048, maxHeight: 2048, quality: 88 },
+  // Tuned for web: enough pixels for retina heroes/cards, mozjpeg keeps quality.
+  logo: { maxWidth: 800, maxHeight: 800, quality: 90 },
+  gallery: { maxWidth: 1600, maxHeight: 1600, quality: 82 },
+  hero: { maxWidth: 1920, maxHeight: 1080, quality: 85 },
+  product: { maxWidth: 1400, maxHeight: 1400, quality: 82 },
+  general: { maxWidth: 1600, maxHeight: 1600, quality: 82 },
 }
 
 export type OptimizedImage = {
