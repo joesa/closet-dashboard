@@ -26,6 +26,20 @@ type Message = {
 
 const MAX_ATTACHMENTS = MAX_ADMIN_IMAGE_ATTACHMENTS;
 
+/** One-line collapsed preview — collapses URL dumps and long paste. */
+function messagePreview(content: string, max = 96): string {
+  const flat = (content || '').replace(/\s+/g, ' ').trim()
+  if (!flat) return '(empty)'
+  // Prefer a short label when the message is mostly CDN/storage URLs.
+  const urls = flat.match(/https?:\/\/\S+/g) || []
+  const withoutUrls = flat.replace(/https?:\/\/\S+/g, ' ').replace(/\s+/g, ' ').trim()
+  if (urls.length >= 2 && withoutUrls.length < 40) {
+    return `${urls.length} image URLs${withoutUrls ? ` · ${withoutUrls}` : ''}`
+  }
+  if (flat.length <= max) return flat
+  return `${flat.slice(0, max - 1)}…`
+}
+
 async function fileToDataUrl(file: File): Promise<string> {
   return fileToAdminImageDataUrl(file);
 }
@@ -51,8 +65,19 @@ export default function AdminSiteChat({
   const [attachments, setAttachments] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  /** Indices of messages the admin expanded; everything else stays collapsed. */
+  const [expanded, setExpanded] = useState<Set<number>>(() => new Set());
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const toggleExpanded = (index: number) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
+      return next;
+    });
+  };
 
   // Restore durable per-site history so follow-ups keep full context after refresh.
   useEffect(() => {
@@ -194,99 +219,172 @@ export default function AdminSiteChat({
       )}
 
       {messages.length > 0 && (
-        <div
-          ref={scrollRef}
-          className="max-h-96 space-y-3 overflow-y-auto rounded-lg border border-neutral-800 bg-black/30 p-4"
-        >
-          {messages.map((m, i) => (
-            <div key={i} className={m.role === 'admin' ? 'text-right' : 'text-left'}>
-              <div
-                className={`inline-block max-w-[85%] whitespace-pre-wrap rounded-lg px-4 py-2 text-sm text-left ${
-                  m.role === 'admin'
-                    ? 'bg-blue-600/20 text-blue-100 border border-blue-500/20'
-                    : 'bg-neutral-800 text-neutral-200 border border-neutral-700'
-                }`}
-              >
-                {m.images && m.images.length > 0 && (
-                  <div className="mb-2 flex flex-wrap gap-2">
-                    {m.images.map((src, j) => (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        key={j}
-                        src={src}
-                        alt={`Attachment ${j + 1}`}
-                        className="h-24 max-w-40 rounded border border-neutral-700 object-cover"
-                      />
-                    ))}
-                  </div>
-                )}
-                {m.content}
-                {m.applied && m.applied.length > 0 && (
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    {m.applied.map((col) => (
+        <div className="space-y-2">
+          <div className="flex items-center justify-end gap-3">
+            <button
+              type="button"
+              onClick={() =>
+                setExpanded(new Set(messages.map((_, i) => i)))
+              }
+              className="text-xs text-neutral-500 hover:text-neutral-300"
+            >
+              Expand all
+            </button>
+            <button
+              type="button"
+              onClick={() => setExpanded(new Set())}
+              className="text-xs text-neutral-500 hover:text-neutral-300"
+            >
+              Collapse all
+            </button>
+          </div>
+          <div
+            ref={scrollRef}
+            className="max-h-96 space-y-2 overflow-y-auto rounded-lg border border-neutral-800 bg-black/30 p-3"
+          >
+            {messages.map((m, i) => {
+              const isOpen = expanded.has(i);
+              const preview = messagePreview(m.content);
+              const attachmentCount =
+                (m.images?.length || 0) || (m.hadImages ? 1 : 0);
+              return (
+                <div key={i} className={m.role === 'admin' ? 'text-right' : 'text-left'}>
+                  <div
+                    className={`inline-block w-full max-w-[92%] rounded-lg text-left text-sm ${
+                      m.role === 'admin'
+                        ? 'bg-blue-600/20 text-blue-100 border border-blue-500/20'
+                        : 'bg-neutral-800 text-neutral-200 border border-neutral-700'
+                    }`}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => toggleExpanded(i)}
+                      aria-expanded={isOpen}
+                      className="flex w-full items-start gap-2 px-3 py-2 text-left hover:bg-white/5"
+                    >
                       <span
-                        key={col}
-                        className="rounded bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 text-xs font-mono text-emerald-400"
+                        className="mt-0.5 shrink-0 text-xs text-neutral-500"
+                        aria-hidden
                       >
-                        ✓ {col}
+                        {isOpen ? '▾' : '▸'}
                       </span>
-                    ))}
-                  </div>
-                )}
-                {m.applied && m.applied.length > 0 && (
-                  <div className="mt-2 text-xs text-neutral-400">
-                    {m.liveNow ? 'Live on the site now' : 'Live on the site within ~1 minute'}
-                    {previewUrl && (
-                      <>
-                        {' · '}
-                        <a
-                          href={previewUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-blue-400 underline hover:text-blue-300"
-                        >
-                          View site
-                        </a>
-                      </>
+                      <span className="min-w-0 flex-1">
+                        <span className="mr-2 text-[10px] font-semibold uppercase tracking-wide text-neutral-500">
+                          {m.role === 'admin' ? 'You' : 'Assistant'}
+                        </span>
+                        {!isOpen && (
+                          <span className="text-neutral-300">{preview}</span>
+                        )}
+                        {!isOpen && attachmentCount > 0 && (
+                          <span className="ml-2 text-xs text-neutral-500">
+                            · {m.images?.length || 'attachments'}
+                          </span>
+                        )}
+                        {!isOpen && m.applied && m.applied.length > 0 && (
+                          <span className="ml-2 inline-flex flex-wrap gap-1 align-middle">
+                            {m.applied.map((col) => (
+                              <span
+                                key={col}
+                                className="rounded bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 text-[10px] font-mono text-emerald-400"
+                              >
+                                ✓ {col}
+                              </span>
+                            ))}
+                          </span>
+                        )}
+                      </span>
+                    </button>
+                    {isOpen && (
+                      <div className="border-t border-white/5 px-3 pb-3 pt-2 whitespace-pre-wrap">
+                        {m.images && m.images.length > 0 && (
+                          <div className="mb-2 flex flex-wrap gap-2">
+                            {m.images.map((src, j) => (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                key={j}
+                                src={src}
+                                alt={`Attachment ${j + 1}`}
+                                className="h-24 max-w-40 rounded border border-neutral-700 object-cover"
+                              />
+                            ))}
+                          </div>
+                        )}
+                        {m.content}
+                        {m.applied && m.applied.length > 0 && (
+                          <div className="mt-2 flex flex-wrap gap-1.5">
+                            {m.applied.map((col) => (
+                              <span
+                                key={col}
+                                className="rounded bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 text-xs font-mono text-emerald-400"
+                              >
+                                ✓ {col}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                        {m.applied && m.applied.length > 0 && (
+                          <div className="mt-2 text-xs text-neutral-400">
+                            {m.liveNow
+                              ? 'Live on the site now'
+                              : 'Live on the site within ~1 minute'}
+                            {previewUrl && (
+                              <>
+                                {' · '}
+                                <a
+                                  href={previewUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-blue-400 underline hover:text-blue-300"
+                                >
+                                  View site
+                                </a>
+                              </>
+                            )}
+                          </div>
+                        )}
+                        {m.rejected && m.rejected.length > 0 && (
+                          <div className="mt-2 space-y-1">
+                            {m.rejected.map((r, j) => (
+                              <div key={j} className="text-xs text-amber-400">
+                                Skipped {r.column}: {r.reason}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {m.uploadedAssets && m.uploadedAssets.length > 0 && (
+                          <div className="mt-2 space-y-1">
+                            {m.uploadedAssets.map((a) => (
+                              <div
+                                key={a.index}
+                                className="text-xs text-neutral-400 break-all"
+                              >
+                                Saved attachment #{a.index} →{' '}
+                                <a
+                                  href={a.url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-blue-400 underline hover:text-blue-300"
+                                >
+                                  site asset
+                                </a>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     )}
                   </div>
-                )}
-                {m.rejected && m.rejected.length > 0 && (
-                  <div className="mt-2 space-y-1">
-                    {m.rejected.map((r, j) => (
-                      <div key={j} className="text-xs text-amber-400">
-                        Skipped {r.column}: {r.reason}
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {m.uploadedAssets && m.uploadedAssets.length > 0 && (
-                  <div className="mt-2 space-y-1">
-                    {m.uploadedAssets.map((a) => (
-                      <div key={a.index} className="text-xs text-neutral-400 break-all">
-                        Saved attachment #{a.index} →{' '}
-                        <a
-                          href={a.url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-blue-400 underline hover:text-blue-300"
-                        >
-                          site asset
-                        </a>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                </div>
+              );
+            })}
+            {loading && (
+              <div className="text-left">
+                <div className="inline-block rounded-lg border border-neutral-700 bg-neutral-800 px-4 py-2 text-sm text-neutral-400">
+                  Thinking…
+                </div>
               </div>
-            </div>
-          ))}
-          {loading && (
-            <div className="text-left">
-              <div className="inline-block rounded-lg border border-neutral-700 bg-neutral-800 px-4 py-2 text-sm text-neutral-400">
-                Thinking…
-              </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       )}
 
