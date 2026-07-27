@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import AdminCollapsibleCard from '@/components/AdminCollapsibleCard';
 
 export type ValidationIssueShape = {
   code: string;
@@ -11,11 +12,13 @@ export type ValidationIssueShape = {
 };
 
 type Props = {
-  tenantId: string;
-  status: 'pending' | 'passed' | 'failed' | null;
-  issues: ValidationIssueShape[];
-  validatedAt: string | null;
-};
+  tenantId: string
+  status: 'pending' | 'passed' | 'failed' | null
+  issues: ValidationIssueShape[]
+  validatedAt: string | null
+  /** When true, omit outer card chrome (parent provides AdminCollapsibleCard). */
+  embedded?: boolean
+}
 
 const STATUS_STYLES: Record<string, string> = {
   passed: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
@@ -23,7 +26,13 @@ const STATUS_STYLES: Record<string, string> = {
   pending: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
 };
 
-export default function SiteValidationPanel({ tenantId, status, issues, validatedAt }: Props) {
+export default function SiteValidationPanel({
+  tenantId,
+  status,
+  issues,
+  validatedAt,
+  embedded = false,
+}: Props) {
   const router = useRouter();
   const [loading, setLoading] = useState<'validate' | 'fix' | null>(null);
   const [fixingCode, setFixingCode] = useState<string | null>(null);
@@ -76,32 +85,38 @@ export default function SiteValidationPanel({ tenantId, status, issues, validate
   const hasFixable = issues.some((i) => i.fixable);
   const busy = loading !== null;
 
-  return (
-    <section className="bg-neutral-900 border border-neutral-800 rounded-xl p-6 space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h3 className="text-xs font-bold text-neutral-500 uppercase tracking-widest">Site Validation</h3>
-        <span
-          className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium border ${
-            status ? STATUS_STYLES[status] : 'bg-neutral-800 text-neutral-400 border-neutral-700'
-          }`}
-        >
-          {status === 'passed' && (warningIssues.length > 0 ? `${warningIssues.length} warning${warningIssues.length === 1 ? '' : 's'}` : 'All checks passed')}
-          {status === 'failed' && `${errorIssues.length} issue${errorIssues.length === 1 ? '' : 's'} found`}
-          {status === 'pending' && 'Validation pending'}
-          {!status && 'Not yet validated'}
-        </span>
-      </div>
+  const statusBadge = (
+    <span
+      className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium border ${
+        status ? STATUS_STYLES[status] : 'bg-neutral-800 text-neutral-400 border-neutral-700'
+      }`}
+    >
+      {status === 'passed' &&
+        (warningIssues.length > 0
+          ? `${warningIssues.length} warning${warningIssues.length === 1 ? '' : 's'}`
+          : 'All checks passed')}
+      {status === 'failed' &&
+        `${errorIssues.length} issue${errorIssues.length === 1 ? '' : 's'} found`}
+      {status === 'pending' && 'Validation pending'}
+      {!status && 'Not yet validated'}
+    </span>
+  )
 
+  const body = (
+    <>
       {status !== 'passed' && (
         <p className="text-sm text-neutral-400">
-          This site is <strong>not yet ready for preview and approval</strong> until validation passes.
-          {status === 'failed' && ' Review the issues below, then use AI to fix what it can, or fix manually and re-validate.'}
+          This site is <strong>not yet ready for preview and approval</strong> until validation
+          passes.
+          {status === 'failed' &&
+            ' Review the issues below, then use AI to fix what it can, or fix manually and re-validate.'}
         </p>
       )}
 
       {status === 'passed' && hasFixable && (
         <p className="text-sm text-neutral-400">
-          Validation passed with AI-fixable warnings. Click <strong>Fix with AI</strong> on an issue to apply the repair now.
+          Validation passed with AI-fixable warnings. Click <strong>Fix with AI</strong> on an
+          issue to apply the repair now.
         </p>
       )}
 
@@ -120,7 +135,7 @@ export default function SiteValidationPanel({ tenantId, status, issues, validate
       {issues.length > 0 && (
         <ul className="space-y-2">
           {[...errorIssues, ...warningIssues].map((issue, i) => {
-            const rowBusy = busy && fixingCode === issue.code;
+            const rowBusy = busy && fixingCode === issue.code
             return (
               <li
                 key={`${issue.code}-${i}`}
@@ -149,14 +164,16 @@ export default function SiteValidationPanel({ tenantId, status, issues, validate
                   )}
                 </div>
               </li>
-            );
+            )
           })}
         </ul>
       )}
 
       {aiNote && (
         <div className="text-sm rounded-lg border border-blue-500/20 bg-blue-500/5 text-blue-200 px-4 py-3">
-          <strong className="block text-xs uppercase tracking-widest text-blue-400 mb-1">AI Summary</strong>
+          <strong className="block text-xs uppercase tracking-widest text-blue-400 mb-1">
+            AI Summary
+          </strong>
           {aiNote}
         </div>
       )}
@@ -183,6 +200,24 @@ export default function SiteValidationPanel({ tenantId, status, issues, validate
           </button>
         )}
       </div>
-    </section>
-  );
+    </>
+  )
+
+  if (embedded) return <div className="space-y-4">{body}</div>
+
+  return (
+    <AdminCollapsibleCard
+      title="Site Validation"
+      summary={
+        status === 'failed'
+          ? `${errorIssues.length} issue${errorIssues.length === 1 ? '' : 's'} — expand to review`
+          : status === 'passed'
+            ? 'All checks passed'
+            : 'Expand to validate this site'
+      }
+      badge={statusBadge}
+    >
+      {body}
+    </AdminCollapsibleCard>
+  )
 }

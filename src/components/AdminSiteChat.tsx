@@ -7,6 +7,7 @@ import {
   MAX_ADMIN_IMAGE_ATTACHMENTS,
   fileToAdminImageDataUrl,
 } from '@/lib/adminImageAttach'
+import AdminCollapsibleCard from '@/components/AdminCollapsibleCard'
 
 type Message = {
   role: 'admin' | 'assistant';
@@ -196,15 +197,11 @@ export default function AdminSiteChat({
   };
 
   return (
-    <section className="bg-neutral-900 border border-neutral-800 rounded-xl p-6 space-y-4">
-      <div className="flex items-center justify-between gap-3">
-        <h3 className="text-xs font-bold text-neutral-500 uppercase tracking-widest">
-          AI Site Assistant
-        </h3>
-        <span className="text-xs text-neutral-500">
-          Changes apply to the live site config immediately
-        </span>
-      </div>
+    <AdminCollapsibleCard
+      title="AI Site Assistant"
+      summary="Conversational edits to template fields — expand to chat"
+      titleClassName="text-neutral-500"
+    >
       <p className="text-sm text-neutral-400">
         Edits the shared template fields (hero, services, nav, theme, pages) with full live-site
         context and durable chat history for this tenant. Attach a photo and say where to use it
@@ -213,6 +210,9 @@ export default function AdminSiteChat({
         you ask to place them. For Custom Build HTML/CSS: use{' '}
         <span className="text-violet-300">Edit surgically</span>; video URLs pasted here still go to
         the custom draft when recognized.
+      </p>
+      <p className="text-xs text-neutral-500 -mt-2">
+        Changes apply to the live site config immediately
       </p>
       {!historyLoaded && (
         <p className="text-xs text-neutral-500">Loading conversation history for this site…</p>
@@ -475,6 +475,6 @@ export default function AdminSiteChat({
           {loading ? 'Sending…' : 'Send'}
         </button>
       </div>
-    </section>
+    </AdminCollapsibleCard>
   );
 }

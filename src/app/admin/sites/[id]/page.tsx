@@ -10,6 +10,7 @@ import AdminCustomBuild from '@/components/AdminCustomBuild';
 import AdminEngagementTools from '@/components/AdminEngagementTools';
 import AdminTenantMedia from '@/components/AdminTenantMedia';
 import DomainManager from '@/components/DomainManager';
+import AdminCollapsibleCard from '@/components/AdminCollapsibleCard';
 import { DESIGN_VARIANT_OPTIONS } from '@/lib/catalog/designVariantCatalog';
 import { formatUsdCents } from '@/lib/domains/types';
 
@@ -260,8 +261,10 @@ export default async function TenantDetailsPage({ params }: { params: Promise<{ 
             
             {/* Core & Copywriting */}
             <div className="space-y-8">
-              <section className="bg-neutral-900 border border-neutral-800 rounded-xl p-6">
-                <h3 className="text-xs font-bold text-neutral-500 uppercase tracking-widest mb-4">Design System</h3>
+              <AdminCollapsibleCard
+                title="Design System"
+                summary={`${config.theme || 'theme'} · ${config.engagement_model || 'quote'}`}
+              >
                 <div className="space-y-4">
                   <div>
                     <span className="text-neutral-400 text-sm block mb-1">Aesthetic Theme</span>
@@ -311,10 +314,16 @@ export default async function TenantDetailsPage({ params }: { params: Promise<{ 
                     </p>
                   </div>
                 </div>
-              </section>
+              </AdminCollapsibleCard>
 
-              <section className="bg-neutral-900 border border-neutral-800 rounded-xl p-6">
-                <h3 className="text-xs font-bold text-neutral-500 uppercase tracking-widest mb-4">Copywriting</h3>
+              <AdminCollapsibleCard
+                title="Copywriting"
+                summary={
+                  config.hero_config?.headline
+                    ? `"${String(config.hero_config.headline).slice(0, 80)}${String(config.hero_config.headline).length > 80 ? '…' : ''}"`
+                    : 'Hero + about copy'
+                }
+              >
                 <div className="space-y-4">
                   <div>
                     <span className="text-neutral-400 text-sm block mb-1">Hero Headline</span>
@@ -329,15 +338,15 @@ export default async function TenantDetailsPage({ params }: { params: Promise<{ 
                     </div>
                   </div>
                 </div>
-              </section>
+              </AdminCollapsibleCard>
             </div>
 
             {/* Portfolio Grid Inspect */}
             <div className="space-y-8">
-              <section className="bg-neutral-900 border border-neutral-800 rounded-xl p-6">
-                <h3 className="text-xs font-bold text-neutral-500 uppercase tracking-widest mb-4">
-                  Mapped Services ({config.products_config?.length || 0})
-                </h3>
+              <AdminCollapsibleCard
+                title={`Mapped Services (${config.products_config?.length || 0})`}
+                summary="Expand to inspect service cards and images"
+              >
                 <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2">
                   {config.products_config?.map((product: { image?: string; title?: string; description?: string }, i: number) => (
                     <div key={i} className="flex gap-4 p-4 rounded-lg bg-black/40 border border-neutral-800">
@@ -352,7 +361,7 @@ export default async function TenantDetailsPage({ params }: { params: Promise<{ 
                     </div>
                   ))}
                 </div>
-              </section>
+              </AdminCollapsibleCard>
             </div>
 
           </div>

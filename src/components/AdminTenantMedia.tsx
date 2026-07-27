@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import AdminCollapsibleCard from '@/components/AdminCollapsibleCard';
 
 type MediaKind = 'all' | 'image' | 'video' | 'file';
 
@@ -99,18 +100,20 @@ export default function AdminTenantMedia({ tenantId }: { tenantId: string }) {
   ];
 
   return (
-    <section className="bg-neutral-900 border border-neutral-800 rounded-xl p-6 space-y-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h3 className="text-xs font-bold text-neutral-500 uppercase tracking-widest">
-            Media library
-          </h3>
-          <p className="mt-1 text-sm text-neutral-400 max-w-2xl">
-            All admin-uploaded images, videos, and files for this tenant on Supabase CDN —
-            plus provisioned engine images. Filter by type and copy URLs for surgical edits.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
+    <AdminCollapsibleCard
+      title="Media library"
+      summary={`${counts.all} files on CDN — expand to browse and copy URLs`}
+      badge={
+        <span className="text-xs text-neutral-500 normal-case tracking-normal font-medium">
+          {counts.all} assets
+        </span>
+      }
+    >
+      <p className="text-sm text-neutral-400 max-w-2xl">
+        All admin-uploaded images, videos, and files for this tenant on Supabase CDN — plus
+        provisioned engine images. Filter by type and copy URLs for surgical edits.
+      </p>
+      <div className="flex flex-wrap gap-2">
           <button
             type="button"
             onClick={() => setListOpen((o) => !o)}
@@ -140,7 +143,6 @@ export default function AdminTenantMedia({ tenantId }: { tenantId: string }) {
             Copy all URLs
           </button>
         </div>
-      </div>
 
       {listOpen ? (
         <>
@@ -247,6 +249,6 @@ export default function AdminTenantMedia({ tenantId }: { tenantId: string }) {
           <span className="text-neutral-300">Show files</span> to browse.
         </p>
       )}
-    </section>
+    </AdminCollapsibleCard>
   );
 }

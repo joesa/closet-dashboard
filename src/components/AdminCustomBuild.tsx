@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { MAX_ADMIN_IMAGE_ATTACHMENTS } from '@/lib/adminImageAttach';
+import AdminCollapsibleCard from '@/components/AdminCollapsibleCard';
 
 type CustomBuildJob = {
   status: 'queued' | 'processing' | 'succeeded' | 'failed';
@@ -703,38 +704,32 @@ export default function AdminCustomBuild({
   };
 
   return (
-    <section className="bg-neutral-900 border border-violet-500/30 rounded-xl p-6 space-y-5">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h3 className="text-xs font-bold text-violet-300 uppercase tracking-widest">
-            Custom build
-          </h3>
-          <p className="mt-1 text-sm text-neutral-400 max-w-2xl">
-            Start by cloning this tenant’s <em>current live site</em> into a draft, then make{' '}
-            <strong className="text-neutral-300 font-medium">surgical edits</strong>. Use{' '}
-            <strong className="text-neutral-300 font-medium">Full redesign</strong> for a new AI
-            design — intake services stay unless you explicitly remove them; services named in the
-            brief are added to the site and engagement engine. Draft → preview → publish.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <span
-            className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium border ${
-              mounted && status?.renderMode === 'custom'
-                ? 'bg-violet-500/15 text-violet-300 border-violet-500/30'
-                : 'bg-neutral-800 text-neutral-400 border-neutral-700'
-            }`}
-            suppressHydrationWarning
-          >
-            Live:{' '}
-            {!mounted
-              ? '…'
-              : status?.renderMode === 'custom'
-                ? 'CUSTOM'
-                : 'ENGINE'}
-          </span>
-        </div>
-      </div>
+    <AdminCollapsibleCard
+      title="Custom build"
+      titleClassName="text-violet-300"
+      borderClassName="border-violet-500/30"
+      summary="Clone, surgical edit, or Full redesign — expand to work on the draft"
+      badge={
+        <span
+          className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium border ${
+            mounted && status?.renderMode === 'custom'
+              ? 'bg-violet-500/15 text-violet-300 border-violet-500/30'
+              : 'bg-neutral-800 text-neutral-400 border-neutral-700'
+          }`}
+          suppressHydrationWarning
+        >
+          Live:{' '}
+          {!mounted ? '…' : status?.renderMode === 'custom' ? 'CUSTOM' : 'ENGINE'}
+        </span>
+      }
+    >
+      <p className="text-sm text-neutral-400 max-w-2xl">
+        Start by cloning this tenant’s <em>current live site</em> into a draft, then make{' '}
+        <strong className="text-neutral-300 font-medium">surgical edits</strong>. Use{' '}
+        <strong className="text-neutral-300 font-medium">Full redesign</strong> for a new AI
+        design — intake services stay unless you explicitly remove them; services named in the
+        brief are added to the site and engagement engine. Draft → preview → publish.
+      </p>
 
       {mounted && status?.draft && draftAhead ? (
         <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-100 space-y-2">
@@ -1500,6 +1495,6 @@ export default function AdminCustomBuild({
           <p className="text-sm text-red-400">{error}</p>
         </div>
       ) : null}
-    </section>
+    </AdminCollapsibleCard>
   );
 }

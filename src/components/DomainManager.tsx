@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useState } from 'react'
 import type { DomainRow, DnsInstruction } from '@/lib/domains/types'
 import { defaultByoDnsInstructions } from '@/lib/domains/types'
 import RegistrarDnsGuides from '@/components/RegistrarDnsGuides'
+import AdminCollapsibleCard from '@/components/AdminCollapsibleCard'
 
 type SearchHit = {
   domain: string
@@ -215,6 +216,13 @@ export default function DomainManager({ tenantId, showAdminCost = false, variant
       : 'rounded-lg border border-white/15 px-3 py-1.5 text-xs font-medium text-zinc-200 hover:bg-white/5 disabled:opacity-50'
 
   if (loading) {
+    if (variant === 'admin') {
+      return (
+        <AdminCollapsibleCard title="Website domains" summary="Loading…">
+          <p className="text-sm text-neutral-400 animate-pulse">Loading domains…</p>
+        </AdminCollapsibleCard>
+      )
+    }
     return (
       <div className={shell}>
         <p className="text-sm text-neutral-400 animate-pulse">Loading domains…</p>
@@ -223,6 +231,19 @@ export default function DomainManager({ tenantId, showAdminCost = false, variant
   }
 
   if (noSite) {
+    if (variant === 'admin') {
+      return (
+        <AdminCollapsibleCard
+          title="Website domains"
+          summary="Available after the site is provisioned"
+        >
+          <p className="text-sm text-zinc-400">
+            Domain management is available after your full website is provisioned. Your platform
+            subdomain will appear here once the site is live.
+          </p>
+        </AdminCollapsibleCard>
+      )
+    }
     return (
       <div className={shell}>
         <h2 className="text-xl font-semibold tracking-tight text-white">Custom domain</h2>
@@ -234,15 +255,21 @@ export default function DomainManager({ tenantId, showAdminCost = false, variant
     )
   }
 
-  return (
-    <div className={shell}>
-      <div>
-        <h2 className="text-xl font-semibold tracking-tight text-white">Website domains</h2>
-        <p className="text-sm text-zinc-400 mt-1">
-          Connect a domain you already own, or let us register a .com / .net / .io for you
-          (included with hosting).
+  const body = (
+    <>
+      {variant !== 'admin' ? (
+        <div>
+          <h2 className="text-xl font-semibold tracking-tight text-white">Website domains</h2>
+          <p className="text-sm text-zinc-400 mt-1">
+            Connect a domain you already own, or let us register a .com / .net / .io for you
+            (included with hosting).
+          </p>
+        </div>
+      ) : (
+        <p className="text-sm text-neutral-400">
+          Connect a domain you already own, or register a .com / .net / .io for this tenant.
         </p>
-      </div>
+      )}
 
       {error && (
         <div className="rounded-lg border border-red-500/40 bg-red-950/40 px-4 py-3 text-sm text-red-200">
@@ -460,6 +487,20 @@ export default function DomainManager({ tenantId, showAdminCost = false, variant
           )}
         </div>
       )}
-    </div>
+    </>
   )
+
+  if (variant === 'admin') {
+    return (
+      <AdminCollapsibleCard
+        title="Website domains"
+        summary="BYO or purchase — expand to manage DNS"
+        borderClassName="border-neutral-700"
+      >
+        <div className="space-y-6">{body}</div>
+      </AdminCollapsibleCard>
+    )
+  }
+
+  return <div className={`${shell}`}>{body}</div>
 }

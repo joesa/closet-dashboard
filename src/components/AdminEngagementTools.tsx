@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import WidgetThemePicker from '@/components/WidgetThemePicker'
+import AdminCollapsibleCard from '@/components/AdminCollapsibleCard'
 import {
   PRICING_TIERS,
   ROOM_TYPES,
@@ -419,40 +420,25 @@ export default function AdminEngagementTools({ tenantId }: { tenantId: string })
 
   if (loading) {
     return (
-      <section className="bg-neutral-900 border border-neutral-800 rounded-xl p-6">
-        <h2 className="text-lg font-semibold text-white mb-2">Engagement tools</h2>
+      <AdminCollapsibleCard title="Engagement tools" summary="Loading…">
         <p className="text-sm text-neutral-500">Loading live calculator state…</p>
-      </section>
+      </AdminCollapsibleCard>
     )
   }
 
   if (!data) {
     return (
-      <section className="bg-neutral-900 border border-neutral-800 rounded-xl p-6">
-        <h2 className="text-lg font-semibold text-white mb-2">Engagement tools</h2>
+      <AdminCollapsibleCard title="Engagement tools" summary="Unavailable">
         <p className="text-sm text-red-400">{error || 'Unavailable'}</p>
-      </section>
+      </AdminCollapsibleCard>
     )
   }
 
   return (
-    <section className="bg-neutral-900 border border-neutral-800 rounded-xl p-6 space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
-        <div>
-          <h2 className="text-lg font-semibold text-white">Engagement tools</h2>
-          <p className="text-sm text-neutral-400 mt-1">
-            Live-linked to the same{' '}
-            <code className="text-xs text-blue-300 font-mono">{data.widgetId}</code>{' '}
-            row the client dashboard and public widget use. Client edits appear
-            here on load / refresh.
-          </p>
-          {data.settingsUpdatedAt ? (
-            <p className="text-xs text-neutral-500 mt-1">
-              Settings last updated{' '}
-              {new Date(data.settingsUpdatedAt).toLocaleString()}
-            </p>
-          ) : null}
-        </div>
+    <AdminCollapsibleCard
+      title="Engagement tools"
+      summary={`Widget ${data.widgetId} — expand to edit quote/booking tools`}
+      headerRight={
         <button
           type="button"
           onClick={() => void refresh()}
@@ -460,7 +446,19 @@ export default function AdminEngagementTools({ tenantId }: { tenantId: string })
         >
           Refresh from live
         </button>
-      </div>
+      }
+    >
+      <p className="text-sm text-neutral-400">
+        Live-linked to the same{' '}
+        <code className="text-xs text-blue-300 font-mono">{data.widgetId}</code>{' '}
+        row the client dashboard and public widget use. Client edits appear here on load /
+        refresh.
+      </p>
+      {data.settingsUpdatedAt ? (
+        <p className="text-xs text-neutral-500">
+          Settings last updated {new Date(data.settingsUpdatedAt).toLocaleString()}
+        </p>
+      ) : null}
 
       {error ? (
         <div className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
@@ -1344,6 +1342,6 @@ export default function AdminEngagementTools({ tenantId }: { tenantId: string })
           {saving ? 'Saving…' : 'Save engagement settings'}
         </button>
       </div>
-    </section>
+    </AdminCollapsibleCard>
   )
 }
