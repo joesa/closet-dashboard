@@ -246,6 +246,8 @@ describe('surgical + intake copy model', () => {
     expect(src).toContain('assertSurgicalIntegrity')
     expect(src).toContain('globalCssAppend')
     expect(src).toContain('trySurgicalClickableCardsShortcut')
+    expect(src).toContain('classifySurgicalIntent')
+    expect(src).toContain('runSurgicalOpsGenerate')
   })
 })
 

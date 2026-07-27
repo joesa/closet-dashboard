@@ -3,6 +3,8 @@
  * Server-only helpers used by merge + draft save gates.
  */
 
+import * as cheerio from 'cheerio'
+
 export type SurgicalCssMergeResult = {
   globalCss: string
   /** True when patch.globalCss was kept as a full replace. */
@@ -256,44 +258,54 @@ a.clickable-card:hover, .clickable-card:hover { transform: translateY(-3px); box
 
 /**
  * Wrap service/product card blocks in <a class="clickable-card"> when they
- * are not already linked. Uses an existing inner href or fallbackHref.
+ * are not already linked. Cheerio tree walk — avoids fragile nested-regex wraps.
  */
 export function makeServiceCardsClickable(
   html: string,
   fallbackHref = '/contact'
 ): { html: string; wrapped: number } {
   if (!html) return { html: html || '', wrapped: 0 }
+
+  const $ = cheerio.load(html, { xml: false }, false)
   let wrapped = 0
 
-  // Match common card containers that are not already inside an <a>.
-  const cardRe =
-    /<(article|div|li)(\s[^>]*\bclass=(["'])([^"']*\b(?:service|card|svc|product|offer)[^"']*)\3[^>]*)>([\s\S]*?)<\/\1>/gi
+  const cardSel =
+    'article[class*="service"], article[class*="card"], article[class*="svc"], article[class*="product"], article[class*="offer"], div[class*="service"], div[class*="card"], div[class*="svc"], div[class*="product"], div[class*="offer"], li[class*="service"], li[class*="card"], li[class*="svc"], li[class*="product"], li[class*="offer"]'
 
-  const out = html.replace(cardRe, (full, tag, attrs, _q, classList, inner) => {
-    if (/\bclickable-card\b/i.test(classList)) return full
-    // Already wrapped as link
-    if (/^\s*<a\b/i.test(inner.trim()) && /<\/a>\s*$/i.test(inner.trim())) {
-      return full
+  $(cardSel).each((_, el) => {
+    const $el = $(el)
+    const classList = $el.attr('class') || ''
+    if (/\bclickable-card\b/i.test(classList)) return
+    // Already the sole child of an anchor, or is itself an anchor.
+    if ($el.parent().is('a') || $el.is('a')) return
+    if ($el.closest('a').length) return
+    if ($el.closest('.svc-drawer-wrap').length) return
+    // Skip containers that nest other card matches (wrap leaves only).
+    if ($el.find(cardSel).length > 0) return
+    // Require a recognizable card token in the class list.
+    if (
+      !/\b(?:service|card|svc|product|offer)(?:-|\b)/i.test(classList) &&
+      !/\b(?:service-card|product-card|svc-card)\b/i.test(classList)
+    ) {
+      return
     }
-    const innerHref = inner.match(
-      /<a\b[^>]*\bhref=(["'])([^"']+)\1[^>]*>/i
-    )?.[2]
+
+    const innerHref = $el.find('a[href]').first().attr('href')
     const href = innerHref || fallbackHref
-    // Avoid nested interactive: strip inner <a> wrappers to text content keep
-    let body = inner
-    body = body.replace(/<a\b[^>]*>([\s\S]*?)<\/a>/gi, '$1')
+
+    // Flatten nested anchors to avoid invalid <a><a> after wrap.
+    $el.find('a').each((__, a) => {
+      $(a).replaceWith($(a).contents())
+    })
+
+    if (!/\bclickable-card\b/i.test(classList)) {
+      $el.attr('class', `${classList} clickable-card`.trim())
+    }
+    $el.wrap(`<a href="${href}" class="clickable-card"></a>`)
     wrapped += 1
-    const classAttr = /\bclass=/i.test(attrs)
-      ? attrs.replace(
-          /class=(["'])([^"']*)\1/i,
-          (_m: string, q: string, c: string) =>
-            `class=${q}${c} clickable-card${q}`
-        )
-      : `${attrs} class="clickable-card"`
-    return `<a href="${href}" class="clickable-card"><${tag}${classAttr}>${body}</${tag}></a>`
   })
 
-  return { html: out, wrapped }
+  return { html: $.root().html() || '', wrapped }
 }
 
 export function ensureClickableCardCss(globalCss: string): string {

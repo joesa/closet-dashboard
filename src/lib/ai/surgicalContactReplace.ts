@@ -1,7 +1,10 @@
 /**
  * Deterministic surgical contact replacements (phone / email / address).
  * Site-wide string swaps must not depend on the LLM returning full page HTML.
+ * Email/address HTML applies via cheerio replaceText; phone stays specialized.
  */
+
+import { applyOpsToHtml, type SurgicalDomOp } from '@/lib/ai/surgicalDomOps'
 
 export type SeoContactFields = {
   phone?: string
@@ -457,15 +460,27 @@ function applyAllContactReplaces(
       plan.phone.toDisplay
     )
   }
+  // Email stays string-wide so mailto:/href forms update too.
   if (plan.email) {
     out = replaceEmailInText(out, plan.email.from, plan.email.to)
   }
   if (plan.address) {
-    out = replaceAddressInText(
-      out,
-      plan.address.fromVariants,
-      plan.address.toDisplay
-    )
+    const ops: SurgicalDomOp[] = plan.address.fromVariants
+      .filter((v) => v.length >= 4)
+      .map((v) => ({
+        op: 'replaceText' as const,
+        find: v,
+        replace: plan.address!.toDisplay,
+      }))
+    if (ops.length && /<[a-zA-Z]/.test(out)) {
+      out = applyOpsToHtml(out, ops).html
+    } else if (ops.length) {
+      out = replaceAddressInText(
+        out,
+        plan.address.fromVariants,
+        plan.address.toDisplay
+      )
+    }
   }
   return out
 }

@@ -1,7 +1,11 @@
 /**
  * CSS-only service-card drawers for inline custom sites (no <script>).
  * Pattern: checkbox + label card + fixed .side-drawer sibling.
+ * Card wiring uses cheerio (tree-safe) instead of nested regex.
  */
+
+import * as cheerio from 'cheerio'
+import type { Element } from 'domhandler'
 
 const DRAWER_SUPPORT_CSS = `/* surgical: service card drawers (CSS-only, inline-safe) */
 .svc-drawer-wrap{min-width:0;position:relative;}
@@ -42,22 +46,22 @@ function slugId(title: string, index: number): string {
   return `svc-drawer-${base || index}-${index}`
 }
 
-function extractCardParts(innerHtml: string): {
+function extractCardParts(
+  $: cheerio.CheerioAPI,
+  $card: cheerio.Cheerio<Element>
+): {
   title: string
   body: string
   img: string
-  stamp: string
 } {
   const title =
-    innerHtml.match(/<h[1-4][^>]*>([\s\S]*?)<\/h[1-4]>/i)?.[1]?.replace(/<[^>]+>/g, '').trim() ||
+    $card.find('h1, h2, h3, h4').first().text().replace(/\s+/g, ' ').trim() ||
     'Service'
   const body =
-    innerHtml.match(/<p[^>]*>([\s\S]*?)<\/p>/i)?.[1]?.replace(/<[^>]+>/g, '').trim() || ''
-  const img = innerHtml.match(/<img\b[^>]*>/i)?.[0] || ''
-  const stamp =
-    innerHtml.match(/<span[^>]*class=["'][^"']*stamp[^"']*["'][^>]*>[\s\S]*?<\/span>/i)?.[0] ||
-    ''
-  return { title, body, img, stamp }
+    $card.find('p').first().text().replace(/\s+/g, ' ').trim() || ''
+  const $img = $card.find('img').first()
+  const img = $img.length ? $.html($img) || '' : ''
+  return { title, body, img }
 }
 
 function buildDrawerWrap(opts: {
@@ -73,7 +77,42 @@ function buildDrawerWrap(opts: {
   const panelBody = body
     ? `<p>${body}</p>`
     : '<p>Ask us about this service — we will walk you through fit, timing, and next steps.</p>'
-  return `<div class="svc-drawer-wrap"><input type="checkbox" id="${id}" class="drawer-toggle" /><label for="${id}" class="${labelClass}">${cardInner}</label><div class="side-drawer"><label for="${id}" class="drawer-overlay"><span class="close-overlay" aria-hidden="true"></span></label><aside class="drawer-panel" role="dialog" aria-label="${title.replace(/"/g, '')}"><label for="${id}" class="close-btn" aria-label="Close">×</label>${panelImg}<h3>${title}</h3>${panelBody}<p class="drawer-cta"><a href="/contact" class="btn btn-primary">Get a quote</a></p></aside></div></div>`
+  const safeTitle = title.replace(/"/g, '')
+  return `<div class="svc-drawer-wrap"><input type="checkbox" id="${id}" class="drawer-toggle" /><label for="${id}" class="${labelClass}">${cardInner}</label><div class="side-drawer"><label for="${id}" class="drawer-overlay"><span class="close-overlay" aria-hidden="true"></span></label><aside class="drawer-panel" role="dialog" aria-label="${safeTitle}"><label for="${id}" class="close-btn" aria-label="Close">×</label>${panelImg}<h3>${title}</h3>${panelBody}<p class="drawer-cta"><a href="/contact" class="btn btn-primary">Get a quote</a></p></aside></div></div>`
+}
+
+function wireOneCard(
+  $: cheerio.CheerioAPI,
+  $el: cheerio.Cheerio<Element>,
+  index: number
+): boolean {
+  if ($el.closest('.svc-drawer-wrap').length) return false
+  if (!$el.find('h1, h2, h3, h4').length && !$el.find('img').length) return false
+
+  const classList = $el.attr('class') || ''
+  const { title, body, img } = extractCardParts($, $el)
+
+  // Flatten nested anchors inside the card face.
+  $el.find('a').each((_, a) => {
+    $(a).replaceWith($(a).contents())
+  })
+
+  const labelClass = /\bclickable-card\b/.test(classList)
+    ? classList
+    : `${classList} clickable-card`.trim() || 'plate clickable-card'
+
+  const cardInner = $el.html() || ''
+  const id = slugId(title, index)
+  const wrap = buildDrawerWrap({
+    id,
+    cardInner,
+    title,
+    body,
+    img,
+    labelClass,
+  })
+  $el.replaceWith(wrap)
+  return true
 }
 
 /**
@@ -85,65 +124,56 @@ export function wireServiceCardDrawers(html: string): {
   count: number
 } {
   if (!html) return { html: html || '', count: 0 }
-  let count = 0
-  let index = 0
 
   // Already wired
   if (/\bsvc-drawer-wrap\b/.test(html) && /\bdrawer-toggle\b/.test(html)) {
     return { html, count: 0 }
   }
 
-  // Primary: <a class="plate" href="?service=...">…</a> or any plate link in a services grid
-  let out = html.replace(
-    /<a\b([^>]*\bclass=(["'])([^"']*\bplate\b[^"']*)\2[^>]*)>([\s\S]*?)<\/a>/gi,
-    (full, attrs: string, _q: string, classList: string, inner: string) => {
-      // Skip nav/brand plates
-      if (!/<h[1-4]\b/i.test(inner) && !/<img\b/i.test(inner)) return full
-      const { title, body, img } = extractCardParts(inner)
-      const id = slugId(title, index++)
-      count += 1
-      const labelClass = /\bclickable-card\b/.test(classList)
-        ? classList
-        : `${classList} clickable-card`.trim()
-      // Keep stamp/img/h3/p as card face; drop nested anchors
-      const cardInner = inner.replace(/<a\b[^>]*>([\s\S]*?)<\/a>/gi, '$1')
-      return buildDrawerWrap({
-        id,
-        cardInner,
-        title,
-        body,
-        img,
-        labelClass,
-      })
-    }
-  )
+  const $ = cheerio.load(html, { xml: false }, false)
+  let count = 0
+  let index = 0
 
-  // Secondary: unlinked <div|article class="…card|plate…">
-  if (count === 0) {
-    out = html.replace(
-      /<(div|article)(\s[^>]*\bclass=(["'])([^"']*\b(?:plate|service-card|product-card|svc-card)[^"']*)\3[^>]*)>([\s\S]*?)<\/\1>/gi,
-      (full, tag: string, attrs: string, _q: string, classList: string, inner: string) => {
-        if (/\bsvc-drawer-wrap\b/.test(full)) return full
-        if (!/<h[1-4]\b/i.test(inner)) return full
-        const { title, body, img } = extractCardParts(inner)
-        const id = slugId(title, index++)
-        count += 1
-        const labelClass = /\bplate\b/.test(classList)
-          ? `${classList} clickable-card`
-          : `plate clickable-card ${classList}`
-        return buildDrawerWrap({
-          id,
-          cardInner: inner.replace(/<a\b[^>]*>([\s\S]*?)<\/a>/gi, '$1'),
-          title,
-          body,
-          img,
-          labelClass,
-        })
-      }
-    )
+  // Primary: <a class="…plate…"> service cards
+  const plateAnchors = $('a[class*="plate"]').toArray().filter((el) => {
+    const $el = $(el)
+    if ($el.closest('.svc-drawer-wrap').length) return false
+    if ($el.find('h1, h2, h3, h4').length === 0 && $el.find('img').length === 0) {
+      return false
+    }
+    return true
+  })
+
+  for (const el of plateAnchors) {
+    if (wireOneCard($, $(el), index)) {
+      count += 1
+      index += 1
+    }
   }
 
-  return { html: out, count }
+  // Secondary: unlinked plate / service-card containers
+  if (count === 0) {
+    const cardSel =
+      'div[class*="plate"], article[class*="plate"], div[class*="service-card"], article[class*="service-card"], div[class*="product-card"], article[class*="product-card"], div[class*="svc-card"], article[class*="svc-card"]'
+    const cards = $(cardSel)
+      .toArray()
+      .filter((el) => {
+        const $el = $(el)
+        if ($el.closest('.svc-drawer-wrap').length) return false
+        if ($el.find(cardSel).length > 0) return false
+        if ($el.find('h1, h2, h3, h4').length === 0) return false
+        return true
+      })
+
+    for (const el of cards) {
+      if (wireOneCard($, $(el), index)) {
+        count += 1
+        index += 1
+      }
+    }
+  }
+
+  return { html: $.root().html() || '', count }
 }
 
 export function ensureServiceDrawerCss(globalCss: string): string {

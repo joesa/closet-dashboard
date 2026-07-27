@@ -25,6 +25,16 @@ import {
   looksLikeServiceDrawerRequest,
   wireServiceCardDrawers,
 } from '@/lib/ai/surgicalServiceDrawer'
+import {
+  classifySurgicalIntent,
+  looksLikeHeroImageSurgicalRequest,
+  looksLikeVideoSurgicalRequest,
+} from '@/lib/ai/surgicalIntent'
+import {
+  applyOpsToConfig,
+  buildPageDigest,
+  parseSurgicalOps,
+} from '@/lib/ai/surgicalDomOps'
 import { HUMAN_COPY_VOICE_RULES_SURGICAL } from '@/lib/ai/humanCopyVoice'
 import {
   buildIntakeHintsForBrief,
@@ -225,16 +235,6 @@ function looksLikeVideoUrl(url: string): boolean {
   return /\.(mp4|webm|mov|m4v)(\?|$)/i.test(url)
 }
 
-function looksLikeVideoSurgicalRequest(prompt: string): boolean {
-  return (
-    /\b(video|mp4|webm|testimonial)\b/i.test(prompt) ||
-    /\b(don't|do not|cant|can't|cannot)\s+see\b/i.test(prompt) ||
-    /\bmissing\s+video\b/i.test(prompt) ||
-    /\badd\s+(the\s+)?(uploaded\s+)?(video|mp4)\b/i.test(prompt) ||
-    /\bembed\b/i.test(prompt)
-  )
-}
-
 function looksLikeImageUrl(url: string): boolean {
   if (looksLikeVideoUrl(url)) return false
   return (
@@ -243,35 +243,8 @@ function looksLikeImageUrl(url: string): boolean {
   )
 }
 
-/** Admin asked to set/replace the home hero (or main background) image. */
-export function looksLikeHeroImageSurgicalRequest(prompt: string): boolean {
-  const p = prompt || ''
-  if (looksLikeVideoSurgicalRequest(p) && !/\b(hero|banner|background)\b/i.test(p)) {
-    return false
-  }
-  if (
-    /\b(hero|banner|splash)\b/i.test(p) &&
-    /\b(image|photo|picture|pic|background|bg)\b/i.test(p)
-  ) {
-    return true
-  }
-  if (
-    /\b(background|header|main\s+page|homepage|home\s+page)\b/i.test(p) &&
-    /\b(image|photo|picture|pic)\b/i.test(p)
-  ) {
-    return true
-  }
-  // "use this/attached image for the hero / on the main page"
-  if (
-    /\b(use|set|make|put|replace|swap|change)\b[\s\S]{0,80}\b(this|the|attached|uploaded)\b[\s\S]{0,80}\b(image|photo|picture|pic)\b/i.test(
-      p
-    ) &&
-    /\b(hero|banner|splash|background|home|main\s+page|homepage)\b/i.test(p)
-  ) {
-    return true
-  }
-  return false
-}
+// Re-export for tests / callers that import from this module.
+export { looksLikeHeroImageSurgicalRequest } from '@/lib/ai/surgicalIntent'
 
 /** Prefer contain when the admin wants the whole subject visible (not cropped). */
 export function wantsWholeHeroImageVisible(prompt: string): boolean {
@@ -978,29 +951,134 @@ export async function generateCustomSiteDraft(opts: {
     )
   }
 
-  if (intent === 'surgical' && base && !(opts.images && opts.images.length > 0)) {
-    const mediaShortcut = await trySurgicalVideoShortcut({
-      tenantId: opts.tenantId,
-      prompt: opts.prompt || '',
-      base,
+  if (intent === 'surgical' && base) {
+    const route = classifySurgicalIntent(opts.prompt || '', {
+      hasImages: !!(opts.images && opts.images.length > 0),
+      attachedAssetUrls: [],
     })
-    if (mediaShortcut) return mediaShortcut
+
+    // Deterministic routes (no model HTML). Video skips when vision images present.
+    if (route.kind === 'video' && !(opts.images && opts.images.length > 0)) {
+      const mediaShortcut = await trySurgicalVideoShortcut({
+        tenantId: opts.tenantId,
+        prompt: opts.prompt || '',
+        base,
+      })
+      if (mediaShortcut) return mediaShortcut
+    }
   }
 
   const hydratedImages = await hydrateAdminImagesForModel(opts.images)
   const attachmentImages = hydratedImages.vision
   const attachedAssetUrls = hydratedImages.assetUrls
 
-  // Hero image swaps are deterministic when we have a CDN URL — do not ask the
-  // model to rewrite an 8k+ home page under the surgical JSON budget.
   if (intent === 'surgical' && base) {
-    const heroShortcut = await trySurgicalHeroImageShortcut({
-      tenantId: opts.tenantId,
-      prompt: opts.prompt || '',
-      base,
+    const route = classifySurgicalIntent(opts.prompt || '', {
+      hasImages: !!(opts.images && opts.images.length > 0),
       attachedAssetUrls,
     })
-    if (heroShortcut) return heroShortcut
+
+    if (route.kind === 'hero_image') {
+      const heroShortcut = await trySurgicalHeroImageShortcut({
+        tenantId: opts.tenantId,
+        prompt: opts.prompt || '',
+        base,
+        attachedAssetUrls,
+      })
+      if (heroShortcut) return heroShortcut
+    }
+
+    const modeEarly = opts.mode || base?.mode || 'inline'
+    const seoEarly = (cfg.seo_config || {}) as Record<string, unknown>
+
+    if (route.kind === 'contact') {
+      const contactShortcut = await trySurgicalContactShortcut({
+        tenantId: opts.tenantId,
+        prompt: opts.prompt || '',
+        base,
+        seo: {
+          phone: typeof seoEarly.phone === 'string' ? seoEarly.phone : undefined,
+          email: typeof seoEarly.email === 'string' ? seoEarly.email : undefined,
+          streetAddress:
+            typeof seoEarly.streetAddress === 'string'
+              ? seoEarly.streetAddress
+              : undefined,
+          addressLocality:
+            typeof seoEarly.addressLocality === 'string'
+              ? seoEarly.addressLocality
+              : undefined,
+          addressRegion:
+            typeof seoEarly.addressRegion === 'string'
+              ? seoEarly.addressRegion
+              : undefined,
+          postalCode:
+            typeof seoEarly.postalCode === 'string'
+              ? seoEarly.postalCode
+              : undefined,
+          legalName:
+            typeof seoEarly.legalName === 'string' ? seoEarly.legalName : undefined,
+        },
+      })
+      if (contactShortcut) return contactShortcut
+    }
+
+    if (route.kind === 'service_drawer') {
+      const drawerShortcut = await trySurgicalServiceDrawerShortcut({
+        tenantId: opts.tenantId,
+        prompt: opts.prompt || '',
+        base,
+      })
+      if (drawerShortcut) return drawerShortcut
+    }
+
+    if (route.kind === 'clickable_cards') {
+      const clickableShortcut = await trySurgicalClickableCardsShortcut({
+        tenantId: opts.tenantId,
+        prompt: opts.prompt || '',
+        base,
+      })
+      if (clickableShortcut) return clickableShortcut
+    }
+
+    // Mid-tier: LLM emits op list only — cheerio applies (no full-page HTML).
+    if (route.kind === 'ops') {
+      const brandNameEarly = (cfg.brand_name ||
+        tenant.business_name ||
+        'Business') as string
+      const opsResult = await runSurgicalOpsGenerate({
+        brandName: brandNameEarly,
+        prompt: opts.prompt || '',
+        mode: modeEarly,
+        base,
+      })
+      const sanitizedOps = sanitizeCustomConfig(opsResult.config)
+      ensureWidgetPlaceholder(sanitizedOps)
+      const supabaseOps = getSupabaseAdmin()
+      const { error: opsErr } = await supabaseOps
+        .from('site_configs')
+        .update({
+          custom_config_draft: sanitizedOps,
+          custom_updated_at: new Date().toISOString(),
+        })
+        .eq('tenant_id', opts.tenantId)
+      if (opsErr) throw new Error(`Failed to save draft: ${opsErr.message}`)
+      try {
+        const { revalidateTenantSiteCache } = await import(
+          '@/lib/tenants/revalidateTenantSite'
+        )
+        await revalidateTenantSiteCache(opts.tenantId)
+      } catch (revalErr) {
+        console.warn('[generateCustomSite] ops path revalidate failed:', revalErr)
+      }
+      return {
+        draft: sanitizedOps,
+        warnings: opsResult.extraWarnings,
+        errors: [],
+        reply: opsResult.reply,
+        intent: 'surgical',
+        changedPages: opsResult.changedPages,
+      }
+    }
   }
 
   const mode = opts.mode || base?.mode || 'inline'
@@ -1008,48 +1086,6 @@ export async function generateCustomSiteDraft(opts: {
   const pagesConfig = Array.isArray(cfg.pages_config) ? cfg.pages_config : []
   const seo = (cfg.seo_config || {}) as Record<string, unknown>
   const brandName = (cfg.brand_name || tenant.business_name || 'Business') as string
-
-  // Phone / email / address swaps are deterministic string replaces — do not
-  // trust the model to rewrite every page (it often claims success with {}).
-  if (intent === 'surgical' && base) {
-    const contactShortcut = await trySurgicalContactShortcut({
-      tenantId: opts.tenantId,
-      prompt: opts.prompt || '',
-      base,
-      seo: {
-        phone: typeof seo.phone === 'string' ? seo.phone : undefined,
-        email: typeof seo.email === 'string' ? seo.email : undefined,
-        streetAddress:
-          typeof seo.streetAddress === 'string' ? seo.streetAddress : undefined,
-        addressLocality:
-          typeof seo.addressLocality === 'string'
-            ? seo.addressLocality
-            : undefined,
-        addressRegion:
-          typeof seo.addressRegion === 'string' ? seo.addressRegion : undefined,
-        postalCode:
-          typeof seo.postalCode === 'string' ? seo.postalCode : undefined,
-        legalName: typeof seo.legalName === 'string' ? seo.legalName : undefined,
-      },
-    })
-    if (contactShortcut) return contactShortcut
-  }
-
-  if (intent === 'surgical' && base) {
-    const drawerShortcut = await trySurgicalServiceDrawerShortcut({
-      tenantId: opts.tenantId,
-      prompt: opts.prompt || '',
-      base,
-    })
-    if (drawerShortcut) return drawerShortcut
-
-    const clickableShortcut = await trySurgicalClickableCardsShortcut({
-      tenantId: opts.tenantId,
-      prompt: opts.prompt || '',
-      base,
-    })
-    if (clickableShortcut) return clickableShortcut
-  }
 
   // Full redesigns must ship EVERY intake page (including inactive rows that
   // nav often still links to — we reactivate drafted paths on save).
@@ -2223,6 +2259,171 @@ Output JSON for ${path} only.`
   }
 }
 
+
+async function runSurgicalOpsGenerate(opts: {
+  brandName: string
+  prompt: string
+  mode: 'inline' | 'iframe'
+  base: CustomSiteConfig
+}): Promise<{
+  config: CustomSiteConfig
+  reply: string
+  changedPages: string[]
+  extraWarnings: string[]
+}> {
+  const digest = buildPageDigest(opts.base.pages)
+  const systemPrompt = `You are a precise website editor. You emit ONLY a small list of DOM ops — never full page HTML.
+
+Output ONLY valid JSON (no markdown fences):
+{
+  "reply": "1-2 sentences describing the ops",
+  "ops": [
+    { "op": "replaceText", "find": "Old", "replace": "New", "scope": "all" },
+    { "op": "setAttr", "selector": "a.cta", "attr": "href", "value": "/contact" },
+    { "op": "setHtml", "selector": "h1.hero-title", "html": "New headline" },
+    { "op": "appendCss", "css": ".x{color:red}" }
+  ]
+}
+
+Allowed ops only: replaceText, setAttr, setHtml, appendCss, wrap, unwrap.
+Hard rules:
+1. Max 20 ops. Prefer replaceText / setAttr. Use setHtml only for a single small node (under 4000 chars).
+2. Never invent redesigns. Apply ONLY the admin request.
+3. Do NOT return pages HTML. Do NOT replace globalCss wholesale — use appendCss for additive rules only.
+4. find/replace strings must match the digest text exactly (case-insensitive apply is fine).
+5. If you cannot identify a concrete edit, return { "reply": "…need specifics…", "ops": [] }.`
+
+  const userPrompt = `Surgical op-list edit for "${opts.brandName}".
+
+Admin request:
+${opts.prompt}
+
+Page digest (path, headings, text excerpt, sample hrefs) — source of truth for find strings:
+${JSON.stringify(digest, null, 2)}`
+
+  const parsed = await callModelJson({
+    systemPrompt,
+    userPrompt,
+    temperature: 0.2,
+    maxOutputTokens: 4096,
+    useSurgicalProviderChain: true,
+    anthropicModel: CLAUDE_SONNET_MODEL,
+  })
+
+  const { ops, errors: parseErrors } = parseSurgicalOps(parsed.ops)
+  const modelReply =
+    typeof parsed.reply === 'string' ? parsed.reply.trim() : ''
+
+  if (!ops.length) {
+    return {
+      config: opts.base,
+      reply:
+        modelReply ||
+        'No structured edits produced — please specify exact text to change or a selector.',
+      changedPages: [],
+      extraWarnings: [
+        'Surgical ops path produced no valid ops — draft unchanged.',
+        ...parseErrors,
+      ],
+    }
+  }
+
+  const applied = applyOpsToConfig(opts.base, ops)
+  if (applied.hits === 0 || applied.changedPages.length === 0) {
+    // appendCss-only still counts as a change
+    const cssOnly =
+      applied.globalCssAppend &&
+      applied.changedPages.length === 0 &&
+      applied.hits > 0
+    if (!cssOnly) {
+      return {
+        config: opts.base,
+        reply:
+          'Model returned ops but none matched the live HTML — draft left unchanged. Try quoting exact on-page text.',
+        changedPages: [],
+        extraWarnings: [
+          'Surgical ops executor reported zero hits.',
+          ...parseErrors,
+        ],
+      }
+    }
+  }
+
+  const patch: SurgicalPatch = {
+    pages: {},
+    globalCssAppend: applied.globalCssAppend,
+    reply: modelReply || undefined,
+  }
+  for (const path of applied.changedPages) {
+    const page = applied.config.pages[path]
+    if (!page) continue
+    patch.pages![path] = { html: page.html }
+  }
+
+  const allowFullCssReplace = looksLikeExplicitGlobalRestyle(opts.prompt)
+  const { merged, changedPages, warnings: cssWarnings } = mergeCustomPatch(
+    opts.base,
+    patch,
+    { allowFullCssReplace }
+  )
+  // If appendCss applied but merge didn't see page html changes, ensure CSS lands.
+  if (
+    applied.globalCssAppend &&
+    (merged.globalCss || '') === (opts.base.globalCss || '')
+  ) {
+    const cssMerged = mergeSurgicalGlobalCss({
+      baseCss: opts.base.globalCss || '',
+      globalCssAppend: applied.globalCssAppend,
+      allowFullCssReplace: false,
+    })
+    merged.globalCss = cssMerged.globalCss
+  }
+  merged.mode = opts.mode
+
+  const integrity = assertSurgicalIntegrity(opts.base, merged)
+  applySurgicalIntegrityRepairs(merged, integrity)
+
+  let finalChanged = changedPages.filter((p) => {
+    if (p === '(globalCss)') {
+      return (merged.globalCss || '') !== (opts.base.globalCss || '')
+    }
+    return (
+      (merged.pages[p]?.html || '') !== (opts.base.pages[p]?.html || '') ||
+      (merged.pages[p]?.css || '') !== (opts.base.pages[p]?.css || '') ||
+      (merged.pages[p]?.title || '') !== (opts.base.pages[p]?.title || '') ||
+      (merged.pages[p]?.description || '') !==
+        (opts.base.pages[p]?.description || '')
+    )
+  })
+  if (
+    (merged.globalCss || '') !== (opts.base.globalCss || '') &&
+    !finalChanged.includes('(globalCss)')
+  ) {
+    finalChanged = [...finalChanged, '(globalCss)']
+  }
+
+  const extraWarnings: string[] = [...cssWarnings, ...integrity.warnings, ...parseErrors]
+  let reply =
+    modelReply ||
+    (finalChanged.length
+      ? `Applied ${ops.length} structured op(s) on ${finalChanged.join(', ')}.`
+      : 'No pages changed.')
+
+  if (finalChanged.length === 0) {
+    extraWarnings.push('Surgical ops edit produced no page changes — draft unchanged.')
+    if (/\b(updated|changed|replaced|fixed|renamed)\b/i.test(reply)) {
+      reply =
+        'Ops claimed changes but nothing matched the live HTML — draft left unchanged.'
+    }
+  }
+
+  return {
+    config: merged,
+    reply,
+    changedPages: finalChanged,
+    extraWarnings,
+  }
+}
 
 async function runSurgicalGenerate(opts: {
   brandName: string
