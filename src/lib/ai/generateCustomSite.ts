@@ -5,6 +5,12 @@ import {
   configuredSurgicalProviders,
   generateTextWithFallback,
 } from '@/lib/ai/aiTextProvider'
+import {
+  applyContactReplacePlan,
+  looksLikeContactSurgicalRequest,
+  parseContactSurgicalRequest,
+  type SeoContactFields,
+} from '@/lib/ai/surgicalContactReplace'
 import { HUMAN_COPY_VOICE_RULES_SURGICAL } from '@/lib/ai/humanCopyVoice'
 import {
   buildIntakeHintsForBrief,
@@ -579,6 +585,104 @@ async function trySurgicalHeroImageShortcut(opts: {
 }
 
 /**
+ * Deterministic site-wide phone / email / address swaps. The LLM often claims
+ * success while returning an empty surgical patch (no page HTML) — contact
+ * edits must not depend on that.
+ */
+async function trySurgicalContactShortcut(opts: {
+  tenantId: string
+  prompt: string
+  base: CustomSiteConfig
+  seo: SeoContactFields
+}): Promise<GenerateCustomSiteResult | null> {
+  if (!looksLikeContactSurgicalRequest(opts.prompt)) return null
+
+  const htmlCorpus = Object.values(opts.base.pages || {})
+    .map((p) => p?.html || '')
+    .join('\n')
+  const plan = parseContactSurgicalRequest(opts.prompt, {
+    htmlCorpus,
+    seo: opts.seo,
+  })
+  if (!plan) return null
+
+  const applied = applyContactReplacePlan({
+    pages: opts.base.pages,
+    globalCss: opts.base.globalCss,
+    seo: opts.seo,
+    plan,
+  })
+
+  if (applied.changedPages.length === 0 && !applied.globalCssChanged) {
+    return {
+      draft: opts.base,
+      warnings: applied.notes.length
+        ? applied.notes
+        : ['Contact fields already match the requested values — nothing to change.'],
+      errors: [],
+      reply:
+        applied.notes[0] ||
+        'No contact strings changed. Check the old phone/email/address in the prompt matches the site.',
+      intent: 'surgical',
+      changedPages: [],
+    }
+  }
+
+  const draft = cloneCustomConfig(opts.base)
+  for (const [path, page] of Object.entries(applied.pages)) {
+    if (!page.changed) continue
+    const existing = draft.pages[path]
+    if (!existing) continue
+    draft.pages[path] = {
+      ...existing,
+      html: page.html,
+      ...(page.title !== undefined ? { title: page.title } : {}),
+      ...(page.description !== undefined
+        ? { description: page.description }
+        : {}),
+    }
+  }
+  if (applied.globalCssChanged) {
+    draft.globalCss = applied.globalCss
+  }
+
+  const supabase = getSupabaseAdmin()
+  const sanitized = sanitizeCustomConfig(draft)
+  const { error: updateErr } = await supabase
+    .from('site_configs')
+    .update({
+      custom_config_draft: sanitized,
+      seo_config: applied.seo,
+      custom_updated_at: new Date().toISOString(),
+    })
+    .eq('tenant_id', opts.tenantId)
+  if (updateErr) throw new Error(`Failed to save draft: ${updateErr.message}`)
+
+  try {
+    const { revalidateTenantSiteCache } = await import(
+      '@/lib/tenants/revalidateTenantSite'
+    )
+    await revalidateTenantSiteCache(opts.tenantId)
+  } catch (revalErr) {
+    console.warn('[generateCustomSite] contact shortcut revalidate failed:', revalErr)
+  }
+
+  const summary = applied.summaryParts.join('; ')
+  return {
+    draft: sanitized,
+    warnings: applied.notes,
+    errors: [],
+    reply: `Updated ${summary} on ${applied.changedPages.length} page(s)${
+      applied.changedPages.length
+        ? ` (${applied.changedPages.join(', ')})`
+        : ''
+    }. Also synced seo_config. Preview draft, then Publish when ready.`,
+    intent: 'surgical',
+    changedPages: applied.changedPages,
+  }
+}
+
+/**
  * AI-builds (full) or surgically edits a custom HTML/CSS site into
  * custom_config_draft. Never touches render_mode or published custom_config
  * unless the admin publishes separately.
@@ -702,6 +806,32 @@ export async function generateCustomSiteDraft(opts: {
   const pagesConfig = Array.isArray(cfg.pages_config) ? cfg.pages_config : []
   const seo = (cfg.seo_config || {}) as Record<string, unknown>
   const brandName = (cfg.brand_name || tenant.business_name || 'Business') as string
+
+  // Phone / email / address swaps are deterministic string replaces — do not
+  // trust the model to rewrite every page (it often claims success with {}).
+  if (intent === 'surgical' && base) {
+    const contactShortcut = await trySurgicalContactShortcut({
+      tenantId: opts.tenantId,
+      prompt: opts.prompt || '',
+      base,
+      seo: {
+        phone: typeof seo.phone === 'string' ? seo.phone : undefined,
+        email: typeof seo.email === 'string' ? seo.email : undefined,
+        streetAddress:
+          typeof seo.streetAddress === 'string' ? seo.streetAddress : undefined,
+        addressLocality:
+          typeof seo.addressLocality === 'string'
+            ? seo.addressLocality
+            : undefined,
+        addressRegion:
+          typeof seo.addressRegion === 'string' ? seo.addressRegion : undefined,
+        postalCode:
+          typeof seo.postalCode === 'string' ? seo.postalCode : undefined,
+        legalName: typeof seo.legalName === 'string' ? seo.legalName : undefined,
+      },
+    })
+    if (contactShortcut) return contactShortcut
+  }
 
   // Full redesigns must ship EVERY intake page (including inactive rows that
   // nav often still links to — we reactivate drafted paths on save).
@@ -2017,7 +2147,8 @@ ${JSON.stringify(opts.context, null, 2)}`
   const { merged, changedPages } = mergeCustomPatch(opts.base, workingPatch)
   merged.mode = opts.mode
 
-  const reply =
+  // Never trust a model "I updated everything" reply when the patch was empty.
+  let reply =
     (workingPatch.reply && workingPatch.reply.trim()) ||
     (changedPages.length
       ? `Updated ${changedPages.join(', ')} only. Everything else left as-is.`
@@ -2026,6 +2157,16 @@ ${JSON.stringify(opts.context, null, 2)}`
   const extraWarnings: string[] = []
   if (changedPages.length === 0) {
     extraWarnings.push('Surgical edit produced no page changes — draft unchanged from base.')
+    if (
+      workingPatch.reply &&
+      /\b(updated|changed|replaced|fixed|renamed)\b/i.test(workingPatch.reply)
+    ) {
+      reply =
+        'Model claimed changes but returned no page HTML — draft left unchanged. Try a more specific prompt, or for phone/email/address use “change everywhere … to …”.'
+      extraWarnings.push(
+        'Ignored empty surgical patch that claimed success (false-positive model reply).'
+      )
+    }
   }
 
   return {
