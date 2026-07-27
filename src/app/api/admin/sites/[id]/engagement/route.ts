@@ -10,6 +10,10 @@ import {
   type RoomPricing,
 } from '@/lib/rooms'
 import {
+  getClientLoginCredentials,
+  regenerateClientLoginPassword,
+} from '@/lib/adminClientLogin'
+import {
   isWidgetThemeId,
   listWidgetThemesForAdmin,
   resolveWidgetTheme,
@@ -61,7 +65,7 @@ export async function GET(
     supabase
       .from('contractor_settings')
       .select(
-        'id, company_name, primary_color_hex, room_pricing, domain_config, tier_names, disabled_default_rooms, disabled_default_finishes, widget_theme_id, updated_at'
+        'id, company_name, primary_color_hex, room_pricing, domain_config, tier_names, disabled_default_rooms, disabled_default_finishes, widget_theme_id, updated_at, contact_email, initial_login_password, user_id'
       )
       .eq('id', widgetId)
       .maybeSingle(),
@@ -152,6 +156,8 @@ export async function GET(
     })),
   ]
 
+  const clientLogin = await getClientLoginCredentials(supabase, widgetId)
+
   return NextResponse.json(
     {
       tenantId,
@@ -161,6 +167,7 @@ export async function GET(
       /** Same row the live widget + contractor dashboard should edit. */
       settingsUpdatedAt: settings?.updated_at ?? null,
       engagementModel,
+      clientLogin,
       widgetThemeId: resolveWidgetTheme(
         (settings as { widget_theme_id?: string | null } | null)?.widget_theme_id
       ).id,
@@ -395,6 +402,27 @@ export async function POST(
   const { supabase, widgetId } = resolved
   const body = await req.json().catch(() => ({}))
   const kind = body.kind as string
+
+  if (kind === 'regenerate_login_password') {
+    try {
+      const creds = await regenerateClientLoginPassword(supabase, widgetId)
+      await logAdminAction({
+        actor: adminUser,
+        action: 'site.regenerate_client_login',
+        targetType: 'tenant',
+        targetId: tenantId,
+        metadata: { widgetId, username: creds.username },
+      })
+      return NextResponse.json(
+        { ok: true, clientLogin: creds },
+        { headers: NO_STORE }
+      )
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to regenerate password'
+      return NextResponse.json({ error: msg }, { status: 400, headers: NO_STORE })
+    }
+  }
+
   const data = (body.data || {}) as Record<string, unknown>
 
   let table = ''

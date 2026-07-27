@@ -2,6 +2,7 @@ import { v4 as uuidv4 } from 'uuid'
 import { Resend } from 'resend'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { widgetEmbedSnippet } from '@/lib/urls'
+import { generateTempPassword } from '@/lib/clientLoginCredentials'
 import {
   parseImageSelections,
   syncProductSlots,
@@ -165,15 +166,6 @@ function isMissingDesignVariantColumn(error: unknown): boolean {
   const e = error as { code?: string; message?: string; details?: string }
   const msg = `${e.message || ''} ${e.details || ''}`.toLowerCase()
   return e.code === 'PGRST204' || msg.includes('design_variant')
-}
-
-function generateTempPassword() {
-  const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*'
-  let password = ''
-  for (let i = 0; i < 12; i++) {
-    password += chars.charAt(Math.floor(Math.random() * chars.length))
-  }
-  return password
 }
 
 export async function provisionTenant(
@@ -1354,7 +1346,11 @@ export async function provisionTenant(
   if (authUserId) {
     await supabase
       .from('contractor_settings')
-      .update({ user_id: authUserId, contact_email: ownerEmail })
+      .update({
+        user_id: authUserId,
+        contact_email: ownerEmail,
+        initial_login_password: tempPassword,
+      })
       .eq('id', tenantId)
   }
 
