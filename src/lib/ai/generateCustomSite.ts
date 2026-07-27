@@ -10,6 +10,13 @@ import {
   enhanceFullRedesignBrief,
 } from '@/lib/ai/enhanceFullRedesignBrief'
 import {
+  activatePagesConfigForDraftPaths,
+  applyPathAliasesToCustomConfig,
+  assertFullRedesignPagesComplete,
+  buildFullRedesignRequiredPaths,
+  dropEmptyCustomPages,
+} from '@/lib/ai/fullRedesignPages'
+import {
   extractServicesNamedInBrief,
   htmlMentionsService,
   injectMissingServicesIntoHtml,
@@ -666,19 +673,12 @@ export async function generateCustomSiteDraft(opts: {
   const seo = (cfg.seo_config || {}) as Record<string, unknown>
   const brandName = (cfg.brand_name || tenant.business_name || 'Business') as string
 
-  // Full redesigns must ship EVERY page the prospect chose on intake — the
-  // old slice(0,3) cap silently dropped pages and made rebuilds look thin.
-  const requestedSlugs = pagesConfig
-    .map((p: { slug?: string }) => (typeof p.slug === 'string' ? p.slug : ''))
-    .filter(Boolean)
-    .slice(0, 8)
-  const pageHints =
-    requestedSlugs.length > 0
-      ? ['/', ...requestedSlugs.map((s: string) => (s.startsWith('/') ? s : `/${s}`))]
-          .filter((v, i, a) => a.indexOf(v) === i)
-          .slice(0, 9)
-          .join(', ')
-      : '/, /about, /services, /contact'
+  // Full redesigns must ship EVERY intake page (including inactive rows that
+  // nav often still links to — we reactivate drafted paths on save).
+  const requiredPaths = buildFullRedesignRequiredPaths(
+    pagesConfig as Array<{ slug?: string; is_active?: boolean | null }>
+  )
+  const pageHints = requiredPaths.join(', ')
 
   const mediaLibrary = await listTenantMediaAssets(opts.tenantId, {
     kind: 'all',
@@ -776,6 +776,7 @@ export async function generateCustomSiteDraft(opts: {
           prompt: opts.prompt,
           mode,
           pageHints,
+          requiredPaths,
           context: {
             ...context,
             /** Every intake page with its full section content — build them all. */
@@ -820,23 +821,24 @@ export async function generateCustomSiteDraft(opts: {
     }
   }
 
+  // Never mark Full redesign succeeded with an incomplete draft — missing
+  // pages fall through to the old engine (or blank / 404) on Preview.
+  if (intent === 'full') {
+    result = {
+      ...result,
+      config: dropEmptyCustomPages(
+        applyPathAliasesToCustomConfig(sanitizeCustomConfig(result.config))
+      ),
+    }
+    assertFullRedesignPagesComplete(result.config, requiredPaths)
+  }
+
   let sanitized = sanitizeCustomConfig(result.config)
   ensureWidgetPlaceholder(sanitized)
 
-  // Never mark Full redesign succeeded with an empty draft — Preview would
-  // fall through to the old live/engine site while the admin reply looks fine.
   if (intent === 'full') {
-    const homeHtml =
-      sanitized.pages['/']?.html || sanitized.pages['']?.html || ''
-    const homeTextLen = homeHtml
-      .replace(/<[^>]+>/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim().length
-    if (Object.keys(sanitized.pages).length === 0 || homeTextLen < 120) {
-      throw new Error(
-        `Full redesign produced no usable home HTML (draft would be empty). Retry the job; if Render logs show OOM/terminated, upgrade the worker instance.`
-      )
-    }
+    sanitized = dropEmptyCustomPages(applyPathAliasesToCustomConfig(sanitized))
+    assertFullRedesignPagesComplete(sanitized, requiredPaths)
   }
   const check = validateCustomConfig(sanitized)
   if (!check.ok) {
@@ -1009,7 +1011,20 @@ export async function generateCustomSiteDraft(opts: {
     siteUpdate.products_config = mergedProducts
   }
   if (pagesConfigUpdate != null) {
-    siteUpdate.pages_config = pagesConfigUpdate
+    siteUpdate.pages_config =
+      intent === 'full'
+        ? activatePagesConfigForDraftPaths(
+            pagesConfigUpdate,
+            Object.keys(sanitized.pages)
+          )
+        : pagesConfigUpdate
+  } else if (intent === 'full') {
+    // Reactivate any drafted path that was left is_active=false (e.g. Reviews)
+    // so Preview/engine fallback and nav targets do not 404.
+    siteUpdate.pages_config = activatePagesConfigForDraftPaths(
+      cfg.pages_config,
+      Object.keys(sanitized.pages)
+    )
   }
   if (customBuildNotesUpdate != null) {
     siteUpdate.custom_build_notes = customBuildNotesUpdate
@@ -1219,6 +1234,7 @@ async function runFullGenerate(opts: {
   prompt: string
   mode: 'inline' | 'iframe'
   pageHints: string
+  requiredPaths: string[]
   context: Record<string, unknown>
   images?: Array<{ mimeType: string; data: string }>
 }): Promise<{
@@ -1342,7 +1358,7 @@ ENGAGEMENT ENGINE — this site uses "${engagementLabel}" (${engagementModel}). 
   ${WIDGET_PLACEHOLDER}
 Place it in the conversion / estimate / book / order section; optional repeat on contact. Mount must be transparent/flush — never background, border, box-shadow, or heavy padding on the element holding the comment (widget paints its own card). Map any brief "quote estimator" / "book a bay" / multi-step form onto this band + tel CTA — do NOT emit HTML forms.
 
-INTAKE — ship EXACTLY these paths: ${opts.pageHints}. Preserve client facts from intakePages / about / seo.
+INTAKE — ship EXACTLY these paths as page keys (no inventing /reviews or /areas): ${opts.pageHints}. Nav hrefs MUST use those exact paths (Reviews label → /testimonials, Areas → /service-areas). Preserve client facts from intakePages / about / seo.
 
 # Platform (violations are stripped and break the site)
 
@@ -1583,19 +1599,22 @@ Execute OPTIMIZED CREATIVE BRIEF + ADMIN SEED specifics. Output only the final J
   }
 
   const pageKeys = Object.keys(pages)
-  const homeHtml = pages['/']?.html || pages['']?.html || ''
-  const homeTextLen = homeHtml.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
-    .length
-  if (pageKeys.length === 0 || homeTextLen < 120) {
+  let configOut: CustomSiteConfig = dropEmptyCustomPages(
+    applyPathAliasesToCustomConfig({ ...config, pages })
+  )
+  try {
+    assertFullRedesignPagesComplete(configOut, opts.requiredPaths)
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
     throw new Error(
-      `Full redesign returned empty/incomplete pages JSON (${pageKeys.length} page keys, home text ~${homeTextLen} chars). Often truncated model output or worker OOM — retry; if it repeats, upgrade the Render worker above 512MB.`
+      `${msg} Model returned ${pageKeys.length} page keys (${pageKeys.join(', ') || 'none'}).`
     )
   }
 
   return {
-    config: { ...config, pages },
+    config: configOut,
     reply,
-    changedPages: Object.keys(pages),
+    changedPages: Object.keys(configOut.pages),
     serviceUpdates,
     extraWarnings,
     inventedBrief:
