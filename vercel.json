@@ -10,7 +10,7 @@
     },
     {
       "path": "/api/cron/process-custom-build-jobs",
-      "schedule": "* * * * *"
+      "schedule": "5 5 * * *"
     },
     {
       "path": "/api/cron/domain-verify",

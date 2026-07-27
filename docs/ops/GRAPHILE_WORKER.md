@@ -143,10 +143,13 @@ Prefer **≥2GB** RAM on Render — 512MB OOMs Claude mid-foundation.
   attempt, durationMs, pageCount, htmlSizes.
 - Cron `/api/cron/process-custom-build-jobs` re-enqueues orphaned queued jobs and
   emits `[ALERT custom-build]` for queued &gt;2m or stale heartbeat (≥5m silence).
+  On Vercel Hobby this runs **once daily** (`5 5 * * *`); Graphile Worker still
+  claims jobs immediately when enqueued, and the admin status poll also re-kicks
+  orphaned `queued` jobs.
 
 ## Ops / recovery
 
-- Minutely cron `/api/cron/process-custom-build-jobs` **re-enqueues** orphaned
+- Daily cron `/api/cron/process-custom-build-jobs` **re-enqueues** orphaned
   `custom_build_job.status = queued` rows (worker was offline). It does **not**
   run AI work on Vercel.
 - `/api/internal/process-custom-build` is deprecated (410).
