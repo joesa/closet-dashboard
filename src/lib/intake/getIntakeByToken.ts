@@ -28,6 +28,8 @@ export type ProspectIntakeRow = {
   ai_site_config: Record<string, unknown> | null
   widget_config_hints: Record<string, unknown> | null
   image_selections: unknown
+  /** Graphile Worker status for async intake AI jobs. */
+  background_job: Record<string, unknown> | null
   services: string[]
   vibe: string | null
   tone: string | null
@@ -69,7 +71,7 @@ const INTAKE_SELECT = `
   deposit_status, stripe_checkout_session_id, tier_selected_at,
   build_paid_at, balance_paid_at, maintenance_plan, preview_approved_at,
   site_live_at, provisioned_contractor_id, maintenance_started_at,
-  ai_site_config, widget_config_hints, image_selections,
+  ai_site_config, widget_config_hints, image_selections, background_job,
   services, vibe, tone, customers, experience, differentiators, primary_cta, notes,
   pricing_notes, primary_color_hex, logo_url, contact_name, contact_phone,
   street_address, address_locality, address_region, postal_code, service_area,

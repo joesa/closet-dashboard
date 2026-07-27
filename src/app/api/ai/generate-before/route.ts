@@ -1,10 +1,13 @@
 import { NextResponse } from 'next/server'
+import { randomUUID } from 'node:crypto'
 import { getCurrentAdmin } from '@/lib/admin'
 import { checkAndIncrementAiUsage } from '@/lib/aiUsage'
 import { generateBeforeImage } from '@/lib/openai-images'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { canEnqueueBackgroundJobs, enqueueJob } from '@/lib/jobs/enqueueJob'
+import { TASK_ADMIN_GENERATE_BEFORE } from '@/lib/jobs/taskIds'
 
-// gpt-image-1 renders take a while — give the function room.
+// gpt-image-1 renders take a while — prefer Graphile Worker when available.
 export const maxDuration = 300
 export const runtime = 'nodejs'
 
@@ -15,23 +18,14 @@ export const runtime = 'nodejs'
  * Admin-only. Accepts:
  *   { tenantId: string, afterImageUrl: string, slug: string, industry?: string, services?: string[] }
  *
- * - `tenantId`    – used to patch `site_configs.before_after_config`
- * - `afterImageUrl` – the site's current hero/after image (used to anchor the
- *                    space-type prompt so before/after feel coherent)
- * - `slug`        – subdomain slug used as the storage path prefix
- *                   (e.g. "acme-closets" → site-assets/acme-closets/before.png)
- * - `industry`/`services` – optional business context so the "before" scene
- *                   matches the right subject category (vehicle, exterior,
- *                   fixture, or interior space) instead of assuming a messy
- *                   storage room. Falls back to `contractor_settings.industry`
- *                   when omitted.
- *
- * Returns: { beforeImageUrl: string }
+ * When DATABASE_URL is set, enqueues Graphile task and returns
+ * `{ async: true, jobKey }` — poll `site_configs.background_job`.
+ * Otherwise runs sync (local/dev fallback).
  */
 export async function POST(req: Request) {
   try {
-    const admin = await getCurrentAdmin()
-    if (!admin) {
+    const adminUser = await getCurrentAdmin()
+    if (!adminUser) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -66,15 +60,55 @@ export async function POST(req: Request) {
       )
     }
 
-    // Sanitize the slug to match the storage path convention used at provision time.
-    const safeSlug = slug
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '')
-      .slice(0, 40) || tenantId
+    const safeSlug =
+      slug
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 40) || tenantId
 
-    // Generate the new before image and upload to site-assets/<slug>/before.png
     const supabase = getSupabaseAdmin()
+
+    if (canEnqueueBackgroundJobs()) {
+      const jobKey = randomUUID()
+      await supabase
+        .from('site_configs')
+        .update({
+          background_job: {
+            task: 'admin_generate_before',
+            jobKey,
+            status: 'queued',
+            started_at: new Date().toISOString(),
+          },
+          updated_at: new Date().toISOString(),
+        })
+        .eq('tenant_id', tenantId)
+
+      await enqueueJob(
+        TASK_ADMIN_GENERATE_BEFORE,
+        {
+          jobKey,
+          tenantId,
+          afterImageUrl,
+          slug: safeSlug,
+          industry,
+          services,
+        },
+        {
+          jobKey: `admin_generate_before:${tenantId}:${jobKey}`,
+          maxAttempts: 2,
+        }
+      )
+
+      return NextResponse.json({
+        async: true,
+        success: true,
+        jobKey,
+        tenantId,
+        reply: 'Before-image generation queued on the background worker.',
+      })
+    }
+
     let resolvedIndustry = industry
     if (!resolvedIndustry) {
       const { data: settingsRow } = await supabase
@@ -89,7 +123,6 @@ export async function POST(req: Request) {
       services,
     })
 
-    // Patch the live site_config so the slider reflects the new image immediately.
     const { data: existing, error: fetchError } = await supabase
       .from('site_configs')
       .select('before_after_config')

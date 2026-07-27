@@ -1,4 +1,4 @@
-import { NextResponse, after } from 'next/server'
+import { NextResponse } from 'next/server'
 import { getCurrentAdmin, logAdminAction } from '@/lib/admin'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import {
@@ -18,13 +18,31 @@ import {
   shouldRequeueCustomBuildJob,
 } from '@/lib/ai/customBuildJob'
 import { cancelCustomBuildJob } from '@/lib/ai/processCustomBuildJob'
-import { kickCustomBuildProcessor } from '@/lib/ai/kickCustomBuildProcessor'
+import { canEnqueueBackgroundJobs, enqueueJob } from '@/lib/jobs/enqueueJob'
+import { TASK_FULL_REDESIGN } from '@/lib/jobs/taskIds'
 import { normalizeAdminImageRefs } from '@/lib/adminImageAttach'
 
-// Full redesign is queued here and finished on `/api/internal/process-custom-build`
-// (maxDuration 800) so work is not killed by this route's shorter budget.
+// Full redesign is enqueued to Graphile Worker (Render) — this route only
+// writes UI status + add_job. No Vercel maxDuration for the AI work itself.
 export const maxDuration = 60
 export const runtime = 'nodejs'
+
+async function enqueueFullRedesign(tenantId: string, startedAt: string) {
+  if (!canEnqueueBackgroundJobs()) {
+    throw new Error(
+      'DATABASE_URL is not configured — cannot enqueue Full redesign. Set a session-mode Postgres URI and run the Graphile Worker.'
+    )
+  }
+  await enqueueJob(
+    TASK_FULL_REDESIGN,
+    { tenantId, startedAt },
+    {
+      jobKey: `full_redesign:${tenantId}`,
+      jobKeyMode: 'replace',
+      maxAttempts: 3,
+    }
+  )
+}
 
 async function loadCustomBuildStatus(tenantId: string) {
   const supabase = getSupabaseAdmin()
@@ -43,11 +61,13 @@ async function loadCustomBuildStatus(tenantId: string) {
   const published = isCustomSiteConfig(data.custom_config) ? data.custom_config : null
   const draftDiffPages = diffCustomDraftPages(draft, published)
   const job = await getAndReconcileCustomBuildJob(tenantId)
-  if (shouldRequeueCustomBuildJob(job)) {
-    // Kick a fresh 800s processor — do not run the job inside this request.
-    after(() => {
-      kickCustomBuildProcessor(tenantId)
-    })
+  if (shouldRequeueCustomBuildJob(job) && job) {
+    // Dead-letter re-enqueue if the worker never claimed a queued job.
+    try {
+      await enqueueFullRedesign(tenantId, job.started_at)
+    } catch (err) {
+      console.error('[custom-build] requeue enqueue failed:', err)
+    }
   }
 
   return {
@@ -157,8 +177,7 @@ export async function POST(
             ? 'surgical'
             : 'full'
 
-      // Full redesign: queue + finish in `after()` so the browser never sits
-      // on a 4–5 minute request that Vercel kills with a 504.
+      // Full redesign: Graphile Worker (Render) — no Vercel time limit.
       if (intent === 'full') {
         const existing = await getAndReconcileCustomBuildJob(tenantId)
         if (isCustomBuildJobActive(existing)) {
@@ -171,6 +190,7 @@ export async function POST(
           })
         }
 
+        const startedAt = new Date().toISOString()
         const job = {
           status: 'queued' as const,
           intent: 'full' as const,
@@ -179,11 +199,24 @@ export async function POST(
           images: images.length ? images : undefined,
           error: null,
           reply: null,
-          started_at: new Date().toISOString(),
+          started_at: startedAt,
           finished_at: null,
           ever_full: true as const,
         }
         await setCustomBuildJob(tenantId, job)
+
+        try {
+          await enqueueFullRedesign(tenantId, startedAt)
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err)
+          await setCustomBuildJob(tenantId, {
+            ...job,
+            status: 'failed',
+            error: message,
+            finished_at: new Date().toISOString(),
+          })
+          return NextResponse.json({ error: message }, { status: 500 })
+        }
 
         await logAdminAction({
           actor: adminUser,
@@ -195,11 +228,8 @@ export async function POST(
             intent: 'full',
             mode,
             imageCount: images.length,
+            queue: 'graphile',
           },
-        })
-
-        after(() => {
-          kickCustomBuildProcessor(tenantId)
         })
 
         return NextResponse.json({
@@ -208,12 +238,12 @@ export async function POST(
           job: { ...job, images: undefined },
           jobActive: true,
           reply:
-            'Full redesign started — usually 2–6 minutes. This panel will refresh when the draft is ready.',
+            'Full redesign queued on the background worker — usually 2–8 minutes. This panel will refresh when the draft is ready.',
           nextStep: {
             preview: false,
             publish: false,
             message:
-              'Redesign running in the background on a dedicated worker. Leave this page open or come back shortly.',
+              'Redesign running on Graphile Worker (not Vercel). Leave this page open or come back shortly.',
           },
         })
       }

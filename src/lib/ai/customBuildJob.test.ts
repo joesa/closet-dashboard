@@ -26,13 +26,13 @@ describe('expireStaleCustomBuildJob', () => {
       now
     )
     expect(out?.status).toBe('failed')
-    expect(out?.error).toMatch(/stopped|timed out|budget/i)
+    expect(out?.error).toMatch(/silent|Graphile|re-queue|retry/i)
     expect(out?.finished_at).toBeTruthy()
   })
 
-  it('expires after the dedicated worker budget (~14 minutes)', () => {
-    expect(CUSTOM_BUILD_JOB_STALE_MS).toBeGreaterThanOrEqual(12 * 60 * 1000)
-    expect(CUSTOM_BUILD_JOB_STALE_MS).toBeLessThanOrEqual(16 * 60 * 1000)
+  it('expires after a long Graphile heartbeat silence (~45 minutes)', () => {
+    expect(CUSTOM_BUILD_JOB_STALE_MS).toBeGreaterThanOrEqual(40 * 60 * 1000)
+    expect(CUSTOM_BUILD_JOB_STALE_MS).toBeLessThanOrEqual(50 * 60 * 1000)
   })
 
   it('keeps processing jobs alive while heartbeat is fresh', () => {

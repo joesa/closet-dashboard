@@ -276,11 +276,12 @@ export default function AdminCustomBuild({
       const ageMin = Math.max(1, Math.round(ageMs / 60000));
       setInfo(
         job?.status === 'processing'
-          ? `Full redesign in progress (usually 2–6 minutes)… ~${ageMin}m elapsed`
-          : 'Full redesign queued…'
+          ? `Full redesign running on background worker… ~${ageMin}m elapsed (often 5–15 minutes)`
+          : 'Full redesign queued on background worker…'
       );
-      // Client watchdog: if the worker was hard-killed, don't wait for stale expiry.
-      if (ageMs >= 5.5 * 60 * 1000) {
+      // Client watchdog mirrors server stale window (~45m). Do not cancel early —
+      // Graphile Worker has no Vercel maxDuration; Claude alone can exceed 5 minutes.
+      if (ageMs >= 45 * 60 * 1000) {
         void cancelJob();
         return;
       }
@@ -544,7 +545,7 @@ export default function AdminCustomBuild({
         setInfo(
           typeof json.reply === 'string'
             ? json.reply
-            : 'Full redesign started — usually 2–6 minutes. This panel will update when ready.'
+            : 'Full redesign queued on the background worker — usually 5–15 minutes. This panel will update when ready.'
         );
         const next = await refresh();
         router.refresh();

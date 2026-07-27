@@ -1,0 +1,9 @@
+{
+  "name": "closet-dashboard-worker",
+  "private": true,
+  "description": "Graphile Worker entry — run from repo root: npm run worker",
+  "scripts": {
+    "start": "cd .. && npm run worker",
+    "migrate": "cd .. && npm run worker:migrate"
+  }
+}

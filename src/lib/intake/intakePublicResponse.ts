@@ -75,6 +75,11 @@ export async function buildIntakePublicJson(row: ProspectIntakeRow) {
     aiSiteConfig: siteConfig ?? null,
     widgetConfigHints: Object.keys(widgetConfigHints).length > 0 ? widgetConfigHints : null,
     imageSelections: selections,
+    /** Graphile Worker status for async generate-site / generate-images. */
+    backgroundJob:
+      row.background_job && typeof row.background_job === 'object'
+        ? row.background_job
+        : null,
     /** Server truth (includes custom industries) — prefer over client catalog guess. */
     beforeAfterApplicable: beforeAfterCategory !== 'not-applicable',
     maintenancePlan: row.maintenance_plan,

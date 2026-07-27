@@ -1,0 +1,17 @@
+# Local Graphile Worker — same env as the Next app (.env.local).
+# Usage: docker compose -f docker-compose.worker.yml up --build
+services:
+  graphile-worker:
+    image: node:22-bookworm
+    working_dir: /app
+    volumes:
+      - .:/app
+      - worker_node_modules:/app/node_modules
+    env_file:
+      - .env.local
+    command: >
+      bash -lc "npm ci && npm run worker"
+    restart: unless-stopped
+
+volumes:
+  worker_node_modules:

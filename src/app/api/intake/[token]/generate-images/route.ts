@@ -17,6 +17,8 @@ import {
   type ImageAttemptRecord,
 } from '@/lib/intake/imageSelections'
 import { checkRateLimit, hashRateKey } from '@/lib/rateLimit'
+import { canEnqueueBackgroundJobs, enqueueJob } from '@/lib/jobs/enqueueJob'
+import { TASK_INTAKE_GENERATE_IMAGES } from '@/lib/jobs/taskIds'
 
 export const maxDuration = 300
 export const runtime = 'nodejs'
@@ -138,6 +140,47 @@ export async function POST(
     )
     if (!limit.allowed) {
       return NextResponse.json({ error: 'Too many image requests. Try again later.' }, { status: 429 })
+    }
+
+    // Prefer Graphile Worker when DATABASE_URL is set (no Vercel 300s cap).
+    if (canEnqueueBackgroundJobs()) {
+      const admin = getSupabaseAdmin()
+      await admin
+        .from('prospect_intakes')
+        .update({
+          background_job: {
+            task: 'intake_generate_images',
+            status: 'queued',
+            slot,
+            started_at: new Date().toISOString(),
+          },
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', row.id)
+
+      await enqueueJob(
+        TASK_INTAKE_GENERATE_IMAGES,
+        {
+          token,
+          slot,
+          prompt,
+          productIndex: slot === 'product' ? productIndex : undefined,
+          serviceNames,
+        },
+        {
+          jobKey: `intake_generate_images:${token}:${slot}:${productIndex ?? 'x'}`,
+          jobKeyMode: 'replace',
+          maxAttempts: 2,
+        }
+      )
+
+      return NextResponse.json({
+        async: true,
+        success: true,
+        slot,
+        productIndex: slot === 'product' ? productIndex : undefined,
+        reply: 'Image generation queued on the background worker.',
+      })
     }
 
     const storagePrefix = `intakes/${token}`

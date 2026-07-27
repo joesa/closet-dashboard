@@ -52,12 +52,11 @@ for f in supabase/migrations/*.sql; do
 done
 
 if [[ ${#PENDING[@]} -eq 0 ]]; then
-  echo "No pending migrations."
-  exit 0
+  echo "No pending SQL migrations."
+else
+  echo "Pending migrations:"
+  printf '  %s\n' "${PENDING[@]}"
 fi
-
-echo "Pending migrations:"
-printf '  %s\n' "${PENDING[@]}"
 
 if [[ $DRY_RUN -eq 1 ]]; then
   echo "(dry run — exiting)"
@@ -72,5 +71,36 @@ for f in "${PENDING[@]}"; do
   echo "▶ Recording $ts as applied ..."
   supabase migration repair --status applied "$ts"
 done
+
+# Graphile Worker schema (jobs / add_job / LISTEN). Requires session-mode
+# DATABASE_URL (port 5432), not the transaction pooler.
+if [[ -z "${DATABASE_URL:-}" && -n "${SUPABASE_DB_PASSWORD:-}" && -n "${POOLER_URL:-}" ]]; then
+  # Derive session URI from linked pooler URL + password (same host:5432).
+  export POOLER_URL
+  export SUPABASE_DB_PASSWORD
+  DATABASE_URL="$(python3 - <<'PY'
+import os, urllib.parse
+pooler = os.environ["POOLER_URL"].strip()
+pw = os.environ["SUPABASE_DB_PASSWORD"]
+u = urllib.parse.urlparse(pooler)
+user = u.username or "postgres"
+host = u.hostname
+port = u.port or 5432
+db = (u.path or "/postgres").lstrip("/") or "postgres"
+auth = urllib.parse.quote(user, safe="") + ":" + urllib.parse.quote(pw, safe="")
+print(f"postgresql://{auth}@{host}:{port}/{db}?sslmode=require")
+PY
+)"
+  export DATABASE_URL
+  echo "▶ Derived DATABASE_URL from pooler + SUPABASE_DB_PASSWORD"
+fi
+
+if [[ -n "${DATABASE_URL:-}" ]]; then
+  echo "▶ graphile_worker schema (npm run worker:migrate) ..."
+  npm run worker:migrate
+else
+  echo "⚠ DATABASE_URL unset — skip graphile_worker migrate."
+  echo "  Set a session-mode Postgres URI and run: npm run worker:migrate"
+fi
 
 echo "✓ Done."

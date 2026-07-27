@@ -30,11 +30,11 @@ export type CustomBuildJob = {
 }
 
 /**
- * Wall-clock budget for the whole redesign (enhance + Claude + images).
- * Work runs on `/api/internal/process-custom-build` with maxDuration 800s;
- * allow headroom so the UI does not expire a still-running worker.
+ * Wall-clock idle budget while a Graphile Worker heartbeats.
+ * Full redesign has no Vercel maxDuration; expire only if the worker dies
+ * (no heartbeat) for this long.
  */
-export const CUSTOM_BUILD_JOB_STALE_MS = 14 * 60 * 1000
+export const CUSTOM_BUILD_JOB_STALE_MS = 45 * 60 * 1000
 
 /** Re-kick processor if a job sits in queued without being claimed. */
 export const CUSTOM_BUILD_JOB_REQUEUE_MS = 45 * 1000
@@ -110,7 +110,7 @@ export function expireStaleCustomBuildJob(
     images: undefined,
     error:
       job.error ||
-      'Full redesign stopped after the server budget elapsed. Click Full redesign to try again — the job will keep running in the background until it finishes.',
+      'Full redesign worker went silent (no heartbeat). Click Full redesign to re-queue — Graphile will retry automatically when the worker is healthy.',
     finished_at: new Date(nowMs).toISOString(),
     ever_full: job.ever_full || job.intent === 'full' || undefined,
   }

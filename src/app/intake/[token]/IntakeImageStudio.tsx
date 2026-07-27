@@ -18,6 +18,35 @@ type SiteConfigShape = {
 /** Empty brief stub — lets the studio render with default prompts when AI brief fails. */
 const EMPTY_SITE_BRIEF: SiteConfigShape = {};
 
+/** Poll intake GET until a Graphile background_job finishes (or times out). */
+async function pollIntakeBackgroundJob(
+  token: string,
+  task: string,
+  opts?: { timeoutMs?: number; intervalMs?: number }
+): Promise<Record<string, unknown>> {
+  const timeoutMs = opts?.timeoutMs ?? 10 * 60 * 1000
+  const intervalMs = opts?.intervalMs ?? 3000
+  const started = Date.now()
+  while (Date.now() - started < timeoutMs) {
+    const res = await fetch(`/api/intake/${token}`)
+    const json = await res.json().catch(() => ({}))
+    const job =
+      json.backgroundJob && typeof json.backgroundJob === 'object'
+        ? (json.backgroundJob as Record<string, unknown>)
+        : null
+    if (job && job.task === task) {
+      if (job.status === 'succeeded') return { ...json, backgroundJob: job }
+      if (job.status === 'failed') {
+        throw new Error(
+          typeof job.error === 'string' ? job.error : 'Background job failed'
+        )
+      }
+    }
+    await new Promise((r) => setTimeout(r, intervalMs))
+  }
+  throw new Error('Background job timed out waiting for the worker')
+}
+
 type Props = {
   token: string;
   services: string[];
@@ -332,9 +361,6 @@ export default function IntakeImageStudio({
     setBriefLoading(true);
     setError('');
     setBriefWarning('');
-    const controller = new AbortController();
-    // Don't wait for a platform 504 — fall back to defaults and keep moving.
-    const abortTimer = window.setTimeout(() => controller.abort(), 55_000);
     try {
       // Send only the fields generate-site reads — never gallery/logo data URLs.
       const briefBody = {
@@ -371,12 +397,14 @@ export default function IntakeImageStudio({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(briefBody),
-        signal: controller.signal,
       });
       let json: {
         error?: string;
+        async?: boolean;
         data?: { siteConfig?: SiteConfigShape } | SiteConfigShape;
         beforeAfterApplicable?: boolean;
+        aiSiteConfig?: SiteConfigShape;
+        backgroundJob?: { beforeAfterApplicable?: boolean; source?: string };
       } = {};
       try {
         json = await res.json();
@@ -388,13 +416,32 @@ export default function IntakeImageStudio({
         );
       }
       if (!res.ok) throw new Error(json.error || 'Brief generation failed');
-      const raw = (json.data as { siteConfig?: SiteConfigShape } | undefined)?.siteConfig ?? json.data;
-      const sc = (extractProspectSiteConfig(raw) ?? raw) as SiteConfigShape;
-      setSiteConfig(sc && typeof sc === 'object' ? sc : EMPTY_SITE_BRIEF);
-      if (typeof json.beforeAfterApplicable === 'boolean') {
-        setServerBeforeAfterApplicable(json.beforeAfterApplicable);
+
+      if (json.async) {
+        const polled = await pollIntakeBackgroundJob(token, 'intake_generate_site');
+        const raw = polled.aiSiteConfig as SiteConfigShape | undefined;
+        const sc = (extractProspectSiteConfig(raw) ?? raw) as SiteConfigShape;
+        setSiteConfig(sc && typeof sc === 'object' ? sc : EMPTY_SITE_BRIEF);
+        const job = polled.backgroundJob as
+          | { beforeAfterApplicable?: boolean }
+          | undefined;
+        if (typeof job?.beforeAfterApplicable === 'boolean') {
+          setServerBeforeAfterApplicable(job.beforeAfterApplicable);
+        } else if (typeof polled.beforeAfterApplicable === 'boolean') {
+          setServerBeforeAfterApplicable(polled.beforeAfterApplicable as boolean);
+        }
+        onUpdate(selections, sc && typeof sc === 'object' ? sc : EMPTY_SITE_BRIEF);
+      } else {
+        const raw =
+          (json.data as { siteConfig?: SiteConfigShape } | undefined)?.siteConfig ??
+          json.data;
+        const sc = (extractProspectSiteConfig(raw) ?? raw) as SiteConfigShape;
+        setSiteConfig(sc && typeof sc === 'object' ? sc : EMPTY_SITE_BRIEF);
+        if (typeof json.beforeAfterApplicable === 'boolean') {
+          setServerBeforeAfterApplicable(json.beforeAfterApplicable);
+        }
+        onUpdate(selections, sc && typeof sc === 'object' ? sc : EMPTY_SITE_BRIEF);
       }
-      onUpdate(selections, sc && typeof sc === 'object' ? sc : EMPTY_SITE_BRIEF);
     } catch (e) {
       const message =
         e instanceof Error && e.name === 'AbortError'
@@ -407,7 +454,6 @@ export default function IntakeImageStudio({
         `${message}. Using default image prompts so you can continue.`
       );
     } finally {
-      window.clearTimeout(abortTimer);
       setBriefLoading(false);
     }
   };
@@ -460,6 +506,11 @@ export default function IntakeImageStudio({
           return;
         }
         throw new Error(message);
+      }
+      if (json.async) {
+        await pollIntakeBackgroundJob(token, 'intake_generate_images', {
+          timeoutMs: 8 * 60 * 1000,
+        });
       }
       const res2 = await fetch(`/api/intake/${token}`);
       const refreshed = await res2.json();

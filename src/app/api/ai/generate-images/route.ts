@@ -3,6 +3,10 @@ import { getCurrentAdmin } from '@/lib/admin'
 import { checkAndIncrementAiUsage } from '@/lib/aiUsage'
 import { generateAndUpload } from '@/lib/openai-images'
 import { describeImageError } from '@/lib/ai/generateImagesBatch'
+import { canEnqueueBackgroundJobs, enqueueJob } from '@/lib/jobs/enqueueJob'
+import { TASK_ADMIN_GENERATE_IMAGES } from '@/lib/jobs/taskIds'
+import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { randomUUID } from 'node:crypto'
 
 // gpt-image-1 renders take a while; give the function room. On a Vercel Hobby
 // plan (60s hard cap) the client should fall back to one image per request.
@@ -51,6 +55,10 @@ export async function POST(req: Request) {
     const slug = sanitizeSlug(body.slug)
     const heroImagePrompt: string | undefined = body.heroImagePrompt
     const products: ProductPromptInput[] = Array.isArray(body.products) ? body.products : []
+    const tenantId =
+      typeof body.tenantId === 'string' && body.tenantId.trim()
+        ? body.tenantId.trim()
+        : undefined
 
     if (!heroImagePrompt && products.every((p) => !p?.imagePrompt)) {
       return NextResponse.json(
@@ -59,9 +67,49 @@ export async function POST(req: Request) {
       )
     }
 
-    // Generate hero + product images in parallel so the whole batch fits within
-    // the function timeout. Each task uploads to site-assets/<slug>/<key>.png
-    // and resolves to a permanent public URL.
+    // Async only when we have a tenant to poll via site_configs.background_job.
+    // Sandbox / no-tenant callers keep the sync path.
+    if (canEnqueueBackgroundJobs() && tenantId) {
+      const jobKey = randomUUID()
+      const admin = getSupabaseAdmin()
+      await admin
+        .from('site_configs')
+        .update({
+          background_job: {
+            task: 'admin_generate_images',
+            jobKey,
+            status: 'queued',
+            started_at: new Date().toISOString(),
+          },
+          updated_at: new Date().toISOString(),
+        })
+        .eq('tenant_id', tenantId)
+
+      await enqueueJob(
+        TASK_ADMIN_GENERATE_IMAGES,
+        {
+          jobKey,
+          tenantId,
+          slug,
+          heroImagePrompt,
+          products,
+        },
+        {
+          jobKey: `admin_generate_images:${tenantId}:${jobKey}`,
+          maxAttempts: 2,
+        }
+      )
+      return NextResponse.json({
+        async: true,
+        success: true,
+        jobKey,
+        tenantId,
+        slug,
+        reply: 'Image batch queued on the background worker.',
+      })
+    }
+
+    // Sync fallback (local/dev without DATABASE_URL).
     const heroResult: { url?: string } = {}
     const productResults: Array<{ index: number; title?: string; image: string }> = []
 

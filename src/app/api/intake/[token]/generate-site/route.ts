@@ -9,6 +9,8 @@ import { assertDraftIntake, assertDepositPaid } from '@/lib/intake/intakeTierGat
 import { checkRateLimit, hashRateKey } from '@/lib/rateLimit'
 import { clampPagesForTier, pageSlugsToSitemap, SITE_PAGE_SLUGS } from '@/lib/catalog/sitePages'
 import { OTHER_SERVICE_LABEL } from '@/lib/catalog/contractorServices'
+import { canEnqueueBackgroundJobs, enqueueJob } from '@/lib/jobs/enqueueJob'
+import { TASK_INTAKE_GENERATE_SITE } from '@/lib/jobs/taskIds'
 
 export const maxDuration = 120
 export const runtime = 'nodejs'
@@ -152,6 +154,44 @@ export async function POST(
         { error: 'Fill in business details before generating the AI brief.' },
         { status: 400 }
       )
+    }
+
+    // Prefer Graphile Worker when DATABASE_URL is set (no Vercel 120s cap).
+    if (canEnqueueBackgroundJobs()) {
+      const admin = getSupabaseAdmin()
+      await admin
+        .from('prospect_intakes')
+        .update({
+          requested_pages: pageSlugs,
+          ...(effectivePageContents ? { page_contents: effectivePageContents } : {}),
+          background_job: {
+            task: 'intake_generate_site',
+            status: 'queued',
+            started_at: new Date().toISOString(),
+          },
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', row.id)
+
+      await enqueueJob(
+        TASK_INTAKE_GENERATE_SITE,
+        {
+          token,
+          pageSlugs,
+          pageContents: effectivePageContents || undefined,
+        },
+        {
+          jobKey: `intake_generate_site:${token}`,
+          jobKeyMode: 'replace',
+          maxAttempts: 2,
+        }
+      )
+
+      return NextResponse.json({
+        async: true,
+        success: true,
+        reply: 'AI brief queued on the background worker — this page will update when ready.',
+      })
     }
 
     const intakeIndustry =
