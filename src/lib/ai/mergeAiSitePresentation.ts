@@ -12,7 +12,10 @@ import {
   reconcileAiProductsToIntake,
   type ReconcileProduct,
 } from '@/lib/ai/reconcileAiProductsToIntake'
-import { syncServicesPageFromProducts } from '@/lib/catalog/syncServicesPageFromProducts'
+import {
+  syncServicesPageFromProducts,
+  type SyncPage,
+} from '@/lib/catalog/syncServicesPageFromProducts'
 
 /** Merge resolved theme/layout into AI generate-site output and persist presentation audit blob. */
 export async function mergeAiSiteConfigWithPresentation(
@@ -64,7 +67,7 @@ export async function mergeAiSiteConfigWithPresentation(
 
   const pagesConfig = Array.isArray(data.pagesConfig)
     ? syncServicesPageFromProducts(
-        data.pagesConfig as Array<{ slug?: string; content_blocks?: unknown[] }>,
+        data.pagesConfig as SyncPage[],
         (site.products as ReconcileProduct[]) || []
       )
     : data.pagesConfig
