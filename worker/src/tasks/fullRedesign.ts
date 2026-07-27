@@ -23,13 +23,11 @@ function htmlSizesFromDraft(draft: unknown): Record<string, number> {
 }
 
 /**
- * Long-running Full redesign — no Vercel maxDuration. Updates
- * site_configs.custom_build_job for the admin UI poller.
+ * Long-running custom build (Full redesign or surgical) — no Vercel maxDuration.
+ * Updates site_configs.custom_build_job for the admin UI poller.
  *
- * Multi-pass: each page is checkpointed to custom_config_draft. Graphile
- * retries (and stale-heartbeat reclaim) resume remaining paths instead of
- * regenerating completed ones. Admin cancel / a new Full redesign (new
- * startedAt + cleared draft) starts fresh.
+ * Full: multipass with draft checkpoints; Graphile retries resume remaining paths.
+ * Surgical: one model call on the existing draft (draft is not cleared on enqueue).
  */
 export const fullRedesignTask: Task = async (payload, helpers) => {
   const { tenantId, startedAt } = payload as FullRedesignPayload
@@ -43,6 +41,8 @@ export const fullRedesignTask: Task = async (payload, helpers) => {
   const t0 = Date.now()
 
   const current = await getCustomBuildJob(tenantId)
+  const intent = current?.intent === 'surgical' ? 'surgical' : 'full'
+
   if (
     current &&
     startedAt &&
@@ -51,8 +51,9 @@ export const fullRedesignTask: Task = async (payload, helpers) => {
   ) {
     helpers.logger.info(
       JSON.stringify({
-        event: 'full_redesign_skip',
+        event: 'custom_build_skip',
         reason: 'succeeded',
+        intent,
         tenantId,
         jobId,
         attempt,
@@ -71,8 +72,9 @@ export const fullRedesignTask: Task = async (payload, helpers) => {
   ) {
     helpers.logger.info(
       JSON.stringify({
-        event: 'full_redesign_skip',
+        event: 'custom_build_skip',
         reason: 'cancelled',
+        intent,
         tenantId,
         jobId,
         attempt,
@@ -81,7 +83,7 @@ export const fullRedesignTask: Task = async (payload, helpers) => {
     return
   }
 
-  // Soft failure retry: reopen the same run so multipass can resume from draft.
+  // Soft failure retry: reopen the same run (full resumes checkpoints; surgical re-runs).
   if (
     current &&
     startedAt &&
@@ -91,7 +93,8 @@ export const fullRedesignTask: Task = async (payload, helpers) => {
     const done = (current.passes_done || []).join(', ') || 'none yet'
     helpers.logger.info(
       JSON.stringify({
-        event: 'full_redesign_reopen',
+        event: 'custom_build_reopen',
+        intent,
         tenantId,
         jobId,
         attempt,
@@ -104,15 +107,19 @@ export const fullRedesignTask: Task = async (payload, helpers) => {
       status: 'queued',
       error: null,
       finished_at: null,
-      pass: 'resume',
+      pass: intent === 'surgical' ? 'surgical' : 'resume',
       dead_lettered: false,
-      reply: `Retrying from checkpoint (done: ${done})…`,
+      reply:
+        intent === 'surgical'
+          ? 'Retrying surgical edit…'
+          : `Retrying from checkpoint (done: ${done})…`,
     })
   }
 
   helpers.logger.info(
     JSON.stringify({
-      event: 'full_redesign_start',
+      event: 'custom_build_start',
+      intent,
       tenantId,
       jobId,
       attempt,
@@ -123,6 +130,7 @@ export const fullRedesignTask: Task = async (payload, helpers) => {
   await processCustomBuildJob(tenantId)
 
   const after = await getCustomBuildJob(tenantId)
+  const afterIntent = after?.intent === 'surgical' ? 'surgical' : intent
   const durationMs = Date.now() - t0
   let htmlSizes: Record<string, number> = {}
   try {
@@ -147,7 +155,8 @@ export const fullRedesignTask: Task = async (payload, helpers) => {
     }
     helpers.logger.error(
       JSON.stringify({
-        event: 'full_redesign_failed',
+        event: 'custom_build_failed',
+        intent: afterIntent,
         tenantId,
         jobId,
         attempt,
@@ -159,12 +168,13 @@ export const fullRedesignTask: Task = async (payload, helpers) => {
         error: after.error,
       })
     )
-    throw new Error(after.error || 'Full redesign failed')
+    throw new Error(after.error || 'Custom build failed')
   }
 
   helpers.logger.info(
     JSON.stringify({
-      event: 'full_redesign_done',
+      event: 'custom_build_done',
+      intent: afterIntent,
       tenantId,
       jobId,
       attempt,

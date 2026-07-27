@@ -3,7 +3,6 @@ import { getCurrentAdmin, logAdminAction } from '@/lib/admin'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import {
   discardCustomDraft,
-  generateCustomSiteDraft,
   publishCustomSiteDraft,
   revertToEngine,
 } from '@/lib/ai/generateCustomSite'
@@ -22,15 +21,15 @@ import { canEnqueueBackgroundJobs, enqueueJob } from '@/lib/jobs/enqueueJob'
 import { TASK_FULL_REDESIGN } from '@/lib/jobs/taskIds'
 import { normalizeAdminImageRefs } from '@/lib/adminImageAttach'
 
-// Full redesign is enqueued to Graphile Worker (Render) — this route only
-// writes UI status + add_job. No Vercel maxDuration for the AI work itself.
+// Full redesign + surgical edits are enqueued to Graphile Worker (Render) —
+// this route only writes UI status + add_job. No Vercel maxDuration for the AI work.
 export const maxDuration = 60
 export const runtime = 'nodejs'
 
 async function enqueueFullRedesign(tenantId: string, startedAt: string) {
   if (!canEnqueueBackgroundJobs()) {
     throw new Error(
-      'DATABASE_URL is not configured — cannot enqueue Full redesign. Set a session-mode Postgres URI and run the Graphile Worker.'
+      'DATABASE_URL is not configured — cannot enqueue custom build jobs. Set a session-mode Postgres URI and run the Graphile Worker.'
     )
   }
   await enqueueJob(
@@ -177,33 +176,38 @@ export async function POST(
             ? 'surgical'
             : 'full'
 
-      // Full redesign: Graphile Worker (Render) — no Vercel time limit.
-      if (intent === 'full') {
+      // Full redesign + surgical: Graphile Worker (Render) — no Vercel time limit.
+      if (intent === 'full' || intent === 'surgical') {
         const existing = await getAndReconcileCustomBuildJob(tenantId)
-        if (isCustomBuildJobActive(existing)) {
+        if (existing && isCustomBuildJobActive(existing)) {
           return NextResponse.json({
             async: true,
-            intent: 'full',
-            job: existing ? { ...existing, images: undefined } : existing,
+            intent: existing.intent === 'surgical' ? 'surgical' : 'full',
+            job: { ...existing, images: undefined },
             jobActive: true,
-            reply: 'A full redesign is already running — hang tight, this panel will update when it finishes.',
+            reply:
+              existing.intent === 'surgical'
+                ? 'A surgical edit is already running — hang tight, this panel will update when it finishes.'
+                : 'A full redesign is already running — hang tight, this panel will update when it finishes.',
           })
         }
 
         const startedAt = new Date().toISOString()
-        // Fresh Full redesign — clear prior draft so resume only applies within
-        // this Graphile job's checkpoints (not yesterday's half-finished site).
-        await getSupabaseAdmin()
-          .from('site_configs')
-          .update({
-            custom_config_draft: null,
-            custom_updated_at: startedAt,
-          })
-          .eq('tenant_id', tenantId)
+        if (intent === 'full') {
+          // Fresh Full redesign — clear prior draft so resume only applies within
+          // this Graphile job's checkpoints (not yesterday's half-finished site).
+          await getSupabaseAdmin()
+            .from('site_configs')
+            .update({
+              custom_config_draft: null,
+              custom_updated_at: startedAt,
+            })
+            .eq('tenant_id', tenantId)
+        }
 
         const job = {
           status: 'queued' as const,
-          intent: 'full' as const,
+          intent: intent as 'full' | 'surgical',
           prompt,
           mode,
           images: images.length ? images : undefined,
@@ -211,9 +215,12 @@ export async function POST(
           reply: null,
           started_at: startedAt,
           finished_at: null,
-          ever_full: true as const,
-          pass: 'queued',
+          ever_full: (intent === 'full' || existing?.ever_full === true) as
+            | true
+            | undefined,
+          pass: intent === 'surgical' ? 'surgical' : 'queued',
           passes_done: [] as string[],
+          dead_lettered: false,
         }
         await setCustomBuildJob(tenantId, job)
 
@@ -237,7 +244,7 @@ export async function POST(
           targetId: tenantId,
           metadata: {
             prompt: prompt.slice(0, 500),
-            intent: 'full',
+            intent,
             mode,
             imageCount: images.length,
             queue: 'graphile',
@@ -246,69 +253,28 @@ export async function POST(
 
         return NextResponse.json({
           async: true,
-          intent: 'full',
+          intent,
           job: { ...job, images: undefined },
           jobActive: true,
           reply:
-            'Full redesign queued on the background worker (multi-pass: home, then each page with checkpoints). Usually several minutes — this panel updates as passes finish.',
+            intent === 'surgical'
+              ? 'Surgical edit queued on the background worker. Usually under a couple of minutes — this panel updates when the draft is ready.'
+              : 'Full redesign queued on the background worker (multi-pass: home, then each page with checkpoints). Usually several minutes — this panel updates as passes finish.',
           nextStep: {
             preview: false,
             publish: false,
             message:
-              'Redesign running on Graphile Worker. If the worker restarts mid-run, completed pages resume from the draft checkpoint.',
+              intent === 'surgical'
+                ? 'Surgical edit running on Graphile Worker. Leave this page open or come back shortly.'
+                : 'Redesign running on Graphile Worker. If the worker restarts mid-run, completed pages resume from the draft checkpoint.',
           },
         })
       }
 
-      const result = await generateCustomSiteDraft({
-        tenantId,
-        prompt,
-        mode,
-        intent,
-        images: images.length ? images : undefined,
-      })
-
-      await logAdminAction({
-        actor: adminUser,
-        action: 'site.custom_build_generate',
-        targetType: 'tenant',
-        targetId: tenantId,
-        metadata: {
-          prompt: prompt.slice(0, 500),
-          intent: result.intent,
-          changedPages: result.changedPages,
-          mode: result.draft.mode,
-          pageKeys: Object.keys(result.draft.pages || {}),
-          warnings: result.warnings,
-          errors: result.errors,
-          imageCount: images.length,
-        },
-      })
-
-      return NextResponse.json({
-        reply: result.reply,
-        intent: result.intent,
-        changedPages: result.changedPages,
-        draft: {
-          mode: result.draft.mode,
-          pageKeys: Object.keys(result.draft.pages || {}),
-        },
-        warnings: result.warnings,
-        errors: result.errors,
-        draftAhead: true,
-        nextStep:
-          result.changedPages.length > 0
-            ? {
-                preview: true,
-                publish: true,
-                message: `Saved to DRAFT only (${result.changedPages.join(', ')}). Click Preview draft to verify, then Publish draft — the live site will not update until you publish.`,
-              }
-            : {
-                preview: false,
-                publish: false,
-                message: 'No pages changed in the draft.',
-              },
-      })
+      return NextResponse.json(
+        { error: `Unknown generate intent: ${intent}` },
+        { status: 400 }
+      )
     }
 
     if (action === 'publish') {
@@ -366,10 +332,12 @@ export async function POST(
     }
 
     if (action === 'cancel') {
-      const job = await cancelCustomBuildJob(
-        tenantId,
-        'Full redesign cancelled. Click Full redesign to try again.'
-      )
+      const live = await getAndReconcileCustomBuildJob(tenantId)
+      const cancelReason =
+        live?.intent === 'surgical'
+          ? 'Surgical edit cancelled. Click Edit surgically to try again.'
+          : 'Full redesign cancelled. Click Full redesign to try again.'
+      const job = await cancelCustomBuildJob(tenantId, cancelReason)
       await logAdminAction({
         actor: adminUser,
         action: 'site.custom_build_cancel',

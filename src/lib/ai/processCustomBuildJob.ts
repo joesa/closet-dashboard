@@ -77,6 +77,12 @@ export async function processCustomBuildJob(tenantId: string): Promise<void> {
 
   try {
     const intent = current.intent === 'surgical' ? 'surgical' : 'full'
+    if (intent === 'surgical') {
+      await patchProgress({
+        pass: 'surgical',
+        reply: 'Applying surgical edit…',
+      })
+    }
     const result = await generateCustomSiteDraft({
       tenantId,
       prompt: current.prompt || '',
@@ -107,7 +113,13 @@ export async function processCustomBuildJob(tenantId: string): Promise<void> {
                 foundation_reply: p.foundationReply ?? undefined,
               })
             }
-          : undefined,
+          : async (p) => {
+              await patchProgress({
+                pass: p.pass || 'surgical',
+                reply: p.reply ?? undefined,
+                changedPages: p.passesDone,
+              })
+            },
       onCheckpoint:
         intent === 'full'
           ? async (draft) => {
@@ -138,6 +150,7 @@ export async function processCustomBuildJob(tenantId: string): Promise<void> {
                   JSON.stringify({
                     event: 'custom_build_checkpoint',
                     tenantId,
+                    intent,
                     pageCount: Object.keys(pages).length,
                     htmlSizes,
                   })
@@ -155,15 +168,20 @@ export async function processCustomBuildJob(tenantId: string): Promise<void> {
       reply: result.reply,
       warnings: result.warnings,
       changedPages: result.changedPages,
-      pass: 'done',
+      pass: intent === 'surgical' ? 'surgical_done' : 'done',
       passes_done: result.changedPages,
       error: null,
       finished_at: new Date().toISOString(),
       heartbeat_at: new Date().toISOString(),
-      ever_full: true,
+      ever_full: claimed.ever_full || intent === 'full' || undefined,
       dead_lettered: false,
     })
-    console.info('[processCustomBuildJob] succeeded', tenantId, result.changedPages)
+    console.info(
+      '[processCustomBuildJob] succeeded',
+      tenantId,
+      intent,
+      result.changedPages
+    )
   } catch (err) {
     stopped = true
     clearInterval(heartbeat)
@@ -204,8 +222,8 @@ export async function cancelCustomBuildJob(
 }
 
 /**
- * Re-queue a failed/dead-lettered Full redesign without clearing the draft —
- * resumes remaining empty pages from checkpoint.
+ * Re-queue a failed/dead-lettered custom build job without clearing the draft.
+ * Full redesign resumes remaining empty pages; surgical re-runs the same prompt.
  */
 export async function requeueCustomBuildJob(
   tenantId: string
@@ -217,22 +235,26 @@ export async function requeueCustomBuildJob(
   if (current.status === 'queued' || current.status === 'processing') {
     throw new Error('Job is already active.')
   }
-  if (current.intent !== 'full' && !current.ever_full) {
-    throw new Error('Only Full redesign jobs can be re-queued.')
+  const intent = current.intent === 'surgical' ? 'surgical' : 'full'
+  if (intent !== 'surgical' && current.intent !== 'full' && !current.ever_full) {
+    throw new Error('Only Full redesign or surgical jobs can be re-queued.')
   }
   const startedAt = new Date().toISOString()
   const job: CustomBuildJob = {
     ...current,
     status: 'queued',
-    intent: 'full',
+    intent,
     error: null,
     finished_at: null,
     started_at: startedAt,
     heartbeat_at: null,
-    pass: 'queued',
+    pass: intent === 'surgical' ? 'surgical' : 'queued',
     dead_lettered: false,
-    reply: `Re-queued from checkpoint (done: ${(current.passes_done || []).join(', ') || 'none yet'})…`,
-    ever_full: true,
+    reply:
+      intent === 'surgical'
+        ? 'Re-queued surgical edit…'
+        : `Re-queued from checkpoint (done: ${(current.passes_done || []).join(', ') || 'none yet'})…`,
+    ever_full: current.ever_full || intent === 'full' || undefined,
   }
   await setCustomBuildJob(tenantId, job)
   return job

@@ -115,7 +115,7 @@ export default function AdminCustomBuild({
   /** Media file list is collapsed by default to keep the AI controls above the fold. */
   const [mediaListOpen, setMediaListOpen] = useState(false);
   const promptFileRef = useRef<HTMLInputElement>(null);
-  /** True while UI is waiting on an async Full redesign job (not surgical/clone). */
+  /** True while UI is waiting on an async Graphile job (full or surgical). */
   const waitingOnJobRef = useRef(false);
 
   const hasBase = !!(status?.draft || status?.published);
@@ -320,7 +320,7 @@ export default function AdminCustomBuild({
     void refreshAssets();
   }, [refresh, refreshAssets]);
 
-  // Poll while a Full redesign is running in the background.
+  // Poll while a Full redesign or surgical edit is running in the background.
   // Trust server `jobActive` (stale jobs are expired server-side) — do not
   // re-derive from status alone or a killed `processing` job locks the UI forever.
   const jobWasActiveRef = useRef(false);
@@ -335,12 +335,17 @@ export default function AdminCustomBuild({
       const ageMs = Number.isFinite(startedMs) ? Date.now() - startedMs : 0;
       const ageMin = Math.max(1, Math.round(ageMs / 60000));
       const hb = formatHeartbeatAge(job?.heartbeat_at);
+      const surgical = job?.intent === 'surgical';
       const done = (job?.passes_done || []).length;
       const need = (job?.required_paths || []).length || '?';
       setInfo(
-        job?.status === 'processing'
-          ? `Processing · pass ${job?.pass || '…'} · ${done}/${need} pages · heartbeat ${hb} · ~${ageMin}m wall`
-          : `Queued on background worker · heartbeat ${hb} · ~${ageMin}m waiting`
+        surgical
+          ? job?.status === 'processing'
+            ? `Surgical edit processing · heartbeat ${hb} · ~${ageMin}m wall`
+            : `Surgical edit queued on background worker · heartbeat ${hb}`
+          : job?.status === 'processing'
+            ? `Processing · pass ${job?.pass || '…'} · ${done}/${need} pages · heartbeat ${hb} · ~${ageMin}m wall`
+            : `Queued on background worker · heartbeat ${hb} · ~${ageMin}m waiting`
       );
       // Client watchdog mirrors server stale window (~45m). Do not cancel early —
       // Graphile Worker has no Vercel maxDuration; Claude alone can exceed 5 minutes.
@@ -376,19 +381,30 @@ export default function AdminCustomBuild({
       if (typeof job.reply === 'string' && job.reply.trim()) setReply(job.reply);
       if (Array.isArray(job.warnings)) setWarnings(job.warnings);
       if (Array.isArray(job.changedPages)) setChangedPages(job.changedPages);
-      setLastIntent('full');
+      const surgical = job.intent === 'surgical';
+      setLastIntent(surgical ? 'surgical' : 'full');
       setInfo(
-        'Full redesign saved to DRAFT only. Preview draft → Publish draft. The public site stays unchanged until Publish.'
+        surgical
+          ? Array.isArray(job.changedPages) && job.changedPages.length
+            ? `Surgical edit saved to DRAFT (${job.changedPages.join(', ')}). Preview draft to verify, then Publish draft.`
+            : 'Surgical edit finished — no pages changed in the draft.'
+          : 'Full redesign saved to DRAFT only. Preview draft → Publish draft. The public site stays unchanged until Publish.'
       );
       setNextStep({
         preview: true,
         publish: true,
-        message:
-          'Draft ready. Click Preview draft to review, then Publish draft to make it live.',
+        message: surgical
+          ? 'Draft updated. Click Preview draft to review, then Publish draft to make it live.'
+          : 'Draft ready. Click Preview draft to review, then Publish draft to make it live.',
       });
     } else if (job.status === 'failed') {
       setLoading(false);
-      setError(job.error || 'Full redesign failed — try again.');
+      setError(
+        job.error ||
+          (job.intent === 'surgical'
+            ? 'Surgical edit failed — try again.'
+            : 'Full redesign failed — try again.')
+      );
       setInfo('');
     } else {
       // Safety: server says inactive but no terminal status — unlock UI.
@@ -603,12 +619,14 @@ export default function AdminCustomBuild({
             : 'Cloned the current live site into the custom draft.'
         );
       } else if (action === 'generate' && json.async) {
-        // Full redesign runs in the background — keep loading + poll via refresh.
+        // Full redesign / surgical run on Graphile — keep loading + poll via refresh.
         waitingOnJobRef.current = true;
         setInfo(
           typeof json.reply === 'string'
             ? json.reply
-            : 'Full redesign queued on the background worker — usually 5–15 minutes. This panel will update when ready.'
+            : json.intent === 'surgical'
+              ? 'Surgical edit queued on the background worker…'
+              : 'Full redesign queued on the background worker…'
         );
         const next = await refresh();
         router.refresh();
@@ -616,7 +634,12 @@ export default function AdminCustomBuild({
           waitingOnJobRef.current = false;
           setLoading(false);
           if (next?.job?.status === 'failed') {
-            setError(next.job.error || 'Full redesign failed — try again.');
+            setError(
+              next.job.error ||
+                (json.intent === 'surgical'
+                  ? 'Surgical edit failed — try again.'
+                  : 'Full redesign failed — try again.')
+            );
             setInfo('');
           }
         }
@@ -655,11 +678,14 @@ export default function AdminCustomBuild({
       ? !!status?.draft
       : requiredPaths.every((p) => draftPageKeys.includes(p));
   // Block Preview while job runs, or after incomplete-pages failure until complete.
+  // Block Preview during Full redesign (draft cleared/incomplete). Allow during
+  // surgical — existing draft stays readable while the worker applies the patch.
   const canPreviewDraft =
     !!draftPreviewUrl &&
-    !jobActive &&
+    !(jobActive && status?.job?.intent !== 'surgical') &&
     !(
       status?.job?.status === 'failed' &&
+      status.job.intent !== 'surgical' &&
       /incomplete|missing pages/i.test(status.job.error || '') &&
       !draftComplete
     );
@@ -669,6 +695,7 @@ export default function AdminCustomBuild({
     status?.job?.status === 'failed' &&
     (status.job.dead_lettered === true ||
       status.job.intent === 'full' ||
+      status.job.intent === 'surgical' ||
       status.fullRedesignEver === true) &&
     !/cancel/i.test(status.job.error || '');
 
@@ -1467,9 +1494,11 @@ export default function AdminCustomBuild({
             {status?.job?.pass || '…'}
           </span>
           <span className="text-neutral-400">
-            {(status?.job?.passes_done || []).length}/
-            {(status?.job?.required_paths || []).length || '?'} pages · heartbeat{' '}
-            {formatHeartbeatAge(status?.job?.heartbeat_at)}
+            {status?.job?.intent === 'surgical'
+              ? `surgical · heartbeat ${formatHeartbeatAge(status?.job?.heartbeat_at)}`
+              : `${(status?.job?.passes_done || []).length}/${
+                  (status?.job?.required_paths || []).length || '?'
+                } pages · heartbeat ${formatHeartbeatAge(status?.job?.heartbeat_at)}`}
           </span>
         </div>
       ) : null}

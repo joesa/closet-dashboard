@@ -1,13 +1,14 @@
-# Graphile Worker (Full redesign + long AI jobs)
+# Graphile Worker (Full redesign + surgical + long AI jobs)
 
-Long AI work (Full redesign, provision, intake generate, admin images) runs on
-an always-on **Graphile Worker** process. Supabase Postgres is the queue;
-**Render** Background Worker is the default host. Vercel only enqueues jobs and
-serves the admin/intake poll APIs.
+Long AI work (Full redesign, **surgical edits**, provision, intake generate,
+admin images) runs on an always-on **Graphile Worker** process. Supabase
+Postgres is the queue; **Render** Background Worker is the default host. Vercel
+only enqueues jobs and serves the admin/intake poll APIs.
 
 ## Why
 
-Vercel serverless `maxDuration` (even 800s) kills Full redesign mid-Claude.
+Vercel serverless `maxDuration` (even 800s) kills Full redesign mid-Claude —
+and site-wide surgical renames also exceeded the 60s API budget (504).
 Heartbeats cannot revive a dead isolate. Graphile has no execution time limit.
 
 ## Architecture
@@ -21,7 +22,7 @@ Heartbeats cannot revive a dead isolate. Graphile has no execution time limit.
 
 | Task | Enqueued from | Status column |
 |---|---|---|
-| `full_redesign` | `/api/admin/sites/[id]/custom-build` | `site_configs.custom_build_job` |
+| `full_redesign` | `/api/admin/sites/[id]/custom-build` (`intent: full` **or** `surgical`) | `site_configs.custom_build_job` |
 | `provision_tenant` | `kickProvisionAfterSubmit` | `provision_jobs` |
 | `intake_generate_site` | `/api/intake/[token]/generate-site` | `prospect_intakes.background_job` |
 | `intake_generate_images` | `/api/intake/[token]/generate-images` | `prospect_intakes.background_job` |
@@ -131,6 +132,16 @@ Resume:
   multipass (does not resume yesterday’s half site).
 
 Prefer **≥2GB** RAM on Render — 512MB OOMs Claude mid-foundation.
+
+## Surgical edits (also Graphile)
+
+**Edit surgically** uses the same `full_redesign` Graphile task with
+`custom_build_job.intent = 'surgical'`:
+
+- Draft is **not** cleared on enqueue (patch applies onto the current draft).
+- One model call (plus deterministic hero/video shortcuts inside the worker).
+- Admin UI polls the same job panel; Preview stays available while surgical runs.
+- Site-wide renames that used to 504 on Vercel now finish on Render.
 
 ## Admin UX + observability
 
