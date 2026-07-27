@@ -16,7 +16,7 @@ export function getGraphileDatabaseUrl(): string {
       'DATABASE_URL appears to use the transaction pooler (:6543). Use session mode on port 5432 for Graphile Worker.'
     )
   }
-  return ensureSslMode(url)
+  return normalizeConnectionString(url)
 }
 
 export function canEnqueueBackgroundJobs(): boolean {
