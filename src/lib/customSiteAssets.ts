@@ -257,10 +257,11 @@ export function guessImageUploadKind(
   fileName: string
 ): 'logo' | 'gallery' | 'hero' | 'product' | 'general' {
   const n = (fileName || '').toLowerCase()
-  if (/\b(logo|wordmark|brand)\b/.test(n)) return 'logo'
-  if (/\b(hero|banner|splash|cover)\b/.test(n)) return 'hero'
-  if (/\b(product|service|card)\b/.test(n)) return 'product'
-  if (/\b(gallery|portfolio|before|after)\b/.test(n)) return 'gallery'
+  if (/(^|[^a-z0-9])(logo|wordmark|brand)([^a-z0-9]|$)/.test(n)) return 'logo'
+  if (/(^|[^a-z0-9])(hero|banner|splash|cover)([^a-z0-9]|$)/.test(n)) return 'hero'
+  if (/(^|[^a-z0-9])(product|service|card)([^a-z0-9]|$)/.test(n)) return 'product'
+  if (/(^|[^a-z0-9])(gallery|portfolio|before|after)([^a-z0-9]|$)/.test(n))
+    return 'gallery'
   return 'general'
 }
 
