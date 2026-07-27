@@ -5,25 +5,20 @@ import {
   runAdminSiteChat,
   type ChatMessage,
 } from '@/lib/ai/adminSiteChat'
+import { normalizeAdminImageRefs } from '@/lib/adminImageAttach'
 
 export const maxDuration = 120
 export const runtime = 'nodejs'
 
 /** ~6MB of base64 per image; anything bigger is rejected rather than truncated. */
 const MAX_IMAGE_DATA_URL_CHARS = 8_000_000
-const MAX_IMAGES_PER_MESSAGE = 4
 
 function sanitizeImages(raw: unknown): string[] | undefined {
-  if (!Array.isArray(raw)) return undefined
-  const images = raw
-    .filter(
-      (u): u is string =>
-        typeof u === 'string' &&
-        u.length <= MAX_IMAGE_DATA_URL_CHARS &&
-        /^data:image\/(png|jpeg|jpg|webp|gif);base64,/.test(u)
-    )
-    .slice(0, MAX_IMAGES_PER_MESSAGE)
-  return images.length > 0 ? images : undefined
+  const refs = normalizeAdminImageRefs(raw).filter((u) => {
+    if (u.startsWith('data:')) return u.length <= MAX_IMAGE_DATA_URL_CHARS
+    return true
+  })
+  return refs.length > 0 ? refs : undefined
 }
 
 /**
