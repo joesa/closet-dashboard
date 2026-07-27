@@ -6,20 +6,17 @@ import { guessImageUploadKind } from '@/lib/customSiteAssets'
 
 describe('optimizeUserImage', () => {
   it('shrinks a large synthetic JPEG under hero bounds', async () => {
-    // Minimal valid JPEG isn't huge — use sharp to make a big buffer via PNG then jpeg
     const sharp = (await import('sharp')).default
-    const big = await sharp({
-      create: {
-        width: 3000,
-        height: 2000,
-        channels: 3,
-        background: { r: 40, g: 80, b: 120 },
-      },
+    // Noise so mozjpeg cannot crush the buffer to a few KB.
+    const noise = Buffer.alloc(3000 * 2000 * 3)
+    for (let i = 0; i < noise.length; i++) noise[i] = (i * 17 + (i % 251)) & 255
+    const big = await sharp(noise, {
+      raw: { width: 3000, height: 2000, channels: 3 },
     })
       .jpeg({ quality: 95 })
       .toBuffer()
 
-    expect(big.length).toBeGreaterThan(100_000)
+    expect(big.length).toBeGreaterThan(200_000)
     const out = await optimizeUserImage(big, 'hero', 'image/jpeg')
     expect(out.mime).toBe('image/jpeg')
     expect(out.ext).toBe('jpg')
