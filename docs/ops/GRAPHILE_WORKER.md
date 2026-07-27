@@ -85,7 +85,8 @@ Without `DATABASE_URL`, intake/admin image routes fall back to sync HTTP
 1. Create a **Background Worker** on Render (or apply `worker/render.yaml`).
 2. **Root Directory**: closet-dashboard repo root (not `worker/`).
 3. Build: `npm ci` — Start: `npm run worker`
-4. Copy env from Vercel / `.env.example`:
+   (`tsx` / `dotenv` are production dependencies so they install under `NODE_ENV=production`.)
+4. Instance type: **Starter** ($7/mo) — Background Workers have no Free tier.
    - `DATABASE_URL` (session 5432)
    - `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`
    - `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `OPENAI_API_KEY`

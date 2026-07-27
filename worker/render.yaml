@@ -9,15 +9,13 @@ services:
   - type: worker
     name: closet-dashboard-graphile-worker
     runtime: node
-    plan: free
+    plan: starter
     region: oregon
     buildCommand: npm ci
     startCommand: npm run worker
     autoDeploy: true
     envVars:
-      - key: NODE_ENV
-        value: production
-      # Session-mode Supabase Postgres (port 5432). NOT transaction pooler :6543.
+      # Keep NODE_ENV=production; tsx/dotenv are in dependencies so npm ci installs them.
       - key: DATABASE_URL
         sync: false
       - key: NEXT_PUBLIC_SUPABASE_URL
