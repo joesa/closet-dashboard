@@ -14,6 +14,9 @@ type CustomBuildJob = {
   changedPages?: string[];
   started_at?: string;
   finished_at?: string | null;
+  pass?: string | null;
+  passes_done?: string[];
+  required_paths?: string[];
 };
 
 type Status = {
@@ -276,7 +279,11 @@ export default function AdminCustomBuild({
       const ageMin = Math.max(1, Math.round(ageMs / 60000));
       setInfo(
         job?.status === 'processing'
-          ? `Full redesign running on background worker… ~${ageMin}m elapsed (often 5–15 minutes)`
+          ? `Full redesign multi-pass${
+              job.pass ? ` — ${job.pass}` : ''
+            } (${(job.passes_done || []).length}/${
+              (job.required_paths || []).length || '?'
+            } pages)… ~${ageMin}m elapsed`
           : 'Full redesign queued on background worker…'
       );
       // Client watchdog mirrors server stale window (~45m). Do not cancel early —

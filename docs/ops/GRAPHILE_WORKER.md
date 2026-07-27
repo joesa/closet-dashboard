@@ -95,6 +95,26 @@ Without `DATABASE_URL`, intake/admin image routes fall back to sync HTTP
 
 Concurrency is **1** on free Render so two Full redesigns do not OOM.
 
+## Full redesign multi-pass + resume
+
+Full redesign no longer asks the model for every page in one JSON blob.
+
+1. **Foundation** — `globalCss` + home `/`
+2. **One page per pass** — remaining intake paths, matching chrome from home
+3. After each pass, draft is written to `site_configs.custom_config_draft` and
+   `custom_build_job` gets `pass` / `passes_done` / `required_paths` for the UI
+
+Resume:
+
+- Worker OOM / crash mid-run → status stays `processing`; next claim resumes
+  remaining empty paths from the draft checkpoint.
+- Soft model failure → status `failed`, Graphile retries (max 3) **reopen** the
+  same `started_at` and continue from checkpoint (cancel messages are skipped).
+- Admin clicks Full redesign again → new `started_at`, **draft cleared**, fresh
+  multipass (does not resume yesterday’s half site).
+
+Prefer **≥2GB** RAM on Render — 512MB OOMs Claude mid-foundation.
+
 ## Ops / recovery
 
 - Minutely cron `/api/cron/process-custom-build-jobs` **re-enqueues** orphaned
@@ -106,5 +126,6 @@ Concurrency is **1** on free Render so two Full redesigns do not OOM.
 ## Success check
 
 1. Admin → Full redesign on a tenant.
-2. Render logs show `full_redesign start` … Claude … images … `done`.
-3. Admin panel polls `custom_build_job` to `succeeded` without a ~5 minute fail.
+2. Render logs show `full_redesign start` … `checkpoint home` … `checkpoint /about`
+   … `done` (or `resume — skip home` after a retry).
+3. Admin panel shows pass progress (`foundation:/`, `/about`, …) then `succeeded`.

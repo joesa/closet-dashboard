@@ -27,6 +27,12 @@ export type CustomBuildJob = {
   ever_full?: boolean
   /** Updated while the dedicated processor is alive — used for stale checks. */
   heartbeat_at?: string | null
+  /** Multi-pass Full redesign: current pass label (e.g. "/" or "/about"). */
+  pass?: string | null
+  /** Paths already checkpointed with usable HTML. */
+  passes_done?: string[]
+  /** Intake paths this run must produce. */
+  required_paths?: string[]
 }
 
 /**

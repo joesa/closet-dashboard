@@ -15,7 +15,16 @@ import {
   assertFullRedesignPagesComplete,
   buildFullRedesignRequiredPaths,
   dropEmptyCustomPages,
+  isUsableCustomPageHtml,
 } from '@/lib/ai/fullRedesignPages'
+import {
+  emptyFullRedesignDraft,
+  extractChromeSample,
+  finalizeFullRedesignDraft,
+  mergePageIntoDraft,
+  passesDoneFromDraft,
+  remainingFullRedesignPaths,
+} from '@/lib/ai/fullRedesignMultiPass'
 import {
   extractServicesNamedInBrief,
   htmlMentionsService,
@@ -588,6 +597,15 @@ export async function generateCustomSiteDraft(opts: {
    * CDN URLs are reused in site HTML; all refs are hydrated for model vision.
    */
   images?: string[]
+  /** Multi-pass progress for Graphile / admin UI. */
+  onProgress?: (progress: {
+    pass: string
+    passesDone: string[]
+    requiredPaths: string[]
+    reply?: string
+  }) => Promise<void>
+  /** Persist partial draft after each pass (resume after worker crash). */
+  onCheckpoint?: (draft: CustomSiteConfig) => Promise<void>
 }): Promise<GenerateCustomSiteResult> {
   const supabase = getSupabaseAdmin()
   const { data: tenant, error } = await supabase
@@ -777,6 +795,9 @@ export async function generateCustomSiteDraft(opts: {
           mode,
           pageHints,
           requiredPaths,
+          existingDraft: intent === 'full' ? existingDraft : null,
+          onProgress: opts.onProgress,
+          onCheckpoint: opts.onCheckpoint,
           context: {
             ...context,
             /** Every intake page with its full section content — build them all. */
@@ -1237,6 +1258,15 @@ async function runFullGenerate(opts: {
   requiredPaths: string[]
   context: Record<string, unknown>
   images?: Array<{ mimeType: string; data: string }>
+  /** Checkpointed draft from a prior attempt of this Graphile job (resume). */
+  existingDraft?: CustomSiteConfig | null
+  onProgress?: (progress: {
+    pass: string
+    passesDone: string[]
+    requiredPaths: string[]
+    reply?: string
+  }) => Promise<void>
+  onCheckpoint?: (draft: CustomSiteConfig) => Promise<void>
 }): Promise<{
   config: CustomSiteConfig
   reply: string
@@ -1379,40 +1409,20 @@ ${
       : ''
 }
 
-# Output
-
-Output ONLY valid JSON (no markdown fences, no preamble):
-{
-  "mode": "${opts.mode}",
-  "globalCss": "shared CSS (:root tokens + shared components)",
-  "pages": {
-    "/": { "html": "body HTML", "css": "optional", "title": "SEO title", "description": "meta" }
-  },
-  "serviceUpdates": {
-    "added": [{ "title": "Brief-added service", "description": "optional" }],
-    "removed": [{ "title": "Only if brief explicitly removes", "reason": "cite brief" }]
-  },
-  "reply": "3-5 sentences: signature concept, where it comes from in the subject's world, palette/type pairing, confirm intake + brief-added services + ${engagementLabel}"
-}
-
-SIZE BUDGET (hard — keep compact so generation finishes): globalCss ≤ 9000 chars. Home html ≤ 12000 chars. Other pages ≤ 6000 chars each. Total ≤ 48000 chars. Complete valid JSON only — no truncated strings.`
+MULTI-PASS: This run builds the site in multiple model calls (home first, then one page at a time). Match shared chrome/CSS across pages. Never invent paths outside: ${opts.pageHints}.`
 
   const paletteLine = enhanced.palette
     .map((p) => `${p.role} ${p.hex}`)
     .join(', ')
-  const userPrompt = seedEmpty || enhanced.inventedFromIntake
-    ? `Full redesign for "${opts.brandName}".
-
-ADMIN SEED: (empty)
-
-SELF-AUTHORED DESIGN DIRECTION PROMPT (invented from intake + studio design system — treat as the admin prompt; execute literally):
+  const directionBlock = seedEmpty || enhanced.inventedFromIntake
+    ? `SELF-AUTHORED DESIGN DIRECTION PROMPT:
 ${enhanced.optimizedBrief}
 
 DIRECTION LOCK:
 - Signature: ${enhanced.signatureConcept}
 - Material world: ${enhanced.materialWorld}
 - Palette: ${paletteLine || '(see self-authored prompt)'}
-- Type: ${enhanced.typography.display} + ${enhanced.typography.body} — ${enhanced.typography.why}
+- Type: ${enhanced.typography.display} + ${enhanced.typography.body}
 - Signature element: ${enhanced.signatureElement}
 - Copy register: ${enhanced.copyRegister}
 - Avoid: ${enhanced.avoidDefaults.join('; ') || 'AI default clusters'}
@@ -1420,66 +1430,32 @@ DIRECTION LOCK:
         enhanced.servicesToAdd.length
           ? enhanced.servicesToAdd.join(' | ')
           : '(none — keep intake services only)'
-      }
-${
-  attachedAssetUrls.length
-    ? `\nATTACHED CDN ASSETS (place with these exact URLs when useful — e.g. hero):\n${attachedAssetUrls.map((u) => `- ${u}`).join('\n')}\n`
-    : hasImages
-      ? `\nReference images attached for vision (${opts.images!.length}). Absorb mood; only use https URLs from context for HTML.\n`
-      : ''
-}
-KEEP ALWAYS:
-- Engagement: ${engagementLabel} (${engagementModel}) — mount ${WIDGET_PLACEHOLDER} on home conversion section.
-- Intake services: ${services.length ? services.join(' | ') : '(see context.services)'}
-- Pages: ${opts.pageHints}
-
-BUSINESS CONTEXT (intake, services, SEO, media — use all of it):
-${JSON.stringify(opts.context)}
-
-Execute the SELF-AUTHORED DESIGN DIRECTION PROMPT. Output only the final JSON.`
-    : `Full redesign for "${opts.brandName}".
-
-ADMIN SEED (honor every specific instruction — colors, layout, services to add):
+      }`
+    : `ADMIN SEED:
 ${adminBrief}
 
-OPTIMIZED CREATIVE BRIEF (expanded from admin seed + intake; execute this for bespoke, non-AI look):
+OPTIMIZED CREATIVE BRIEF:
 ${enhanced.optimizedBrief}
 
 DIRECTION LOCK:
 - Signature: ${enhanced.signatureConcept}
 - Material world: ${enhanced.materialWorld}
 - Palette: ${paletteLine || '(see optimized brief)'}
-- Type: ${enhanced.typography.display} + ${enhanced.typography.body} — ${enhanced.typography.why}
+- Type: ${enhanced.typography.display} + ${enhanced.typography.body}
 - Signature element: ${enhanced.signatureElement}
 - Copy register: ${enhanced.copyRegister}
 - Avoid: ${enhanced.avoidDefaults.join('; ') || 'AI default clusters'}
-- Services to add from seed: ${
+- Services to add: ${
         enhanced.servicesToAdd.length
           ? enhanced.servicesToAdd.join(' | ')
           : '(none unless ADMIN SEED names them)'
-      }
-${
-  attachedAssetUrls.length
-    ? `\nATTACHED CDN ASSETS (place with these exact URLs when the admin asks — e.g. hero):\n${attachedAssetUrls.map((u) => `- ${u}`).join('\n')}\n`
-    : hasImages
-      ? `\nReference images attached for vision (${opts.images!.length}). Absorb mood; only use https URLs from context for HTML.\n`
-      : ''
-}
-KEEP ALWAYS:
-- Engagement: ${engagementLabel} (${engagementModel}) — mount ${WIDGET_PLACEHOLDER} on home conversion section.
-- Intake services: ${services.length ? services.join(' | ') : '(see context.services)'}
-- Brief-named extra services → feature + serviceUpdates.added
-- Pages: ${opts.pageHints}
-
-BUSINESS CONTEXT (intake, services, SEO, media — use all of it):
-${JSON.stringify(opts.context)}
-
-Execute OPTIMIZED CREATIVE BRIEF + ADMIN SEED specifics. Output only the final JSON.`
+      }`
 
   const extraWarnings: string[] = [
     seedEmpty || enhanced.inventedFromIntake
       ? `Empty admin seed — invented a full design-direction prompt from intake + design system (${enhanced.source}), then executed it.`
       : `Creative brief enhanced from your prompt + intake (${enhanced.source}) before generation — palette/type/signature locked for bespoke, non-AI look.`,
+    'Full redesign runs multi-pass (home, then each page) with draft checkpoints so Graphile retries can resume.',
   ]
   if (!hasBrief) {
     extraWarnings.push(
@@ -1487,62 +1463,241 @@ Execute OPTIMIZED CREATIVE BRIEF + ADMIN SEED specifics. Output only the final J
     )
   }
 
-  let parsed: Record<string, unknown>
-  try {
-    parsed = await callModelJson({
-      systemPrompt,
-      userPrompt,
-      temperature: 0.7,
-      // Compact JSON — Sonnet finishes faster with a tighter cap.
-      maxOutputTokens: useClaude ? 24000 : 32768,
-      preferredProvider: useClaude ? 'anthropic' : undefined,
-      anthropicModel: CLAUDE_SONNET_MODEL,
-      images: opts.images,
-      // Dedicated processor has 800s; allow Claude most of that budget.
-      abortMs: 500_000,
-    })
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err)
-    // Last-resort: if Claude still times out, try Gemini so the admin isn't stuck.
-    if (/timed out/i.test(msg) && process.env.GEMINI_API_KEY) {
-      console.warn('[runFullGenerate] Claude timed out — falling back to Gemini')
-      extraWarnings.push(
-        'Primary model timed out — finished with Gemini fallback (preview carefully).'
-      )
-      parsed = await callModelJson({
-        systemPrompt,
-        userPrompt,
-        temperature: 0.65,
-        maxOutputTokens: 32768,
-        preferredProvider: 'gemini',
-        images: opts.images,
+  async function modelJson(args: {
+    systemPrompt: string
+    userPrompt: string
+    maxOutputTokens: number
+    abortMs: number
+    temperature?: number
+    withImages?: boolean
+  }): Promise<Record<string, unknown>> {
+    try {
+      return await callModelJson({
+        systemPrompt: args.systemPrompt,
+        userPrompt: args.userPrompt,
+        temperature: args.temperature ?? 0.7,
+        maxOutputTokens: args.maxOutputTokens,
+        preferredProvider: useClaude ? 'anthropic' : undefined,
+        anthropicModel: CLAUDE_SONNET_MODEL,
+        images: args.withImages ? opts.images : undefined,
+        abortMs: args.abortMs,
       })
-    } else {
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      if (/timed out|terminated/i.test(msg) && process.env.GEMINI_API_KEY) {
+        console.warn('[runFullGenerate] primary model failed — Gemini fallback:', msg)
+        extraWarnings.push(`Pass fell back to Gemini after: ${msg.slice(0, 120)}`)
+        return await callModelJson({
+          systemPrompt: args.systemPrompt,
+          userPrompt: args.userPrompt,
+          temperature: 0.65,
+          maxOutputTokens: args.maxOutputTokens,
+          preferredProvider: 'gemini',
+          images: args.withImages ? opts.images : undefined,
+        })
+      }
       throw err
     }
   }
 
-  const config: CustomSiteConfig = {
-    mode: parsed.mode === 'iframe' ? 'iframe' : 'inline',
-    globalCss: typeof parsed.globalCss === 'string' ? parsed.globalCss : '',
-    pages:
-      parsed.pages && typeof parsed.pages === 'object' && !Array.isArray(parsed.pages)
-        ? (parsed.pages as CustomSiteConfig['pages'])
-        : {},
+  const report = async (
+    pass: string,
+    draftCfg: CustomSiteConfig,
+    replyText?: string
+  ) => {
+    const passesDone = passesDoneFromDraft(opts.requiredPaths, draftCfg)
+    await opts.onProgress?.({
+      pass,
+      passesDone,
+      requiredPaths: opts.requiredPaths,
+      reply: replyText,
+    })
   }
 
-  const modelReply =
-    typeof parsed.reply === 'string' && parsed.reply.trim()
-      ? parsed.reply.trim()
-      : 'Custom draft generated. Preview it, then publish when ready.'
-  const reply =
-    seedEmpty || enhanced.inventedFromIntake
-      ? `Self-authored design direction (${enhanced.source}): ${enhanced.signatureConcept}\n\n${enhanced.optimizedBrief.slice(0, 900)}${enhanced.optimizedBrief.length > 900 ? '…' : ''}\n\n${modelReply}`
-      : `Optimized direction (${enhanced.source}): ${enhanced.signatureConcept}\n\n${modelReply}`
+  const checkpoint = async (draftCfg: CustomSiteConfig) => {
+    await opts.onCheckpoint?.(
+      dropEmptyCustomPages(
+        applyPathAliasesToCustomConfig(sanitizeCustomConfig(draftCfg))
+      )
+    )
+  }
 
-  const serviceUpdates = parseServiceUpdates(parsed.serviceUpdates)
+  let draft: CustomSiteConfig =
+    opts.existingDraft && isCustomSiteConfig(opts.existingDraft)
+      ? dropEmptyCustomPages(applyPathAliasesToCustomConfig(opts.existingDraft))
+      : emptyFullRedesignDraft(opts.mode)
+
+  let serviceUpdates = parseServiceUpdates(undefined)
+  let foundationReply = ''
+  const remaining = () => remainingFullRedesignPaths(opts.requiredPaths, draft)
+
+  // —— Pass: foundation (globalCss + home) ——————————————
+  if (remaining().includes('/')) {
+    await report('foundation:/', draft)
+    const foundationSystem = `${systemPrompt}
+
+# This call — FOUNDATION ONLY
+Output ONLY valid JSON:
+{
+  "mode": "${opts.mode}",
+  "globalCss": "shared CSS (:root tokens + shared components, ≤9000 chars)",
+  "pages": {
+    "/": { "html": "full home body HTML ≤12000 chars", "css": "optional", "title": "SEO title", "description": "meta" }
+  },
+  "serviceUpdates": {
+    "added": [{ "title": "Brief-added service", "description": "optional" }],
+    "removed": [{ "title": "Only if brief explicitly removes", "reason": "cite brief" }]
+  },
+  "reply": "3-5 sentences: signature concept + confirm services + ${engagementLabel}"
+}
+Do NOT emit other page keys in this call — later passes build them.`
+
+    const foundationUser = `Full redesign FOUNDATION for "${opts.brandName}".
+
+${directionBlock}
+
+KEEP ALWAYS:
+- Engagement: ${engagementLabel} (${engagementModel}) — mount ${WIDGET_PLACEHOLDER} on home conversion section.
+- Intake services: ${services.length ? services.join(' | ') : '(see context.services)'}
+- Site nav must link exactly to: ${opts.pageHints} (Reviews label → /testimonials, Areas → /service-areas)
+
+BUSINESS CONTEXT:
+${JSON.stringify(opts.context)}
+
+Build globalCss + home "/" only. Output JSON.`
+
+    const parsed = await modelJson({
+      systemPrompt: foundationSystem,
+      userPrompt: foundationUser,
+      maxOutputTokens: useClaude ? 16000 : 24576,
+      abortMs: 420_000,
+      withImages: true,
+    })
+
+    const homePage =
+      parsed.pages &&
+      typeof parsed.pages === 'object' &&
+      !Array.isArray(parsed.pages)
+        ? (parsed.pages as CustomSiteConfig['pages'])['/'] ||
+          (parsed.pages as CustomSiteConfig['pages'])['']
+        : undefined
+    if (!isUsableCustomPageHtml(homePage?.html)) {
+      throw new Error(
+        'Foundation pass returned no usable home HTML — retry Full redesign.'
+      )
+    }
+
+    draft = {
+      mode: parsed.mode === 'iframe' ? 'iframe' : opts.mode,
+      globalCss: typeof parsed.globalCss === 'string' ? parsed.globalCss : '',
+      pages: { '/': homePage! },
+    }
+    serviceUpdates = parseServiceUpdates(parsed.serviceUpdates)
+    const modelReply =
+      typeof parsed.reply === 'string' && parsed.reply.trim()
+        ? parsed.reply.trim()
+        : 'Foundation (home + design system) ready — building remaining pages…'
+    foundationReply =
+      seedEmpty || enhanced.inventedFromIntake
+        ? `Self-authored design direction (${enhanced.source}): ${enhanced.signatureConcept}\n\n${enhanced.optimizedBrief.slice(0, 900)}${enhanced.optimizedBrief.length > 900 ? '…' : ''}\n\n${modelReply}`
+        : `Optimized direction (${enhanced.source}): ${enhanced.signatureConcept}\n\n${modelReply}`
+
+    await checkpoint(draft)
+    await report('foundation:/', draft, foundationReply)
+    console.info('[runFullGenerate] checkpoint home')
+  } else {
+    foundationReply =
+      'Resuming Full redesign — home already checkpointed; filling remaining pages.'
+    await report('resume', draft, foundationReply)
+    console.info(
+      '[runFullGenerate] resume — skip home; remaining',
+      remaining().join(',')
+    )
+  }
+
+  // —— Passes: one remaining page at a time ——————————————
+  const chrome = extractChromeSample(
+    draft.pages['/']?.html || draft.pages['']?.html || ''
+  )
+  for (const path of remaining()) {
+    await report(path, draft, foundationReply)
+    const intakePage = Array.isArray(opts.context.intakePages)
+      ? (opts.context.intakePages as Array<Record<string, unknown>>).find((p) => {
+          const slug = typeof p.slug === 'string' ? p.slug : ''
+          return normalizeCustomPath(slug) === path
+        })
+      : undefined
+
+    const pageSystem = `${systemPrompt}
+
+# This call — SINGLE PAGE ${path}
+Reuse the locked design system. Match header/footer chrome from the sample.
+Output ONLY valid JSON:
+{
+  "pages": {
+    "${path}": { "html": "full page body HTML ≤7000 chars", "css": "optional", "title": "SEO title", "description": "meta" }
+  },
+  "reply": "one sentence confirming what this page covers"
+}
+Emit only "${path}" — no other pages, no globalCss.`
+
+    const pageUser = `Build page "${path}" for "${opts.brandName}".
+
+${directionBlock}
+
+LOCKED globalCss (do not redefine; pages link the same fonts via <link> as home):
+${(draft.globalCss || '').slice(0, 6000)}
+
+CHROME SAMPLE (match structure/classes/nav hrefs):
+${chrome || '(see home facts in context)'}
+
+INTAKE PAGE CONTENT for ${path}:
+${JSON.stringify(intakePage || { slug: path, note: 'no intake block — use brand/seo/services facts only' })}
+
+SITE PATHS (nav hrefs must use these exact paths): ${opts.pageHints}
+SERVICES: ${services.length ? services.join(' | ') : '(context.services)'}
+ENGAGEMENT: ${engagementLabel} — optional second ${WIDGET_PLACEHOLDER} on /contact only.
+
+BUSINESS CONTEXT (compact):
+${JSON.stringify({
+  brandName: opts.brandName,
+  seo: opts.context.seo,
+  services: opts.context.services,
+  attachedAssetUrls: opts.context.attachedAssetUrls,
+  mediaLibrary: Array.isArray(opts.context.mediaLibrary)
+    ? (opts.context.mediaLibrary as unknown[]).slice(0, 12)
+    : [],
+})}
+
+Output JSON for ${path} only.`
+
+    const parsed = await modelJson({
+      systemPrompt: pageSystem,
+      userPrompt: pageUser,
+      maxOutputTokens: useClaude ? 10000 : 16384,
+      abortMs: 300_000,
+      withImages: false,
+      temperature: 0.65,
+    })
+
+    const pagesObj =
+      parsed.pages && typeof parsed.pages === 'object' && !Array.isArray(parsed.pages)
+        ? (parsed.pages as CustomSiteConfig['pages'])
+        : {}
+    const pageArt = pagesObj[path] || pagesObj[path.replace(/^\//, '')]
+    if (!isUsableCustomPageHtml(pageArt?.html)) {
+      throw new Error(
+        `Page pass ${path} returned empty HTML — earlier pages remain checkpointed for Graphile resume.`
+      )
+    }
+
+    draft = mergePageIntoDraft(draft, path, pageArt!, draft.globalCss)
+    await checkpoint(draft)
+    await report(path, draft, foundationReply)
+    console.info('[runFullGenerate] checkpoint', path)
+  }
+
   const added = serviceUpdates.added ?? (serviceUpdates.added = [])
-  // Deterministic extract + enhancer list — models often omit meta-seed services.
   const extracted = extractServicesNamedInBrief(adminBrief, services)
   const requiredAdds = [
     ...enhanced.servicesToAdd.map((title) => ({ title })),
@@ -1562,9 +1717,7 @@ Execute OPTIMIZED CREATIVE BRIEF + ADMIN SEED specifics. Output only the final J
     }
   }
 
-  // If the model left brief-added services out of HTML, inject them so Preview
-  // matches the catalog (custom sites render HTML, not products_config).
-  const pages = { ...config.pages }
+  const pages = { ...draft.pages }
   const injectedTitles: string[] = []
   for (const key of Object.keys(pages)) {
     const isHome = key === '/' || key === ''
@@ -1598,18 +1751,14 @@ Execute OPTIMIZED CREATIVE BRIEF + ADMIN SEED specifics. Output only the final J
     )
   }
 
-  const pageKeys = Object.keys(pages)
-  let configOut: CustomSiteConfig = dropEmptyCustomPages(
-    applyPathAliasesToCustomConfig({ ...config, pages })
-  )
-  try {
-    assertFullRedesignPagesComplete(configOut, opts.requiredPaths)
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err)
-    throw new Error(
-      `${msg} Model returned ${pageKeys.length} page keys (${pageKeys.join(', ') || 'none'}).`
-    )
-  }
+  draft = { ...draft, pages }
+  const configOut = finalizeFullRedesignDraft(draft, opts.requiredPaths)
+  await checkpoint(configOut)
+  await report('finalize', configOut, foundationReply)
+
+  const reply =
+    foundationReply ||
+    'Custom draft generated across multiple passes. Preview it, then publish when ready.'
 
   return {
     config: configOut,
@@ -1627,6 +1776,7 @@ Execute OPTIMIZED CREATIVE BRIEF + ADMIN SEED specifics. Output only the final J
         : undefined,
   }
 }
+
 
 async function runSurgicalGenerate(opts: {
   brandName: string

@@ -191,6 +191,16 @@ export async function POST(
         }
 
         const startedAt = new Date().toISOString()
+        // Fresh Full redesign — clear prior draft so resume only applies within
+        // this Graphile job's checkpoints (not yesterday's half-finished site).
+        await getSupabaseAdmin()
+          .from('site_configs')
+          .update({
+            custom_config_draft: null,
+            custom_updated_at: startedAt,
+          })
+          .eq('tenant_id', tenantId)
+
         const job = {
           status: 'queued' as const,
           intent: 'full' as const,
@@ -202,6 +212,8 @@ export async function POST(
           started_at: startedAt,
           finished_at: null,
           ever_full: true as const,
+          pass: 'queued',
+          passes_done: [] as string[],
         }
         await setCustomBuildJob(tenantId, job)
 
@@ -238,12 +250,12 @@ export async function POST(
           job: { ...job, images: undefined },
           jobActive: true,
           reply:
-            'Full redesign queued on the background worker — usually 2–8 minutes. This panel will refresh when the draft is ready.',
+            'Full redesign queued on the background worker (multi-pass: home, then each page with checkpoints). Usually several minutes — this panel updates as passes finish.',
           nextStep: {
             preview: false,
             publish: false,
             message:
-              'Redesign running on Graphile Worker (not Vercel). Leave this page open or come back shortly.',
+              'Redesign running on Graphile Worker. If the worker restarts mid-run, completed pages resume from the draft checkpoint.',
           },
         })
       }
