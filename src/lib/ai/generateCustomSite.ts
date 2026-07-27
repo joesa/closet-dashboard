@@ -822,6 +822,22 @@ export async function generateCustomSiteDraft(opts: {
 
   let sanitized = sanitizeCustomConfig(result.config)
   ensureWidgetPlaceholder(sanitized)
+
+  // Never mark Full redesign succeeded with an empty draft — Preview would
+  // fall through to the old live/engine site while the admin reply looks fine.
+  if (intent === 'full') {
+    const homeHtml =
+      sanitized.pages['/']?.html || sanitized.pages['']?.html || ''
+    const homeTextLen = homeHtml
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim().length
+    if (Object.keys(sanitized.pages).length === 0 || homeTextLen < 120) {
+      throw new Error(
+        `Full redesign produced no usable home HTML (draft would be empty). Retry the job; if Render logs show OOM/terminated, upgrade the worker instance.`
+      )
+    }
+  }
   const check = validateCustomConfig(sanitized)
   if (!check.ok) {
     console.warn('[generateCustomSite] validation errors:', check.errors)
@@ -1563,6 +1579,16 @@ Execute OPTIMIZED CREATIVE BRIEF + ADMIN SEED specifics. Output only the final J
   if (injectedTitles.length) {
     extraWarnings.push(
       `Injected brief-added services into redesign HTML: ${injectedTitles.join(', ')}.`
+    )
+  }
+
+  const pageKeys = Object.keys(pages)
+  const homeHtml = pages['/']?.html || pages['']?.html || ''
+  const homeTextLen = homeHtml.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+    .length
+  if (pageKeys.length === 0 || homeTextLen < 120) {
+    throw new Error(
+      `Full redesign returned empty/incomplete pages JSON (${pageKeys.length} page keys, home text ~${homeTextLen} chars). Often truncated model output or worker OOM — retry; if it repeats, upgrade the Render worker above 512MB.`
     )
   }
 
