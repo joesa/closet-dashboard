@@ -20,6 +20,11 @@ import {
   makeServiceCardsClickable,
   mergeSurgicalGlobalCss,
 } from '@/lib/ai/surgicalIntegrity'
+import {
+  ensureServiceDrawerCss,
+  looksLikeServiceDrawerRequest,
+  wireServiceCardDrawers,
+} from '@/lib/ai/surgicalServiceDrawer'
 import { HUMAN_COPY_VOICE_RULES_SURGICAL } from '@/lib/ai/humanCopyVoice'
 import {
   buildIntakeHintsForBrief,
@@ -707,14 +712,67 @@ async function trySurgicalContactShortcut(opts: {
 }
 
 /**
+ * Deterministic: CSS-only side drawers for service cards (inline-safe).
+ * Prefer this over plain links when the admin asks for a drawer / details panel.
+ */
+async function trySurgicalServiceDrawerShortcut(opts: {
+  tenantId: string
+  prompt: string
+  base: CustomSiteConfig
+}): Promise<GenerateCustomSiteResult | null> {
+  if (!looksLikeServiceDrawerRequest(opts.prompt)) return null
+
+  const draft = cloneCustomConfig(opts.base)
+  const changedPages: string[] = []
+  let total = 0
+  for (const path of Object.keys(draft.pages)) {
+    const page = draft.pages[path]
+    if (!page?.html) continue
+    const { html, count } = wireServiceCardDrawers(page.html)
+    if (count > 0) {
+      draft.pages[path] = { ...page, html }
+      changedPages.push(path)
+      total += count
+    }
+  }
+
+  const beforeCss = draft.globalCss || ''
+  draft.globalCss = ensureServiceDrawerCss(beforeCss)
+  if (draft.globalCss !== beforeCss && !changedPages.includes('(globalCss)')) {
+    changedPages.push('(globalCss)')
+  }
+
+  if (total === 0) {
+    return {
+      draft: opts.base,
+      warnings: [],
+      errors: [],
+      reply:
+        'Could not find service cards to wire into drawers. Cards need a title (h3) and plate/card markup — try again after a Full redesign, or name the section.',
+      intent: 'surgical',
+      changedPages: [],
+    }
+  }
+
+  return persistSurgicalShortcutDraft({
+    tenantId: opts.tenantId,
+    draft,
+    changedPages,
+    warnings: [],
+    reply: `Wired ${total} service card(s) to open a CSS-only side drawer with details (works in Inline mode — no JavaScript). Preview draft and click a card to confirm.`,
+  })
+}
+
+/**
  * Deterministic: wrap service/product cards in links + append .clickable-card CSS.
- * Never replaces globalCss wholesale.
+ * Never replaces globalCss wholesale. Skips when a drawer was requested.
  */
 async function trySurgicalClickableCardsShortcut(opts: {
   tenantId: string
   prompt: string
   base: CustomSiteConfig
 }): Promise<GenerateCustomSiteResult | null> {
+  if (looksLikeServiceDrawerRequest(opts.prompt)) return null
   if (!looksLikeClickableCardsRequest(opts.prompt)) return null
 
   const draft = cloneCustomConfig(opts.base)
@@ -978,6 +1036,13 @@ export async function generateCustomSiteDraft(opts: {
   }
 
   if (intent === 'surgical' && base) {
+    const drawerShortcut = await trySurgicalServiceDrawerShortcut({
+      tenantId: opts.tenantId,
+      prompt: opts.prompt || '',
+      base,
+    })
+    if (drawerShortcut) return drawerShortcut
+
     const clickableShortcut = await trySurgicalClickableCardsShortcut({
       tenantId: opts.tenantId,
       prompt: opts.prompt || '',
@@ -2205,10 +2270,10 @@ Hard rules:
 2. PRESERVE layout, structure, CSS classes, colors, navigation, and the widget placeholder (${WIDGET_PLACEHOLDER}) unless asked to change them. Imagery is preserved UNLESS the admin asked to change a hero/photo/background — then you MUST replace that media URL.
 3. Prefer text/copy edits inside existing markup — swap wording, keep the same tags and classes. For hero/image swaps, keep the same section markup and only change the image URL + background-size/object-fit as requested.
 4. Return ONLY pages you actually changed under "pages". List every untouched path in "unchangedPages".
-5. Set "globalCss" to null unless they explicitly asked to restyle site-wide CSS. For small additive rules (e.g. .clickable-card), use "globalCssAppend" (string) or page-level "css" — NEVER replace the whole stylesheet with a snippet.
+5. Set "globalCss" to null unless they explicitly asked to restyle site-wide CSS. For small additive rules (e.g. .clickable-card), use "globalCssAppend" (string) or page-level "css" — NEVER replace the whole stylesheet with a snippet. For service-card side drawers in inline mode, use CSS-only checkbox + label (no <script>, no javascript:, no ?service= query hacks).
 6. If a page is unchanged, omit it from "pages" entirely (do not echo the full original HTML).
 7. mode stays "${opts.mode}". Do not change render mode.
-8. HTML is BODY CONTENT ONLY. No <script> in inline mode. No javascript: URLs. Keep existing class= attributes and <header>/<nav>/<footer> landmarks.
+8. HTML is BODY CONTENT ONLY. No <script> in inline mode. No javascript: URLs. Keep existing class= attributes and <header>/<nav>/<footer> landmarks. Inline event handlers are stripped on render.
 9. ${
     mediaOrHeroSwap
       ? 'For hero/image/video edits you MAY return the full home-page html (up to ~20000 characters) so the media URL lands correctly. JSON must still be complete and valid.'
