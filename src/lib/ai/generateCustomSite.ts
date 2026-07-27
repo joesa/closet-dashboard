@@ -2,6 +2,7 @@ import { hydrateAdminImagesForModel } from '@/lib/ai/hydrateAdminImages'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import {
   CLAUDE_SONNET_MODEL,
+  configuredSurgicalProviders,
   generateTextWithFallback,
 } from '@/lib/ai/aiTextProvider'
 import { HUMAN_COPY_VOICE_RULES_SURGICAL } from '@/lib/ai/humanCopyVoice'
@@ -1963,7 +1964,8 @@ ${JSON.stringify(opts.context, null, 2)}`
     temperature: 0.3,
     // Thinking tokens count against this cap — keep generous headroom.
     maxOutputTokens: 24576,
-    preferredProvider: 'anthropic',
+    // Surgical only: Gemini → OpenAI → Anthropic (credits / API failures).
+    useSurgicalProviderChain: true,
     anthropicModel: CLAUDE_SONNET_MODEL,
     images: opts.images,
   })
@@ -2053,12 +2055,21 @@ async function callModelJson(opts: {
   userPrompt: string
   temperature: number
   maxOutputTokens: number
-  preferredProvider?: 'anthropic' | 'gemini'
+  preferredProvider?: 'anthropic' | 'gemini' | 'openai'
   anthropicModel?: string
   images?: Array<{ mimeType: string; data: string }>
   /** Claude abort budget — Full redesign uses ~500s on the 800s worker. */
   abortMs?: number
+  /**
+   * Surgical edits only: Gemini → OpenAI → Anthropic across credit/API/JSON failures.
+   * Full redesign keeps preferredProvider (Claude-first).
+   */
+  useSurgicalProviderChain?: boolean
 }): Promise<Record<string, unknown>> {
+  if (opts.useSurgicalProviderChain) {
+    return callSurgicalModelJson(opts)
+  }
+
   let lastText = ''
   let lastParseErr: unknown = null
 
@@ -2084,7 +2095,7 @@ async function callModelJson(opts: {
       text = result.text
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      if (/ANTHROPIC_API_KEY|GEMINI_API_KEY|not configured/i.test(msg)) {
+      if (/ANTHROPIC_API_KEY|GEMINI_API_KEY|OPENAI_API_KEY|not configured/i.test(msg)) {
         throw new Error(
           'AI is not configured (need ANTHROPIC_API_KEY for Claude Sonnet, or GEMINI_API_KEY as fallback).'
         )
@@ -2109,6 +2120,94 @@ async function callModelJson(opts: {
     `Model returned unparseable/truncated JSON (${lastText.length} chars). Try a shorter, more specific prompt. ${
       lastParseErr instanceof Error ? lastParseErr.message : 'parse error'
     }`
+  )
+}
+
+/** Surgical-only: walk Gemini → OpenAI → Anthropic; advance on API or bad JSON. */
+async function callSurgicalModelJson(opts: {
+  systemPrompt: string
+  userPrompt: string
+  temperature: number
+  maxOutputTokens: number
+  anthropicModel?: string
+  images?: Array<{ mimeType: string; data: string }>
+  abortMs?: number
+}): Promise<Record<string, unknown>> {
+  const chain = configuredSurgicalProviders()
+  if (chain.length === 0) {
+    throw new Error(
+      'AI is not configured for surgical edits (need GEMINI_API_KEY, OPENAI_API_KEY, or ANTHROPIC_API_KEY).'
+    )
+  }
+
+  let lastText = ''
+  let lastErr: unknown = null
+
+  for (let p = 0; p < chain.length; p++) {
+    const provider = chain[p]!
+    for (let attempt = 0; attempt < 2; attempt++) {
+      let text: string
+      try {
+        const result = await generateTextWithFallback({
+          prompt: opts.userPrompt,
+          systemPrompt:
+            attempt === 0
+              ? opts.systemPrompt
+              : `${opts.systemPrompt}\n\nIMPORTANT: Your previous attempt returned invalid/incomplete JSON. Respond with COMPLETE, strictly valid JSON only. Keep HTML/CSS compact so the response fits.`,
+          jsonMode: true,
+          temperature: attempt === 0 ? opts.temperature : 0.2,
+          maxOutputTokens: opts.maxOutputTokens,
+          preferredProvider: provider,
+          anthropicModel: opts.anthropicModel,
+          images: opts.images,
+          abortMs: opts.abortMs,
+        })
+        text = result.text
+        lastText = text
+      } catch (err) {
+        lastErr = err
+        const msg = err instanceof Error ? err.message : String(err)
+        const next = chain[p + 1]
+        console.warn(
+          `[generateCustomSite] surgical ${provider} API failed (attempt ${attempt + 1})${
+            attempt === 0 ? ' — retrying once' : next ? ` — trying ${next}` : ''
+          }: ${msg.slice(0, 400)}`
+        )
+        if (attempt === 0) continue
+        break
+      }
+
+      try {
+        const parsed = parseModelJson(text)
+        if (p > 0) {
+          console.warn(
+            `[generateCustomSite] surgical JSON ok via fallback ${provider} (attempt ${attempt + 1})`
+          )
+        } else {
+          console.info(
+            `[generateCustomSite] surgical JSON ok via ${provider} (attempt ${attempt + 1})`
+          )
+        }
+        return parsed
+      } catch (err) {
+        lastErr = err
+        console.warn(
+          `[generateCustomSite] surgical ${provider} unparseable JSON (${text.length} chars, attempt ${attempt + 1}) — ${
+            attempt === 0
+              ? 'retrying once'
+              : chain[p + 1]
+                ? `trying ${chain[p + 1]}`
+                : 'giving up'
+          }`
+        )
+      }
+    }
+  }
+
+  const detail =
+    lastErr instanceof Error ? lastErr.message : lastText ? 'parse error' : String(lastErr)
+  throw new Error(
+    `Surgical AI generation failed on all providers (${lastText.length} chars). ${detail}`
   )
 }
 

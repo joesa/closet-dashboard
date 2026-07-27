@@ -140,6 +140,7 @@ Prefer **≥2GB** RAM on Render — 512MB OOMs Claude mid-foundation.
 
 - Draft is **not** cleared on enqueue (patch applies onto the current draft).
 - One model call (plus deterministic hero/video shortcuts inside the worker).
+- **Model chain (surgical only):** Gemini (`gemini-pro-latest` / `CUSTOM_SITE_GEMINI_MODEL`) → OpenAI (`gpt-4.1` / `CUSTOM_SITE_OPENAI_MODEL`) → Anthropic (`claude-sonnet-5`). Falls through on credit or API failures.
 - Admin UI polls the same job panel; Preview stays available while surgical runs.
 - Site-wide renames that used to 504 on Vercel now finish on Render.
 

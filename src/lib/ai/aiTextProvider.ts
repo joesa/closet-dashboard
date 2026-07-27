@@ -1,15 +1,18 @@
 import { GoogleGenerativeAI, type GenerationConfig } from '@google/generative-ai'
 import Anthropic from '@anthropic-ai/sdk'
+import OpenAI from 'openai'
 
 /**
  * Shared text-generation provider.
  *
- * Intake site content, Surgical Edit, and Full redesign prefer Claude Sonnet 5
- * when ANTHROPIC_API_KEY is set (Fable 5 is opt-in via CUSTOM_SITE_CLAUDE_MODEL
- * — often too slow for one-shot site JSON). Gemini remains the fallback.
+ * - Full redesign / intake: prefer Claude Sonnet when ANTHROPIC_API_KEY is set
+ *   (Fable 5 is opt-in via CUSTOM_SITE_CLAUDE_MODEL); Gemini is the fallback.
+ * - Surgical edits: Gemini → OpenAI → Anthropic (see generateTextSurgical).
  *
  * Server-only — never import in client components.
  */
+
+export type AiTextProvider = 'anthropic' | 'gemini' | 'openai'
 
 export type TextGenerationOpts = {
   /** The user-facing prompt (or combined system+user prompt for Gemini). */
@@ -29,14 +32,19 @@ export type TextGenerationOpts = {
   images?: Array<{ mimeType: string; data: string }>
   /**
    * 'anthropic' routes to Claude when ANTHROPIC_API_KEY is set,
-   * silently falling back to Gemini otherwise. Default is Gemini.
+   * silently falling back to Gemini otherwise. 'openai' / 'gemini' force
+   * that provider when its key is set. Default is Gemini.
    */
-  preferredProvider?: 'anthropic' | 'gemini'
+  preferredProvider?: AiTextProvider
   /**
    * Override Claude model id. Defaults to CUSTOM_SITE_CLAUDE_MODEL or
    * claude-sonnet-5 (fast enough for Full redesign inside Vercel limits).
    */
   anthropicModel?: string
+  /** Override OpenAI chat model. Defaults to CUSTOM_SITE_OPENAI_MODEL or gpt-4.1. */
+  openaiModel?: string
+  /** Override Gemini model. Defaults to CUSTOM_SITE_GEMINI_MODEL or gemini-pro-latest. */
+  geminiModel?: string
   /**
    * Abort Claude after this many ms (default ~4.5m). Full redesign on the
    * dedicated 800s processor can raise this so long generations finish.
@@ -46,7 +54,7 @@ export type TextGenerationOpts = {
 
 export type TextGenerationResult = {
   text: string
-  provider: 'openai' | 'gemini' | 'anthropic'
+  provider: AiTextProvider
   model?: string
 }
 
@@ -54,6 +62,10 @@ export type TextGenerationResult = {
 export const CLAUDE_SONNET_MODEL = 'claude-sonnet-5'
 /** Slower frontier model — deep craft, often too slow for one-shot site JSON. */
 export const CLAUDE_FABLE_MODEL = 'claude-fable-5'
+/** Best OpenAI chat model for surgical edits (env-overridable). */
+export const OPENAI_SURGICAL_MODEL = 'gpt-4.1'
+/** Best Gemini model alias for surgical edits (env-overridable). */
+export const GEMINI_SURGICAL_MODEL = 'gemini-pro-latest'
 
 /**
  * Default Claude abort (~8.3 min). Dedicated Full redesign worker has 800s;
@@ -61,12 +73,41 @@ export const CLAUDE_FABLE_MODEL = 'claude-fable-5'
  */
 const CLAUDE_ABORT_MS = 500_000
 
+/** Surgical edit provider order: Gemini → OpenAI → Anthropic. */
+export const SURGICAL_PROVIDER_CHAIN: readonly AiTextProvider[] = [
+  'gemini',
+  'openai',
+  'anthropic',
+] as const
+
 export function resolveClaudeModel(override?: string): string {
   const fromOpts = override?.trim()
   if (fromOpts) return fromOpts
   const fromEnv = process.env.CUSTOM_SITE_CLAUDE_MODEL?.trim()
   if (fromEnv) return fromEnv
   return CLAUDE_SONNET_MODEL
+}
+
+export function resolveOpenAiModel(override?: string): string {
+  const fromOpts = override?.trim()
+  if (fromOpts) return fromOpts
+  const fromEnv = process.env.CUSTOM_SITE_OPENAI_MODEL?.trim()
+  if (fromEnv) return fromEnv
+  return OPENAI_SURGICAL_MODEL
+}
+
+export function resolveGeminiModel(override?: string): string {
+  const fromOpts = override?.trim()
+  if (fromOpts) return fromOpts
+  const fromEnv = process.env.CUSTOM_SITE_GEMINI_MODEL?.trim()
+  if (fromEnv) return fromEnv
+  return GEMINI_SURGICAL_MODEL
+}
+
+function providerConfigured(provider: AiTextProvider): boolean {
+  if (provider === 'gemini') return !!process.env.GEMINI_API_KEY
+  if (provider === 'openai') return !!process.env.OPENAI_API_KEY
+  return !!process.env.ANTHROPIC_API_KEY
 }
 
 async function generateWithClaude(opts: TextGenerationOpts): Promise<{
@@ -147,12 +188,16 @@ async function generateWithClaude(opts: TextGenerationOpts): Promise<{
   }
 }
 
-async function generateWithGemini(opts: TextGenerationOpts): Promise<string> {
+async function generateWithGemini(opts: TextGenerationOpts): Promise<{
+  text: string
+  model: string
+}> {
   const apiKey = process.env.GEMINI_API_KEY
   if (!apiKey) {
     throw new Error('Missing GEMINI_API_KEY for text generation')
   }
 
+  const modelName = resolveGeminiModel(opts.geminiModel)
   const genAI = new GoogleGenerativeAI(apiKey)
   const generationConfig: Record<string, unknown> = {
     temperature: opts.temperature ?? 0.5,
@@ -163,7 +208,7 @@ async function generateWithGemini(opts: TextGenerationOpts): Promise<string> {
   }
 
   const model = genAI.getGenerativeModel({
-    model: 'gemini-pro-latest',
+    model: modelName,
     generationConfig: generationConfig as GenerationConfig,
   })
 
@@ -200,25 +245,158 @@ async function generateWithGemini(opts: TextGenerationOpts): Promise<string> {
       `Gemini returned no content${finishReason ? ` (${finishReason})` : ''}`
     )
   }
-  return text.trim()
+  return { text: text.trim(), model: modelName }
+}
+
+async function generateWithOpenAI(opts: TextGenerationOpts): Promise<{
+  text: string
+  model: string
+}> {
+  const apiKey = process.env.OPENAI_API_KEY
+  if (!apiKey) {
+    throw new Error('Missing OPENAI_API_KEY for text generation')
+  }
+
+  const model = resolveOpenAiModel(opts.openaiModel)
+  const client = new OpenAI({ apiKey })
+  const abortMs = Math.max(60_000, opts.abortMs ?? CLAUDE_ABORT_MS)
+
+  const userContent: OpenAI.Chat.ChatCompletionContentPart[] = [
+    { type: 'text', text: opts.prompt },
+  ]
+  for (const img of opts.images ?? []) {
+    userContent.push({
+      type: 'image_url',
+      image_url: {
+        url: `data:${img.mimeType};base64,${img.data}`,
+      },
+    })
+  }
+
+  const messages: OpenAI.Chat.ChatCompletionMessageParam[] = []
+  if (opts.systemPrompt) {
+    const system =
+      opts.jsonMode
+        ? `${opts.systemPrompt}\n\nOutput MUST be a single valid JSON object only — no markdown fences, no commentary.`
+        : opts.systemPrompt
+    messages.push({ role: 'system', content: system })
+  }
+  messages.push({ role: 'user', content: userContent })
+
+  const completion = await client.chat.completions.create(
+    {
+      model,
+      messages,
+      temperature: opts.temperature ?? 0.5,
+      max_completion_tokens: Math.max(opts.maxOutputTokens ?? 2048, 2048),
+      ...(opts.jsonMode ? { response_format: { type: 'json_object' as const } } : {}),
+    },
+    { signal: AbortSignal.timeout(abortMs) }
+  )
+
+  const text = completion.choices[0]?.message?.content?.trim() ?? ''
+  if (!text) {
+    throw new Error(
+      `OpenAI returned no content (finish: ${completion.choices[0]?.finish_reason ?? 'unknown'})`
+    )
+  }
+  return { text, model }
+}
+
+async function generateWithProvider(
+  provider: AiTextProvider,
+  opts: TextGenerationOpts
+): Promise<TextGenerationResult> {
+  if (provider === 'anthropic') {
+    const { text, model } = await generateWithClaude(opts)
+    return { text, provider: 'anthropic', model }
+  }
+  if (provider === 'openai') {
+    const { text, model } = await generateWithOpenAI(opts)
+    return { text, provider: 'openai', model }
+  }
+  const { text, model } = await generateWithGemini(opts)
+  return { text, provider: 'gemini', model }
 }
 
 /**
  * Generate text content. Routes to Claude when the caller prefers Anthropic
- * and a key is configured; otherwise Gemini.
+ * and a key is configured; otherwise Gemini (or OpenAI if preferred).
  */
 export async function generateTextWithFallback(
   opts: TextGenerationOpts
 ): Promise<TextGenerationResult> {
   if (opts.preferredProvider === 'anthropic' && process.env.ANTHROPIC_API_KEY) {
-    const { text, model } = await generateWithClaude(opts)
-    return { text, provider: 'anthropic', model }
+    return generateWithProvider('anthropic', opts)
+  }
+
+  if (opts.preferredProvider === 'openai' && process.env.OPENAI_API_KEY) {
+    return generateWithProvider('openai', opts)
+  }
+
+  if (opts.preferredProvider === 'gemini' && process.env.GEMINI_API_KEY) {
+    return generateWithProvider('gemini', opts)
   }
 
   if (process.env.GEMINI_API_KEY) {
-    const text = await generateWithGemini(opts)
-    return { text, provider: 'gemini', model: 'gemini-pro-latest' }
+    return generateWithProvider('gemini', opts)
   }
 
-  throw new Error('Missing GEMINI_API_KEY — cannot generate text')
+  if (process.env.OPENAI_API_KEY) {
+    return generateWithProvider('openai', opts)
+  }
+
+  throw new Error('Missing GEMINI_API_KEY / OPENAI_API_KEY — cannot generate text')
+}
+
+/**
+ * Providers available for surgical edits, in fallback order.
+ * Skips any whose API key is missing.
+ */
+export function configuredSurgicalProviders(): AiTextProvider[] {
+  return SURGICAL_PROVIDER_CHAIN.filter(providerConfigured)
+}
+
+/**
+ * Surgical edits only: try Gemini, then OpenAI, then Anthropic.
+ * Skips providers without an API key. Falls through on credit / API / empty
+ * response failures so site-wide renames keep working when one vendor is down.
+ *
+ * Callers that need to fall through on bad JSON should iterate
+ * `configuredSurgicalProviders()` with `generateTextWithFallback` themselves
+ * (see `callModelJson` in generateCustomSite).
+ */
+export async function generateTextSurgical(
+  opts: TextGenerationOpts
+): Promise<TextGenerationResult> {
+  const chain = configuredSurgicalProviders()
+  if (chain.length === 0) {
+    throw new Error(
+      'AI is not configured for surgical edits (need GEMINI_API_KEY, OPENAI_API_KEY, or ANTHROPIC_API_KEY).'
+    )
+  }
+
+  let lastErr: unknown = null
+  for (let i = 0; i < chain.length; i++) {
+    const provider = chain[i]!
+    try {
+      const result = await generateWithProvider(provider, opts)
+      if (i > 0) {
+        console.warn(
+          `[aiTextProvider] surgical succeeded on fallback provider=${provider} model=${result.model ?? '?'}`
+        )
+      }
+      return result
+    } catch (err) {
+      lastErr = err
+      const msg = err instanceof Error ? err.message : String(err)
+      const next = chain[i + 1]
+      console.warn(
+        `[aiTextProvider] surgical ${provider} failed${next ? ` — trying ${next}` : ''}: ${msg.slice(0, 400)}`
+      )
+    }
+  }
+
+  const msg = lastErr instanceof Error ? lastErr.message : String(lastErr)
+  throw new Error(`Surgical AI generation failed on all providers: ${msg}`)
 }
