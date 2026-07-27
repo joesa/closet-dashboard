@@ -599,10 +599,8 @@ export default function AdminCustomBuild({
     status?.renderMode === 'custom' && !!status.published && !draftAhead;
   const canPublishDraft = !!status?.draft && draftAhead;
   const canRepublish = isLivePublished && !!status?.draft;
-  // Full redesign is powerful/expensive — hide until this tenant has started
-  // one at least once. New sites (!hasBase) can still start via this button.
-  const showFullRedesign =
-    !hasBase || !!(status?.fullRedesignEver || status?.job?.intent === 'full');
+  // Always offer Full redesign — admins need a clean AI rebuild after
+  // discard/re-clone, not only after they've already run one once.
 
   const pagePreviewUrl = (path: string) => {
     if (!draftPreviewUrl) return null;
@@ -624,15 +622,10 @@ export default function AdminCustomBuild({
           </h3>
           <p className="mt-1 text-sm text-neutral-400 max-w-2xl">
             Start by cloning this tenant’s <em>current live site</em> into a draft, then make{' '}
-            <strong className="text-neutral-300 font-medium">surgical edits</strong>
-            {showFullRedesign ? (
-              <>
-                . Use Full redesign for a new AI design — intake services stay unless you
-                explicitly remove them; services named in the brief are added to the site
-                and engagement engine
-              </>
-            ) : null}
-            . Draft → preview → publish.
+            <strong className="text-neutral-300 font-medium">surgical edits</strong>. Use{' '}
+            <strong className="text-neutral-300 font-medium">Full redesign</strong> for a new AI
+            design — intake services stay unless you explicitly remove them; services named in the
+            brief are added to the site and engagement engine. Draft → preview → publish.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -1196,34 +1189,32 @@ export default function AdminCustomBuild({
         >
           {hasBase ? 'Re-clone live site' : 'Generate from scratch'}
         </button>
-        {showFullRedesign ? (
-          <button
-            type="button"
-            disabled={loading}
-            onClick={() => {
-              const seed = prompt.trim();
-              if (
-                !confirm(
-                  seed
-                    ? 'Full redesign asks AI for an entirely new layout/CSS (not a copy of the live site). Continue?'
-                    : 'No prompt entered — AI will invent a full design-direction brief from intake + our design system, then build the site from that. Continue?'
-                )
-              ) {
-                return;
-              }
-              void run('generate', {
-                // Empty seed is intentional: backend invents a self-authored direction.
-                prompt: seed,
-                mode,
-                intent: 'full',
-              });
-            }}
-            className="px-4 py-2 border border-neutral-600 hover:bg-neutral-800 disabled:opacity-50 text-neutral-300 text-sm font-medium rounded-lg transition-colors"
-            title="AI invents a new design from your seed, or from intake + design system when blank"
-          >
-            Full redesign
-          </button>
-        ) : null}
+        <button
+          type="button"
+          disabled={loading}
+          onClick={() => {
+            const seed = prompt.trim();
+            if (
+              !confirm(
+                seed
+                  ? 'Full redesign asks AI for an entirely new layout/CSS (not a copy of the live site). Continue?'
+                  : 'No prompt entered — AI will invent a full design-direction brief from intake + our design system, then build the site from that. Continue?'
+              )
+            ) {
+              return;
+            }
+            void run('generate', {
+              // Empty seed is intentional: backend invents a self-authored direction.
+              prompt: seed,
+              mode,
+              intent: 'full',
+            });
+          }}
+          className="px-4 py-2 border border-neutral-600 hover:bg-neutral-800 disabled:opacity-50 text-neutral-300 text-sm font-medium rounded-lg transition-colors"
+          title="AI invents a new design from your seed, or from intake + design system when blank"
+        >
+          Full redesign
+        </button>
         {draftPreviewUrl ? (
           <a
             href={draftPreviewUrl}

@@ -277,7 +277,9 @@ export default function AdminSiteChat({
                         )}
                         {!isOpen && attachmentCount > 0 && (
                           <span className="ml-2 text-xs text-neutral-500">
-                            · {m.images?.length || 'attachments'}
+                            · {m.images?.length
+                              ? `${m.images.length} image${m.images.length === 1 ? '' : 's'}`
+                              : 'had attachments'}
                           </span>
                         )}
                         {!isOpen && m.applied && m.applied.length > 0 && (
