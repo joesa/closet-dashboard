@@ -359,9 +359,9 @@ export async function POST(
       const status = await loadCustomBuildStatus(tenantId)
       return NextResponse.json({
         ok: true,
-        reply: result.reply,
         ...result,
         ...status,
+        reply: result.reply,
         nextStep: {
           preview: true,
           publish: true,
