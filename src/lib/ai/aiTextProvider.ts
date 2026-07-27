@@ -137,6 +137,12 @@ async function generateWithClaude(opts: TextGenerationOpts): Promise<{
         `Full redesign timed out after ~${mins} minutes on ${model} (still generating). Try again, use a shorter brief, or set CUSTOM_SITE_CLAUDE_MODEL=claude-sonnet-5.`
       )
     }
+    // undici / Node fetch often surfaces OOM or host SIGKILL as bare "terminated".
+    if (/^terminated$/i.test(msg.trim())) {
+      throw new Error(
+        `Claude request terminated early on ${model} (often Render OOM on 512MB Starter — upgrade the worker to Standard 2GB and retry).`
+      )
+    }
     throw err
   }
 }
