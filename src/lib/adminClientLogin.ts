@@ -7,8 +7,10 @@ import {
 export type ClientLoginCredentials = {
   /** Dashboard login email (username). */
   username: string | null
-  /** Initial / last-issued temporary password (may be stale if client reset). */
+  /** Initial temp password — only while client has not set their own. */
   password: string | null
+  /** True when password may be shown / regenerated in admin. */
+  passwordVisible: boolean
   loginUrl: string
   /** True when Auth user exists for this contractor. */
   hasAuthUser: boolean
@@ -41,6 +43,7 @@ export async function getClientLoginCredentials(
   return {
     username,
     password,
+    passwordVisible: !!password,
     loginUrl: clientLoginUrl(loginOrigin),
     hasAuthUser: !!data?.user_id,
   }
@@ -159,6 +162,7 @@ export async function regenerateClientLoginPassword(
   return {
     username,
     password: tempPassword,
+    passwordVisible: true,
     loginUrl: clientLoginUrl(opts?.loginOrigin),
     hasAuthUser: !!authUserId,
     regenerated: true,

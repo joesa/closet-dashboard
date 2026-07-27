@@ -92,6 +92,7 @@ type ThemeOption = {
 type ClientLogin = {
   username: string | null
   password: string | null
+  passwordVisible?: boolean
   loginUrl: string
   hasAuthUser: boolean
 }
@@ -480,8 +481,9 @@ export default function AdminEngagementTools({ tenantId }: { tenantId: string })
               Client dashboard login
             </p>
             <p className="text-xs text-neutral-500 mt-1">
-              Initial username/password for the client portal. If they already
-              changed their password, regenerate a temporary one.
+              {data.clientLogin?.passwordVisible
+                ? 'Initial temporary password (client has not set their own yet).'
+                : 'Username only — password was set by the client. They can reset it from the login page.'}
             </p>
           </div>
           {data.clientLogin?.loginUrl ? (
@@ -496,7 +498,11 @@ export default function AdminEngagementTools({ tenantId }: { tenantId: string })
           ) : null}
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div
+          className={`grid grid-cols-1 gap-3 ${
+            data.clientLogin?.passwordVisible ? 'sm:grid-cols-2' : ''
+          }`}
+        >
           <div>
             <label className="text-[11px] text-neutral-500 uppercase tracking-widest block mb-1">
               Username (email)
@@ -522,98 +528,109 @@ export default function AdminEngagementTools({ tenantId }: { tenantId: string })
               </button>
             </div>
           </div>
-          <div>
-            <label className="text-[11px] text-neutral-500 uppercase tracking-widest block mb-1">
-              Temporary password
-            </label>
-            <div className="flex gap-2">
-              <code className="flex-1 rounded-lg bg-black/40 border border-neutral-700 px-3 py-2 text-sm text-neutral-100 font-mono break-all">
-                {data.clientLogin?.password
-                  ? showPassword
-                    ? data.clientLogin.password
-                    : '••••••••••••'
-                  : '— not stored (generate below) —'}
-              </code>
-              <button
-                type="button"
-                disabled={!data.clientLogin?.password}
-                onClick={() => setShowPassword((v) => !v)}
-                className="shrink-0 px-2.5 py-2 rounded-lg border border-neutral-700 text-xs text-neutral-300 hover:border-neutral-500 disabled:opacity-40"
-              >
-                {showPassword ? 'Hide' : 'Show'}
-              </button>
-              <button
-                type="button"
-                disabled={!data.clientLogin?.password}
-                onClick={() => {
-                  const v = data.clientLogin?.password
-                  if (!v) return
-                  void navigator.clipboard.writeText(v).then(() => {
-                    setCopiedField('password')
-                    window.setTimeout(() => setCopiedField(null), 1500)
-                  })
-                }}
-                className="shrink-0 px-2.5 py-2 rounded-lg border border-neutral-700 text-xs text-neutral-300 hover:border-neutral-500 disabled:opacity-40"
-              >
-                {copiedField === 'password' ? 'Copied' : 'Copy'}
-              </button>
+          {data.clientLogin?.passwordVisible ? (
+            <div>
+              <label className="text-[11px] text-neutral-500 uppercase tracking-widest block mb-1">
+                Temporary password
+              </label>
+              <div className="flex gap-2">
+                <code className="flex-1 rounded-lg bg-black/40 border border-neutral-700 px-3 py-2 text-sm text-neutral-100 font-mono break-all">
+                  {data.clientLogin?.password
+                    ? showPassword
+                      ? data.clientLogin.password
+                      : '••••••••••••'
+                    : '—'}
+                </code>
+                <button
+                  type="button"
+                  disabled={!data.clientLogin?.password}
+                  onClick={() => setShowPassword((v) => !v)}
+                  className="shrink-0 px-2.5 py-2 rounded-lg border border-neutral-700 text-xs text-neutral-300 hover:border-neutral-500 disabled:opacity-40"
+                >
+                  {showPassword ? 'Hide' : 'Show'}
+                </button>
+                <button
+                  type="button"
+                  disabled={!data.clientLogin?.password}
+                  onClick={() => {
+                    const v = data.clientLogin?.password
+                    if (!v) return
+                    void navigator.clipboard.writeText(v).then(() => {
+                      setCopiedField('password')
+                      window.setTimeout(() => setCopiedField(null), 1500)
+                    })
+                  }}
+                  className="shrink-0 px-2.5 py-2 rounded-lg border border-neutral-700 text-xs text-neutral-300 hover:border-neutral-500 disabled:opacity-40"
+                >
+                  {copiedField === 'password' ? 'Copied' : 'Copy'}
+                </button>
+              </div>
             </div>
-          </div>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2 pt-1">
-          <button
-            type="button"
-            disabled={regenBusy || !data.clientLogin?.username}
-            onClick={() => {
-              void (async () => {
-                setRegenBusy(true)
-                setError('')
-                setInfo('')
-                try {
-                  const res = await fetch(
-                    `/api/admin/sites/${tenantId}/engagement`,
-                    {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ kind: 'regenerate_login_password' }),
-                    }
-                  )
-                  const json = await res.json().catch(() => ({}))
-                  if (!res.ok) {
-                    throw new Error(json.error || 'Failed to regenerate password')
-                  }
-                  const next = json.clientLogin as ClientLogin
-                  setData((prev) =>
-                    prev ? { ...prev, clientLogin: next } : prev
-                  )
-                  setShowPassword(true)
-                  setInfo(
-                    'Issued a new temporary password. Client must change it on next login.'
-                  )
-                } catch (err) {
-                  setError(
-                    err instanceof Error ? err.message : 'Regenerate failed'
-                  )
-                } finally {
-                  setRegenBusy(false)
-                }
-              })()
-            }}
-            className="px-3 py-1.5 rounded-lg border border-amber-500/40 bg-amber-500/10 text-sm text-amber-200 hover:bg-amber-500/20 disabled:opacity-40"
-          >
-            {regenBusy
-              ? 'Generating…'
-              : data.clientLogin?.password
-                ? 'Regenerate temporary password'
-                : 'Generate temporary password'}
-          </button>
-          {!data.clientLogin?.hasAuthUser && data.clientLogin?.username ? (
-            <span className="text-xs text-amber-400/80">
-              No auth user linked yet — generate will create one.
-            </span>
           ) : null}
         </div>
+
+        {data.clientLogin?.passwordVisible ||
+        (!data.clientLogin?.passwordVisible &&
+          data.clientLogin?.username &&
+          !data.clientLogin?.hasAuthUser) ? (
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            <button
+              type="button"
+              disabled={regenBusy || !data.clientLogin?.username}
+              onClick={() => {
+                void (async () => {
+                  setRegenBusy(true)
+                  setError('')
+                  setInfo('')
+                  try {
+                    const res = await fetch(
+                      `/api/admin/sites/${tenantId}/engagement`,
+                      {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          kind: 'regenerate_login_password',
+                        }),
+                      }
+                    )
+                    const json = await res.json().catch(() => ({}))
+                    if (!res.ok) {
+                      throw new Error(
+                        json.error || 'Failed to regenerate password'
+                      )
+                    }
+                    const next = json.clientLogin as ClientLogin
+                    setData((prev) =>
+                      prev ? { ...prev, clientLogin: next } : prev
+                    )
+                    setShowPassword(true)
+                    setInfo(
+                      'Issued a new temporary password. Client must change it on next login.'
+                    )
+                  } catch (err) {
+                    setError(
+                      err instanceof Error ? err.message : 'Regenerate failed'
+                    )
+                  } finally {
+                    setRegenBusy(false)
+                  }
+                })()
+              }}
+              className="px-3 py-1.5 rounded-lg border border-amber-500/40 bg-amber-500/10 text-sm text-amber-200 hover:bg-amber-500/20 disabled:opacity-40"
+            >
+              {regenBusy
+                ? 'Generating…'
+                : data.clientLogin?.password
+                  ? 'Regenerate temporary password'
+                  : 'Generate temporary password'}
+            </button>
+            {!data.clientLogin?.hasAuthUser && data.clientLogin?.username ? (
+              <span className="text-xs text-amber-400/80">
+                No auth user linked yet — generate will create one.
+              </span>
+            ) : null}
+          </div>
+        ) : null}
       </div>
 
       {error ? (

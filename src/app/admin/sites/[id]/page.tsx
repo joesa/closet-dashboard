@@ -8,6 +8,7 @@ import SiteValidationPanel from '@/components/SiteValidationPanel';
 import AdminSiteChat from '@/components/AdminSiteChat';
 import AdminCustomBuild from '@/components/AdminCustomBuild';
 import AdminEngagementTools from '@/components/AdminEngagementTools';
+import AdminEmailChangeBanner from '@/components/AdminEmailChangeBanner';
 import AdminTenantMedia from '@/components/AdminTenantMedia';
 import DomainManager from '@/components/DomainManager';
 import AdminCollapsibleCard from '@/components/AdminCollapsibleCard';
@@ -247,6 +248,7 @@ export default async function TenantDetailsPage({ params }: { params: Promise<{ 
         <AdminCustomBuild tenantId={tenant.id} previewUrl={previewUrl} />
 
         {/* Quote / booking / order / ticket tools for this client's widget_id */}
+        <AdminEmailChangeBanner tenantId={tenant.id} />
         <AdminEngagementTools tenantId={tenant.id} />
 
         {/* All CDN images / videos / files for this tenant */}

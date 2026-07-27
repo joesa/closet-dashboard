@@ -157,6 +157,24 @@ export default function DashboardPage() {
         return
       }
 
+      try {
+        const ackRes = await fetch('/api/auth/email-change/send-ack', {
+          method: 'POST',
+        })
+        if (ackRes.ok) {
+          const ackJson = await ackRes.json().catch(() => ({}))
+          if (ackJson.requiresAck) {
+            await supabaseBrowser.auth.signOut()
+            router.replace(
+              `/auth/email-change/pending-ack?email=${encodeURIComponent(user.email || '')}`
+            )
+            return
+          }
+        }
+      } catch {
+        /* continue */
+      }
+
       const uid = user.id
       setUserId(uid)
 

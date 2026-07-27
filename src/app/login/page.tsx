@@ -52,9 +52,11 @@ function LoginForm() {
     if (authError) {
       const newAttempts = failedAttempts + 1
       if (newAttempts >= 5) {
-        await supabaseBrowser.auth.resetPasswordForEmail(email, {
-          redirectTo: `${window.location.origin}/update-password`,
-        })
+        await fetch('/api/auth/password/request', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email }),
+        }).catch(() => null)
         setResetSent(true)
         setFailedAttempts(0)
         setError(null)
@@ -64,6 +66,23 @@ function LoginForm() {
       }
       setLoading(false)
       return
+    }
+
+    // After login: if email change needs old-inbox ack, gate before dashboard.
+    try {
+      const ackRes = await fetch('/api/auth/email-change/send-ack', {
+        method: 'POST',
+      })
+      if (ackRes.ok) {
+        const ackJson = await ackRes.json().catch(() => ({}))
+        if (ackJson.requiresAck) {
+          await supabaseBrowser.auth.signOut()
+          window.location.href = `/auth/email-change/pending-ack?email=${encodeURIComponent(email)}`
+          return
+        }
+      }
+    } catch {
+      /* continue to dashboard */
     }
 
     // Use a full reload so the server proxy sees the fresh auth cookies.
@@ -96,7 +115,8 @@ function LoginForm() {
           {/* Reset notice */}
           {resetSent && (
             <div className="mb-6 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-slate-300">
-              Too many failed attempts. A password reset link has been sent to your email.
+              Too many failed attempts. We sent a password-reset verification
+              email if an account exists for that address.
             </div>
           )}
           {/* Error */}
@@ -178,6 +198,15 @@ function LoginForm() {
             className="font-medium text-slate-400 transition hover:text-white"
           >
             Create one
+          </Link>
+        </p>
+        <p className="mt-3 text-center text-sm text-slate-500">
+          Need to change your login email?{' '}
+          <Link
+            href="/auth/email-change"
+            className="font-medium text-slate-400 transition hover:text-white"
+          >
+            Request email change
           </Link>
         </p>
       </div>

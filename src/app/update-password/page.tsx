@@ -83,6 +83,10 @@ export default function UpdatePasswordPage() {
       return
     }
 
+    await fetch('/api/auth/password/cleared-initial', { method: 'POST' }).catch(
+      () => null
+    )
+
     // Success! Redirect to dashboard.
     router.replace('/dashboard')
   }

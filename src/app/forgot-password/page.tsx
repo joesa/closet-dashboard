@@ -2,7 +2,6 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { supabaseBrowser } from '@/lib/supabase-browser'
 import { DEMO_LOGIN } from '@/lib/demo'
 
 export default function ForgotPasswordPage() {
@@ -15,9 +14,6 @@ export default function ForgotPasswordPage() {
     e.preventDefault()
     setError(null)
 
-    // The shared demo account's password is fixed. Don't issue reset
-    // emails for it from the UI — the published default is on the
-    // landing page and the nightly cron re-asserts it.
     if (email.trim().toLowerCase() === DEMO_LOGIN.email.toLowerCase()) {
       setError(
         'The demo account password is fixed and published on the landing page. It cannot be reset from here.'
@@ -27,27 +23,28 @@ export default function ForgotPasswordPage() {
 
     setLoading(true)
 
-    const { error: resetError } = await supabaseBrowser.auth.resetPasswordForEmail(
-      email,
-      {
-        redirectTo: `${window.location.origin}/update-password`,
+    try {
+      const res = await fetch('/api/auth/password/request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setError(json.error || 'Could not start password reset.')
+        setLoading(false)
+        return
       }
-    )
-
-    if (resetError) {
-      setError(resetError.message)
-      setLoading(false)
-      return
+      setSuccess(true)
+    } catch {
+      setError('Could not start password reset.')
     }
-
-    setSuccess(true)
     setLoading(false)
   }
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center px-4">
       <div className="relative w-full max-w-md">
-        {/* Logo & Header */}
         <div className="mb-10 flex flex-col items-center gap-3">
           <Link href="/" className="mb-2 text-sm font-bold tracking-tight text-white transition hover:opacity-80">
             Closet<span className="text-slate-400">Quote</span>
@@ -56,11 +53,11 @@ export default function ForgotPasswordPage() {
             Reset Password
           </h1>
           <p className="text-sm text-slate-400 text-center">
-            Enter your email and we&apos;ll send you a link to reset your password.
+            Enter your email. We&apos;ll send a verification message, then a second
+            email with a link to choose a new password.
           </p>
         </div>
 
-        {/* Card */}
         <div className="w-full max-w-md rounded-3xl border border-white/10 bg-white/[0.02] p-8 backdrop-blur-sm">
           {success ? (
             <div className="text-center space-y-6">
@@ -70,7 +67,8 @@ export default function ForgotPasswordPage() {
                 </svg>
               </div>
               <p className="text-sm text-slate-300">
-                Check your email for a reset link. You can close this window.
+                If an account exists for that email, check your inbox for a
+                verification message (step 1 of 2). You can close this window.
               </p>
               <Link
                 href="/login"
@@ -80,14 +78,13 @@ export default function ForgotPasswordPage() {
               </Link>
             </div>
           ) : (
-            <form onSubmit={handleReset}>
+            <form onSubmit={handleReset} className="space-y-5">
               {error && (
-                <div className="mb-6 rounded-xl border border-red-500/20 bg-red-500/5 px-4 py-3 text-sm text-red-400">
+                <div className="rounded-xl border border-red-500/20 bg-red-500/5 px-4 py-3 text-sm text-red-400">
                   {error}
                 </div>
               )}
-
-              <div className="mb-8">
+              <div>
                 <label
                   htmlFor="email"
                   className="mb-2 block text-xs font-semibold uppercase tracking-wider text-slate-400"
@@ -98,36 +95,27 @@ export default function ForgotPasswordPage() {
                   id="email"
                   type="email"
                   required
-                  autoComplete="email"
-                  placeholder="you@company.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full rounded-lg border border-white/10 bg-white/[0.05] px-4 py-3 text-sm text-white placeholder:text-slate-600 outline-none transition-colors focus:border-white/30 focus:bg-white/[0.08]"
+                  className="w-full rounded-lg border border-white/10 bg-white/[0.05] px-4 py-3 text-sm text-white placeholder:text-slate-600 outline-none focus:border-white/30 focus:bg-white/[0.08]"
+                  placeholder="you@company.com"
                 />
               </div>
-
               <button
                 type="submit"
                 disabled={loading}
                 className="w-full rounded-lg bg-white px-6 py-3 text-sm font-medium text-black transition-colors hover:bg-gray-200 disabled:opacity-50"
               >
-                {loading ? 'Sending link…' : 'Send Reset Link'}
+                {loading ? 'Sending…' : 'Send verification email'}
               </button>
+              <p className="text-center text-sm text-slate-500">
+                <Link href="/login" className="text-slate-300 hover:text-white">
+                  Back to login
+                </Link>
+              </p>
             </form>
           )}
         </div>
-
-        {!success && (
-          <p className="mt-6 text-center text-sm text-slate-500">
-            Remembered your password?{' '}
-            <Link
-              href="/login"
-              className="font-medium text-slate-400 transition hover:text-white"
-            >
-              Sign in
-            </Link>
-          </p>
-        )}
       </div>
     </div>
   )
