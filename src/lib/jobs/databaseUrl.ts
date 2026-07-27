@@ -57,8 +57,12 @@ export function graphilePoolConfig(connectionString?: string): PoolConfig {
 
 export function createGraphilePool(connectionString?: string): Pool {
   const pool = new Pool(graphilePoolConfig(connectionString))
+  // Graphile Worker requires both listeners when you pass a custom pgPool.
   pool.on('error', (err) => {
     console.error('[graphile-pool] idle client error:', err.message)
+  })
+  pool.on('connect', () => {
+    /* required by graphile-worker assertPool; no-op */
   })
   return pool
 }
