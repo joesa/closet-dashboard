@@ -1466,6 +1466,8 @@ Execute OPTIMIZED CREATIVE BRIEF + ADMIN SEED specifics. Output only the final J
       preferredProvider: useClaude ? 'anthropic' : undefined,
       anthropicModel: CLAUDE_SONNET_MODEL,
       images: opts.images,
+      // Dedicated processor has 800s; allow Claude most of that budget.
+      abortMs: 500_000,
     })
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
@@ -1762,6 +1764,8 @@ async function callModelJson(opts: {
   preferredProvider?: 'anthropic' | 'gemini'
   anthropicModel?: string
   images?: Array<{ mimeType: string; data: string }>
+  /** Claude abort budget — Full redesign uses ~500s on the 800s worker. */
+  abortMs?: number
 }): Promise<Record<string, unknown>> {
   let lastText = ''
   let lastParseErr: unknown = null
@@ -1783,6 +1787,7 @@ async function callModelJson(opts: {
         preferredProvider: opts.preferredProvider,
         anthropicModel: opts.anthropicModel,
         images: opts.images,
+        abortMs: opts.abortMs,
       })
       text = result.text
     } catch (err) {

@@ -26,13 +26,24 @@ describe('expireStaleCustomBuildJob', () => {
       now
     )
     expect(out?.status).toBe('failed')
-    expect(out?.error).toMatch(/timed out/i)
+    expect(out?.error).toMatch(/stopped|timed out|budget/i)
     expect(out?.finished_at).toBeTruthy()
   })
 
-  it('expires shortly after the 5 minute serverless budget', () => {
-    expect(CUSTOM_BUILD_JOB_STALE_MS).toBeLessThanOrEqual(6 * 60 * 1000)
-    expect(CUSTOM_BUILD_JOB_STALE_MS).toBeGreaterThan(5 * 60 * 1000)
+  it('expires after the dedicated worker budget (~14 minutes)', () => {
+    expect(CUSTOM_BUILD_JOB_STALE_MS).toBeGreaterThanOrEqual(12 * 60 * 1000)
+    expect(CUSTOM_BUILD_JOB_STALE_MS).toBeLessThanOrEqual(16 * 60 * 1000)
+  })
+
+  it('keeps processing jobs alive while heartbeat is fresh', () => {
+    const now = Date.now()
+    const current = job({
+      status: 'processing',
+      started_at: new Date(now - 10 * 60 * 1000).toISOString(),
+      heartbeat_at: new Date(now - 10_000).toISOString(),
+    })
+    expect(expireStaleCustomBuildJob(current, now)).toBe(current)
+    expect(isCustomBuildJobActive(current)).toBe(true)
   })
 
   it('leaves fresh queued jobs alone', () => {

@@ -37,6 +37,11 @@ export type TextGenerationOpts = {
    * claude-sonnet-5 (fast enough for Full redesign inside Vercel limits).
    */
   anthropicModel?: string
+  /**
+   * Abort Claude after this many ms (default ~4.5m). Full redesign on the
+   * dedicated 800s processor can raise this so long generations finish.
+   */
+  abortMs?: number
 }
 
 export type TextGenerationResult = {
@@ -51,10 +56,10 @@ export const CLAUDE_SONNET_MODEL = 'claude-sonnet-5'
 export const CLAUDE_FABLE_MODEL = 'claude-fable-5'
 
 /**
- * Abort Claude before Vercel's hard 300s kill so callers can persist a failed
- * job. Leave ~30s for JSON parse + DB writes after the model returns.
+ * Default Claude abort (~8.3 min). Dedicated Full redesign worker has 800s;
+ * leave room for brief enhance + service images after the model returns.
  */
-const CLAUDE_ABORT_MS = 270_000
+const CLAUDE_ABORT_MS = 500_000
 
 export function resolveClaudeModel(override?: string): string {
   const fromOpts = override?.trim()
@@ -75,6 +80,7 @@ async function generateWithClaude(opts: TextGenerationOpts): Promise<{
 
   const model = resolveClaudeModel(opts.anthropicModel)
   const client = new Anthropic({ apiKey })
+  const abortMs = Math.max(60_000, opts.abortMs ?? CLAUDE_ABORT_MS)
 
   const content: Anthropic.ContentBlockParam[] = [
     { type: 'text', text: opts.prompt },
@@ -108,7 +114,7 @@ async function generateWithClaude(opts: TextGenerationOpts): Promise<{
       system,
       messages: [{ role: 'user', content }],
     },
-    { signal: AbortSignal.timeout(CLAUDE_ABORT_MS) }
+    { signal: AbortSignal.timeout(abortMs) }
   )
 
   try {
@@ -126,8 +132,9 @@ async function generateWithClaude(opts: TextGenerationOpts): Promise<{
     const name = err instanceof Error ? err.name : ''
     const msg = err instanceof Error ? err.message : String(err)
     if (name === 'AbortError' || /aborted|timeout/i.test(msg)) {
+      const mins = Math.round(abortMs / 60_000)
       throw new Error(
-        `Full redesign timed out after ~4.5 minutes on ${model} (still generating). Try again, use a shorter brief, or set CUSTOM_SITE_CLAUDE_MODEL=claude-sonnet-5.`
+        `Full redesign timed out after ~${mins} minutes on ${model} (still generating). Try again, use a shorter brief, or set CUSTOM_SITE_CLAUDE_MODEL=claude-sonnet-5.`
       )
     }
     throw err

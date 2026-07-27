@@ -17,16 +17,13 @@ import {
   setCustomBuildJob,
   shouldRequeueCustomBuildJob,
 } from '@/lib/ai/customBuildJob'
-import {
-  cancelCustomBuildJob,
-  processCustomBuildJob,
-} from '@/lib/ai/processCustomBuildJob'
+import { cancelCustomBuildJob } from '@/lib/ai/processCustomBuildJob'
+import { kickCustomBuildProcessor } from '@/lib/ai/kickCustomBuildProcessor'
 import { normalizeAdminImageRefs } from '@/lib/adminImageAttach'
 
-// Full generates on Claude Sonnet 5 usually finish in 1–3 minutes (Fable 5
-// often exceeds the budget). Fluid compute allows 300s; we return immediately
-// and finish the work in `after()`.
-export const maxDuration = 300
+// Full redesign is queued here and finished on `/api/internal/process-custom-build`
+// (maxDuration 800) so work is not killed by this route's shorter budget.
+export const maxDuration = 60
 export const runtime = 'nodejs'
 
 async function loadCustomBuildStatus(tenantId: string) {
@@ -47,12 +44,9 @@ async function loadCustomBuildStatus(tenantId: string) {
   const draftDiffPages = diffCustomDraftPages(draft, published)
   const job = await getAndReconcileCustomBuildJob(tenantId)
   if (shouldRequeueCustomBuildJob(job)) {
-    after(async () => {
-      try {
-        await processCustomBuildJob(tenantId)
-      } catch (err) {
-        console.error('[custom-build status requeue] process failed:', err)
-      }
+    // Kick a fresh 800s processor — do not run the job inside this request.
+    after(() => {
+      kickCustomBuildProcessor(tenantId)
     })
   }
 
@@ -204,12 +198,8 @@ export async function POST(
           },
         })
 
-        after(async () => {
-          try {
-            await processCustomBuildJob(tenantId)
-          } catch (err) {
-            console.error('[custom-build after] process failed:', err)
-          }
+        after(() => {
+          kickCustomBuildProcessor(tenantId)
         })
 
         return NextResponse.json({
@@ -218,11 +208,12 @@ export async function POST(
           job: { ...job, images: undefined },
           jobActive: true,
           reply:
-            'Full redesign started — usually 1–3 minutes. This panel will refresh when the draft is ready.',
+            'Full redesign started — usually 2–6 minutes. This panel will refresh when the draft is ready.',
           nextStep: {
             preview: false,
             publish: false,
-            message: 'Redesign running in the background. Leave this page open or come back shortly.',
+            message:
+              'Redesign running in the background on a dedicated worker. Leave this page open or come back shortly.',
           },
         })
       }
