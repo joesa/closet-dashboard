@@ -228,8 +228,8 @@ Respond with ONLY a JSON object of this exact shape:
 
 RULES for "changes":
 - Include a column ONLY when the admin's request requires changing it. Questions, opinions, and ambiguous requests get an empty "changes" object and a clarifying/informative "reply".
-- Prefer COMPLETE column values. For large arrays (products_config, pages_config, nav_links), include every entry you intend to keep — never silently drop services/pages. The server merges truncated arrays back onto the live config, but you must still preserve titles/slugs you are not changing.
-- When editing one product/page, still return the full products_config/pages_config list from inventory (with your edits applied) so nothing is lost.
+- Prefer MINIMAL patches. For large arrays (products_config, pages_config, nav_links), return ONLY the entries you are creating or editing — the server deep-merges by title/slug onto the live config. Do NOT dump the entire pages_config/products_config unless you are intentionally rewriting most of it.
+- Keep the whole JSON response small enough to finish (aim under ~8k tokens of output). Never paste long HTML you did not change.
 - When placing an attached image, set the image field to the exact usableAttachments CDN url for that index.
 - Keep hero headlines (site hero and every page hero) to 6 words or fewer — longer headlines overflow the large-type designs.
 - When adding a page to pages_config, also add a matching entry to nav_links if it should be reachable from the nav.
@@ -255,6 +255,44 @@ function buildSystemPrompt(context: ReturnType<typeof buildSiteContextPack>): st
     null,
     1
   )}\n\n=== EDITABLE CONFIG (current live values) ===\n${JSON.stringify(context.editableConfig, null, 1)}`
+}
+
+export function extractReplyFromBrokenJson(text: string): string | null {
+  const m = /"reply"\s*:\s*"((?:[^"\\]|\\.)*)"/.exec(text || '')
+  if (!m) return null
+  try {
+    return JSON.parse(`"${m[1]}"`)
+  } catch {
+    return m[1].replace(/\\n/g, '\n').replace(/\\"/g, '"')
+  }
+}
+
+type ParsedSiteChatJson =
+  | { ok: true; reply?: unknown; changes?: unknown }
+  | { ok: false }
+
+/** Best-effort parse of model output into { reply, changes }. Never throws. */
+export function parseSiteChatModelText(text: string): ParsedSiteChatJson {
+  if (!text?.trim()) return { ok: false }
+  const attempts = [
+    () => JSON.parse(sanitizeJsonString(extractJson(text))),
+    () => JSON.parse(sanitizeJsonString(repairTruncatedJson(text))),
+    () => JSON.parse(sanitizeJsonString(repairTruncatedJson(extractJson(text)))),
+  ]
+  for (const attempt of attempts) {
+    try {
+      const parsed = attempt()
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return { ok: true, ...(parsed as Record<string, unknown>) }
+      }
+    } catch {
+      // try next strategy
+    }
+  }
+  // Recover a reply even when changes JSON was truncated beyond repair.
+  const replyOnly = extractReplyFromBrokenJson(text)
+  if (replyOnly) return { ok: true, reply: replyOnly, changes: {} }
+  return { ok: false }
 }
 
 /** Persistable history row (no large data-URL images). */
@@ -616,31 +654,104 @@ export async function runAdminSiteChat(
       })
       .join('\n\n') + assetLegend
 
-  const { text } = await generateTextWithFallback({
-    systemPrompt: buildSystemPrompt(context),
-    prompt: transcript || 'Admin: (no message)',
-    jsonMode: true,
-    temperature: 0.3,
-    maxOutputTokens: 32768,
-    images,
-    preferredProvider: 'anthropic',
-    anthropicModel: CLAUDE_SONNET_MODEL,
-  })
+  const systemPrompt = buildSystemPrompt(context)
+  const userPrompt = transcript || 'Admin: (no message)'
 
-  let parsed: { reply?: unknown; changes?: unknown }
+  let text = ''
   try {
-    parsed = JSON.parse(sanitizeJsonString(extractJson(text)))
-  } catch {
+    const first = await generateTextWithFallback({
+      systemPrompt,
+      prompt: userPrompt,
+      jsonMode: true,
+      temperature: 0.3,
+      maxOutputTokens: 16384,
+      images,
+      preferredProvider: 'anthropic',
+      anthropicModel: CLAUDE_SONNET_MODEL,
+    })
+    text = first.text
+  } catch (err) {
+    console.warn('[adminSiteChat] primary model failed, retrying Gemini:', err)
+    const fallback = await generateTextWithFallback({
+      systemPrompt,
+      prompt: userPrompt,
+      jsonMode: true,
+      temperature: 0.3,
+      maxOutputTokens: 16384,
+      images,
+      preferredProvider: 'gemini',
+    })
+    text = fallback.text
+  }
+
+  let parsed = parseSiteChatModelText(text)
+  if (!parsed.ok && process.env.GEMINI_API_KEY) {
+    console.warn(
+      '[adminSiteChat] unparseable AI JSON — retrying Gemini. preview:',
+      text.slice(0, 400).replace(/\s+/g, ' ')
+    )
     try {
-      parsed = JSON.parse(sanitizeJsonString(repairTruncatedJson(text)))
-    } catch {
-      throw new Error('The AI returned an unparseable response — please try again.')
+      const retry = await generateTextWithFallback({
+        systemPrompt:
+          systemPrompt +
+          '\n\nCRITICAL: Respond with a single minified JSON object only. No markdown fences, no prose outside JSON.',
+        prompt: userPrompt,
+        jsonMode: true,
+        temperature: 0.2,
+        maxOutputTokens: 16384,
+        images,
+        preferredProvider: 'gemini',
+      })
+      parsed = parseSiteChatModelText(retry.text)
+      if (!parsed.ok) {
+        console.warn(
+          '[adminSiteChat] Gemini retry also unparseable. preview:',
+          retry.text.slice(0, 400).replace(/\s+/g, ' ')
+        )
+      }
+    } catch (err) {
+      console.warn('[adminSiteChat] Gemini retry failed:', err)
+    }
+  }
+
+  // Never 500 the admin chat on model formatting issues — answer conversationally
+  // with no config writes so the UI stays usable.
+  if (!parsed.ok) {
+    const softReply =
+      extractReplyFromBrokenJson(text) ||
+      text
+        .replace(/```(?:json)?/gi, '')
+        .replace(/```/g, '')
+        .trim()
+        .slice(0, 2000) ||
+      'I understood the request but could not format a safe site update. Please try again with a shorter instruction (e.g. one page or one service at a time).'
+    const nowSoft = new Date().toISOString()
+    const newAdminTurns = stripImagesForStorage(
+      messages.filter((m) => m.role === 'admin').slice(-1).map((m) => ({ ...m, at: nowSoft }))
+    )
+    const lastStored = storedHistory[storedHistory.length - 1]
+    const adminToStore =
+      lastStored?.role === 'admin' &&
+      lastStored.content.trim() === newAdminTurns[0]?.content.trim()
+        ? []
+        : newAdminTurns
+    await saveAssistantHistory(tenantId, [
+      ...storedHistory,
+      ...adminToStore,
+      { role: 'assistant', content: softReply, at: nowSoft },
+    ])
+    return {
+      reply: softReply,
+      applied: [],
+      rejected: [],
+      liveNow: false,
+      ...(uploadedAssets.length ? { uploadedAssets } : {}),
     }
   }
   const reply =
     typeof parsed.reply === 'string' && parsed.reply.trim()
       ? parsed.reply.trim()
-      : 'Done.'
+      : extractReplyFromBrokenJson(text) || 'Done.'
   const changes =
     parsed.changes && typeof parsed.changes === 'object' && !Array.isArray(parsed.changes)
       ? (parsed.changes as Record<string, unknown>)

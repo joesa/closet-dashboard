@@ -96,11 +96,16 @@ async function generateWithClaude(opts: TextGenerationOpts): Promise<{
 
   // Stream so long generations don't hit the SDK's non-streaming time limit.
   // Do not send temperature — Claude Sonnet 5 / Fable 5 reject it as deprecated.
+  const system =
+    opts.jsonMode && opts.systemPrompt
+      ? `${opts.systemPrompt}\n\nOutput MUST be a single valid JSON object only — no markdown fences, no commentary.`
+      : opts.systemPrompt
+
   const stream = client.messages.stream(
     {
       model,
       max_tokens: Math.max(opts.maxOutputTokens ?? 8192, 8192),
-      system: opts.systemPrompt,
+      system,
       messages: [{ role: 'user', content }],
     },
     { signal: AbortSignal.timeout(CLAUDE_ABORT_MS) }
