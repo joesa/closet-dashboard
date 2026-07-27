@@ -53,6 +53,20 @@ describe('mergeCustomPatch', () => {
     const { merged } = mergeCustomPatch(base, { globalCss: ':root{--c:red}' })
     expect(merged.globalCss).toBe(':root{--c:red}')
   })
+
+  it('appends additive CSS instead of wiping a design-system sheet', () => {
+    const rich: CustomSiteConfig = {
+      ...base,
+      globalCss:
+        ':root{--bg:#fff;--ink:#111;--acc:#c00;--df:sans;--bf:serif}body{color:var(--ink)}',
+    }
+    const { merged, warnings } = mergeCustomPatch(rich, {
+      globalCss: '.clickable-card{cursor:pointer}',
+    })
+    expect(merged.globalCss).toContain(':root')
+    expect(merged.globalCss).toContain('.clickable-card')
+    expect(warnings.length).toBeGreaterThan(0)
+  })
 })
 
 describe('extractCssAccent', () => {
@@ -99,9 +113,9 @@ describe('full redesign craft uplift prompt', () => {
   })
 
   it('keeps compact size budgets for serverless time limits', () => {
-    expect(src).toContain('globalCss ≤ 9000 chars')
-    expect(src).toContain('Home html ≤ 12000 chars')
-    expect(src).toContain('Total ≤ 48000 chars')
+    expect(src).toContain('≤9000 chars')
+    expect(src).toContain('≤12000 chars')
+    expect(src).toContain('≤7000 chars')
   })
 })
 
@@ -225,12 +239,13 @@ describe('full redesign brief enhancement', () => {
 })
 
 describe('surgical + intake copy model', () => {
-  it('routes surgical edits to Claude Sonnet with human-voice rules', () => {
+  it('uses surgical provider chain with human-voice rules and CSS integrity', () => {
     const src = readFileSync(join(__dirname, 'generateCustomSite.ts'), 'utf8')
     expect(src).toContain('HUMAN_COPY_VOICE_RULES_SURGICAL')
-    expect(src).toMatch(
-      /preferredProvider:\s*'anthropic'[\s\S]{0,80}anthropicModel:\s*CLAUDE_SONNET_MODEL/
-    )
+    expect(src).toContain('useSurgicalProviderChain: true')
+    expect(src).toContain('assertSurgicalIntegrity')
+    expect(src).toContain('globalCssAppend')
+    expect(src).toContain('trySurgicalClickableCardsShortcut')
   })
 })
 

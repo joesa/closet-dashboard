@@ -4,10 +4,12 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import {
   discardCustomDraft,
   publishCustomSiteDraft,
+  restoreDraftCssFromPublished,
   revertToEngine,
 } from '@/lib/ai/generateCustomSite'
 import { cloneCurrentSiteToDraft } from '@/lib/ai/cloneEngineSite'
 import { diffCustomDraftPages } from '@/lib/ai/customDraftDiff'
+import { draftCssLooksBroken } from '@/lib/ai/surgicalIntegrity'
 import { isCustomSiteConfig } from '@/lib/customSite'
 import {
   getAndReconcileCustomBuildJob,
@@ -73,14 +75,24 @@ async function loadCustomBuildStatus(tenantId: string) {
     renderMode: data.render_mode === 'custom' ? ('custom' as const) : ('engine' as const),
     customUpdatedAt: data.custom_updated_at,
     draft: draft
-      ? { mode: draft.mode, pageKeys: Object.keys(draft.pages || {}) }
+      ? {
+          mode: draft.mode,
+          pageKeys: Object.keys(draft.pages || {}),
+          globalCssLength: (draft.globalCss || '').length,
+        }
       : null,
     published: published
-      ? { mode: published.mode, pageKeys: Object.keys(published.pages || {}) }
+      ? {
+          mode: published.mode,
+          pageKeys: Object.keys(published.pages || {}),
+          globalCssLength: (published.globalCss || '').length,
+        }
       : null,
     /** True when draft HTML differs from what visitors see (or nothing published yet). */
     draftAhead: !!(draft && (!published || draftDiffPages.length > 0)),
     draftDiffPages,
+    /** Draft globalCss looks gutted vs published (surgical wipe). */
+    draftCssBroken: draftCssLooksBroken(draft?.globalCss, published?.globalCss),
     job: job ? { ...job, images: undefined } : null,
     jobActive: isCustomBuildJobActive(job),
     fullRedesignEver: hasEverFullRedesign(job),
@@ -97,6 +109,7 @@ async function loadCustomBuildStatus(tenantId: string) {
  *  - publish   → copy draft → custom_config, set render_mode=custom, revalidate
  *  - revert    → set render_mode=engine (keeps draft + published artifacts)
  *  - discard   → clear custom_config_draft
+ *  - restore-css → copy published globalCss into draft (recovery after surgical wipe)
  *  - status    → return current render_mode + draft/published page keys + job
  */
 export async function POST(
@@ -329,6 +342,32 @@ export async function POST(
         targetId: tenantId,
       })
       return NextResponse.json({ ok: true })
+    }
+
+    if (action === 'restore-css') {
+      const result = await restoreDraftCssFromPublished(tenantId)
+      await logAdminAction({
+        actor: adminUser,
+        action: 'site.custom_build_restore_css',
+        targetType: 'tenant',
+        targetId: tenantId,
+        metadata: {
+          draftCssLength: result.draftCssLength,
+          publishedCssLength: result.publishedCssLength,
+        },
+      })
+      const status = await loadCustomBuildStatus(tenantId)
+      return NextResponse.json({
+        ok: true,
+        reply: result.reply,
+        ...result,
+        ...status,
+        nextStep: {
+          preview: true,
+          publish: true,
+          message: result.reply,
+        },
+      })
     }
 
     if (action === 'cancel') {

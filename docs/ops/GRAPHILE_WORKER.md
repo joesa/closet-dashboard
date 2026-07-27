@@ -142,6 +142,7 @@ Prefer **≥2GB** RAM on Render — 512MB OOMs Claude mid-foundation.
 - One model call (plus deterministic hero/video shortcuts inside the worker).
 - **Model chain (surgical only):** Gemini (`gemini-pro-latest` / `CUSTOM_SITE_GEMINI_MODEL`) → OpenAI (`gpt-4.1` / `CUSTOM_SITE_OPENAI_MODEL`) → Anthropic (`claude-sonnet-5`). Falls through on credit or API failures.
 - **Contact shortcuts:** phone / email / address “change everywhere … to …” runs as deterministic string replace (plus `seo_config` sync). Does not trust the model — empty patches that claim success are rejected.
+- **CSS integrity:** truncated `globalCss` replacements are rejected/appended; use `globalCssAppend` for additive rules. Admin **Restore CSS from published** recovers a wiped draft stylesheet.
 - Admin UI polls the same job panel; Preview stays available while surgical runs.
 - Site-wide renames that used to 504 on Vercel now finish on Render.
 

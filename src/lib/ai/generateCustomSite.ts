@@ -11,6 +11,15 @@ import {
   parseContactSurgicalRequest,
   type SeoContactFields,
 } from '@/lib/ai/surgicalContactReplace'
+import {
+  applySurgicalIntegrityRepairs,
+  assertSurgicalIntegrity,
+  ensureClickableCardCss,
+  looksLikeClickableCardsRequest,
+  looksLikeExplicitGlobalRestyle,
+  makeServiceCardsClickable,
+  mergeSurgicalGlobalCss,
+} from '@/lib/ai/surgicalIntegrity'
 import { HUMAN_COPY_VOICE_RULES_SURGICAL } from '@/lib/ai/humanCopyVoice'
 import {
   buildIntakeHintsForBrief,
@@ -96,6 +105,8 @@ export type GenerateCustomSiteResult = {
 
 type SurgicalPatch = {
   globalCss?: string | null
+  /** Additive CSS only — never replaces the design system. */
+  globalCssAppend?: string | null
   pages?: Record<
     string,
     Partial<Pick<CustomPageArtifact, 'html' | 'css' | 'title' | 'description'>> | null
@@ -112,17 +123,30 @@ export function cloneCustomConfig(config: CustomSiteConfig): CustomSiteConfig {
 /**
  * Merge a surgical patch onto a base config. Only non-null fields in the patch
  * overwrite the base. Omitted pages are left untouched.
+ *
+ * globalCss: full replace only when safe (or allowFullCssReplace). Truncated /
+ * token-less sheets are appended or rejected via mergeSurgicalGlobalCss.
  */
 export function mergeCustomPatch(
   base: CustomSiteConfig,
-  patch: SurgicalPatch
-): { merged: CustomSiteConfig; changedPages: string[] } {
+  patch: SurgicalPatch,
+  opts?: { allowFullCssReplace?: boolean }
+): { merged: CustomSiteConfig; changedPages: string[]; warnings: string[] } {
   const merged = cloneCustomConfig(base)
   const changedPages: string[] = []
+  const warnings: string[] = []
 
-  if (typeof patch.globalCss === 'string') {
-    merged.globalCss = patch.globalCss
+  const cssMerge = mergeSurgicalGlobalCss({
+    baseCss: base.globalCss || '',
+    globalCss: patch.globalCss,
+    globalCssAppend: patch.globalCssAppend,
+    allowFullCssReplace: opts?.allowFullCssReplace,
+  })
+  if (cssMerge.replaced || cssMerge.appended) {
+    merged.globalCss = cssMerge.globalCss
+    if (!changedPages.includes('(globalCss)')) changedPages.push('(globalCss)')
   }
+  warnings.push(...cssMerge.warnings)
 
   for (const [rawPath, pagePatch] of Object.entries(patch.pages || {})) {
     if (!pagePatch || typeof pagePatch !== 'object') continue
@@ -157,7 +181,7 @@ export function mergeCustomPatch(
     }
   }
 
-  return { merged, changedPages }
+  return { merged, changedPages, warnings }
 }
 
 function ensureWidgetPlaceholder(config: CustomSiteConfig): void {
@@ -683,6 +707,126 @@ async function trySurgicalContactShortcut(opts: {
 }
 
 /**
+ * Deterministic: wrap service/product cards in links + append .clickable-card CSS.
+ * Never replaces globalCss wholesale.
+ */
+async function trySurgicalClickableCardsShortcut(opts: {
+  tenantId: string
+  prompt: string
+  base: CustomSiteConfig
+}): Promise<GenerateCustomSiteResult | null> {
+  if (!looksLikeClickableCardsRequest(opts.prompt)) return null
+
+  const draft = cloneCustomConfig(opts.base)
+  const changedPages: string[] = []
+  let totalWrapped = 0
+  const targets = ['/', '/services', '/products']
+  for (const path of targets) {
+    const page = draft.pages[path]
+    if (!page?.html) continue
+    const { html, wrapped } = makeServiceCardsClickable(page.html, '/contact')
+    if (wrapped > 0 || html !== page.html) {
+      draft.pages[path] = { ...page, html }
+      changedPages.push(path)
+      totalWrapped += wrapped
+    }
+  }
+
+  // Also scan other pages lightly if home/services had no cards
+  if (totalWrapped === 0) {
+    for (const [path, page] of Object.entries(draft.pages)) {
+      if (targets.includes(path) || !page?.html) continue
+      const { html, wrapped } = makeServiceCardsClickable(page.html, '/contact')
+      if (wrapped > 0) {
+        draft.pages[path] = { ...page, html }
+        changedPages.push(path)
+        totalWrapped += wrapped
+      }
+    }
+  }
+
+  const beforeCss = draft.globalCss || ''
+  draft.globalCss = ensureClickableCardCss(beforeCss)
+  if (draft.globalCss !== beforeCss && !changedPages.includes('(globalCss)')) {
+    changedPages.push('(globalCss)')
+  }
+
+  if (totalWrapped === 0 && draft.globalCss === beforeCss) {
+    return {
+      draft: opts.base,
+      warnings: [],
+      errors: [],
+      reply:
+        'Could not find service/product card blocks to wrap. Name the section or use Full redesign if the markup is unusual.',
+      intent: 'surgical',
+      changedPages: [],
+    }
+  }
+
+  return persistSurgicalShortcutDraft({
+    tenantId: opts.tenantId,
+    draft,
+    changedPages,
+    warnings: [],
+    reply:
+      totalWrapped > 0
+        ? `Made ${totalWrapped} service/product card(s) clickable (wrapped in links) and ensured .clickable-card styles. Preview draft to confirm.`
+        : 'Ensured .clickable-card styles on globalCss. Preview draft to confirm.',
+  })
+}
+
+/**
+ * Copy published globalCss into the draft (admin recovery when surgical wiped CSS).
+ */
+export async function restoreDraftCssFromPublished(tenantId: string): Promise<{
+  restored: boolean
+  draftCssLength: number
+  publishedCssLength: number
+  reply: string
+}> {
+  const supabase = getSupabaseAdmin()
+  const { data, error } = await supabase
+    .from('site_configs')
+    .select('custom_config, custom_config_draft')
+    .eq('tenant_id', tenantId)
+    .single()
+  if (error || !data) throw new Error('Site config not found')
+  if (!isCustomSiteConfig(data.custom_config)) {
+    throw new Error('No published custom site to restore CSS from.')
+  }
+  if (!isCustomSiteConfig(data.custom_config_draft)) {
+    throw new Error('No draft to restore CSS into — clone or generate a draft first.')
+  }
+  const pubCss = data.custom_config.globalCss || ''
+  const draft = cloneCustomConfig(data.custom_config_draft)
+  draft.globalCss = pubCss
+  const sanitized = sanitizeCustomConfig(draft)
+  const { error: updateErr } = await supabase
+    .from('site_configs')
+    .update({
+      custom_config_draft: sanitized,
+      custom_updated_at: new Date().toISOString(),
+    })
+    .eq('tenant_id', tenantId)
+  if (updateErr) throw new Error(`Failed to restore CSS: ${updateErr.message}`)
+  try {
+    const { revalidateTenantSiteCache } = await import(
+      '@/lib/tenants/revalidateTenantSite'
+    )
+    await revalidateTenantSiteCache(tenantId)
+  } catch (revalErr) {
+    console.warn('[generateCustomSite] restore-css revalidate failed:', revalErr)
+  }
+  return {
+    restored: true,
+    draftCssLength: (sanitized.globalCss || '').length,
+    publishedCssLength: pubCss.length,
+    reply:
+      'Restored draft globalCss from the published site. Preview draft — layout should be styled again.',
+  }
+}
+
+/**
  * AI-builds (full) or surgically edits a custom HTML/CSS site into
  * custom_config_draft. Never touches render_mode or published custom_config
  * unless the admin publishes separately.
@@ -831,6 +975,15 @@ export async function generateCustomSiteDraft(opts: {
       },
     })
     if (contactShortcut) return contactShortcut
+  }
+
+  if (intent === 'surgical' && base) {
+    const clickableShortcut = await trySurgicalClickableCardsShortcut({
+      tenantId: opts.tenantId,
+      prompt: opts.prompt || '',
+      base,
+    })
+    if (clickableShortcut) return clickableShortcut
   }
 
   // Full redesigns must ship EVERY intake page (including inactive rows that
@@ -2040,6 +2193,7 @@ Output ONLY valid JSON matching this schema (no markdown fences):
   "intent": "surgical",
   "reply": "1-3 sentences describing exactly what you changed",
   "globalCss": null,
+  "globalCssAppend": null,
   "pages": {
     "/": { "html": "ONLY if this page's HTML must change", "css": null, "title": null, "description": null }
   },
@@ -2051,10 +2205,10 @@ Hard rules:
 2. PRESERVE layout, structure, CSS classes, colors, navigation, and the widget placeholder (${WIDGET_PLACEHOLDER}) unless asked to change them. Imagery is preserved UNLESS the admin asked to change a hero/photo/background — then you MUST replace that media URL.
 3. Prefer text/copy edits inside existing markup — swap wording, keep the same tags and classes. For hero/image swaps, keep the same section markup and only change the image URL + background-size/object-fit as requested.
 4. Return ONLY pages you actually changed under "pages". List every untouched path in "unchangedPages".
-5. Set "globalCss" to null unless they explicitly asked to change site-wide styles OR you must update .hero background-size to match a hero image fit request. Never invent a new palette unprompted.
+5. Set "globalCss" to null unless they explicitly asked to restyle site-wide CSS. For small additive rules (e.g. .clickable-card), use "globalCssAppend" (string) or page-level "css" — NEVER replace the whole stylesheet with a snippet.
 6. If a page is unchanged, omit it from "pages" entirely (do not echo the full original HTML).
 7. mode stays "${opts.mode}". Do not change render mode.
-8. HTML is BODY CONTENT ONLY. No <script> in inline mode. No javascript: URLs.
+8. HTML is BODY CONTENT ONLY. No <script> in inline mode. No javascript: URLs. Keep existing class= attributes and <header>/<nav>/<footer> landmarks.
 9. ${
     mediaOrHeroSwap
       ? 'For hero/image/video edits you MAY return the full home-page html (up to ~20000 characters) so the media URL lands correctly. JSON must still be complete and valid.'
@@ -2107,6 +2261,12 @@ ${JSON.stringify(opts.context, null, 2)}`
         : parsed.globalCss === null
           ? null
           : undefined,
+    globalCssAppend:
+      typeof parsed.globalCssAppend === 'string'
+        ? parsed.globalCssAppend
+        : parsed.globalCssAppend === null
+          ? null
+          : undefined,
     pages:
       parsed.pages && typeof parsed.pages === 'object' && !Array.isArray(parsed.pages)
         ? (parsed.pages as SurgicalPatch['pages'])
@@ -2144,27 +2304,57 @@ ${JSON.stringify(opts.context, null, 2)}`
     }
   }
 
-  const { merged, changedPages } = mergeCustomPatch(opts.base, workingPatch)
+  const allowFullCssReplace = looksLikeExplicitGlobalRestyle(opts.prompt)
+  const { merged, changedPages, warnings: cssWarnings } = mergeCustomPatch(
+    opts.base,
+    workingPatch,
+    { allowFullCssReplace }
+  )
   merged.mode = opts.mode
+
+  const integrity = assertSurgicalIntegrity(opts.base, merged)
+  applySurgicalIntegrityRepairs(merged, integrity)
+
+  // Recompute changed pages after integrity reverts
+  let finalChanged = changedPages.filter((p) => {
+    if (p === '(globalCss)') {
+      return (merged.globalCss || '') !== (opts.base.globalCss || '')
+    }
+    return (merged.pages[p]?.html || '') !== (opts.base.pages[p]?.html || '') ||
+      (merged.pages[p]?.css || '') !== (opts.base.pages[p]?.css || '') ||
+      (merged.pages[p]?.title || '') !== (opts.base.pages[p]?.title || '') ||
+      (merged.pages[p]?.description || '') !== (opts.base.pages[p]?.description || '')
+  })
+  // Include pages integrity restored (no longer "changed") — already filtered.
+  if (
+    integrity.repaired.globalCss !== undefined &&
+    !finalChanged.includes('(globalCss)') &&
+    (merged.globalCss || '') !== (opts.base.globalCss || '')
+  ) {
+    finalChanged = [...finalChanged, '(globalCss)']
+  }
 
   // Never trust a model "I updated everything" reply when the patch was empty.
   let reply =
     (workingPatch.reply && workingPatch.reply.trim()) ||
-    (changedPages.length
-      ? `Updated ${changedPages.join(', ')} only. Everything else left as-is.`
+    (finalChanged.length
+      ? `Updated ${finalChanged.join(', ')} only. Everything else left as-is.`
       : 'No pages changed. Please specify exactly what text or element to edit.')
 
-  const extraWarnings: string[] = []
-  if (changedPages.length === 0) {
+  const extraWarnings: string[] = [...cssWarnings, ...integrity.warnings]
+  if (integrity.issues.length > 0) {
+    reply = `Applied safe parts of the edit; blocked ${integrity.issues.length} destructive change(s) that would break layout/CSS. ${extraWarnings[0] || ''}`.trim()
+  }
+  if (finalChanged.length === 0) {
     extraWarnings.push('Surgical edit produced no page changes — draft unchanged from base.')
     if (
       workingPatch.reply &&
-      /\b(updated|changed|replaced|fixed|renamed)\b/i.test(workingPatch.reply)
+      /\b(updated|changed|replaced|fixed|renamed|restored)\b/i.test(workingPatch.reply)
     ) {
       reply =
-        'Model claimed changes but returned no page HTML — draft left unchanged. Try a more specific prompt, or for phone/email/address use “change everywhere … to …”.'
+        'Model claimed changes but returned no usable page HTML (or changes were blocked by integrity checks) — draft left unchanged.'
       extraWarnings.push(
-        'Ignored empty surgical patch that claimed success (false-positive model reply).'
+        'Ignored empty or destructive surgical patch that claimed success.'
       )
     }
   }
@@ -2172,7 +2362,7 @@ ${JSON.stringify(opts.context, null, 2)}`
   return {
     config: merged,
     reply,
-    changedPages,
+    changedPages: finalChanged,
     extraWarnings,
   }
 }

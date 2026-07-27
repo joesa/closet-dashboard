@@ -53,10 +53,11 @@ function formatHeartbeatAge(heartbeatAt: string | null | undefined): string {
 type Status = {
   renderMode: 'engine' | 'custom';
   customUpdatedAt?: string | null;
-  draft: { mode: string; pageKeys: string[] } | null;
-  published: { mode: string; pageKeys: string[] } | null;
+  draft: { mode: string; pageKeys: string[]; globalCssLength?: number } | null;
+  published: { mode: string; pageKeys: string[]; globalCssLength?: number } | null;
   draftAhead?: boolean;
   draftDiffPages?: string[];
+  draftCssBroken?: boolean;
   job?: CustomBuildJob | null;
   jobActive?: boolean;
   /** True once this tenant has ever started a Full redesign. */
@@ -612,6 +613,12 @@ export default function AdminCustomBuild({
         );
       } else if (action === 'discard') {
         setInfo('Draft discarded.');
+      } else if (action === 'restore-css') {
+        setInfo(
+          typeof json.reply === 'string'
+            ? json.reply
+            : 'Restored draft CSS from the published site.'
+        );
       } else if (action === 'clone') {
         setInfo(
           typeof json.reply === 'string'
@@ -757,6 +764,41 @@ export default function AdminCustomBuild({
         design — intake services stay unless you explicitly remove them; services named in the
         brief are added to the site and engagement engine. Draft → preview → publish.
       </p>
+
+      {mounted && status?.draftCssBroken ? (
+        <div className="rounded-lg border border-red-500/50 bg-red-500/10 px-4 py-3 text-sm text-red-100 space-y-2">
+          <p>
+            <strong className="font-semibold text-red-200">Draft CSS looks broken.</strong>{' '}
+            Site-wide styles were likely wiped by a surgical edit (layout will look unstyled in
+            Preview). Restore CSS from the published site, then preview again.
+            {typeof status.draft?.globalCssLength === 'number' &&
+            typeof status.published?.globalCssLength === 'number' ? (
+              <span className="font-mono text-red-50/90">
+                {' '}
+                (draft {status.draft.globalCssLength} chars vs published{' '}
+                {status.published.globalCssLength})
+              </span>
+            ) : null}
+          </p>
+          <button
+            type="button"
+            disabled={loading}
+            onClick={() => {
+              if (
+                !confirm(
+                  'Restore draft globalCss from the published site? Page HTML in the draft is kept.'
+                )
+              ) {
+                return;
+              }
+              void run('restore-css');
+            }}
+            className="inline-flex px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white text-xs font-medium disabled:opacity-40"
+          >
+            Restore CSS from published
+          </button>
+        </div>
+      ) : null}
 
       {mounted && status?.draft && draftAhead ? (
         <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-100 space-y-2">
