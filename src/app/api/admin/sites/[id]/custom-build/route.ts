@@ -17,7 +17,7 @@ import {
   setCustomBuildJob,
   shouldRequeueCustomBuildJob,
 } from '@/lib/ai/customBuildJob'
-import { cancelCustomBuildJob } from '@/lib/ai/processCustomBuildJob'
+import { cancelCustomBuildJob, requeueCustomBuildJob } from '@/lib/ai/processCustomBuildJob'
 import { canEnqueueBackgroundJobs, enqueueJob } from '@/lib/jobs/enqueueJob'
 import { TASK_FULL_REDESIGN } from '@/lib/jobs/taskIds'
 import { normalizeAdminImageRefs } from '@/lib/adminImageAttach'
@@ -382,6 +382,29 @@ export async function POST(
         job: job ? { ...job, images: undefined } : null,
         jobActive: false,
         reply: job?.error || 'Cancelled.',
+      })
+    }
+
+    if (action === 'requeue') {
+      const job = await requeueCustomBuildJob(tenantId)
+      await enqueueFullRedesign(tenantId, job.started_at)
+      await logAdminAction({
+        actor: adminUser,
+        action: 'site.custom_build_requeue',
+        targetType: 'tenant',
+        targetId: tenantId,
+        metadata: {
+          passesDone: job.passes_done,
+          deadLettered: job.dead_lettered,
+        },
+      })
+      return NextResponse.json({
+        ok: true,
+        job: { ...job, images: undefined },
+        jobActive: true,
+        reply:
+          job.reply ||
+          'Re-queued — Graphile will resume remaining pages from the draft checkpoint.',
       })
     }
 

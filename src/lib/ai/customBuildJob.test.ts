@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   CUSTOM_BUILD_JOB_REQUEUE_MS,
   CUSTOM_BUILD_JOB_STALE_MS,
+  classifyCustomBuildError,
   expireStaleCustomBuildJob,
   isCustomBuildJobActive,
   shouldRequeueCustomBuildJob,
@@ -26,7 +27,8 @@ describe('expireStaleCustomBuildJob', () => {
       now
     )
     expect(out?.status).toBe('failed')
-    expect(out?.error).toMatch(/silent|Graphile|re-queue|retry/i)
+    expect(out?.error).toMatch(/silent|Re-queue|re-queue|heartbeat/i)
+    expect(out?.dead_lettered).toBe(true)
     expect(out?.finished_at).toBeTruthy()
   })
 
@@ -60,6 +62,17 @@ describe('expireStaleCustomBuildJob', () => {
     expect(
       isCustomBuildJobActive(job({ status: 'succeeded', started_at: '2020-01-01T00:00:00Z' }))
     ).toBe(false)
+  })
+})
+
+describe('classifyCustomBuildError', () => {
+  it('classifies known failure kinds', () => {
+    expect(classifyCustomBuildError('cancelled by admin').kind).toBe('cancelled')
+    expect(classifyCustomBuildError('worker went silent').kind).toBe('worker_offline')
+    expect(classifyCustomBuildError('Claude terminated (OOM)').kind).toBe('oom')
+    expect(
+      classifyCustomBuildError('Full redesign incomplete — missing pages: /faq').kind
+    ).toBe('incomplete_pages')
   })
 })
 

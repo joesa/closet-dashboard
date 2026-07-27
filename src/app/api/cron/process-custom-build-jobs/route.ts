@@ -1,11 +1,20 @@
 import { NextResponse } from 'next/server'
-import { listActiveCustomBuildTenantIds, getCustomBuildJob } from '@/lib/ai/customBuildJob'
+import {
+  CUSTOM_BUILD_JOB_QUEUED_ALERT_MS,
+  getCustomBuildJob,
+  isCustomBuildJobStale,
+  jobAgeMs,
+  jobIdleMs,
+  listActiveCustomBuildTenantIds,
+} from '@/lib/ai/customBuildJob'
 import { canEnqueueBackgroundJobs, enqueueJob } from '@/lib/jobs/enqueueJob'
 import { TASK_FULL_REDESIGN } from '@/lib/jobs/taskIds'
+import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { isCustomBuildJob } from '@/lib/ai/customBuildJob'
 
 /**
  * Safety-net cron: re-enqueue queued Full redesign jobs that the worker
- * never claimed (e.g. worker was offline when add_job ran).
+ * never claimed, and emit [ALERT custom-build] for SLO breaches.
  */
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -22,6 +31,38 @@ export async function GET(req: Request) {
       skipped: true,
       reason: 'DATABASE_URL not configured',
     })
+  }
+
+  const now = Date.now()
+  const alerts: string[] = []
+
+  // Scan for SLO alerts (queued >2m, processing with stale heartbeat).
+  const supabase = getSupabaseAdmin()
+  const { data: rows } = await supabase
+    .from('site_configs')
+    .select('tenant_id, brand_name, custom_build_job')
+    .not('custom_build_job', 'is', null)
+    .limit(80)
+
+  for (const row of rows || []) {
+    const job = isCustomBuildJob(row.custom_build_job) ? row.custom_build_job : null
+    if (!job) continue
+    const label =
+      (typeof row.brand_name === 'string' && row.brand_name) ||
+      (typeof row.tenant_id === 'string' ? row.tenant_id : 'unknown')
+    if (job.status === 'queued' && jobAgeMs(job, now) >= CUSTOM_BUILD_JOB_QUEUED_ALERT_MS) {
+      const msg = `[ALERT custom-build] queued_slow tenant=${row.tenant_id} brand=${label} ageMs=${jobAgeMs(job, now)}`
+      console.error(msg)
+      alerts.push(msg)
+    }
+    if (
+      job.status === 'processing' &&
+      (isCustomBuildJobStale(job, now) || jobIdleMs(job, now) >= 5 * 60 * 1000)
+    ) {
+      const msg = `[ALERT custom-build] stale_heartbeat tenant=${row.tenant_id} brand=${label} idleMs=${jobIdleMs(job, now)}`
+      console.error(msg)
+      alerts.push(msg)
+    }
   }
 
   const ids = await listActiveCustomBuildTenantIds()
@@ -48,5 +89,6 @@ export async function GET(req: Request) {
   return NextResponse.json({
     enqueued: enqueued.length,
     tenantIds: enqueued,
+    alerts: alerts.length,
   })
 }

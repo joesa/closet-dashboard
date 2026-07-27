@@ -6,6 +6,7 @@ import {
 } from '@/lib/ai/customBuildJob'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { sanitizeCustomConfig } from '@/lib/customSite'
+import { parseServiceUpdates } from '@/lib/ai/mergeBriefServices'
 
 const HEARTBEAT_MS = 45_000
 
@@ -44,6 +45,7 @@ export async function processCustomBuildJob(tenantId: string): Promise<void> {
     started_at: current.started_at || new Date().toISOString(),
     heartbeat_at: new Date().toISOString(),
     ever_full: current.ever_full || current.intent === 'full' || undefined,
+    dead_lettered: false,
   }
   await setCustomBuildJob(tenantId, claimed)
   console.info('[processCustomBuildJob] claimed', tenantId)
@@ -81,6 +83,16 @@ export async function processCustomBuildJob(tenantId: string): Promise<void> {
       mode: current.mode,
       intent,
       images: Array.isArray(current.images) ? current.images : undefined,
+      resumeState:
+        intent === 'full'
+          ? {
+              lockedBrief: current.locked_brief,
+              serviceUpdates: current.service_updates
+                ? parseServiceUpdates(current.service_updates)
+                : null,
+              foundationReply: current.foundation_reply,
+            }
+          : undefined,
       onProgress:
         intent === 'full'
           ? async (p) => {
@@ -90,6 +102,9 @@ export async function processCustomBuildJob(tenantId: string): Promise<void> {
                 required_paths: p.requiredPaths,
                 reply: p.reply ?? undefined,
                 changedPages: p.passesDone,
+                locked_brief: p.lockedBrief ?? undefined,
+                service_updates: p.serviceUpdates ?? undefined,
+                foundation_reply: p.foundationReply ?? undefined,
               })
             }
           : undefined,
@@ -98,6 +113,13 @@ export async function processCustomBuildJob(tenantId: string): Promise<void> {
           ? async (draft) => {
               const supabase = getSupabaseAdmin()
               const sanitized = sanitizeCustomConfig(draft)
+              const pages = sanitized.pages || {}
+              const htmlSizes = Object.fromEntries(
+                Object.entries(pages).map(([path, page]) => [
+                  path,
+                  typeof page?.html === 'string' ? page.html.length : 0,
+                ])
+              )
               const { error } = await supabase
                 .from('site_configs')
                 .update({
@@ -113,9 +135,12 @@ export async function processCustomBuildJob(tenantId: string): Promise<void> {
                 )
               } else {
                 console.info(
-                  '[processCustomBuildJob] checkpoint',
-                  tenantId,
-                  Object.keys(sanitized.pages || {})
+                  JSON.stringify({
+                    event: 'custom_build_checkpoint',
+                    tenantId,
+                    pageCount: Object.keys(pages).length,
+                    htmlSizes,
+                  })
                 )
               }
             }
@@ -136,6 +161,7 @@ export async function processCustomBuildJob(tenantId: string): Promise<void> {
       finished_at: new Date().toISOString(),
       heartbeat_at: new Date().toISOString(),
       ever_full: true,
+      dead_lettered: false,
     })
     console.info('[processCustomBuildJob] succeeded', tenantId, result.changedPages)
   } catch (err) {
@@ -171,7 +197,43 @@ export async function cancelCustomBuildJob(
     error: reason,
     finished_at: new Date().toISOString(),
     ever_full: current.ever_full || current.intent === 'full' || undefined,
+    dead_lettered: false,
   }
   await setCustomBuildJob(tenantId, cancelled)
   return cancelled
+}
+
+/**
+ * Re-queue a failed/dead-lettered Full redesign without clearing the draft —
+ * resumes remaining empty pages from checkpoint.
+ */
+export async function requeueCustomBuildJob(
+  tenantId: string
+): Promise<CustomBuildJob> {
+  const current = await getCustomBuildJob(tenantId)
+  if (!current) {
+    throw new Error('No custom build job to re-queue.')
+  }
+  if (current.status === 'queued' || current.status === 'processing') {
+    throw new Error('Job is already active.')
+  }
+  if (current.intent !== 'full' && !current.ever_full) {
+    throw new Error('Only Full redesign jobs can be re-queued.')
+  }
+  const startedAt = new Date().toISOString()
+  const job: CustomBuildJob = {
+    ...current,
+    status: 'queued',
+    intent: 'full',
+    error: null,
+    finished_at: null,
+    started_at: startedAt,
+    heartbeat_at: null,
+    pass: 'queued',
+    dead_lettered: false,
+    reply: `Re-queued from checkpoint (done: ${(current.passes_done || []).join(', ') || 'none yet'})…`,
+    ever_full: true,
+  }
+  await setCustomBuildJob(tenantId, job)
+  return job
 }

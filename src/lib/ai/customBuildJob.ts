@@ -6,6 +6,28 @@ export type CustomBuildJobStatus =
   | 'succeeded'
   | 'failed'
 
+/** Locked creative direction from foundation — reused on Graphile resume. */
+export type CustomBuildLockedBrief = {
+  signatureConcept: string
+  optimizedBrief: string
+  materialWorld?: string
+  palette?: Array<{ role: string; hex: string; use: string }>
+  typography?: { display: string; body: string; why?: string }
+  signatureElement?: string
+  copyRegister?: string
+  servicesToAdd?: string[]
+  avoidDefaults?: string[]
+  inventedFromIntake?: boolean
+  source?: string
+}
+
+export type CustomBuildErrorKind =
+  | 'worker_offline'
+  | 'oom'
+  | 'incomplete_pages'
+  | 'cancelled'
+  | 'other'
+
 export type CustomBuildJob = {
   status: CustomBuildJobStatus
   intent: 'full' | 'surgical'
@@ -33,6 +55,16 @@ export type CustomBuildJob = {
   passes_done?: string[]
   /** Intake paths this run must produce. */
   required_paths?: string[]
+  /** Foundation service adds/removes — restored on resume after skip-home. */
+  service_updates?: {
+    added?: Array<{ title: string; description?: string; image?: string }>
+    removed?: Array<{ title: string; reason?: string }>
+  } | null
+  /** Locked brief so resume does not re-enhance and drift from home. */
+  locked_brief?: CustomBuildLockedBrief | null
+  foundation_reply?: string | null
+  /** True after Graphile max attempts or stale expire — show Re-queue. */
+  dead_lettered?: boolean
 }
 
 /**
@@ -44,6 +76,28 @@ export const CUSTOM_BUILD_JOB_STALE_MS = 45 * 60 * 1000
 
 /** Re-kick processor if a job sits in queued without being claimed. */
 export const CUSTOM_BUILD_JOB_REQUEUE_MS = 45 * 1000
+
+/** Alert when a job stays queued this long (Background jobs + cron). */
+export const CUSTOM_BUILD_JOB_QUEUED_ALERT_MS = 2 * 60 * 1000
+
+/** Classify admin-facing failure copy from the stored error string. */
+export function classifyCustomBuildError(
+  error: string | null | undefined
+): { kind: CustomBuildErrorKind; label: string } {
+  const msg = (error || '').trim()
+  if (!msg) return { kind: 'other', label: 'Failed' }
+  if (/cancel/i.test(msg)) return { kind: 'cancelled', label: 'Cancelled' }
+  if (/silent|no heartbeat|worker went silent|worker offline/i.test(msg)) {
+    return { kind: 'worker_offline', label: 'Worker offline' }
+  }
+  if (/oom|terminated|out of memory|512mb/i.test(msg)) {
+    return { kind: 'oom', label: 'OOM / terminated' }
+  }
+  if (/incomplete|missing pages|empty HTML|no usable/i.test(msg)) {
+    return { kind: 'incomplete_pages', label: 'Incomplete pages' }
+  }
+  return { kind: 'other', label: 'Failed' }
+}
 
 /** True once this tenant has ever queued/run a Full redesign. */
 export function hasEverFullRedesign(job: CustomBuildJob | null | undefined): boolean {
@@ -116,9 +170,10 @@ export function expireStaleCustomBuildJob(
     images: undefined,
     error:
       job.error ||
-      'Full redesign worker went silent (no heartbeat). Click Full redesign to re-queue — Graphile will retry automatically when the worker is healthy.',
+      'Full redesign worker went silent (no heartbeat). Click Re-queue to resume from checkpoint, or Full redesign to start over.',
     finished_at: new Date(nowMs).toISOString(),
     ever_full: job.ever_full || job.intent === 'full' || undefined,
+    dead_lettered: true,
   }
 }
 

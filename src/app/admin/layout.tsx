@@ -10,6 +10,7 @@ const NAV = [
   { href: '/admin/sites',         label: 'Sites' },
   { href: '/admin/intakes',       label: 'Prospect Intakes' },
   { href: '/admin/provision-jobs', label: 'Provision Jobs' },
+  { href: '/admin/background-jobs', label: 'Background Jobs' },
   { href: '/admin/sandbox/onboarding', label: 'Sandbox Emulator' },
   { href: '/admin/scraper',       label: 'Scraper' },
   { href: '/admin/subscriptions', label: 'Subscriptions' },

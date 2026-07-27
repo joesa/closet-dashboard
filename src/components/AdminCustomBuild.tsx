@@ -14,10 +14,40 @@ type CustomBuildJob = {
   changedPages?: string[];
   started_at?: string;
   finished_at?: string | null;
+  heartbeat_at?: string | null;
   pass?: string | null;
   passes_done?: string[];
   required_paths?: string[];
+  dead_lettered?: boolean;
 };
+
+function classifyJobError(error: string | null | undefined): {
+  kind: string;
+  label: string;
+} {
+  const msg = (error || '').trim();
+  if (!msg) return { kind: 'other', label: 'Failed' };
+  if (/cancel/i.test(msg)) return { kind: 'cancelled', label: 'Cancelled' };
+  if (/silent|no heartbeat|worker went silent|worker offline/i.test(msg)) {
+    return { kind: 'worker_offline', label: 'Worker offline' };
+  }
+  if (/oom|terminated|out of memory|512mb/i.test(msg)) {
+    return { kind: 'oom', label: 'OOM / terminated' };
+  }
+  if (/incomplete|missing pages|empty HTML|no usable/i.test(msg)) {
+    return { kind: 'incomplete_pages', label: 'Incomplete pages' };
+  }
+  return { kind: 'other', label: 'Failed' };
+}
+
+function formatHeartbeatAge(heartbeatAt: string | null | undefined): string {
+  if (!heartbeatAt) return 'no heartbeat yet';
+  const t = Date.parse(heartbeatAt);
+  if (!Number.isFinite(t)) return 'no heartbeat yet';
+  const sec = Math.max(0, Math.round((Date.now() - t) / 1000));
+  if (sec < 60) return `${sec}s ago`;
+  return `${Math.round(sec / 60)}m ago`;
+}
 
 type Status = {
   renderMode: 'engine' | 'custom';
@@ -257,6 +287,32 @@ export default function AdminCustomBuild({
     }
   }, [tenantId, refresh]);
 
+  const requeueJob = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    setInfo('Re-queueing from draft checkpoint…');
+    try {
+      const res = await fetch(`/api/admin/sites/${tenantId}/custom-build`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'requeue' }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || `Re-queue failed (${res.status})`);
+      waitingOnJobRef.current = true;
+      setInfo(
+        typeof json.reply === 'string'
+          ? json.reply
+          : 'Re-queued — resuming remaining pages from checkpoint.'
+      );
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Re-queue failed');
+      setLoading(false);
+      waitingOnJobRef.current = false;
+    }
+  }, [tenantId, refresh]);
+
   useEffect(() => {
     setMounted(true);
     void refresh();
@@ -277,14 +333,13 @@ export default function AdminCustomBuild({
       const startedMs = job?.started_at ? Date.parse(job.started_at) : NaN;
       const ageMs = Number.isFinite(startedMs) ? Date.now() - startedMs : 0;
       const ageMin = Math.max(1, Math.round(ageMs / 60000));
+      const hb = formatHeartbeatAge(job?.heartbeat_at);
+      const done = (job?.passes_done || []).length;
+      const need = (job?.required_paths || []).length || '?';
       setInfo(
         job?.status === 'processing'
-          ? `Full redesign multi-pass${
-              job.pass ? ` — ${job.pass}` : ''
-            } (${(job.passes_done || []).length}/${
-              (job.required_paths || []).length || '?'
-            } pages)… ~${ageMin}m elapsed`
-          : 'Full redesign queued on background worker…'
+          ? `Processing · pass ${job?.pass || '…'} · ${done}/${need} pages · heartbeat ${hb} · ~${ageMin}m wall`
+          : `Queued on background worker · heartbeat ${hb} · ~${ageMin}m waiting`
       );
       // Client watchdog mirrors server stale window (~45m). Do not cancel early —
       // Graphile Worker has no Vercel maxDuration; Claude alone can exceed 5 minutes.
@@ -592,6 +647,32 @@ export default function AdminCustomBuild({
       ? `${previewUrl}${previewUrl.includes('?') ? '&' : '?'}draft=1`
       : null;
 
+  const requiredPaths = status?.job?.required_paths || [];
+  const draftPageKeys = status?.draft?.pageKeys || [];
+  const draftComplete =
+    requiredPaths.length === 0
+      ? !!status?.draft
+      : requiredPaths.every((p) => draftPageKeys.includes(p));
+  // Block Preview while job runs, or after incomplete-pages failure until complete.
+  const canPreviewDraft =
+    !!draftPreviewUrl &&
+    !jobActive &&
+    !(
+      status?.job?.status === 'failed' &&
+      /incomplete|missing pages/i.test(status.job.error || '') &&
+      !draftComplete
+    );
+
+  const showRequeue =
+    !jobActive &&
+    status?.job?.status === 'failed' &&
+    (status.job.dead_lettered === true ||
+      status.job.intent === 'full' ||
+      status.fullRedesignEver === true) &&
+    !/cancel/i.test(status.job.error || '');
+
+  const errorClass = classifyJobError(error || status?.job?.error);
+
   const liveSiteUrl = previewUrl
     ? previewUrl.split('?')[0].replace(/\/$/, '') || previewUrl
     : null;
@@ -675,15 +756,22 @@ export default function AdminCustomBuild({
             ) : null}
           </p>
           <div className="flex flex-wrap gap-2">
-            {draftPreviewUrl ? (
+            {canPreviewDraft ? (
               <a
-                href={draftPreviewUrl}
+                href={draftPreviewUrl!}
                 target="_blank"
                 rel="noreferrer"
                 className="inline-flex px-3 py-1.5 rounded-lg bg-amber-500/20 border border-amber-400/40 text-amber-50 text-xs font-medium hover:bg-amber-500/30"
               >
                 1. Preview draft
               </a>
+            ) : draftPreviewUrl ? (
+              <span
+                className="inline-flex px-3 py-1.5 rounded-lg border border-neutral-600 text-neutral-500 text-xs font-medium cursor-not-allowed"
+                title="Preview disabled while redesign is incomplete or running"
+              >
+                1. Preview draft
+              </span>
             ) : null}
             {diffPages
               .filter((p) => p.startsWith('/'))
@@ -723,12 +811,12 @@ export default function AdminCustomBuild({
             <strong className="text-sky-200">Next step:</strong> {nextStep.message}
           </p>
           <div className="flex flex-wrap gap-2">
-            {nextStep.preview && draftPreviewUrl ? (
+            {nextStep.preview && canPreviewDraft ? (
               <a
                 href={
                   changedPages[0]?.startsWith('/')
-                    ? pagePreviewUrl(changedPages[0]) || draftPreviewUrl
-                    : draftPreviewUrl
+                    ? pagePreviewUrl(changedPages[0]) || draftPreviewUrl!
+                    : draftPreviewUrl!
                 }
                 target="_blank"
                 rel="noreferrer"
@@ -1178,6 +1266,17 @@ export default function AdminCustomBuild({
             {loading ? 'Working…' : 'Edit surgically'}
           </button>
         )}
+        {showRequeue ? (
+          <button
+            type="button"
+            disabled={loading}
+            onClick={() => void requeueJob()}
+            className="px-4 py-2 border border-amber-400/50 hover:bg-amber-500/10 text-amber-100 text-sm font-medium rounded-lg transition-colors disabled:opacity-40"
+            title="Keep draft checkpoint and resume remaining empty pages"
+          >
+            Re-queue (resume)
+          </button>
+        ) : null}
         <button
           type="button"
           disabled={loading}
@@ -1223,15 +1322,26 @@ export default function AdminCustomBuild({
         >
           Full redesign
         </button>
-        {draftPreviewUrl ? (
+        {canPreviewDraft ? (
           <a
-            href={draftPreviewUrl}
+            href={draftPreviewUrl!}
             target="_blank"
             rel="noreferrer"
             className="px-4 py-2 border border-amber-400/40 hover:bg-amber-500/10 text-amber-200 text-sm font-medium rounded-lg transition-colors"
           >
             Preview draft
           </a>
+        ) : draftPreviewUrl ? (
+          <span
+            className="px-4 py-2 border border-neutral-700 text-neutral-500 text-sm font-medium rounded-lg cursor-not-allowed"
+            title={
+              jobActive
+                ? 'Preview disabled while Full redesign is running'
+                : 'Draft is incomplete — wait for all required pages or re-queue'
+            }
+          >
+            Preview draft
+          </span>
         ) : null}
         {canPublishDraft ? (
           <button
@@ -1336,8 +1446,60 @@ export default function AdminCustomBuild({
           ))}
         </ul>
       ) : null}
+      {jobActive || status?.job?.status === 'queued' || status?.job?.status === 'processing' ? (
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <span
+            className={`inline-flex items-center px-2 py-0.5 rounded border ${
+              status?.job?.status === 'queued'
+                ? 'border-amber-400/40 bg-amber-500/10 text-amber-100'
+                : 'border-neutral-600 text-neutral-500'
+            }`}
+          >
+            Queued
+          </span>
+          <span className="text-neutral-600">→</span>
+          <span
+            className={`inline-flex items-center px-2 py-0.5 rounded border ${
+              status?.job?.status === 'processing'
+                ? 'border-sky-400/40 bg-sky-500/10 text-sky-100'
+                : 'border-neutral-600 text-neutral-500'
+            }`}
+          >
+            Processing
+          </span>
+          <span className="text-neutral-600">→</span>
+          <span className="inline-flex items-center px-2 py-0.5 rounded border border-violet-400/40 bg-violet-500/10 text-violet-100 font-mono">
+            {status?.job?.pass || '…'}
+          </span>
+          <span className="text-neutral-400">
+            {(status?.job?.passes_done || []).length}/
+            {(status?.job?.required_paths || []).length || '?'} pages · heartbeat{' '}
+            {formatHeartbeatAge(status?.job?.heartbeat_at)}
+          </span>
+        </div>
+      ) : null}
+
       {info ? <p className="text-sm text-emerald-300">{info}</p> : null}
-      {error ? <p className="text-sm text-red-400">{error}</p> : null}
+      {error ? (
+        <div className="space-y-1">
+          <span
+            className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold ${
+              errorClass.kind === 'oom'
+                ? 'bg-orange-500/20 text-orange-200'
+                : errorClass.kind === 'worker_offline'
+                  ? 'bg-yellow-500/20 text-yellow-100'
+                  : errorClass.kind === 'incomplete_pages'
+                    ? 'bg-rose-500/20 text-rose-100'
+                    : errorClass.kind === 'cancelled'
+                      ? 'bg-neutral-600/40 text-neutral-200'
+                      : 'bg-red-500/20 text-red-200'
+            }`}
+          >
+            {errorClass.label}
+          </span>
+          <p className="text-sm text-red-400">{error}</p>
+        </div>
+      ) : null}
     </section>
   );
 }

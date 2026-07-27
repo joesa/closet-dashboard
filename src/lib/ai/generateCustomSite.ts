@@ -8,7 +8,9 @@ import { HUMAN_COPY_VOICE_RULES_SURGICAL } from '@/lib/ai/humanCopyVoice'
 import {
   buildIntakeHintsForBrief,
   enhanceFullRedesignBrief,
+  type EnhancedFullRedesignBrief,
 } from '@/lib/ai/enhanceFullRedesignBrief'
+import type { CustomBuildLockedBrief } from '@/lib/ai/customBuildJob'
 import {
   activatePagesConfigForDraftPaths,
   applyPathAliasesToCustomConfig,
@@ -603,9 +605,18 @@ export async function generateCustomSiteDraft(opts: {
     passesDone: string[]
     requiredPaths: string[]
     reply?: string
+    lockedBrief?: CustomBuildLockedBrief
+    serviceUpdates?: ServiceUpdates
+    foundationReply?: string
   }) => Promise<void>
   /** Persist partial draft after each pass (resume after worker crash). */
   onCheckpoint?: (draft: CustomSiteConfig) => Promise<void>
+  /** Resume extras from custom_build_job (same Graphile run). */
+  resumeState?: {
+    lockedBrief?: CustomBuildLockedBrief | null
+    serviceUpdates?: ServiceUpdates | null
+    foundationReply?: string | null
+  }
 }): Promise<GenerateCustomSiteResult> {
   const supabase = getSupabaseAdmin()
   const { data: tenant, error } = await supabase
@@ -796,6 +807,7 @@ export async function generateCustomSiteDraft(opts: {
           pageHints,
           requiredPaths,
           existingDraft: intent === 'full' ? existingDraft : null,
+          resumeState: intent === 'full' ? opts.resumeState : undefined,
           onProgress: opts.onProgress,
           onCheckpoint: opts.onCheckpoint,
           context: {
@@ -1260,11 +1272,19 @@ async function runFullGenerate(opts: {
   images?: Array<{ mimeType: string; data: string }>
   /** Checkpointed draft from a prior attempt of this Graphile job (resume). */
   existingDraft?: CustomSiteConfig | null
+  resumeState?: {
+    lockedBrief?: CustomBuildLockedBrief | null
+    serviceUpdates?: ServiceUpdates | null
+    foundationReply?: string | null
+  }
   onProgress?: (progress: {
     pass: string
     passesDone: string[]
     requiredPaths: string[]
     reply?: string
+    lockedBrief?: CustomBuildLockedBrief
+    serviceUpdates?: ServiceUpdates
+    foundationReply?: string
   }) => Promise<void>
   onCheckpoint?: (draft: CustomSiteConfig) => Promise<void>
 }): Promise<{
@@ -1316,18 +1336,64 @@ async function runFullGenerate(opts: {
     opts.context.seo && typeof opts.context.seo === 'object'
       ? (opts.context.seo as Record<string, unknown>)
       : {}
-  const enhanced = await enhanceFullRedesignBrief({
-    brandName: opts.brandName,
-    adminBrief,
-    hasImages: hasImages || attachedAssetUrls.length > 0,
-    engagementLabel,
-    services,
-    city: typeof seoCtx.city === 'string' ? seoCtx.city : undefined,
-    region: typeof seoCtx.region === 'string' ? seoCtx.region : undefined,
-    themeHint:
-      typeof opts.context.themeHint === 'string' ? opts.context.themeHint : undefined,
-    intakeHints: buildIntakeHintsForBrief(opts.context),
-  })
+
+  const resumeLocked = opts.resumeState?.lockedBrief
+  const enhanced: EnhancedFullRedesignBrief =
+    resumeLocked &&
+    typeof resumeLocked.optimizedBrief === 'string' &&
+    resumeLocked.optimizedBrief.trim().length > 40
+      ? {
+          signatureConcept: resumeLocked.signatureConcept || 'Resumed design direction',
+          materialWorld: resumeLocked.materialWorld || '',
+          palette: Array.isArray(resumeLocked.palette) ? resumeLocked.palette : [],
+          typography: {
+            display: resumeLocked.typography?.display || 'Georgia',
+            body: resumeLocked.typography?.body || 'system-ui',
+            why: resumeLocked.typography?.why || 'resumed',
+          },
+          signatureElement: resumeLocked.signatureElement || '',
+          copyRegister: resumeLocked.copyRegister || '',
+          servicesToAdd: Array.isArray(resumeLocked.servicesToAdd)
+            ? resumeLocked.servicesToAdd
+            : [],
+          avoidDefaults: Array.isArray(resumeLocked.avoidDefaults)
+            ? resumeLocked.avoidDefaults
+            : [],
+          optimizedBrief: resumeLocked.optimizedBrief,
+          inventedFromIntake: !!resumeLocked.inventedFromIntake,
+          source:
+            resumeLocked.source === 'gemini' ||
+            resumeLocked.source === 'anthropic' ||
+            resumeLocked.source === 'fallback'
+              ? resumeLocked.source
+              : 'fallback',
+        }
+      : await enhanceFullRedesignBrief({
+          brandName: opts.brandName,
+          adminBrief,
+          hasImages: hasImages || attachedAssetUrls.length > 0,
+          engagementLabel,
+          services,
+          city: typeof seoCtx.city === 'string' ? seoCtx.city : undefined,
+          region: typeof seoCtx.region === 'string' ? seoCtx.region : undefined,
+          themeHint:
+            typeof opts.context.themeHint === 'string' ? opts.context.themeHint : undefined,
+          intakeHints: buildIntakeHintsForBrief(opts.context),
+        })
+
+  const lockedBriefForJob: CustomBuildLockedBrief = {
+    signatureConcept: enhanced.signatureConcept,
+    optimizedBrief: enhanced.optimizedBrief,
+    materialWorld: enhanced.materialWorld,
+    palette: enhanced.palette,
+    typography: enhanced.typography,
+    signatureElement: enhanced.signatureElement,
+    copyRegister: enhanced.copyRegister,
+    servicesToAdd: enhanced.servicesToAdd,
+    avoidDefaults: enhanced.avoidDefaults,
+    inventedFromIntake: enhanced.inventedFromIntake,
+    source: enhanced.source,
+  }
 
   const systemPrompt = `You are a senior design lead at a small studio known for giving every client a visual identity that could not be mistaken for anyone else's. Clients come to you because they rejected work that felt templated or machine-generated. You produce production-ready marketing sites as raw HTML + CSS for real local businesses on this platform.
 
@@ -1452,9 +1518,11 @@ DIRECTION LOCK:
       }`
 
   const extraWarnings: string[] = [
-    seedEmpty || enhanced.inventedFromIntake
-      ? `Empty admin seed — invented a full design-direction prompt from intake + design system (${enhanced.source}), then executed it.`
-      : `Creative brief enhanced from your prompt + intake (${enhanced.source}) before generation — palette/type/signature locked for bespoke, non-AI look.`,
+    resumeLocked
+      ? 'Resumed locked creative brief from prior checkpoint (direction unchanged).'
+      : seedEmpty || enhanced.inventedFromIntake
+        ? `Empty admin seed — invented a full design-direction prompt from intake + design system (${enhanced.source}), then executed it.`
+        : `Creative brief enhanced from your prompt + intake (${enhanced.source}) before generation — palette/type/signature locked for bespoke, non-AI look.`,
     'Full redesign runs multi-pass (home, then each page) with draft checkpoints so Graphile retries can resume.',
   ]
   if (!hasBrief) {
@@ -1503,7 +1571,11 @@ DIRECTION LOCK:
   const report = async (
     pass: string,
     draftCfg: CustomSiteConfig,
-    replyText?: string
+    replyText?: string,
+    extras?: {
+      serviceUpdates?: ServiceUpdates
+      foundationReply?: string
+    }
   ) => {
     const passesDone = passesDoneFromDraft(opts.requiredPaths, draftCfg)
     await opts.onProgress?.({
@@ -1511,6 +1583,9 @@ DIRECTION LOCK:
       passesDone,
       requiredPaths: opts.requiredPaths,
       reply: replyText,
+      lockedBrief: lockedBriefForJob,
+      serviceUpdates: extras?.serviceUpdates,
+      foundationReply: extras?.foundationReply,
     })
   }
 
@@ -1527,8 +1602,13 @@ DIRECTION LOCK:
       ? dropEmptyCustomPages(applyPathAliasesToCustomConfig(opts.existingDraft))
       : emptyFullRedesignDraft(opts.mode)
 
-  let serviceUpdates = parseServiceUpdates(undefined)
-  let foundationReply = ''
+  let serviceUpdates = parseServiceUpdates(
+    opts.resumeState?.serviceUpdates ?? undefined
+  )
+  let foundationReply =
+    typeof opts.resumeState?.foundationReply === 'string'
+      ? opts.resumeState.foundationReply
+      : ''
   const remaining = () => remainingFullRedesignPaths(opts.requiredPaths, draft)
 
   // —— Pass: foundation (globalCss + home) ——————————————
@@ -1587,11 +1667,21 @@ Build globalCss + home "/" only. Output JSON.`
       )
     }
 
-    draft = {
-      mode: parsed.mode === 'iframe' ? 'iframe' : opts.mode,
-      globalCss: typeof parsed.globalCss === 'string' ? parsed.globalCss : '',
-      pages: { '/': homePage! },
-    }
+    // Merge home into existing pages — do not wipe sibling checkpoints if
+    // home was empty but other paths were already done.
+    draft = mergePageIntoDraft(
+      {
+        ...draft,
+        mode: parsed.mode === 'iframe' ? 'iframe' : opts.mode,
+        globalCss:
+          typeof parsed.globalCss === 'string' && parsed.globalCss.trim()
+            ? parsed.globalCss
+            : draft.globalCss,
+      },
+      '/',
+      homePage!,
+      typeof parsed.globalCss === 'string' ? parsed.globalCss : draft.globalCss
+    )
     serviceUpdates = parseServiceUpdates(parsed.serviceUpdates)
     const modelReply =
       typeof parsed.reply === 'string' && parsed.reply.trim()
@@ -1603,12 +1693,19 @@ Build globalCss + home "/" only. Output JSON.`
         : `Optimized direction (${enhanced.source}): ${enhanced.signatureConcept}\n\n${modelReply}`
 
     await checkpoint(draft)
-    await report('foundation:/', draft, foundationReply)
+    await report('foundation:/', draft, foundationReply, {
+      serviceUpdates,
+      foundationReply,
+    })
     console.info('[runFullGenerate] checkpoint home')
   } else {
     foundationReply =
+      foundationReply ||
       'Resuming Full redesign — home already checkpointed; filling remaining pages.'
-    await report('resume', draft, foundationReply)
+    await report('resume', draft, foundationReply, {
+      serviceUpdates,
+      foundationReply,
+    })
     console.info(
       '[runFullGenerate] resume — skip home; remaining',
       remaining().join(',')

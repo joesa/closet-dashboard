@@ -47,6 +47,9 @@ Set the same `DATABASE_URL` on:
 `bash scripts/db-migrate.sh` will derive a session URI from the linked Supabase
 pooler URL + `SUPABASE_DB_PASSWORD` when `DATABASE_URL` is unset.
 
+Production gate: `GET /api/health/graphile` returns **503** in production when
+`DATABASE_URL` is missing or unreachable (use as a Vercel healthcheck).
+
 ## Schema migrate
 
 After the `background_job` SQL migration is applied:
@@ -86,20 +89,32 @@ Without `DATABASE_URL`, intake/admin image routes fall back to sync HTTP
 2. **Root Directory**: closet-dashboard repo root (not `worker/`).
 3. Build: `npm ci` — Start: `npm run worker`
    (`tsx` / `dotenv` are production dependencies so they install under `NODE_ENV=production`.)
-4. Instance type: **Starter** ($7/mo) — Background Workers have no Free tier.
-   - `DATABASE_URL` (session 5432)
-   - `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`
-   - `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `OPENAI_API_KEY`
-   - any other secrets tasks import (storage, etc.)
-5. Deploy. Logs should show: `connected — listening for jobs`
+4. Instance type: prefer **Standard ≥2GB** (512MB OOMs Claude). Starter ($7/mo) is the minimum plan — Background Workers have no Free tier.
+5. Set every env key in the checklist below (same secrets the Next app uses for AI + Supabase).
+6. Deploy. Logs should show: `connected — listening for jobs`
 
-Concurrency is **1** on free Render so two Full redesigns do not OOM.
+Concurrency is **1** on small Render instances so two Full redesigns do not OOM.
+
+### Render env checklist
+
+Kept in sync with `worker/render.yaml` via CI (`npm run check:render-env`).
+
+<!-- render-env-checklist -->
+```
+- DATABASE_URL
+- NEXT_PUBLIC_SUPABASE_URL
+- SUPABASE_SERVICE_ROLE_KEY
+- ANTHROPIC_API_KEY
+- GEMINI_API_KEY
+- OPENAI_API_KEY
+- CUSTOM_SITE_CLAUDE_MODEL
+```
 
 ## Full redesign multi-pass + resume
 
 Full redesign no longer asks the model for every page in one JSON blob.
 
-1. **Foundation** — `globalCss` + home `/`
+1. **Foundation** — `globalCss` + home `/` (locked brief + `serviceUpdates` stored on the job)
 2. **One page per pass** — remaining intake paths, matching chrome from home
 3. After each pass, draft is written to `site_configs.custom_config_draft` and
    `custom_build_job` gets `pass` / `passes_done` / `required_paths` for the UI
@@ -107,13 +122,27 @@ Full redesign no longer asks the model for every page in one JSON blob.
 Resume:
 
 - Worker OOM / crash mid-run → status stays `processing`; next claim resumes
-  remaining empty paths from the draft checkpoint.
+  remaining empty paths from the draft checkpoint (locked brief reused).
 - Soft model failure → status `failed`, Graphile retries (max 3) **reopen** the
   same `started_at` and continue from checkpoint (cancel messages are skipped).
-- Admin clicks Full redesign again → new `started_at`, **draft cleared**, fresh
+- After max attempts / stale expire → `dead_lettered: true`. **Re-queue** keeps
+  the draft and resumes remaining pages.
+- Admin clicks **Full redesign** → new `started_at`, **draft cleared**, fresh
   multipass (does not resume yesterday’s half site).
 
 Prefer **≥2GB** RAM on Render — 512MB OOMs Claude mid-foundation.
+
+## Admin UX + observability
+
+- Site Custom Build panel: Queued → Processing → current pass, heartbeat age,
+  classified errors (worker offline / OOM / incomplete pages), Preview gated
+  while running or incomplete.
+- `/admin/background-jobs` — `graphile_worker.jobs` + recent `custom_build_job`
+  rows, SLO highlights, one-click Re-queue.
+- Render logs: JSON events `full_redesign_start|done|failed` with job id,
+  attempt, durationMs, pageCount, htmlSizes.
+- Cron `/api/cron/process-custom-build-jobs` re-enqueues orphaned queued jobs and
+  emits `[ALERT custom-build]` for queued &gt;2m or stale heartbeat (≥5m silence).
 
 ## Ops / recovery
 
@@ -121,11 +150,12 @@ Prefer **≥2GB** RAM on Render — 512MB OOMs Claude mid-foundation.
   `custom_build_job.status = queued` rows (worker was offline). It does **not**
   run AI work on Vercel.
 - `/api/internal/process-custom-build` is deprecated (410).
-- Stale Full redesign window: ~45 minutes without heartbeat.
+- Stale Full redesign window: ~45 minutes without heartbeat → dead-lettered.
 
 ## Success check
 
 1. Admin → Full redesign on a tenant.
-2. Render logs show `full_redesign start` … `checkpoint home` … `checkpoint /about`
-   … `done` (or `resume — skip home` after a retry).
+2. Render logs show `full_redesign_start` … checkpoint JSON … `full_redesign_done`
+   (or `full_redesign_reopen` after a retry).
 3. Admin panel shows pass progress (`foundation:/`, `/about`, …) then `succeeded`.
+4. `/api/health/graphile` returns `{ ok: true, graphile: true }`.

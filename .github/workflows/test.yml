@@ -26,5 +26,6 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
+      - run: npm run check:render-env
       - name: shared lib sync (customSite + widgetCdn)
         run: npm run test:custom-site-sync -- --websites-root .ci-siblings/custom-closets-websites
