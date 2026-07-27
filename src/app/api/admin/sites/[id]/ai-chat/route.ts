@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server'
 import { getCurrentAdmin, logAdminAction } from '@/lib/admin'
-import { runAdminSiteChat, type ChatMessage } from '@/lib/ai/adminSiteChat'
+import {
+  loadAssistantHistory,
+  runAdminSiteChat,
+  type ChatMessage,
+} from '@/lib/ai/adminSiteChat'
 
 export const maxDuration = 120
 export const runtime = 'nodejs'
@@ -20,6 +24,30 @@ function sanitizeImages(raw: unknown): string[] | undefined {
     )
     .slice(0, MAX_IMAGES_PER_MESSAGE)
   return images.length > 0 ? images : undefined
+}
+
+/**
+ * Load durable AI Site Assistant history for this tenant (survives refresh).
+ */
+export async function GET(
+  _req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id: tenantId } = await params
+  try {
+    const adminUser = await getCurrentAdmin()
+    if (!adminUser) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+    const history = await loadAssistantHistory(tenantId)
+    return NextResponse.json({ messages: history })
+  } catch (error) {
+    console.error('admin ai-chat GET error:', error)
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Failed to load history' },
+      { status: 500 }
+    )
+  }
 }
 
 /**
@@ -50,11 +78,35 @@ export async function POST(
           typeof (m as any).content === 'string' &&
           ((m as any).role === 'admin' || (m as any).role === 'assistant')
       )
-      .map((m: { role: string; content: string; images?: unknown }) => ({
-        role: m.role as 'admin' | 'assistant',
-        content: m.content.slice(0, 8000),
-        images: sanitizeImages(m.images),
-      }))
+      .map(
+        (m: {
+          role: string
+          content: string
+          images?: unknown
+          applied?: unknown
+          rejected?: unknown
+          at?: unknown
+        }) => ({
+          role: m.role as 'admin' | 'assistant',
+          content: m.content.slice(0, 8000),
+          images: sanitizeImages(m.images),
+          ...(Array.isArray(m.applied)
+            ? { applied: m.applied.filter((x): x is string => typeof x === 'string') }
+            : {}),
+          ...(Array.isArray(m.rejected)
+            ? {
+                rejected: m.rejected.filter(
+                  (r): r is { column: string; reason: string } =>
+                    !!r &&
+                    typeof r === 'object' &&
+                    typeof (r as any).column === 'string' &&
+                    typeof (r as any).reason === 'string'
+                ),
+              }
+            : {}),
+          ...(typeof m.at === 'string' ? { at: m.at } : {}),
+        })
+      )
 
     if (messages.length === 0 || messages[messages.length - 1].role !== 'admin') {
       return NextResponse.json(

@@ -1,5 +1,8 @@
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
-import { generateTextWithFallback } from '@/lib/ai/aiTextProvider'
+import {
+  CLAUDE_SONNET_MODEL,
+  generateTextWithFallback,
+} from '@/lib/ai/aiTextProvider'
 import {
   extractJson,
   repairTruncatedJson,
@@ -19,6 +22,8 @@ import {
   appendAssetToDraftPage,
   ensureHomeVideoAfterHero,
 } from '@/lib/customSiteAssets'
+import { buildSiteContextPack } from '@/lib/ai/adminSiteChatContext'
+import { mergeSiteChatColumn } from '@/lib/ai/mergeSiteChatChanges'
 
 /**
  * Admin AI site chat: the admin describes a change to a provisioned tenant
@@ -36,10 +41,20 @@ export type ChatMessage = {
   /** Optional attached images as `data:image/...;base64,...` URLs (screenshots
    *  of the site, reference designs, etc.) — forwarded to the model. */
   images?: string[]
+  /** Columns written on this assistant turn (fed back into later turns). */
+  applied?: string[]
+  rejected?: Array<{ column: string; reason: string }>
+  at?: string
+  /** Set when loading durable history that had attachments (images not stored). */
+  hadImages?: boolean
 }
 
 /** Max images forwarded to the model per request (newest messages win). */
 const MAX_IMAGES = 4
+
+/** Durable + in-request history window (enough for multi-step site edits). */
+const MAX_HISTORY = 40
+const MAX_STORED_HISTORY = 80
 
 /** Parse a data URL into Gemini inline-data parts; returns null if invalid. */
 function parseImageDataUrl(url: string): { mimeType: string; data: string } | null {
@@ -167,7 +182,7 @@ const EDITABLE_COLUMNS: Record<
   },
   pages_config: {
     shape:
-      "[{ slug: string starting with '/', title: string, is_active: boolean, hero: { headline: string (MAX 6 words) }, content_blocks: [{ type: 'text'|'image_left'|'image_right'|'grid', heading, body, items? }] }]",
+      "[{ slug: string starting with '/', title: string, is_active: boolean, hero: { headline: string (MAX 6 words) }, content_blocks: [{ type: 'text'|'image_left'|'image_right'|'grid'|'gallery', heading, body, items?, images? }] }]",
     validate: (v) =>
       Array.isArray(v) &&
       v.every(
@@ -183,36 +198,103 @@ const EDITABLE_COLUMNS: Record<
   },
 }
 
-const SYSTEM_PROMPT_INTRO = `You are the site-editing assistant inside the admin dashboard of a website platform for local service businesses. The admin chats with you about a specific tenant's live website. You can BOTH answer questions about the site AND directly change it.
+const SYSTEM_PROMPT_INTRO = `You are the site-editing assistant inside the admin dashboard of a website platform for local service businesses. The admin chats with you about ONE specific tenant's live website. You can BOTH answer questions about the site AND directly change it.
 
-You will receive the tenant's current site configuration as JSON (the "site_configs" database row) and the conversation so far. The admin may also attach images — screenshots of the live site showing a problem, reference designs to imitate, or photos to describe what they want. Messages with attachments are tagged like "[attached image #1]" and the images follow the text in the same order. Analyze attached images carefully to understand the visual context of the request (e.g. which section a screenshot shows, what copy is wrong, what an overlap or layout issue implies) before deciding what to change. You cannot save or reuse attached images as site assets — if the admin wants an attached photo ON the site, explain that images are uploaded/generated through the image tools, not chat.
+You will receive:
+1) identity + inventory for this site (hostnames, render mode, product titles, page slugs, nav)
+2) the full editable site_configs columns as JSON
+3) the conversation history for THIS site (including what you applied/rejected on prior turns)
+4) optional attached images (screenshots / references)
+
+Messages with attachments are tagged like "[attached image #1]" and the images follow the text in the same order. Analyze attached images carefully before deciding what to change. You cannot save or reuse attached images as site assets — if the admin wants an attached photo ON the site, explain that images are uploaded/generated through the image tools, not chat.
 
 Respond with ONLY a JSON object of this exact shape:
 {
   "reply": "your conversational answer to the admin — plain text, concise, describe what you changed or ask a clarifying question",
-  "changes": { "<column_name>": <complete new value for that column>, ... }
+  "changes": { "<column_name>": <new value for that column>, ... }
 }
 
 RULES for "changes":
 - Include a column ONLY when the admin's request requires changing it. Questions, opinions, and ambiguous requests get an empty "changes" object and a clarifying/informative "reply".
-- Every included column must contain the COMPLETE new value for that column — copy all parts of the current value you are not changing. Never send partial objects or diffs.
+- Prefer COMPLETE column values. For large arrays (products_config, pages_config, nav_links), include every entry you intend to keep — never silently drop services/pages. The server merges truncated arrays back onto the live config, but you must still preserve titles/slugs you are not changing.
+- When editing one product/page, still return the full products_config/pages_config list from inventory (with your edits applied) so nothing is lost.
 - NEVER invent image URLs. Reuse image URLs already present in the config. If the admin asks for a new image, explain in "reply" that images are generated through the image tools, not chat.
 - Keep hero headlines (site hero and every page hero) to 6 words or fewer — longer headlines overflow the large-type designs.
 - When adding a page to pages_config, also add a matching entry to nav_links if it should be reachable from the nav.
 - Keep copy quality high: specific to this business and trade, no lorem ipsum, no placeholders.
+- Honor conversation history: if a prior turn already applied a change, build on the CURRENT config (which already includes it). Do not revert prior admin-approved edits unless asked.
 - If the request is unsafe, out of scope (billing, deleting the site, custom code), or you cannot do it with the columns below, say so in "reply" and make no changes.
+- IMPORTANT — /services cards are driven by products_config (short description on the card; details.longDescription + specifications in the drawer). Do NOT put full long service copy into pages_config grid items.
 - IMPORTANT — some visible site text is NOT stored in the config; it is rendered from code and derived from "engagement_model". This includes: the nav CTA button ("Get Quote"/"Order Now"/"Book Now"/"Get Tickets"), the hero CTA label, the quote-section heading ("Get an Instant Quote"/"Order Online"/"Book Now"/"Get Tickets") and its intro sentence, and the quiz finish-screen CTA ("Get Your Instant Quote"/"Book Your Appointment"/"Order Now"/"Get Tickets"). To change these, set engagement_model to the right value for the business (medical/appointments -> 'booking', food/direct purchase -> 'order', events/admission -> 'ticket', estimates/leads -> 'quote'). If the admin asks to change text that does not appear anywhere in the config JSON and is not engagement-model-derived, say plainly that it is template copy requiring a code change — NEVER edit unrelated fields or claim success you cannot deliver.
 
 Columns you may change (with required shapes):`
 
-function buildSystemPrompt(config: Record<string, unknown>, businessName: string): string {
+function buildSystemPrompt(context: ReturnType<typeof buildSiteContextPack>): string {
   const columnDocs = Object.entries(EDITABLE_COLUMNS)
     .map(([name, def]) => `- ${name}: ${def.shape}`)
     .join('\n')
-  return `${SYSTEM_PROMPT_INTRO}\n${columnDocs}\n\nBusiness: ${businessName}\n\nCurrent site configuration JSON:\n${JSON.stringify(config, null, 1)}`
+  return `${SYSTEM_PROMPT_INTRO}\n${columnDocs}\n\n=== THIS SITE (identity + inventory) ===\n${JSON.stringify(
+    { identity: context.identity, inventory: context.inventory, recentEdits: context.recentEdits },
+    null,
+    1
+  )}\n\n=== EDITABLE CONFIG (current live values) ===\n${JSON.stringify(context.editableConfig, null, 1)}`
 }
 
-const MAX_HISTORY = 16
+/** Persistable history row (no large data-URL images). */
+export type StoredChatMessage = {
+  role: 'admin' | 'assistant'
+  content: string
+  applied?: string[]
+  rejected?: Array<{ column: string; reason: string }>
+  at: string
+  hadImages?: boolean
+}
+
+function stripImagesForStorage(messages: ChatMessage[]): StoredChatMessage[] {
+  return messages.map((m) => ({
+    role: m.role,
+    content: (m.content || '').slice(0, 8000),
+    ...(m.applied?.length ? { applied: m.applied } : {}),
+    ...(m.rejected?.length ? { rejected: m.rejected } : {}),
+    at: m.at || new Date().toISOString(),
+    ...(m.images?.length ? { hadImages: true } : {}),
+  }))
+}
+
+export async function loadAssistantHistory(tenantId: string): Promise<StoredChatMessage[]> {
+  const supabase = getSupabaseAdmin()
+  const { data, error } = await supabase
+    .from('site_configs')
+    .select('ai_assistant_history')
+    .eq('tenant_id', tenantId)
+    .maybeSingle()
+  if (error || !data) return []
+  const raw = data.ai_assistant_history
+  if (!Array.isArray(raw)) return []
+  return raw
+    .filter(
+      (m): m is StoredChatMessage =>
+        !!m &&
+        typeof m === 'object' &&
+        ((m as any).role === 'admin' || (m as any).role === 'assistant') &&
+        typeof (m as any).content === 'string'
+    )
+    .slice(-MAX_STORED_HISTORY)
+}
+
+async function saveAssistantHistory(tenantId: string, messages: StoredChatMessage[]): Promise<void> {
+  const supabase = getSupabaseAdmin()
+  const { error } = await supabase
+    .from('site_configs')
+    .update({
+      ai_assistant_history: messages.slice(-MAX_STORED_HISTORY),
+      updated_at: new Date().toISOString(),
+    })
+    .eq('tenant_id', tenantId)
+  if (error) {
+    console.warn('[adminSiteChat] failed to persist history:', error.message)
+  }
+}
 
 /** Pull a public http(s) URL out of admin message text (video/image/file). */
 function extractHttpUrl(text: string): string | null {
@@ -358,22 +440,99 @@ export async function runAdminSiteChat(
     throw new Error('This tenant has no site configuration to edit.')
   }
 
+  const { data: domainRows } = await supabase
+    .from('tenant_domains')
+    .select('hostname, is_primary, source')
+    .eq('tenant_id', tenantId)
+  const hostnames = (domainRows || [])
+    .map((d) => (typeof d.hostname === 'string' ? d.hostname.trim() : ''))
+    .filter((h) => h && !h.endsWith('.localhost'))
+  hostnames.sort((a, b) => {
+    const aPrimary = domainRows?.find((d) => d.hostname === a)?.is_primary ? 0 : 1
+    const bPrimary = domainRows?.find((d) => d.hostname === b)?.is_primary ? 0 : 1
+    return aPrimary - bPrimary || a.localeCompare(b)
+  })
+
   const lastAdmin =
     [...messages].reverse().find((m) => m.role === 'admin')?.content || ''
   const shortcut = await tryMediaShortcut(tenantId, config, lastAdmin)
-  if (shortcut) return shortcut
-
-  // Only show the model columns it may edit (plus nothing internal like ids).
-  const visibleConfig: Record<string, unknown> = {}
-  for (const col of Object.keys(EDITABLE_COLUMNS)) {
-    if (col in config) visibleConfig[col] = config[col]
+  if (shortcut) {
+    // Still persist the turn so the next request has history.
+    const stored = await loadAssistantHistory(tenantId)
+    const now = new Date().toISOString()
+    const nextHistory = [
+      ...stored,
+      ...stripImagesForStorage(
+        messages.slice(-2).map((m) => ({ ...m, at: m.at || now }))
+      ),
+      {
+        role: 'assistant' as const,
+        content: shortcut.reply,
+        applied: shortcut.applied,
+        rejected: shortcut.rejected,
+        at: now,
+      },
+    ].slice(-MAX_STORED_HISTORY)
+    await saveAssistantHistory(tenantId, nextHistory)
+    return shortcut
   }
+
+  // Merge durable DB history with the request thread so refreshes / new tabs
+  // still see prior site-specific decisions.
+  const storedHistory = await loadAssistantHistory(tenantId)
+  const requestTail = messages.slice(-MAX_HISTORY)
+  const mergedForModel: ChatMessage[] = (() => {
+    if (storedHistory.length === 0) return requestTail
+    // Prefer the longer/richer thread ending with the same latest admin text.
+    const latestAdmin = lastAdmin.trim()
+    const storedTail = storedHistory.slice(-MAX_HISTORY)
+    const storedEndsSame =
+      storedTail.length > 0 &&
+      storedTail[storedTail.length - 1]?.role === 'admin' &&
+      storedTail[storedTail.length - 1]?.content?.trim() === latestAdmin
+    if (storedEndsSame && storedTail.length >= requestTail.length) {
+      // Request may include fresh images on the last admin message.
+      const lastReq = requestTail[requestTail.length - 1]
+      return [
+        ...storedTail.slice(0, -1),
+        {
+          ...storedTail[storedTail.length - 1],
+          images: lastReq?.images,
+        },
+      ]
+    }
+    // Concatenate stored history + new turns not already present.
+    const seen = new Set(
+      storedTail.map((m) => `${m.role}:${m.content.slice(0, 200)}:${m.at || ''}`)
+    )
+    const extras = requestTail.filter(
+      (m) => !seen.has(`${m.role}:${m.content.slice(0, 200)}:${m.at || ''}`)
+    )
+    return [...storedTail, ...extras].slice(-MAX_HISTORY)
+  })()
+
+  const recentEdits = mergedForModel
+    .filter((m) => m.role === 'assistant' && (m.applied?.length || m.rejected?.length))
+    .slice(-8)
+    .map((m) => ({
+      at: m.at,
+      applied: m.applied,
+      rejected: m.rejected,
+    }))
+
+  const context = buildSiteContextPack({
+    businessName: tenant.business_name || 'this business',
+    hostnames,
+    config,
+    editableColumns: Object.keys(EDITABLE_COLUMNS),
+    recentEdits,
+  })
 
   // Collect attached images newest-first (the latest screenshot is almost
   // always the one the admin is talking about), capped to keep the request
   // within the model's inline-data budget. Each image is referenced in the
   // transcript so the model knows which message it belongs to.
-  const recent = messages.slice(-MAX_HISTORY)
+  const recent = mergedForModel.slice(-MAX_HISTORY)
   const images: Array<{ mimeType: string; data: string }> = []
   const imageIndexByMessage = new Map<ChatMessage, number[]>()
   for (let i = recent.length - 1; i >= 0 && images.length < MAX_IMAGES; i--) {
@@ -396,17 +555,29 @@ export async function runAdminSiteChat(
       const tag = indices?.length
         ? ` [attached image${indices.length > 1 ? 's' : ''} ${indices.map((n) => `#${n}`).join(', ')}]`
         : ''
-      return `${m.role === 'admin' ? 'Admin' : 'Assistant'}${tag}: ${m.content}`
+      const meta =
+        m.role === 'assistant' && (m.applied?.length || m.rejected?.length)
+          ? ` [applied: ${(m.applied || []).join(', ') || 'none'}${
+              m.rejected?.length
+                ? `; rejected: ${m.rejected.map((r) => `${r.column} (${r.reason})`).join(', ')}`
+                : ''
+            }]`
+          : m.hadImages || m.images?.length
+            ? ' [had attachments]'
+            : ''
+      return `${m.role === 'admin' ? 'Admin' : 'Assistant'}${tag}${meta}: ${m.content}`
     })
     .join('\n\n')
 
   const { text } = await generateTextWithFallback({
-    systemPrompt: buildSystemPrompt(visibleConfig, tenant.business_name || 'this business'),
+    systemPrompt: buildSystemPrompt(context),
     prompt: transcript || 'Admin: (no message)',
     jsonMode: true,
-    temperature: 0.4,
+    temperature: 0.3,
     maxOutputTokens: 32768,
     images,
+    preferredProvider: 'anthropic',
+    anthropicModel: CLAUDE_SONNET_MODEL,
   })
 
   let parsed: { reply?: unknown; changes?: unknown }
@@ -438,12 +609,13 @@ export async function runAdminSiteChat(
       rejected.push({ column, reason: 'not an editable column' })
       continue
     }
-    const problem = def.validate(value)
+    const merged = mergeSiteChatColumn(column, config[column], value, lastAdmin)
+    const problem = def.validate(merged)
     if (problem) {
       rejected.push({ column, reason: problem })
       continue
     }
-    update[column] = value
+    update[column] = merged
     applied.push(column)
   }
 
@@ -469,6 +641,28 @@ export async function runAdminSiteChat(
       .then((report) => saveValidationReport(tenantId, report))
       .catch((err) => console.warn('[adminSiteChat] post-change validation failed:', err))
   }
+
+  const now = new Date().toISOString()
+  const assistantTurn: StoredChatMessage = {
+    role: 'assistant',
+    content: reply,
+    ...(applied.length ? { applied } : {}),
+    ...(rejected.length ? { rejected } : {}),
+    at: now,
+  }
+  // Persist: previous stored + this request's new admin message(s) + assistant.
+  const prior = storedHistory
+  const newAdminTurns = stripImagesForStorage(
+    messages.filter((m) => m.role === 'admin').slice(-1).map((m) => ({ ...m, at: now }))
+  )
+  // Avoid duplicating the same trailing admin message already stored.
+  const lastStored = prior[prior.length - 1]
+  const adminToStore =
+    lastStored?.role === 'admin' &&
+    lastStored.content.trim() === newAdminTurns[0]?.content.trim()
+      ? []
+      : newAdminTurns
+  await saveAssistantHistory(tenantId, [...prior, ...adminToStore, assistantTurn])
 
   return { reply, applied, rejected, liveNow }
 }

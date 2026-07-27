@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 import {
@@ -18,6 +18,8 @@ type Message = {
   rejected?: Array<{ column: string; reason: string }>;
   /** Whether the live site's cache was busted (change visible right now). */
   liveNow?: boolean;
+  at?: string;
+  hadImages?: boolean;
 };
 
 const MAX_ATTACHMENTS = MAX_ADMIN_IMAGE_ATTACHMENTS;
@@ -42,12 +44,51 @@ export default function AdminSiteChat({
 }) {
   const router = useRouter();
   const [messages, setMessages] = useState<Message[]>([]);
+  const [historyLoaded, setHistoryLoaded] = useState(false);
   const [input, setInput] = useState('');
   const [attachments, setAttachments] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Restore durable per-site history so follow-ups keep full context after refresh.
+  useEffect(() => {
+    let cancelled = false;
+    setHistoryLoaded(false);
+    ;(async () => {
+      try {
+        const res = await fetch(`/api/admin/sites/${tenantId}/ai-chat`);
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok || cancelled) return;
+        const rows = Array.isArray(json.messages) ? json.messages : [];
+        const restored: Message[] = rows
+          .filter(
+            (m: unknown): m is Message =>
+              !!m &&
+              typeof m === 'object' &&
+              ((m as Message).role === 'admin' || (m as Message).role === 'assistant') &&
+              typeof (m as Message).content === 'string'
+          )
+          .map((m: Message) => ({
+            role: m.role,
+            content: m.content,
+            applied: m.applied,
+            rejected: m.rejected,
+            at: m.at,
+            hadImages: m.hadImages,
+          }));
+        if (!cancelled && restored.length) setMessages(restored);
+      } catch {
+        // History is best-effort — chat still works without it.
+      } finally {
+        if (!cancelled) setHistoryLoaded(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [tenantId]);
 
   const addFiles = async (files: FileList | File[]) => {
     setError('');
@@ -77,6 +118,7 @@ export default function AdminSiteChat({
         role: 'admin',
         content: content || '(see attached image)',
         images: images.length ? images : undefined,
+        at: new Date().toISOString(),
       },
     ];
     setMessages(nextMessages);
@@ -90,6 +132,9 @@ export default function AdminSiteChat({
             role: m.role,
             content: m.content,
             images: m.images,
+            applied: m.applied,
+            rejected: m.rejected,
+            at: m.at,
           })),
         }),
       });
@@ -103,6 +148,7 @@ export default function AdminSiteChat({
           applied: json.applied || [],
           rejected: json.rejected || [],
           liveNow: json.liveNow === true,
+          at: new Date().toISOString(),
         },
       ]);
       if (Array.isArray(json.applied) && json.applied.length > 0) {
@@ -132,12 +178,16 @@ export default function AdminSiteChat({
         </span>
       </div>
       <p className="text-sm text-neutral-400">
-        Edits the shared template fields (hero, services, nav, theme, pages). For Custom Build
-        sites: use <span className="text-violet-300">Custom Build → Media &amp; files</span> for
+        Edits the shared template fields (hero, services, nav, theme, pages) with full live-site
+        context and durable chat history for this tenant. For Custom Build sites: use{' '}
+        <span className="text-violet-300">Custom Build → Media &amp; files</span> for
         videos/images, or <span className="text-violet-300">Edit surgically</span> for HTML/CSS.
         Video URLs pasted here on a custom site are applied to the draft automatically when
         recognized.
       </p>
+      {!historyLoaded && (
+        <p className="text-xs text-neutral-500">Loading conversation history for this site…</p>
+      )}
 
       {messages.length > 0 && (
         <div
