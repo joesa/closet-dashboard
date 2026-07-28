@@ -50,7 +50,7 @@ async function loadCustomBuildStatus(tenantId: string) {
   const { data, error } = await supabase
     .from('site_configs')
     .select(
-      'render_mode, custom_config, custom_config_draft, custom_updated_at, custom_build_job'
+      'render_mode, custom_config, custom_config_draft, custom_updated_at, custom_build_job, edit_in_place'
     )
     .eq('tenant_id', tenantId)
     .single()
@@ -73,6 +73,9 @@ async function loadCustomBuildStatus(tenantId: string) {
 
   return {
     renderMode: data.render_mode === 'custom' ? ('custom' as const) : ('engine' as const),
+    editInPlace: Boolean(
+      (data as { edit_in_place?: boolean }).edit_in_place
+    ),
     customUpdatedAt: data.custom_updated_at,
     draft: draft
       ? {

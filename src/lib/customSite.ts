@@ -102,6 +102,33 @@ export function normalizeWidgetPlaceholders(html: string): string {
   return out
 }
 
+/**
+ * Before persisting HTML captured from a live DOM, replace mounted web
+ * components with the canonical placeholder comment.
+ */
+export function stripLiveWidgetsToPlaceholder(html: string): string {
+  if (!html) return ''
+  let out = html
+  out = out.replace(
+    /<closet-(?:quote|order|booking|ticket)-widget\b[^>]*>[\s\S]*?<\/closet-[a-z-]+>/gi,
+    WIDGET_PLACEHOLDER
+  )
+  out = out.replace(
+    /<closet-(?:quote|order|booking|ticket)-widget\b[^>]*\/?>/gi,
+    WIDGET_PLACEHOLDER
+  )
+  out = out.replace(/\scontenteditable="[^"]*"/gi, '')
+  out = out.replace(/\sdata-eip-[a-z-]+="[^"]*"/gi, '')
+  out = out.replace(/\sclass="([^"]*)"/gi, (_m, cls: string) => {
+    const next = cls
+      .split(/\s+/)
+      .filter((c) => c && !c.startsWith('eip-'))
+      .join(' ')
+    return next ? ` class="${next}"` : ''
+  })
+  return normalizeWidgetPlaceholders(out)
+}
+
 /** True if injectWidgetPlaceholder would mount a live engagement widget. */
 export function htmlHasInjectableWidget(html: string): boolean {
   const n = normalizeWidgetPlaceholders(html)

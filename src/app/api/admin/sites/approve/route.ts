@@ -18,7 +18,7 @@ export async function POST(req: Request) {
 
     const { data: tenant, error: loadError } = await supabase
       .from('tenants')
-      .select('validation_status')
+      .select('validation_status, site_configs(edit_in_place)')
       .eq('id', tenantId)
       .maybeSingle();
     if (loadError) throw loadError;
@@ -30,6 +30,16 @@ export async function POST(req: Request) {
     if (tenant?.validation_status !== 'passed') {
       return NextResponse.redirect(
         new URL(`/admin/sites/${tenantId}?error=validation_required`, req.url),
+        303
+      );
+    }
+
+    const cfg = Array.isArray(tenant?.site_configs)
+      ? tenant.site_configs[0]
+      : tenant?.site_configs;
+    if (cfg && (cfg as { edit_in_place?: boolean }).edit_in_place) {
+      return NextResponse.redirect(
+        new URL(`/admin/sites/${tenantId}?error=edit_in_place_on`, req.url),
         303
       );
     }

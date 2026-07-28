@@ -52,6 +52,7 @@ function formatHeartbeatAge(heartbeatAt: string | null | undefined): string {
 
 type Status = {
   renderMode: 'engine' | 'custom';
+  editInPlace?: boolean;
   customUpdatedAt?: string | null;
   draft: { mode: string; pageKeys: string[]; globalCssLength?: number } | null;
   published: { mode: string; pageKeys: string[]; globalCssLength?: number } | null;
@@ -115,6 +116,8 @@ export default function AdminCustomBuild({
   const [attaching, setAttaching] = useState(false);
   /** Media file list is collapsed by default to keep the AI controls above the fold. */
   const [mediaListOpen, setMediaListOpen] = useState(false);
+  const [editInPlaceBusy, setEditInPlaceBusy] = useState(false);
+  const [editToken, setEditToken] = useState<string | null>(null);
   const promptFileRef = useRef<HTMLInputElement>(null);
   /** True while UI is waiting on an async Graphile job (full or surgical). */
   const waitingOnJobRef = useRef(false);
@@ -257,12 +260,56 @@ export default function AdminCustomBuild({
       } else if (json.published?.mode === 'iframe' || json.published?.mode === 'inline') {
         setMode(json.published.mode);
       }
+      if (json.editInPlace) {
+        try {
+          const tokRes = await fetch(`/api/admin/sites/${tenantId}/edit-in-place`);
+          const tokJson = await tokRes.json().catch(() => ({}));
+          if (tokRes.ok && typeof tokJson.editToken === 'string') {
+            setEditToken(tokJson.editToken);
+          }
+        } catch {
+          /* ignore */
+        }
+      } else {
+        setEditToken(null);
+      }
       return json as Status;
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load status');
       return null;
     }
   }, [tenantId]);
+
+  const setEditInPlace = useCallback(
+    async (enabled: boolean) => {
+      setEditInPlaceBusy(true);
+      setError('');
+      try {
+        const res = await fetch(`/api/admin/sites/${tenantId}/edit-in-place`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ enabled }),
+        });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(json.error || `Failed (${res.status})`);
+        setEditToken(
+          enabled && typeof json.editToken === 'string' ? json.editToken : null
+        );
+        setInfo(
+          enabled
+            ? 'Edit in place is ON — public site is offline. Open the editor, then turn it off when done.'
+            : 'Edit in place is OFF — public site can show again.'
+        );
+        await refresh();
+        router.refresh();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to update edit in place');
+      } finally {
+        setEditInPlaceBusy(false);
+      }
+    },
+    [tenantId, refresh, router]
+  );
 
   const cancelJob = useCallback(async () => {
     try {
@@ -712,6 +759,17 @@ export default function AdminCustomBuild({
     ? previewUrl.split('?')[0].replace(/\/$/, '') || previewUrl
     : null;
 
+  const editInPlaceUrl = (() => {
+    if (!previewUrl || !status?.editInPlace) return null;
+    try {
+      const u = new URL(previewUrl);
+      if (editToken) u.searchParams.set('edit_token', editToken);
+      return u.toString();
+    } catch {
+      return previewUrl;
+    }
+  })();
+
   // Prefer server draftAhead (compares draft HTML vs published). Never treat a
   // missing flag as "in sync" when renderMode is custom — that hid Publish Draft.
   const draftAhead =
@@ -764,6 +822,62 @@ export default function AdminCustomBuild({
         design — intake services stay unless you explicitly remove them; services named in the
         brief are added to the site and engagement engine. Draft → preview → publish.
       </p>
+
+      <div className="rounded-lg border border-neutral-700 bg-neutral-950/60 px-4 py-3 space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-medium text-white">Edit in place (WYSIWYG)</p>
+            <p className="text-xs text-neutral-400 mt-0.5">
+              {status?.renderMode === 'custom'
+                ? 'While ON, the public site is offline. Edit text and images on the live HTML, then turn OFF before Visit live or Approve.'
+                : 'Requires a published custom site (Live: CUSTOM). Publish a custom build first.'}
+            </p>
+          </div>
+          <button
+            type="button"
+            disabled={
+              editInPlaceBusy ||
+              !mounted ||
+              status?.renderMode !== 'custom' ||
+              (!status?.editInPlace && !status?.published)
+            }
+            onClick={() => void setEditInPlace(!status?.editInPlace)}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-40 ${
+              status?.editInPlace
+                ? 'bg-amber-500 text-black hover:bg-amber-400'
+                : 'bg-neutral-800 text-white hover:bg-neutral-700 border border-neutral-600'
+            }`}
+          >
+            {editInPlaceBusy
+              ? '…'
+              : status?.editInPlace
+                ? 'Turn OFF'
+                : 'Turn ON'}
+          </button>
+        </div>
+        {mounted && status?.editInPlace ? (
+          <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-100 space-y-2">
+            <p>
+              <strong className="font-semibold text-amber-200">Public site is offline.</strong>{' '}
+              Turn off Edit in place before Visit live or Approve.
+            </p>
+            {editInPlaceUrl ? (
+              <a
+                href={editInPlaceUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-black text-xs font-semibold"
+              >
+                Open edit-in-place editor
+              </a>
+            ) : (
+              <p className="text-xs text-amber-200/80">
+                Set ADMIN_BYPASS_SECRET to open the editor on the tenant host.
+              </p>
+            )}
+          </div>
+        ) : null}
+      </div>
 
       {mounted && status?.draftCssBroken ? (
         <div className="rounded-lg border border-red-500/50 bg-red-500/10 px-4 py-3 text-sm text-red-100 space-y-2">

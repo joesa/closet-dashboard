@@ -12,6 +12,8 @@ import AdminEmailChangeBanner from '@/components/AdminEmailChangeBanner';
 import AdminTenantMedia from '@/components/AdminTenantMedia';
 import DomainManager from '@/components/DomainManager';
 import AdminCollapsibleCard from '@/components/AdminCollapsibleCard';
+import VisitLiveSiteButton from '@/components/VisitLiveSiteButton';
+import ApproveSiteButton from '@/components/ApproveSiteButton';
 import { DESIGN_VARIANT_OPTIONS } from '@/lib/catalog/designVariantCatalog';
 import { formatUsdCents } from '@/lib/domains/types';
 
@@ -22,6 +24,7 @@ type SiteConfigShape = {
   default_room?: string;
   design_variant?: string | null;
   engagement_model?: string | null;
+  edit_in_place?: boolean | null;
   hero_config?: { headline?: string; backgroundImage?: string } & Record<string, unknown>;
   about_config?: { description?: string } & Record<string, unknown>;
   products_config?: { image?: string; title?: string; description?: string }[];
@@ -38,8 +41,15 @@ type DomainShape = {
   expires_at?: string | null;
 };
 
-export default async function TenantDetailsPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function TenantDetailsPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams?: Promise<{ error?: string }>;
+}) {
   const resolvedParams = await params;
+  const resolvedSearch = searchParams ? await searchParams : {};
   const tenantId = resolvedParams.id;
   const supabase = getSupabaseAdmin();
   
@@ -69,6 +79,7 @@ export default async function TenantDetailsPage({ params }: { params: Promise<{ 
         default_room,
         design_variant,
         engagement_model,
+        edit_in_place,
         hero_config,
         about_config,
         products_config
@@ -127,6 +138,8 @@ export default async function TenantDetailsPage({ params }: { params: Promise<{ 
   const validationStatus = (tenant.validation_status ?? null) as 'pending' | 'passed' | 'failed' | null;
   const validationIssues = Array.isArray(tenant.validation_report) ? tenant.validation_report : [];
   const readyForApproval = validationStatus === 'passed';
+  const editInPlace = Boolean(config?.edit_in_place);
+  const pageError = typeof resolvedSearch.error === 'string' ? resolvedSearch.error : null;
 
   return (
     <div className="min-h-screen bg-neutral-950 text-white p-8">
@@ -159,6 +172,11 @@ export default async function TenantDetailsPage({ params }: { params: Promise<{ 
             </div>
             
             <div className="flex items-center gap-3">
+              {editInPlace && (
+                <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                  Edit in place ON
+                </span>
+              )}
               {tenant.site_status === 'active' && (
                 <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
                   Live Active
@@ -178,20 +196,22 @@ export default async function TenantDetailsPage({ params }: { params: Promise<{ 
           </div>
         </div>
 
+        {pageError === 'edit_in_place_on' ? (
+          <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+            Cannot approve while <strong className="font-semibold">Edit in place</strong> is ON.
+            Turn it off under Custom build first.
+          </div>
+        ) : null}
+        {pageError === 'validation_required' ? (
+          <div className="rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-100">
+            Site validation must pass before approval.
+          </div>
+        ) : null}
+
         {/* Action Bar */}
         <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-6 flex flex-wrap gap-4 items-center">
           {liveUrl ? (
-            <a
-              href={liveUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="px-6 py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-medium rounded-lg transition-colors flex items-center gap-2 shadow-lg shadow-emerald-500/20"
-            >
-              Visit live site
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-              </svg>
-            </a>
+            <VisitLiveSiteButton liveUrl={liveUrl} editInPlace={editInPlace} />
           ) : null}
           {previewUrl ? (
             <a
@@ -212,15 +232,7 @@ export default async function TenantDetailsPage({ params }: { params: Promise<{ 
           )}
           
           {tenant.site_status === 'pending_approval' && readyForApproval && (
-            <form action={`/api/admin/sites/approve`} method="POST">
-              <input type="hidden" name="tenantId" value={tenant.id} />
-              <button 
-                type="submit"
-                className="px-6 py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-medium rounded-lg transition-colors shadow-lg shadow-emerald-500/20"
-              >
-                Approve & Go Live
-              </button>
-            </form>
+            <ApproveSiteButton tenantId={tenant.id} editInPlace={editInPlace} />
           )}
           {tenant.site_status === 'pending_approval' && !readyForApproval && (
             <span className="text-sm text-neutral-500">

@@ -5,6 +5,7 @@ import {
   normalizeWidgetPlaceholders,
   sanitizeCustomConfig,
   sanitizeCustomCss,
+  stripLiveWidgetsToPlaceholder,
   validateCustomConfig,
   WIDGET_PLACEHOLDER,
 } from './customSite'
@@ -46,6 +47,17 @@ describe('normalizeWidgetPlaceholders', () => {
     const out = normalizeWidgetPlaceholders(html)
     expect(out.split(WIDGET_PLACEHOLDER)).toHaveLength(2) // one placeholder → 2 parts
     expect(out).not.toMatch(/closet-widget-slot/)
+  })
+})
+
+describe('stripLiveWidgetsToPlaceholder', () => {
+  it('replaces mounted widget tags and strips editor chrome', () => {
+    const html = `<main><p contenteditable="true" class="eip-editing title">Hi</p><closet-quote-widget data-contractor-id="x"></closet-quote-widget></main>`
+    const out = stripLiveWidgetsToPlaceholder(html)
+    expect(out).toContain(WIDGET_PLACEHOLDER)
+    expect(out).not.toMatch(/closet-quote-widget/)
+    expect(out).not.toMatch(/contenteditable/)
+    expect(out).not.toMatch(/eip-editing/)
   })
 })
 
