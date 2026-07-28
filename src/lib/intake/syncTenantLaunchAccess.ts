@@ -41,6 +41,11 @@ export function resolveLaunchAccess(row: ProspectIntakeRow): {
 /**
  * Keep tenant site_status in sync with intake launch payment.
  * Prevents custom domains and subdomains from serving the full site before pay-to-launch.
+ *
+ * Important: never *downgrade* an already-`active` site back to a holding
+ * status. Admin "Approve & Go Live" is an explicit override; opening the
+ * intake detail page (which calls this sync) used to wipe that approval
+ * whenever launch payment fields were still empty.
  */
 export async function syncTenantLaunchAccess(opts: {
   tenantId: string
@@ -74,7 +79,18 @@ export async function syncTenantLaunchAccess(opts: {
     return { siteStatus: 'pending_approval', launchPayUrl: null }
   }
 
-  const { siteStatus, launchPayUrl } = resolveLaunchAccess(intake)
+  const resolved = resolveLaunchAccess(intake)
+
+  const { data: tenant } = await admin
+    .from('tenants')
+    .select('site_status')
+    .eq('id', opts.tenantId)
+    .maybeSingle()
+  const current = (tenant?.site_status || '') as TenantSiteStatus | ''
+
+  const siteStatus = pickSyncedSiteStatus(current, resolved.siteStatus)
+  const launchPayUrl =
+    siteStatus === 'active' ? null : resolved.launchPayUrl
 
   const { error: tenantErr } = await admin
     .from('tenants')
@@ -94,4 +110,18 @@ export async function syncTenantLaunchAccess(opts: {
   if (configErr) throw configErr
 
   return { siteStatus, launchPayUrl }
+}
+
+/** Prefer keeping an admin-approved live site over unpaid-intake holding states. */
+export function pickSyncedSiteStatus(
+  current: TenantSiteStatus | '' | null | undefined,
+  resolved: TenantSiteStatus
+): TenantSiteStatus {
+  if (
+    current === 'active' &&
+    (resolved === 'pending_approval' || resolved === 'awaiting_launch_payment')
+  ) {
+    return 'active'
+  }
+  return resolved
 }

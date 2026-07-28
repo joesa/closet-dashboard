@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { resolveLaunchAccess } from './syncTenantLaunchAccess'
+import {
+  pickSyncedSiteStatus,
+  resolveLaunchAccess,
+} from './syncTenantLaunchAccess'
 import type { ProspectIntakeRow } from '@/lib/intake/getIntakeByToken'
 
 function baseRow(overrides: Partial<ProspectIntakeRow> = {}): ProspectIntakeRow {
@@ -48,5 +51,19 @@ describe('resolveLaunchAccess', () => {
       })
     )
     expect(r.launchPayUrl).toContain('pay=standard_build')
+  })
+})
+
+describe('pickSyncedSiteStatus', () => {
+  it('does not downgrade an admin-approved active site', () => {
+    expect(pickSyncedSiteStatus('active', 'pending_approval')).toBe('active')
+    expect(pickSyncedSiteStatus('active', 'awaiting_launch_payment')).toBe(
+      'active'
+    )
+  })
+
+  it('still applies upgrades and suspended', () => {
+    expect(pickSyncedSiteStatus('pending_approval', 'active')).toBe('active')
+    expect(pickSyncedSiteStatus('active', 'suspended')).toBe('suspended')
   })
 })
