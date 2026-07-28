@@ -41,13 +41,9 @@ export default function UpdatePasswordPage() {
   }, [])
 
   const handleGeneratePassword = () => {
-    const charset = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()_+~`|}{[]:;?><,./-='
-    let newPassword = ''
-    for (let i = 0; i < 16; i++) {
-      newPassword += charset.charAt(Math.floor(Math.random() * charset.length))
-    }
-    setPassword(newPassword)
-    setConfirmPassword(newPassword)
+    const next = generateStrongPassword(16)
+    setPassword(next)
+    setConfirmPassword(next)
     setShowPassword(true)
   }
 
