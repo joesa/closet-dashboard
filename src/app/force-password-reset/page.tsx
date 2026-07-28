@@ -95,7 +95,7 @@ export default function ForcePasswordResetPage() {
       <div className="relative w-full max-w-md">
         <div className="mb-10 flex flex-col items-center gap-3 text-center">
           <Link href="/" className="mb-2 text-sm font-bold tracking-tight text-white transition hover:opacity-80">
-            Closet<span className="text-slate-400">Quote</span>
+            Ditch<span className="text-slate-400">TheForm</span>
           </Link>
           <div className="w-12 h-12 bg-amber-500/10 rounded-full flex items-center justify-center mb-2">
             <svg className="w-6 h-6 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">

@@ -3,6 +3,7 @@ import { getIntakeByToken } from '@/lib/intake/getIntakeByToken'
 import { assertDraftIntake } from '@/lib/intake/intakeTierGates'
 import { createIntakeCheckoutSession } from '@/lib/intake/createIntakeCheckout'
 import type { IntakeCheckoutKind } from '@/lib/intake/intakePaymentStage'
+import { publicAppOrigin } from '@/lib/urls'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -47,8 +48,7 @@ export async function POST(
       }
     }
 
-    const origin =
-      process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, '') || new URL(req.url).origin
+    const origin = publicAppOrigin(new URL(req.url).origin)
 
     const { url, sessionId } = await createIntakeCheckoutSession({
       row,

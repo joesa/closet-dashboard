@@ -648,7 +648,7 @@ export default function DashboardPage() {
       <div className="min-h-screen bg-[#0B0E14] flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
           <span className="text-xl font-bold tracking-tighter text-white animate-pulse">
-            Closet<span className="text-slate-400">Quote</span>
+            Ditch<span className="text-slate-400">TheForm</span>
           </span>
           <p className="text-sm text-slate-500">Loading your dashboard…</p>
         </div>
@@ -682,7 +682,7 @@ export default function DashboardPage() {
         <div className="mx-auto flex h-16 max-w-5xl items-center justify-between px-6">
           <Link href="/" className="transition hover:opacity-80">
             <span className="text-xl font-bold tracking-tighter text-white">
-              Closet<span className="text-slate-400">Quote</span>
+              Ditch<span className="text-slate-400">TheForm</span>
             </span>
           </Link>
           <div className="flex items-center gap-4">

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getCurrentAdmin } from '@/lib/admin';
 import { provisionTenant } from '@/lib/provision/provisionTenant';
 import { ProvisionReviewError } from '@/lib/provision/types';
+import { publicAppOrigin } from '@/lib/urls';
 
 export async function POST(req: Request) {
   try {
@@ -12,7 +13,7 @@ export async function POST(req: Request) {
 
     const body = await req.json();
     const mode: 'full' | 'widget' = body.mode === 'widget' ? 'widget' : 'full';
-    const loginOrigin = new URL(req.url).origin;
+    const loginOrigin = publicAppOrigin(new URL(req.url).origin);
 
     const result = await provisionTenant({
       businessName: body.businessName,

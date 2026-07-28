@@ -3,6 +3,7 @@ import { getStripe } from '@/lib/stripe'
 import { getSupabaseServer } from '@/lib/supabase-server'
 import { getEntitlementForUser } from '@/lib/entitlement'
 import { DEMO_CONTRACTOR_ID } from '@/lib/demo'
+import { publicAppOrigin } from '@/lib/urls'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -34,9 +35,7 @@ export async function POST(req: Request) {
     )
   }
 
-  const siteUrl =
-    process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, '') ||
-    new URL(req.url).origin
+  const siteUrl = publicAppOrigin(new URL(req.url).origin)
 
   const stripe = getStripe()
   const session = await stripe.billingPortal.sessions.create({

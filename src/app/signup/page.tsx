@@ -11,7 +11,7 @@ export default function SignUpPage() {
     <Suspense fallback={
       <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center">
         <span className="text-sm font-bold tracking-tight text-white animate-pulse">
-          Closet<span className="text-slate-400">Quote</span>
+          Ditch<span className="text-slate-400">TheForm</span>
         </span>
       </div>
     }>
@@ -76,6 +76,12 @@ function SignUpForm() {
     const { error: authError } = await supabaseBrowser.auth.signUp({
       email,
       password,
+      options: {
+        emailRedirectTo: `${
+          process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, '') ||
+          'https://www.ditchtheform.com'
+        }/dashboard`,
+      },
     })
 
     if (authError) {
@@ -111,7 +117,7 @@ function SignUpForm() {
         {/* Logo & Header */}
         <div className="mb-10 flex flex-col items-center gap-3">
           <Link href="/" className="mb-2 text-sm font-bold tracking-tight text-white transition hover:opacity-80">
-            Closet<span className="text-slate-400">Quote</span>
+            Ditch<span className="text-slate-400">TheForm</span>
           </Link>
           <h1 className="text-2xl font-bold tracking-tight text-white">
             Create your account

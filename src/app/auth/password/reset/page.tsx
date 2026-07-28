@@ -89,7 +89,7 @@ function PasswordResetInner() {
       <div className="w-full max-w-md space-y-6">
         <div className="text-center space-y-2">
           <Link href="/" className="text-sm font-bold tracking-tight text-white">
-            Closet<span className="text-slate-400">Quote</span>
+            Ditch<span className="text-slate-400">TheForm</span>
           </Link>
           <h1 className="text-2xl font-bold text-white">Set new password</h1>
           <p className="text-sm text-slate-400">

@@ -47,7 +47,7 @@ export default function ForgotPasswordPage() {
       <div className="relative w-full max-w-md">
         <div className="mb-10 flex flex-col items-center gap-3">
           <Link href="/" className="mb-2 text-sm font-bold tracking-tight text-white transition hover:opacity-80">
-            Closet<span className="text-slate-400">Quote</span>
+            Ditch<span className="text-slate-400">TheForm</span>
           </Link>
           <h1 className="text-2xl font-bold tracking-tight text-white">
             Reset Password

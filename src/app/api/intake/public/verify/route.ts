@@ -8,14 +8,12 @@ import {
   type IntakeTierSlug,
 } from '@/lib/intake/tiers'
 import { hasPaidPremiumDeposit } from '@/lib/intake/intakeTierGates'
+import { publicAppOrigin } from '@/lib/urls'
 
 export const runtime = 'nodejs'
 
 function siteOrigin(req: Request): string {
-  return (
-    process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, '') ||
-    new URL(req.url).origin
-  )
+  return publicAppOrigin(new URL(req.url).origin)
 }
 
 export async function GET(req: Request) {

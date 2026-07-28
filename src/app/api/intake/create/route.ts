@@ -5,6 +5,7 @@ import {
   pipelineToRequestedProduct,
 } from '@/lib/intake/createDraftIntake'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { publicAppOrigin } from '@/lib/urls'
 export const runtime = 'nodejs'
 
 // Admin-only: create a draft intake + shareable token.
@@ -21,7 +22,7 @@ export async function POST(req: Request) {
     let recipientEmail: string | undefined = body.recipientEmail
     const sendEmail: boolean = body.sendEmail !== false && !!recipientEmail
 
-    const origin = new URL(req.url).origin
+    const origin = publicAppOrigin(new URL(req.url).origin)
     let requestedProduct = body.requestedProduct as 'full' | 'widget' | undefined
 
     if (scraperLeadId && !requestedProduct) {

@@ -2,14 +2,12 @@ import { NextResponse } from 'next/server'
 import { createDraftIntake } from '@/lib/intake/createDraftIntake'
 import { checkRateLimit, hashRateKey } from '@/lib/rateLimit'
 import { verifyTurnstileToken } from '@/lib/turnstile'
+import { publicAppOrigin } from '@/lib/urls'
 
 export const runtime = 'nodejs'
 
 function siteOrigin(req: Request): string {
-  return (
-    process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, '') ||
-    new URL(req.url).origin
-  )
+  return publicAppOrigin(new URL(req.url).origin)
 }
 
 export async function POST(req: Request) {

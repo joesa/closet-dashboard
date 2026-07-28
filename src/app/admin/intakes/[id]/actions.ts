@@ -8,9 +8,10 @@ import { sendIntakeLaunchPaymentEmail } from '@/lib/intake/sendIntakeLaunchEmail
 import { getIntakePaymentSummary } from '@/lib/intake/intakePaymentStage'
 import { syncTenantLaunchAccess } from '@/lib/intake/syncTenantLaunchAccess'
 import type { ProspectIntakeRow } from '@/lib/intake/getIntakeByToken'
+import { publicAppOrigin } from '@/lib/urls'
 
 function siteOrigin(): string {
-  return (process.env.NEXT_PUBLIC_SITE_URL || 'https://www.ditchtheform.com').replace(/\/$/, '')
+  return publicAppOrigin()
 }
 
 async function loadIntake(id: string) {

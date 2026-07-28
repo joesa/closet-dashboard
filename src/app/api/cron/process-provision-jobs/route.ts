@@ -1,14 +1,12 @@
 import { NextResponse } from 'next/server'
 import { processProvisionQueue } from '@/lib/provision/processProvisionQueue'
+import { publicAppOrigin } from '@/lib/urls'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
 
 function loginOrigin(req: Request): string {
-  return (
-    process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, '') ||
-    new URL(req.url).origin
-  )
+  return publicAppOrigin(new URL(req.url).origin)
 }
 
 export async function GET(req: Request) {

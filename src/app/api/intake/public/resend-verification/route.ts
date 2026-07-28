@@ -1,14 +1,12 @@
 import { NextResponse } from 'next/server'
 import { resendIntakeVerificationEmail } from '@/lib/intake/createDraftIntake'
 import { checkRateLimit, hashRateKey } from '@/lib/rateLimit'
+import { publicAppOrigin } from '@/lib/urls'
 
 export const runtime = 'nodejs'
 
 function siteOrigin(req: Request): string {
-  return (
-    process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, '') ||
-    new URL(req.url).origin
-  )
+  return publicAppOrigin(new URL(req.url).origin)
 }
 
 /**

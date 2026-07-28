@@ -2,6 +2,7 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import type { ProspectIntakeRow } from '@/lib/intake/getIntakeByToken'
 import { isLaunchBuildPaid } from '@/lib/intake/intakePaymentStage'
 import type { IntakeCheckoutKind } from '@/lib/intake/intakePaymentStage'
+import { publicAppOrigin } from '@/lib/urls'
 
 export type TenantSiteStatus =
   | 'pending_approval'
@@ -11,10 +12,7 @@ export type TenantSiteStatus =
   | 'widget_only'
 
 function dashboardOrigin(): string {
-  return (process.env.NEXT_PUBLIC_SITE_URL || 'https://www.ditchtheform.com').replace(
-    /\/$/,
-    ''
-  )
+  return publicAppOrigin()
 }
 
 function launchCheckoutKind(row: ProspectIntakeRow): IntakeCheckoutKind {

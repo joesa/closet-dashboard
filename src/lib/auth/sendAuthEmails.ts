@@ -1,9 +1,9 @@
 import { Resend } from 'resend'
 import { platformFromEmail } from '@/lib/fromEmail'
-import { PUBLIC_API_URL } from '@/lib/urls'
+import { publicAppOrigin } from '@/lib/urls'
 
 function appOrigin(): string {
-  return PUBLIC_API_URL.replace(/\/$/, '') || 'https://www.ditchtheform.com'
+  return publicAppOrigin()
 }
 
 async function send(opts: {

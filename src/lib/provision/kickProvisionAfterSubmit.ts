@@ -1,13 +1,10 @@
 import { canEnqueueBackgroundJobs, enqueueJob } from '@/lib/jobs/enqueueJob'
 import { TASK_PROVISION_TENANT } from '@/lib/jobs/taskIds'
 import { processProvisionQueue } from '@/lib/provision/processProvisionQueue'
+import { publicAppOrigin } from '@/lib/urls'
 
 function loginOrigin(): string {
-  return (
-    process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, '') ||
-    process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, '') ||
-    'http://localhost:3001'
-  )
+  return publicAppOrigin('http://localhost:3001')
 }
 
 /**

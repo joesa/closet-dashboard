@@ -1,6 +1,6 @@
 import type { Task } from 'graphile-worker'
 import { processProvisionQueue } from '@/lib/provision/processProvisionQueue'
-import { PUBLIC_API_URL } from '@/lib/urls'
+import { publicAppOrigin } from '@/lib/urls'
 
 export type ProvisionTenantPayload = {
   intakeId: string
@@ -16,7 +16,7 @@ export const provisionTenantTask: Task = async (payload, helpers) => {
     throw new Error('provision_tenant requires intakeId')
   }
 
-  const loginOrigin = PUBLIC_API_URL.replace(/\/$/, '') || 'https://www.ditchtheform.com'
+  const loginOrigin = publicAppOrigin()
   helpers.logger.info(`provision_tenant start ${intakeId}`)
   const results = await processProvisionQueue(loginOrigin, {
     batchSize: 1,

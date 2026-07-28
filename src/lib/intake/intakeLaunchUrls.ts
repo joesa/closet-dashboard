@@ -2,12 +2,10 @@ import { getTenantLaunchSiteUrl } from '@/lib/admin-preview'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import type { ProspectIntakeRow } from '@/lib/intake/getIntakeByToken'
 import { isLaunchBuildPaid } from '@/lib/intake/intakePaymentStage'
+import { publicAppOrigin } from '@/lib/urls'
 
 function dashboardOrigin(): string {
-  return (process.env.NEXT_PUBLIC_SITE_URL || 'https://www.ditchtheform.com').replace(
-    /\/$/,
-    ''
-  )
+  return publicAppOrigin()
 }
 
 /** Public tenant site URL + contractor dashboard login for post-launch redirects. */

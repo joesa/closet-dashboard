@@ -15,6 +15,7 @@ import {
 } from './actions'
 import IntakeAdminAlerts from './IntakeAdminAlerts'
 import IntakeDomainPurchase from '@/components/IntakeDomainPurchase'
+import { publicAppOrigin } from '@/lib/urls'
 
 export const dynamic = 'force-dynamic'
 
@@ -52,7 +53,7 @@ export default async function IntakeDetailPage({
   const launchPaid = isLaunchBuildPaid(
     data as unknown as Parameters<typeof isLaunchBuildPaid>[0]
   )
-  const intakeUrl = `${(process.env.NEXT_PUBLIC_SITE_URL || '').replace(/\/$/, '')}/intake/${data.token}`
+  const intakeUrl = `${publicAppOrigin()}/intake/${data.token}`
 
   let tenantSiteStatus: string | null = null
   let tenantSiteUrl: string | null = null

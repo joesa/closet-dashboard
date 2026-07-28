@@ -59,7 +59,7 @@ function EmailChangeAckInner() {
     <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center px-4">
       <div className="w-full max-w-md rounded-3xl border border-white/10 bg-white/[0.02] p-8 text-center space-y-4">
         <Link href="/" className="text-sm font-bold tracking-tight text-white">
-          Closet<span className="text-slate-400">Quote</span>
+          Ditch<span className="text-slate-400">TheForm</span>
         </Link>
         <h1 className="text-xl font-bold text-white">Confirm new email</h1>
         {status === 'loading' ? (

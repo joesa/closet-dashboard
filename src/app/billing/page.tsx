@@ -79,7 +79,7 @@ export default async function BillingPage({
       <header className="border-b border-white/[0.06]">
         <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-6">
           <Link href="/" className="text-sm font-bold tracking-tight">
-            Closet<span className="text-slate-400">Quote</span>
+            Ditch<span className="text-slate-400">TheForm</span>
           </Link>
           <Link
             href="/dashboard"

@@ -346,7 +346,13 @@ async function ensureProAccount(
   const { data: authData, error: authErr } = await supabaseBrowser.auth.signUp({
     email,
     password,
-    options: { data: { company_name: businessName } },
+    options: {
+      data: { company_name: businessName },
+      emailRedirectTo: `${
+        process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, '') ||
+        'https://www.ditchtheform.com'
+      }/dashboard`,
+    },
   })
 
   if (!authErr && authData.user) return { isNewAccount: true }
