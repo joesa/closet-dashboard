@@ -6,7 +6,7 @@ import Image from 'next/image'
 import Script from 'next/script'
 import { useRouter } from 'next/navigation'
 import { Check } from 'lucide-react'
-import { getBrowserUser, supabaseBrowser } from '@/lib/supabase-browser'
+import { getBrowserUser, signOutBrowser } from '@/lib/supabase-browser'
 import { DEMO_CONTRACTOR_ID, DEMO_LOGIN, DEMO_RESET_NOTICE } from '@/lib/demo'
 import {
   getTierCatalog,
@@ -110,6 +110,7 @@ function StartChoiceModal({
 export default function LandingPage() {
   const router = useRouter()
   const [isLoggedIn, setIsLoggedIn] = useState(false)
+  const [signingOut, setSigningOut] = useState(false)
   const [showStartModal, setShowStartModal] = useState(false)
 
   useEffect(() => {
@@ -130,9 +131,16 @@ export default function LandingPage() {
   }, [])
 
   const handleSignOut = async () => {
-    await supabaseBrowser.auth.signOut()
-    router.refresh()
+    if (signingOut) return
+    setSigningOut(true)
+    // Flip UI immediately — never wait on a global Auth revoke that can hang.
     setIsLoggedIn(false)
+    try {
+      await signOutBrowser()
+    } finally {
+      setSigningOut(false)
+      router.refresh()
+    }
   }
 
   return (
@@ -166,10 +174,12 @@ export default function LandingPage() {
                   Dashboard
                 </Link>
                 <button
-                  onClick={handleSignOut}
-                  className="rounded-full border border-white/10 px-4 py-1.5 text-xs font-semibold text-slate-300 transition hover:border-white/20 hover:text-white active:scale-[0.97]"
+                  type="button"
+                  onClick={() => void handleSignOut()}
+                  disabled={signingOut}
+                  className="rounded-full border border-white/10 px-4 py-1.5 text-xs font-semibold text-slate-300 transition hover:border-white/20 hover:text-white active:scale-[0.97] disabled:opacity-50"
                 >
-                  Sign Out
+                  {signingOut ? 'Signing out…' : 'Sign Out'}
                 </button>
               </>
             ) : (
@@ -571,10 +581,12 @@ export default function LandingPage() {
                   Dashboard
                 </Link>
                 <button
-                  onClick={handleSignOut}
-                  className="text-xs text-slate-600 transition hover:text-slate-400"
+                  type="button"
+                  onClick={() => void handleSignOut()}
+                  disabled={signingOut}
+                  className="text-xs text-slate-600 transition hover:text-slate-400 disabled:opacity-50"
                 >
-                  Sign Out
+                  {signingOut ? 'Signing out…' : 'Sign Out'}
                 </button>
               </>
             ) : (

@@ -4,7 +4,7 @@ import { useState, useCallback, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import Script from 'next/script'
-import { supabaseBrowser, getBrowserUser } from '@/lib/supabase-browser'
+import { supabaseBrowser, getBrowserUser, signOutBrowser } from '@/lib/supabase-browser'
 import { DEMO_CONTRACTOR_ID, DEMO_RESET_NOTICE } from '@/lib/demo'
 import { WIDGET_CDN_URL } from '@/lib/urls'
 import { resolveIndustrySlug } from '@/lib/catalog/serviceCatalog'
@@ -588,7 +588,7 @@ export default function DashboardPage() {
   }
 
   const handleSignOut = async () => {
-    await supabaseBrowser.auth.signOut()
+    await signOutBrowser()
     router.replace('/login')
   }
 

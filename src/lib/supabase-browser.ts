@@ -31,6 +31,16 @@ export async function clearStaleBrowserAuth(): Promise<void> {
 }
 
 /**
+ * Sign out without freezing the UI. Local cookie clear always runs first;
+ * global revoke is best-effort and must never block navigation/state updates
+ * (global can hang when the refresh token is already dead).
+ */
+export async function signOutBrowser(): Promise<void> {
+  await clearStaleBrowserAuth()
+  void supabaseBrowser.auth.signOut({ scope: 'global' }).catch(() => null)
+}
+
+/**
  * Validate the current user via Supabase (not just cookie storage).
  * Returns null and clears stale cookies when the refresh token is invalid.
  */
