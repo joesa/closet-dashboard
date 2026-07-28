@@ -3,7 +3,7 @@
 import { useState, useEffect, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { getBrowserUser, signOutBrowser } from '@/lib/supabase-browser'
+import { getBrowserUser, signOutBrowser, supabaseBrowser } from '@/lib/supabase-browser'
 
 export default function SignUpPage() {
   return (
