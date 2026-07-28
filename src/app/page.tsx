@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import Script from 'next/script'
@@ -17,6 +17,48 @@ import {
   formatUsd,
 } from '@/lib/intake/tiers'
 import { PUBLIC_API_URL, WIDGET_CDN_URL } from '@/lib/urls'
+import {
+  useScrollReveal,
+  useScrollRevealChildren,
+} from '@/hooks/useScrollReveal'
+
+/* ── Rotating industry word — keeps the hero focused but inclusive ── */
+const INDUSTRIES = [
+  'closet designers',
+  'plumbers',
+  'landscapers',
+  'pressure washers',
+  'towing companies',
+  'tree services',
+]
+
+function RotatingText() {
+  const [index, setIndex] = useState(0)
+  const [visible, setVisible] = useState(true)
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setVisible(false)
+      setTimeout(() => {
+        setIndex((i) => (i + 1) % INDUSTRIES.length)
+        setVisible(true)
+      }, 300)
+    }, 2800)
+    return () => clearInterval(interval)
+  }, [])
+
+  return (
+    <span
+      className="inline-block text-gradient-accent transition-all duration-300"
+      style={{
+        opacity: visible ? 1 : 0,
+        transform: visible ? 'translateY(0)' : 'translateY(8px)',
+      }}
+    >
+      {INDUSTRIES[index]}
+    </span>
+  )
+}
 
 /**
  * "Start Free" / "Start Your 30-Day Free Trial" is ambiguous on its own — the
@@ -146,7 +188,7 @@ export default function LandingPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#0a0a0a] text-white selection:bg-white/20 selection:text-white">
+    <div className="noise-overlay min-h-screen bg-[#0a0a0a] text-white selection:bg-white/20 selection:text-white">
       <Script
         src={WIDGET_CDN_URL}
         strategy="lazyOnload"
@@ -211,10 +253,12 @@ export default function LandingPage() {
       />
 
       {/* ─── Hero ─── */}
-      <section className="relative mx-auto max-w-4xl px-6 pt-40 pb-24 text-center">
-        {/* Launch banner — dialed-back emerald so it complements the slate palette
-            rather than dominating it. Two lines: headline offer + transparency. */}
-        <div className="relative mb-8 inline-flex flex-col items-center gap-1.5 rounded-2xl border border-emerald-400/15 bg-emerald-500/[0.04] px-6 py-3">
+      <section className="relative mx-auto max-w-4xl px-6 pt-40 pb-28 text-center overflow-hidden">
+        {/* Aurora glow — the single highest-impact visual upgrade */}
+        <div className="aurora" aria-hidden="true" />
+
+        {/* Launch banner — tighter trust copy */}
+        <div className="relative z-10 mb-8 inline-flex flex-col items-center gap-1.5 rounded-2xl border border-emerald-400/15 bg-emerald-500/[0.04] px-6 py-3">
           <div className="flex items-center gap-2.5 text-[13px] sm:text-sm">
             <span className="relative flex h-1.5 w-1.5">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400/60 opacity-60" />
@@ -228,33 +272,37 @@ export default function LandingPage() {
               href={`/login?email=${encodeURIComponent(DEMO_LOGIN.email)}&password=${encodeURIComponent(DEMO_LOGIN.password)}`}
               className="font-medium text-emerald-200/90 underline decoration-emerald-400/40 decoration-dotted underline-offset-4 transition-colors hover:text-emerald-100 hover:decoration-emerald-300"
             >
-              try our demo application
+              try our demo
             </a>
           </div>
-          <p className="text-[11px] sm:text-xs text-slate-400">
-            No credit card required · For real · No hidden fees · No hidden agenda here
+          <p className="text-[11px] sm:text-xs text-slate-500">
+            No credit card required · Cancel anytime · No per-lead fees
           </p>
         </div>
 
-        <h1 className="text-5xl font-bold tracking-tighter leading-[1.05] sm:text-6xl md:text-7xl lg:text-[5.25rem]">
-          Stop Losing High-End
+        <h1 className="relative z-10 text-5xl font-bold tracking-tighter leading-[1.05] sm:text-6xl md:text-7xl lg:text-[5.25rem]">
+          <span className="text-gradient">Turn Your Website Into a</span>
           <br />
-          Leads to Ghost Town Websites
+          <span className="text-gradient">Lead-Closing Machine</span>
           <br />
-          <span className="text-slate-500">& Missing Portfolios.</span>
+          <span className="text-slate-500">
+            for <RotatingText />
+          </span>
         </h1>
 
-        <p className="mx-auto mt-8 max-w-xl text-lg leading-relaxed text-slate-400 sm:text-xl">
-          Embed our interactive pricing calculator onto your existing site—or let us build you a premium, showcase site from scratch. Whatever your trade — plumbing, towing, pressure washing, tree work, landscaping, custom closets — upsell options and get highly qualified leads texted straight to your phone.
+        <p className="relative z-10 mx-auto mt-8 max-w-lg text-lg leading-relaxed text-slate-400 sm:text-xl">
+          Embed an interactive pricing calculator on your site. Visitors
+          quote themselves, upsell add-ons, and text the lead straight
+          to your phone.
         </p>
 
-        <div className="mt-10 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
+        <div className="relative z-10 mt-10 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
           <button
             type="button"
             onClick={() => setShowStartModal(true)}
-            className="group relative rounded-full bg-white px-8 py-3.5 text-sm font-semibold text-black transition-all hover:bg-slate-100 active:scale-[0.97]"
+            className="btn-shimmer group rounded-full bg-white px-8 py-3.5 text-sm font-semibold text-black transition-all hover:bg-slate-100 active:scale-[0.97]"
           >
-            Start Your 30-Day Free Trial
+            Start Your Free Trial
             <span className="ml-2 inline-block transition-transform group-hover:translate-x-0.5">
               →
             </span>
@@ -265,6 +313,26 @@ export default function LandingPage() {
           >
             Need a full site? From $999
           </a>
+        </div>
+      </section>
+
+      {/* ─── Social Proof Metrics Bar ─── */}
+      <section className="mx-auto max-w-4xl px-6 pb-20">
+        <div className="flex flex-wrap items-center justify-center gap-x-12 gap-y-4 rounded-2xl border border-white/[0.06] bg-white/[0.015] px-8 py-5">
+          <p className="text-xs font-medium uppercase tracking-wider text-slate-500">
+            Trusted by service businesses
+          </p>
+          <div className="hidden sm:block h-4 w-px bg-white/[0.08]" />
+          {[
+            { value: '60s', label: 'avg. install time' },
+            { value: 'SMS + Email', label: 'lead delivery' },
+            { value: '$0', label: 'to start' },
+          ].map((stat) => (
+            <div key={stat.label} className="text-center">
+              <span className="font-mono text-sm font-bold text-white">{stat.value}</span>
+              <span className="ml-1.5 text-[11px] text-slate-600">{stat.label}</span>
+            </div>
+          ))}
         </div>
       </section>
 
@@ -282,7 +350,7 @@ export default function LandingPage() {
               Live demo
             </p>
             <h2 className="mb-6 text-3xl font-bold tracking-tight text-white sm:text-4xl">
-              Test drive the engine.
+              Test drive the engine
             </h2>
             <p className="mb-10 max-w-md text-base leading-relaxed text-slate-400">
               This isn&apos;t a screenshot. It&apos;s the real widget your
@@ -344,16 +412,15 @@ export default function LandingPage() {
                 contain: 'paint',
               }}
             >
-              {/* Fake browser chrome */}
-              <div className="mb-3 flex items-center gap-2 px-3 pt-1">
-                <div className="h-2.5 w-2.5 rounded-full bg-white/10" />
-                <div className="h-2.5 w-2.5 rounded-full bg-white/10" />
-                <div className="h-2.5 w-2.5 rounded-full bg-white/10" />
-                <div className="mx-auto rounded-md bg-white/[0.04] px-12 py-1">
-                  <span className="text-[10px] text-slate-400 font-mono">
+              {/* Clean browser tab — no fake dots */}
+              <div className="mb-3 flex items-center justify-between px-4 pt-2">
+                <span className="text-[10px] font-medium text-slate-500">Preview</span>
+                <div className="rounded-md bg-white/[0.04] px-8 py-1">
+                  <span className="text-[10px] text-slate-500 font-mono">
                     yourwebsite.com
                   </span>
                 </div>
+                <span className="text-[10px] text-transparent">Preview</span>
               </div>
 
               {/* Widget container */}
@@ -402,26 +469,26 @@ export default function LandingPage() {
       <div className="mx-auto max-w-6xl border-t border-white/[0.06]" />
 
       {/* ─── Value Props — Bento Grid ─── */}
-      <section className="mx-auto max-w-5xl px-6 py-28">
+      <section className="mx-auto max-w-5xl px-6 py-32">
         <div className="mb-16 text-center">
           <p className="mb-3 text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
             How it works
           </p>
-          <h2 className="text-4xl font-bold tracking-tighter sm:text-5xl">
-            Three steps. Zero friction.
+          <h2 className="text-4xl font-bold tracking-tighter text-gradient sm:text-5xl">
+            Three steps to more leads
           </h2>
         </div>
 
         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-          {/* Box 1 — spans 2 cols */}
-          <div className="group relative overflow-hidden rounded-3xl border border-white/10 bg-white/[0.02] p-8 backdrop-blur-sm md:col-span-2">
-            <div className="absolute -right-12 -top-12 h-40 w-40 rounded-full bg-white/[0.02] blur-3xl transition-all duration-700 group-hover:bg-white/[0.04]" />
+          {/* Box 1 — Pricing Control (warm tint) — spans 2 cols */}
+          <div className="card-lift group relative overflow-hidden rounded-3xl border border-amber-500/[0.08] bg-amber-500/[0.02] p-8 backdrop-blur-sm md:col-span-2">
+            <div className="absolute -right-12 -top-12 h-40 w-40 rounded-full bg-amber-500/[0.03] blur-3xl transition-all duration-700 group-hover:bg-amber-400/[0.06]" />
             <div className="relative">
               <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1">
                 <span className="font-mono text-[11px] text-slate-500">01</span>
               </div>
               <h3 className="mb-3 text-2xl font-bold tracking-tight">
-                Total Pricing Control.
+                Total Pricing Control
               </h3>
               <p className="max-w-md text-sm leading-relaxed text-slate-400">
                 Ditch the one-size-fits-all model. Use our dynamic pricing matrix
@@ -439,7 +506,7 @@ export default function LandingPage() {
                 ].map(({ tier, price }) => (
                   <div
                     key={tier}
-                    className="rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-3"
+                    className="rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-3 transition-colors hover:border-white/[0.12]"
                   >
                     <span className="text-[10px] font-semibold uppercase tracking-widest text-slate-600">
                       {tier}
@@ -454,9 +521,9 @@ export default function LandingPage() {
             </div>
           </div>
 
-          {/* Box 2 — 1 col */}
-          <div className="group relative overflow-hidden rounded-3xl border border-white/10 bg-white/[0.02] p-8 backdrop-blur-sm">
-            <div className="absolute -left-8 -bottom-8 h-32 w-32 rounded-full bg-white/[0.02] blur-3xl transition-all duration-700 group-hover:bg-white/[0.04]" />
+          {/* Box 2 — Upsell Engine (cool tint) — 1 col */}
+          <div className="card-lift group relative overflow-hidden rounded-3xl border border-indigo-500/[0.08] bg-indigo-500/[0.02] p-8 backdrop-blur-sm">
+            <div className="absolute -left-8 -bottom-8 h-32 w-32 rounded-full bg-indigo-500/[0.03] blur-3xl transition-all duration-700 group-hover:bg-indigo-400/[0.06]" />
             <div className="relative">
               <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1">
                 <span className="font-mono text-[11px] text-slate-500">02</span>
@@ -464,7 +531,7 @@ export default function LandingPage() {
               <h3 className="mb-3 text-2xl font-bold tracking-tight">
                 Custom Upsell
                 <br />
-                Engine.
+                Engine
               </h3>
               <p className="text-sm leading-relaxed text-slate-400">
                 Create unlimited custom add-ons — from premium materials to
@@ -472,21 +539,20 @@ export default function LandingPage() {
                 even pick up the phone.
               </p>
 
-              {/* Code snippet mockup */}
+              {/* Code snippet mockup — with real syntax colors */}
               <div className="mt-8 overflow-hidden rounded-xl border border-white/[0.06] bg-black/60">
-                <div className="flex items-center gap-1.5 border-b border-white/[0.04] px-3 py-2">
-                  <div className="h-2 w-2 rounded-full bg-white/10" />
-                  <div className="h-2 w-2 rounded-full bg-white/10" />
-                  <div className="h-2 w-2 rounded-full bg-white/10" />
+                <div className="flex items-center gap-2 border-b border-white/[0.04] px-3 py-2">
+                  <span className="text-[10px] text-slate-600 font-mono">index.html</span>
                 </div>
                 <pre className="overflow-x-auto p-4 font-mono text-[11px] leading-relaxed text-slate-500">
                   <code>
                     <span className="text-slate-600">&lt;</span>
-                    <span className="text-white/70">closet-quote-widget</span>
+                    <span className="text-sky-400">closet-quote-widget</span>
                     <br />
                     {'  '}
-                    <span className="text-slate-600">data-contractor-id=</span>
-                    <span className="text-emerald-400/60">&quot;...&quot;</span>
+                    <span className="text-violet-400">data-contractor-id</span>
+                    <span className="text-slate-600">=</span>
+                    <span className="text-emerald-400">&quot;...&quot;</span>
                     <br />
                     <span className="text-slate-600">/&gt;</span>
                   </code>
@@ -495,16 +561,16 @@ export default function LandingPage() {
             </div>
           </div>
 
-          {/* Box 3 — spans full width */}
-          <div className="group relative overflow-hidden rounded-3xl border border-white/10 bg-white/[0.02] p-8 backdrop-blur-sm md:col-span-3">
-            <div className="absolute right-1/4 -top-16 h-48 w-48 rounded-full bg-white/[0.015] blur-3xl transition-all duration-700 group-hover:bg-white/[0.03]" />
+          {/* Box 3 — Lead Capture (emerald tint) — spans full width */}
+          <div className="card-lift group relative overflow-hidden rounded-3xl border border-emerald-500/[0.08] bg-emerald-500/[0.02] p-8 backdrop-blur-sm md:col-span-3">
+            <div className="absolute right-1/4 -top-16 h-48 w-48 rounded-full bg-emerald-500/[0.02] blur-3xl transition-all duration-700 group-hover:bg-emerald-400/[0.05]" />
             <div className="relative md:flex md:items-start md:gap-12">
               <div className="flex-1">
                 <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1">
                   <span className="font-mono text-[11px] text-slate-500">03</span>
                 </div>
                 <h3 className="mb-3 text-2xl font-bold tracking-tight">
-                  Instant Lead Capture.
+                  Instant Lead Capture
                 </h3>
                 <p className="max-w-lg text-sm leading-relaxed text-slate-400">
                   Copy one snippet of code to embed the calculator on any site.
@@ -515,12 +581,12 @@ export default function LandingPage() {
                 </p>
               </div>
 
-              {/* Stats mockup */}
+              {/* Stats — verifiable claims only */}
               <div className="mt-8 grid flex-shrink-0 grid-cols-3 gap-6 md:mt-0 md:gap-10">
                 {[
-                  { value: '3.2×', label: 'More leads' },
                   { value: '< 60s', label: 'To install' },
                   { value: '$0', label: 'For 30 days' },
+                  { value: 'SMS', label: 'Lead alerts' },
                 ].map((stat) => (
                   <div key={stat.label} className="text-center md:text-left">
                     <div className="font-mono text-3xl font-bold tracking-tight text-white">
@@ -545,68 +611,136 @@ export default function LandingPage() {
       <div className="mx-auto max-w-6xl border-t border-white/[0.06]" />
 
       {/* ─── Final CTA ─── */}
-      <section className="mx-auto max-w-3xl px-6 py-28 text-center">
-        <h2 className="text-4xl font-bold tracking-tighter sm:text-5xl">
+      <section className="relative mx-auto max-w-3xl px-6 py-32 text-center overflow-hidden">
+        {/* Subtle aurora behind CTA too */}
+        <div className="aurora" aria-hidden="true" style={{ opacity: 0.6 }} />
+        <h2 className="relative z-10 text-4xl font-bold tracking-tighter text-gradient sm:text-5xl">
           Your competitors are still
           <br />
-          using contact forms.
+          using contact forms
         </h2>
-        <p className="mx-auto mt-6 max-w-md text-slate-400">
+        <p className="relative z-10 mx-auto mt-6 max-w-md text-slate-400">
           Replace dead forms with interactive quotes, bookings, and orders —
           then get the lead on your phone.
         </p>
         <button
           type="button"
           onClick={() => setShowStartModal(true)}
-          className="group mt-10 inline-flex items-center rounded-full bg-white px-8 py-4 text-sm font-semibold text-black transition-all hover:bg-slate-100 active:scale-[0.97]"
+          className="btn-shimmer group relative z-10 mt-10 inline-flex items-center rounded-full bg-white px-8 py-4 text-sm font-semibold text-black transition-all hover:bg-slate-100 active:scale-[0.97]"
         >
-          Start Your 30-Day Free Trial
+          Start Your Free Trial
           <span className="ml-2 inline-block transition-transform group-hover:translate-x-0.5">
             →
           </span>
         </button>
       </section>
 
+      {/* ─── Gradient separator ─── */}
+      <div className="mx-auto max-w-6xl h-px bg-gradient-to-r from-transparent via-emerald-500/20 to-transparent" />
+
       {/* ─── Footer ─── */}
-      <footer className="border-t border-white/[0.06] py-8">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-6">
-          <span className="text-xs text-slate-600">
-            © {new Date().getFullYear()} DitchTheForm
-          </span>
-          <div className="flex gap-6">
-            {isLoggedIn ? (
-              <>
-                <Link
-                  href="/dashboard"
-                  className="text-xs text-slate-600 transition hover:text-slate-400"
-                >
-                  Dashboard
-                </Link>
-                <button
-                  type="button"
-                  onClick={() => void handleSignOut()}
-                  disabled={signingOut}
-                  className="text-xs text-slate-600 transition hover:text-slate-400 disabled:opacity-50"
-                >
-                  {signingOut ? 'Signing out…' : 'Sign Out'}
-                </button>
-              </>
-            ) : (
-              <>
-                <Link
-                  href="/login"
-                  className="text-xs text-slate-600 transition hover:text-slate-400"
-                >
-                  Sign In
-                </Link>
-                <Link
-                  href="/signup"
-                  className="text-xs text-slate-600 transition hover:text-slate-400"
-                >
-                  Sign Up
-                </Link>
-              </>
-            )}
+      <footer className="py-16">
+        <div className="mx-auto max-w-6xl px-6">
+          {/* Footer grid */}
+          <div className="grid grid-cols-2 gap-8 sm:grid-cols-4">
+            {/* Brand column */}
+            <div className="col-span-2 sm:col-span-1">
+              <span className="text-sm font-bold tracking-tight">
+                Ditch<span className="text-slate-400">TheForm</span>
+              </span>
+              <p className="mt-3 text-xs leading-relaxed text-slate-600 max-w-[200px]">
+                Interactive quote calculators for service businesses.
+                More leads, less friction.
+              </p>
+            </div>
+
+            {/* Product */}
+            <div>
+              <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-4">Product</h4>
+              <ul className="space-y-2.5">
+                <li><a href="#demo" className="text-xs text-slate-600 transition hover:text-slate-300">Live Demo</a></li>
+                <li><a href="#pricing" className="text-xs text-slate-600 transition hover:text-slate-300">Pricing</a></li>
+                <li><a href="#portfolio" className="text-xs text-slate-600 transition hover:text-slate-300">Portfolio</a></li>
+              </ul>
+            </div>
+
+            {/* Company */}
+            <div>
+              <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-4">Company</h4>
+              <ul className="space-y-2.5">
+                <li><a href="mailto:support@ditchtheform.com" className="text-xs text-slate-600 transition hover:text-slate-300">Contact</a></li>
+              </ul>
+            </div>
+
+            {/* Account */}
+            <div>
+              <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-4">Account</h4>
+              <ul className="space-y-2.5">
+                {isLoggedIn ? (
+                  <>
+                    <li>
+                      <Link href="/dashboard" className="text-xs text-slate-600 transition hover:text-slate-300">
+                        Dashboard
+                      </Link>
+                    </li>
+                    <li>
+                      <button
+                        type="button"
+                        onClick={() => void handleSignOut()}
+                        disabled={signingOut}
+                        className="text-xs text-slate-600 transition hover:text-slate-300 disabled:opacity-50"
+                      >
+                        {signingOut ? 'Signing out…' : 'Sign Out'}
+                      </button>
+                    </li>
+                  </>
+                ) : (
+                  <>
+                    <li>
+                      <Link href="/login" className="text-xs text-slate-600 transition hover:text-slate-300">
+                        Sign In
+                      </Link>
+                    </li>
+                    <li>
+                      <Link href="/signup" className="text-xs text-slate-600 transition hover:text-slate-300">
+                        Sign Up
+                      </Link>
+                    </li>
+                  </>
+                )}
+              </ul>
+            </div>
+          </div>
+
+          {/* Bottom bar */}
+          <div className="mt-12 flex items-center justify-between border-t border-white/[0.04] pt-6">
+            <span className="text-[11px] text-slate-700">
+              © {new Date().getFullYear()} DitchTheForm. All rights reserved.
+            </span>
+            <div className="flex items-center gap-4">
+              <a
+                href="https://twitter.com"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-slate-700 transition hover:text-slate-400"
+                aria-label="Twitter"
+              >
+                <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+                </svg>
+              </a>
+              <a
+                href="https://linkedin.com"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-slate-700 transition hover:text-slate-400"
+                aria-label="LinkedIn"
+              >
+                <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z" />
+                </svg>
+              </a>
+            </div>
           </div>
         </div>
       </footer>
@@ -814,13 +948,13 @@ function PricingSection() {
   )
 
   return (
-    <section id="pricing" className="mx-auto max-w-7xl px-6 py-28">
+    <section id="pricing" className="mx-auto max-w-7xl px-6 py-32">
       <div className="mb-12 text-center">
         <p className="mb-3 text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
           Pricing
         </p>
-        <h2 className="text-4xl font-bold tracking-tighter sm:text-5xl">
-          Simple, transparent pricing.
+        <h2 className="text-4xl font-bold tracking-tighter text-gradient sm:text-5xl">
+          Simple, transparent pricing
         </h2>
         <p className="mx-auto mt-5 max-w-2xl text-base text-slate-400">
           Three ways to grow leads: embed the widget on your existing site, or let us build a
@@ -960,7 +1094,7 @@ function PricingSection() {
       <div id="portfolio" className="mt-32 pt-16 border-t border-white/[0.06]">
         <div className="mb-12 text-center">
           <h3 className="text-3xl font-bold tracking-tight text-white mb-4">
-            Don&apos;t have a website? Choose your custom aesthetic.
+            Don&apos;t have a website? Choose your aesthetic
           </h3>
           <p className="text-slate-400 max-w-2xl mx-auto">
             Test drive a live, fully functional digital storefront right now. These aren&apos;t just templates—they are high-converting lead engines wired to your pricing.
@@ -995,7 +1129,7 @@ function PricingSection() {
               rel="noopener noreferrer"
               className="group block"
             >
-              <div className="relative aspect-[4/3] w-full overflow-hidden rounded-2xl border border-white/10 bg-white/[0.02]">
+              <div className="card-lift relative aspect-[4/3] w-full overflow-hidden rounded-2xl border border-white/10 bg-white/[0.02]" style={{ perspective: '800px' }}>
                 <Image
                   src={demo.image}
                   alt={`${demo.name} aesthetic`}
