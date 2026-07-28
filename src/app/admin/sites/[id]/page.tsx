@@ -257,7 +257,11 @@ export default async function TenantDetailsPage({
         <AdminSiteChat tenantId={tenant.id} previewUrl={previewUrl} />
 
         {/* Per-site custom HTML/CSS build — isolated from the template engine */}
-        <AdminCustomBuild tenantId={tenant.id} previewUrl={previewUrl} />
+        <AdminCustomBuild
+          tenantId={tenant.id}
+          previewUrl={previewUrl}
+          siteStatus={tenant.site_status}
+        />
 
         {/* Quote / booking / order / ticket tools for this client's widget_id */}
         <AdminEmailChangeBanner tenantId={tenant.id} />

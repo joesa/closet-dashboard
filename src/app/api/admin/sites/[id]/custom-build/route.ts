@@ -300,22 +300,34 @@ export async function POST(
         action: 'site.custom_build_publish',
         targetType: 'tenant',
         targetId: tenantId,
-        metadata: { warnings: result.warnings, liveNow: result.liveNow },
+        metadata: {
+          warnings: result.warnings,
+          liveNow: result.liveNow,
+          siteStatus: result.siteStatus,
+          publicVisible: result.publicVisible,
+        },
       })
+      const pendingPublic =
+        !result.publicVisible && result.siteStatus === 'pending_approval'
       return NextResponse.json({
         ok: true,
         renderMode: 'custom',
         warnings: result.warnings,
         liveNow: result.liveNow,
+        siteStatus: result.siteStatus,
+        publicVisible: result.publicVisible,
         draftAhead: false,
-        reply: result.liveNow
-          ? 'Published. Live cache cleared — open the public site (hard refresh) to see your changes.'
-          : 'Published. If the public site looks stale, wait up to ~60s or hard-refresh.',
+        reply: pendingPublic
+          ? 'Draft published to the custom build — but the public still sees “Under Construction” until you click Approve & Go Live on this site page.'
+          : result.liveNow
+            ? 'Published. Live cache cleared — open the public site (hard refresh) to see your changes.'
+            : 'Published. If the public site looks stale, wait up to ~60s or hard-refresh.',
         nextStep: {
           preview: false,
           publish: false,
-          message:
-            'Live site updated. Open the public URL (without ?draft=1) to confirm visitors see the new content.',
+          message: pendingPublic
+            ? 'Content is ready. Scroll up and click Approve & Go Live so visitors leave the holding page.'
+            : 'Live site updated. Open the public URL (without ?draft=1) to confirm visitors see the new content.',
         },
       })
     }

@@ -90,9 +90,12 @@ type CustomAsset = {
 export default function AdminCustomBuild({
   tenantId,
   previewUrl,
+  siteStatus = null,
 }: {
   tenantId: string;
   previewUrl?: string | null;
+  /** Public gate from tenants.site_status — independent of Publish draft. */
+  siteStatus?: string | null;
 }) {
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
@@ -648,9 +651,11 @@ export default function AdminCustomBuild({
         setInfo(
           typeof json.reply === 'string'
             ? json.reply
-            : json.liveNow
-              ? 'Published — custom site is live (cache busted). Open the public site (hard refresh).'
-              : 'Published — may take up to ~60s for cache to refresh. Hard-refresh the public site.'
+            : json.publicVisible === false
+              ? 'Draft published — public still shows Under Construction until Approve & Go Live.'
+              : json.liveNow
+                ? 'Published — custom content is live (cache busted). Hard-refresh the public site.'
+                : 'Published — may take up to ~60s for cache to refresh. Hard-refresh the public site.'
         );
       } else if (action === 'revert') {
         setInfo(
@@ -823,6 +828,15 @@ export default function AdminCustomBuild({
         brief are added to the site and engagement engine. Draft → preview → publish.
       </p>
 
+      {siteStatus === 'pending_approval' ? (
+        <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+          <strong className="font-semibold">Public gate: Pending Approval.</strong> Publish
+          draft only updates custom HTML. Visitors still see “Under Construction” until you
+          click <strong className="font-semibold">Approve &amp; Go Live</strong> at the top of
+          this page.
+        </div>
+      ) : null}
+
       <div className="rounded-lg border border-neutral-700 bg-neutral-950/60 px-4 py-3 space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -972,7 +986,14 @@ export default function AdminCustomBuild({
               type="button"
               disabled={loading}
               onClick={() => {
-                if (!confirm('Publish draft to the live site now?')) return;
+                if (
+                  !confirm(
+                    siteStatus === 'pending_approval'
+                      ? 'Publish this draft into the custom build? Visitors still see Under Construction until you Approve & Go Live.'
+                      : 'Publish draft to the public custom site now?'
+                  )
+                )
+                  return;
                 void run('publish');
               }}
               className="inline-flex px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium disabled:opacity-40"
@@ -1009,7 +1030,14 @@ export default function AdminCustomBuild({
                 type="button"
                 disabled={loading}
                 onClick={() => {
-                  if (!confirm('Publish draft to the live site now?')) return;
+                  if (
+                    !confirm(
+                      siteStatus === 'pending_approval'
+                        ? 'Publish this draft into the custom build? Visitors still see Under Construction until you Approve & Go Live.'
+                        : 'Publish draft to the public custom site now?'
+                    )
+                  )
+                    return;
                   void run('publish');
                 }}
                 className="inline-flex px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium disabled:opacity-40"

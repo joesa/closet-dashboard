@@ -2888,6 +2888,9 @@ export async function publishCustomSiteDraft(tenantId: string): Promise<{
   warnings: string[]
   errors: string[]
   liveNow: boolean
+  /** Tenant public gate — draft publish does NOT flip this to active. */
+  siteStatus: string | null
+  publicVisible: boolean
 }> {
   const supabase = getSupabaseAdmin()
   const { data, error } = await supabase
@@ -2918,10 +2921,25 @@ export async function publishCustomSiteDraft(tenantId: string): Promise<{
 
   if (updateErr) throw new Error(`Failed to publish: ${updateErr.message}`)
 
+  const { data: tenant } = await supabase
+    .from('tenants')
+    .select('site_status')
+    .eq('id', tenantId)
+    .maybeSingle()
+  const siteStatus =
+    typeof tenant?.site_status === 'string' ? tenant.site_status : null
+  const publicVisible = siteStatus === 'active'
+
   const { revalidateTenantSiteCache } = await import('@/lib/tenants/revalidateTenantSite')
   const liveNow = await revalidateTenantSiteCache(tenantId)
 
-  return { warnings: check.warnings, errors: [], liveNow }
+  return {
+    warnings: check.warnings,
+    errors: [],
+    liveNow,
+    siteStatus,
+    publicVisible,
+  }
 }
 
 export async function revertToEngine(tenantId: string): Promise<{ liveNow: boolean }> {
