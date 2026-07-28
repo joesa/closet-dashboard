@@ -4,6 +4,7 @@ import { useState, useEffect, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { getBrowserUser, signOutBrowser, supabaseBrowser } from '@/lib/supabase-browser'
+import { generateStrongPassword } from '@/lib/generateStrongPassword'
 
 export default function SignUpPage() {
   return (

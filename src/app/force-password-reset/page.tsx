@@ -4,11 +4,14 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabaseBrowser, getBrowserUser } from '@/lib/supabase-browser'
+import { generateStrongPassword } from '@/lib/generateStrongPassword'
 
 export default function ForcePasswordResetPage() {
   const router = useRouter()
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
+  const [copied, setCopied] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [checkingSession, setCheckingSession] = useState(true)
@@ -25,6 +28,25 @@ export default function ForcePasswordResetPage() {
     })
   }, [router])
 
+  const handleGenerate = () => {
+    const next = generateStrongPassword(16)
+    setPassword(next)
+    setConfirmPassword(next)
+    setShowPassword(true)
+    setError(null)
+  }
+
+  const handleCopy = async () => {
+    if (!password) return
+    try {
+      await navigator.clipboard.writeText(password)
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 1500)
+    } catch {
+      /* ignore */
+    }
+  }
+
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
@@ -33,8 +55,8 @@ export default function ForcePasswordResetPage() {
       setError('Passwords do not match.')
       return
     }
-    if (password.length < 6) {
-      setError('Password must be at least 6 characters.')
+    if (password.length < 8) {
+      setError('Password must be at least 8 characters.')
       return
     }
 
@@ -96,17 +118,51 @@ export default function ForcePasswordResetPage() {
           )}
 
           <div className="mb-5">
-            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">
-              New Permanent Password
-            </label>
-            <input
-              type="password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded-lg border border-white/10 bg-white/[0.05] px-4 py-3 text-sm text-white placeholder:text-slate-600 outline-none focus:border-white/30 focus:bg-white/[0.08]"
-              placeholder="••••••••"
-            />
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400">
+                New Permanent Password
+              </label>
+              <button
+                type="button"
+                onClick={handleGenerate}
+                className="text-xs font-medium text-slate-500 transition hover:text-white"
+              >
+                Generate strong password
+              </button>
+            </div>
+            <div className="relative">
+              <input
+                type={showPassword ? 'text' : 'password'}
+                required
+                minLength={8}
+                autoComplete="new-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full rounded-lg border border-white/10 bg-white/[0.05] px-4 py-3 pr-24 text-sm text-white placeholder:text-slate-600 outline-none focus:border-white/30 focus:bg-white/[0.08] font-mono"
+                placeholder="••••••••"
+              />
+              <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
+                {password ? (
+                  <button
+                    type="button"
+                    onClick={() => void handleCopy()}
+                    className="text-xs font-medium text-slate-500 hover:text-white"
+                  >
+                    {copied ? 'Copied' : 'Copy'}
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((v) => !v)}
+                  className="text-xs font-medium text-slate-500 hover:text-white"
+                >
+                  {showPassword ? 'Hide' : 'Show'}
+                </button>
+              </div>
+            </div>
+            <p className="mt-1.5 text-[11px] text-slate-500">
+              Tip: generate one, copy it somewhere safe, then continue.
+            </p>
           </div>
 
           <div className="mb-8">
@@ -114,11 +170,13 @@ export default function ForcePasswordResetPage() {
               Confirm Password
             </label>
             <input
-              type="password"
+              type={showPassword ? 'text' : 'password'}
               required
+              minLength={8}
+              autoComplete="new-password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
-              className="w-full rounded-lg border border-white/10 bg-white/[0.05] px-4 py-3 text-sm text-white placeholder:text-slate-600 outline-none focus:border-white/30 focus:bg-white/[0.08]"
+              className="w-full rounded-lg border border-white/10 bg-white/[0.05] px-4 py-3 text-sm text-white placeholder:text-slate-600 outline-none focus:border-white/30 focus:bg-white/[0.08] font-mono"
               placeholder="••••••••"
             />
           </div>

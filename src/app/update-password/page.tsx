@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabaseBrowser, getBrowserUser } from '@/lib/supabase-browser'
 import { DEMO_LOGIN } from '@/lib/demo'
+import { generateStrongPassword } from '@/lib/generateStrongPassword'
 
 export default function UpdatePasswordPage() {
   const router = useRouter()
