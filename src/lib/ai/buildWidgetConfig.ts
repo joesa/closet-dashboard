@@ -5,7 +5,7 @@ import { formatServiceSeedPricing, resolveServiceTiers } from '@/lib/catalog/ser
 import { getServiceUxDefaults } from '@/lib/catalog/serviceUxDefaults'
 import { LUCIDE_ICON_ALLOWLIST, sanitizeLucideIcon } from '@/lib/catalog/lucideIconAllowlist'
 import { roomIsUnpriced } from '@/lib/pricingGuard'
-import type { MarketBound } from '@/lib/pricing/marketBounds'
+import type { MarketBound } from '@/lib/marketBounds'
 
 /**
  * Widget configuration hints gathered during the DitchTheForm Pro intake

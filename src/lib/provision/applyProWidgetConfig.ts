@@ -223,7 +223,7 @@ export async function applyProWidgetConfig(
   let enriched = hints
   if (!hints.marketBounds?.length && (hints.metro || hints.services?.length)) {
     try {
-      const { loadMarketBounds } = await import('@/lib/pricing/marketBounds')
+      const { loadMarketBounds } = await import('@/lib/marketBounds')
       const slug = resolveIndustrySlug({
         industry: hints.industry,
         services: hints.services,

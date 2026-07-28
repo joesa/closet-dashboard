@@ -21,7 +21,7 @@ import {
 import { applyProWidgetConfig } from '@/lib/provision/applyProWidgetConfig'
 import { resolveIndustrySlug, INDUSTRY_CONFIGS } from '@/lib/catalog/serviceCatalog'
 import { DEFAULT_DOMAIN_CONFIG, type PricingModel } from '@/lib/rooms'
-import { loadMarketBounds } from '@/lib/pricing/marketBounds'
+import { loadMarketBounds } from '@/lib/marketBounds'
 
 function resolvePricingModel(hints: WidgetConfigHints): PricingModel {
   switch (hints.pricingModel) {
