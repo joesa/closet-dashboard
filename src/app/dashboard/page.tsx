@@ -164,7 +164,7 @@ export default function DashboardPage() {
         if (ackRes.ok) {
           const ackJson = await ackRes.json().catch(() => ({}))
           if (ackJson.requiresAck) {
-            await supabaseBrowser.auth.signOut()
+            await signOutBrowser()
             router.replace(
               `/auth/email-change/pending-ack?email=${encodeURIComponent(user.email || '')}`
             )

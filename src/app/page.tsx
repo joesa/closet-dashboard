@@ -6,7 +6,7 @@ import Image from 'next/image'
 import Script from 'next/script'
 import { useRouter } from 'next/navigation'
 import { Check } from 'lucide-react'
-import { getBrowserUser, signOutBrowser } from '@/lib/supabase-browser'
+import { getBrowserSession, signOutBrowser } from '@/lib/supabase-browser'
 import { DEMO_CONTRACTOR_ID, DEMO_LOGIN, DEMO_RESET_NOTICE } from '@/lib/demo'
 import {
   getTierCatalog,
@@ -114,8 +114,10 @@ export default function LandingPage() {
   const [showStartModal, setShowStartModal] = useState(false)
 
   useEffect(() => {
-    getBrowserUser().then((user) => {
-      if (user) setIsLoggedIn(true)
+    // Local cookie read only — never getUser() on the marketing page (can hang
+    // the auth lock and freeze the tab on refresh with a stale refresh token).
+    void getBrowserSession().then((session) => {
+      if (session) setIsLoggedIn(true)
     })
   }, [])
 

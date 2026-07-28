@@ -3,7 +3,7 @@
 import { useState, Suspense, useEffect } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { getBrowserUser, supabaseBrowser } from '@/lib/supabase-browser'
+import { getBrowserSession, signOutBrowser, supabaseBrowser } from '@/lib/supabase-browser'
 
 export default function LoginPage() {
   return (
@@ -35,7 +35,7 @@ function LoginForm() {
   // Clear revoked refresh cookies before attempting a new login so the
   // AuthApiError doesn't fire again mid-submit.
   useEffect(() => {
-    void getBrowserUser()
+    void getBrowserSession()
   }, [])
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -76,7 +76,7 @@ function LoginForm() {
       if (ackRes.ok) {
         const ackJson = await ackRes.json().catch(() => ({}))
         if (ackJson.requiresAck) {
-          await supabaseBrowser.auth.signOut()
+          await signOutBrowser()
           window.location.href = `/auth/email-change/pending-ack?email=${encodeURIComponent(email)}`
           return
         }

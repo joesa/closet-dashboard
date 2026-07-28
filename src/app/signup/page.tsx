@@ -3,7 +3,7 @@
 import { useState, useEffect, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { supabaseBrowser, getBrowserUser } from '@/lib/supabase-browser'
+import { getBrowserUser, signOutBrowser } from '@/lib/supabase-browser'
 
 export default function SignUpPage() {
   return (
@@ -45,7 +45,7 @@ function SignUpForm() {
   }, [])
 
   const signOutAndContinue = async () => {
-    await supabaseBrowser.auth.signOut()
+    await signOutBrowser()
     setSessionEmail(null)
   }
 
