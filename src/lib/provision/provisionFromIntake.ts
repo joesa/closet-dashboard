@@ -14,10 +14,14 @@ import {
   ProvisionReviewError,
   type IntakeRowForProvision,
 } from '@/lib/provision/types'
-import { buildWidgetConfig, type WidgetConfigHints } from '@/lib/ai/buildWidgetConfig'
+import {
+  buildWidgetConfig,
+  type WidgetConfigHints,
+} from '@/lib/ai/buildWidgetConfig'
 import { applyProWidgetConfig } from '@/lib/provision/applyProWidgetConfig'
 import { resolveIndustrySlug, INDUSTRY_CONFIGS } from '@/lib/catalog/serviceCatalog'
 import { DEFAULT_DOMAIN_CONFIG, type PricingModel } from '@/lib/rooms'
+import { loadMarketBounds } from '@/lib/pricing/marketBounds'
 
 function resolvePricingModel(hints: WidgetConfigHints): PricingModel {
   switch (hints.pricingModel) {
@@ -71,11 +75,30 @@ export type ProvisionJobRow = {
 
 async function buildAiWidgetConfigFromHints(
   hints: WidgetConfigHints | null | undefined,
-  rowId: string
+  rowId: string,
+  metro?: string | null
 ): Promise<Record<string, unknown> | undefined> {
   if (!hints) return undefined
   console.log(`[provisionFromIntake] Building bespoke widget config for ${rowId}`)
-  const generated = await buildWidgetConfig(hints).catch((err) => {
+
+  const slug = resolveIndustrySlug({
+    industry: hints.industry,
+    services: hints.services,
+    other_services: hints.otherServices,
+  })
+  const marketBounds = await loadMarketBounds({
+    metro: metro || hints.metro,
+    services: hints.services,
+    industrySlug: slug,
+  }).catch((err) => {
+    console.warn('[provisionFromIntake] marketBounds skipped:', err)
+    return []
+  })
+
+  const generated = await buildWidgetConfig({
+    ...hints,
+    marketBounds,
+  }).catch((err) => {
     console.error('[provisionFromIntake] buildWidgetConfig failed, using defaults:', err)
     return null
   })
@@ -86,7 +109,8 @@ async function buildAiWidgetConfigFromHints(
     customFinishes: generated.customFinishes,
     _disabledDefaultRooms: generated.disabledDefaultRooms,
     _disableDefaultFinishes: generated.disableDefaultFinishes,
-    tierNames: resolveTierNames(hints),
+    tierNames: generated.tierNames || resolveTierNames(hints),
+    tierColors: generated.tierColors,
     industry: hints.industry?.trim() || undefined,
     domainConfig: resolveDomainConfig(hints),
   }
@@ -150,7 +174,11 @@ export async function provisionFromIntakeJob(
 
     const aiWidgetConfigFromHints = payload.aiWidgetConfig
       ? undefined
-      : await buildAiWidgetConfigFromHints(hints, row.id)
+      : await buildAiWidgetConfigFromHints(
+          hints,
+          row.id,
+          row.service_area || row.address_locality
+        )
 
     const result = await provisionTenant({
       ...payload,
@@ -208,7 +236,22 @@ export async function provisionFromIntakeJob(
         console.log(
           `[provisionFromIntake] Applying widget config to existing contractor ${existingContractor.id}`
         )
-        await applyProWidgetConfig(existingContractor.id, widgetHints)
+        const slug = resolveIndustrySlug({
+          industry: widgetHints.industry,
+          services: widgetHints.services,
+          other_services: widgetHints.otherServices,
+        })
+        const marketBounds = await loadMarketBounds({
+          metro: row.service_area || row.address_locality,
+          services: widgetHints.services,
+          industrySlug: slug,
+          state: row.address_region,
+        }).catch(() => [])
+        await applyProWidgetConfig(existingContractor.id, {
+          ...widgetHints,
+          metro: row.service_area || row.address_locality || undefined,
+          marketBounds,
+        })
         await getSupabaseAdmin()
           .from('prospect_intakes')
           .update({
@@ -219,10 +262,18 @@ export async function provisionFromIntakeJob(
         return
       }
 
-      aiWidgetConfig = await buildAiWidgetConfigFromHints(widgetHints, row.id)
+      aiWidgetConfig = await buildAiWidgetConfigFromHints(
+        widgetHints,
+        row.id,
+        row.service_area || row.address_locality
+      )
     }
   } else {
-    aiWidgetConfig = await buildAiWidgetConfigFromHints(hints, row.id)
+    aiWidgetConfig = await buildAiWidgetConfigFromHints(
+      hints,
+      row.id,
+      row.service_area || row.address_locality
+    )
   }
 
   const result = await provisionTenant({

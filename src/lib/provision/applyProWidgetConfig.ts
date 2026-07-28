@@ -14,14 +14,27 @@ import {
   type PricingModel,
 } from '@/lib/rooms'
 import { resolveIndustrySlug, INDUSTRY_CONFIGS } from '@/lib/catalog/serviceCatalog'
-import { getEngineProfile } from '@/lib/catalog/engineProfiles'
+import { resolveServiceTiers } from '@/lib/catalog/servicePriceCatalog'
+import { getServiceUxDefaults } from '@/lib/catalog/serviceUxDefaults'
+import { assertOfferedServicesPriced, roomIsUnpriced } from '@/lib/pricingGuard'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 
-function defaultTierNames(hints: WidgetConfigHints) {
+function defaultTierNames(hints: WidgetConfigHints, generated?: GeneratedWidgetConfig) {
   return {
-    basic: hints.tierNames?.basic?.trim() || 'Basic',
-    standard: hints.tierNames?.standard?.trim() || 'Standard',
-    premium: hints.tierNames?.premium?.trim() || 'Premium',
+    basic: generated?.tierNames?.basic?.trim() || hints.tierNames?.basic?.trim() || 'Basic',
+    standard:
+      generated?.tierNames?.standard?.trim() || hints.tierNames?.standard?.trim() || 'Standard',
+    premium:
+      generated?.tierNames?.premium?.trim() || hints.tierNames?.premium?.trim() || 'Premium',
+  }
+}
+
+function defaultTierColors(generated?: GeneratedWidgetConfig) {
+  if (!generated?.tierColors) return undefined
+  return {
+    basic: generated.tierColors.basic || '#94a3b8',
+    standard: generated.tierColors.standard || '#64748b',
+    premium: generated.tierColors.premium || '#1e293b',
   }
 }
 
@@ -63,30 +76,28 @@ function buildDomainConfigFromHints(hints: WidgetConfigHints): DomainConfig {
   }
 }
 
-
-function getDefaultPricing(hints: WidgetConfigHints) {
+function getDefaultPricing(hints: WidgetConfigHints, serviceName?: string) {
   const slug = resolveIndustrySlug({
     industry: hints.industry,
     services: hints.services,
     other_services: hints.otherServices,
   })
-  const profile = getEngineProfile(slug)
-  const defaultTier = profile?.serviceDefaults?.[0]?.tiers
-  return {
-    basic: defaultTier?.[0]?.priceHint ?? 45,
-    standard: defaultTier?.[1]?.priceHint ?? 65,
-    premium: defaultTier?.[2]?.priceHint ?? 110,
-  }
+  return resolveServiceTiers(serviceName || hints.services?.[0] || 'Standard Service', slug)
 }
 
 /** Seed room_pricing for default rooms the contractor selected in intake. */
 export function buildRoomPricingFromHints(hints: WidgetConfigHints): RoomPricing {
   const pricing = cloneDefaultRoomPricing()
   const seed = hints.seedPricing
-  const defaults = getDefaultPricing(hints)
+  const slug = resolveIndustrySlug({
+    industry: hints.industry,
+    services: hints.services,
+    other_services: hints.otherServices,
+  })
 
   for (const service of hints.services ?? []) {
     if (!isRoomType(service)) continue
+    const defaults = resolveServiceTiers(service, slug)
     if (hints.pricingModel === 'fixed') {
       pricing[service] = {
         basic: seed?.basic ?? 0,
@@ -116,19 +127,62 @@ function mergeGeneratedConfig(
 ): GeneratedWidgetConfig {
   const offered = new Set(hints.services ?? [])
   const disabledDefaultRooms = ROOM_TYPES.filter((room) => !offered.has(room))
+  const slug = resolveIndustrySlug({
+    industry: hints.industry,
+    services: hints.services,
+    other_services: hints.otherServices,
+  })
 
-  const customRooms = [...(generated.customRooms ?? [])]
+  const enrichRoom = (r: GeneratedWidgetConfig['customRooms'][number]) => {
+    const ux = getServiceUxDefaults(r.name, slug)
+    const tiers = roomIsUnpriced(r) ? resolveServiceTiers(r.name, slug) : r
+    return {
+      name: r.name,
+      basic: tiers.basic,
+      standard: tiers.standard,
+      premium: tiers.premium,
+      icon: r.icon || ux.icon,
+      requiresPackage:
+        typeof r.requiresPackage === 'boolean' ? r.requiresPackage : ux.requiresPackage,
+      requiresMaterials:
+        typeof r.requiresMaterials === 'boolean' ? r.requiresMaterials : ux.requiresMaterials,
+    }
+  }
+
+  const customRooms = [...(generated.customRooms ?? [])].map(enrichRoom)
   const other = hints.otherServices?.trim()
   if (other && !customRooms.some((r) => r.name.toLowerCase() === other.toLowerCase())) {
     const seed = hints.seedPricing
-    const defaults = getDefaultPricing(hints)
+    const defaults = getDefaultPricing(hints, other)
+    const ux = getServiceUxDefaults(other, slug)
     customRooms.push({
       name: other,
       basic: hints.pricingModel === 'fixed' ? (seed?.basic ?? 0) : (seed?.basic ?? defaults.basic),
       standard: seed?.standard ?? defaults.standard,
       premium: seed?.premium ?? defaults.premium,
+      icon: ux.icon,
+      requiresPackage: ux.requiresPackage,
+      requiresMaterials: ux.requiresMaterials,
     })
   }
+
+  // Ensure every offered service has a room row.
+  const existingNames = new Set(customRooms.map((r) => r.name.toLowerCase().trim()))
+  for (const service of hints.services ?? []) {
+    if (!service.trim() || existingNames.has(service.toLowerCase().trim())) continue
+    if (isRoomType(service)) continue
+    const defaults = resolveServiceTiers(service, slug)
+    const ux = getServiceUxDefaults(service, slug)
+    customRooms.push({
+      name: service,
+      ...defaults,
+      icon: ux.icon,
+      requiresPackage: ux.requiresPackage,
+      requiresMaterials: ux.requiresMaterials,
+    })
+  }
+
+  assertOfferedServicesPriced(customRooms)
 
   const customAddOns =
     generated.customAddOns?.length
@@ -166,9 +220,29 @@ export async function applyProWidgetConfig(
   hints: WidgetConfigHints
 ): Promise<void> {
   const admin = getSupabaseAdmin()
-  const generated = mergeGeneratedConfig(hints, await buildWidgetConfig(hints))
-  const tierNames = defaultTierNames(hints)
-  const roomPricing = buildRoomPricingFromHints(hints)
+  let enriched = hints
+  if (!hints.marketBounds?.length && (hints.metro || hints.services?.length)) {
+    try {
+      const { loadMarketBounds } = await import('@/lib/pricing/marketBounds')
+      const slug = resolveIndustrySlug({
+        industry: hints.industry,
+        services: hints.services,
+        other_services: hints.otherServices,
+      })
+      const marketBounds = await loadMarketBounds({
+        metro: hints.metro,
+        services: hints.services,
+        industrySlug: slug,
+      })
+      if (marketBounds.length) enriched = { ...hints, marketBounds }
+    } catch (err) {
+      console.warn('[applyProWidgetConfig] marketBounds skipped:', err)
+    }
+  }
+  const generated = mergeGeneratedConfig(enriched, await buildWidgetConfig(enriched))
+  const tierNames = defaultTierNames(enriched, generated)
+  const tierColors = defaultTierColors(generated)
+  const roomPricing = buildRoomPricingFromHints(enriched)
 
   await admin.from('contractor_addons').delete().eq('contractor_id', contractorId)
   await admin.from('contractor_finishes').delete().eq('contractor_id', contractorId)
@@ -190,6 +264,7 @@ export async function applyProWidgetConfig(
     domain_config: buildDomainConfigFromHints(hints),
     industry: hints.industry?.trim() || undefined,
   }
+  if (tierColors) patch.tier_colors = tierColors
 
   try {
     const { pickWidgetThemeForSite } = await import('@/lib/widgetThemes')
@@ -230,6 +305,7 @@ async function insertGeneratedCatalog(
   generated: GeneratedWidgetConfig
 ) {
   if (generated.customRooms?.length) {
+    assertOfferedServicesPriced(generated.customRooms)
     const { error } = await admin.from('contractor_rooms').insert(
       generated.customRooms.map((r) => ({
         contractor_id: contractorId,
@@ -237,6 +313,9 @@ async function insertGeneratedCatalog(
         price_basic: r.basic || 0,
         price_standard: r.standard || 0,
         price_premium: r.premium || 0,
+        icon: r.icon || null,
+        requires_package: r.requiresPackage !== false,
+        requires_materials: !!r.requiresMaterials,
       }))
     )
     if (error) throw error

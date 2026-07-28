@@ -45,7 +45,7 @@ export async function GET(req: Request) {
       // Selecting brand fields + pricing fields so the widget has everything it needs.
       // price_per_ft_* are DEPRECATED; kept in the response during the room_pricing
       // rollout for older widget builds and will be removed in a follow-up.
-      .select('company_name, primary_color_hex, price_per_ft_basic, price_per_ft_standard, price_per_ft_premium, price_drawer, price_shoe_rack, room_pricing, disabled_default_rooms, disabled_default_finishes, domain_config, tier_names, widget_theme_id')
+      .select('company_name, primary_color_hex, price_per_ft_basic, price_per_ft_standard, price_per_ft_premium, price_drawer, price_shoe_rack, room_pricing, disabled_default_rooms, disabled_default_finishes, domain_config, tier_names, tier_colors, widget_theme_id')
       .eq('id', contractorId)
       .maybeSingle()
 
@@ -74,7 +74,7 @@ export async function GET(req: Request) {
     // Fetch contractor-defined custom rooms
     const { data: roomsData } = await supabase
       .from('contractor_rooms')
-      .select('id, name, price_basic, price_standard, price_premium')
+      .select('id, name, price_basic, price_standard, price_premium, icon, requires_package, requires_materials')
       .eq('contractor_id', contractorId)
       .order('created_at', { ascending: true })
 
@@ -93,6 +93,16 @@ export async function GET(req: Request) {
       standard: tierNamesRaw?.standard || 'Standard',
       premium: tierNamesRaw?.premium || 'Premium',
     }
+
+    const tierColorsRaw = (data as { tier_colors?: { basic?: string; standard?: string; premium?: string } | null })
+      .tier_colors
+    const tierColors = tierColorsRaw
+      ? {
+          basic: tierColorsRaw.basic || '#94a3b8',
+          standard: tierColorsRaw.standard || '#64748b',
+          premium: tierColorsRaw.premium || '#1e293b',
+        }
+      : null
 
     const widgetTheme = resolveWidgetTheme(
       (data as { widget_theme_id?: string | null }).widget_theme_id
@@ -113,6 +123,7 @@ export async function GET(req: Request) {
         ...themeVars,
       },
       tierNames,
+      tierColors,
       // DEPRECATED: legacy global tiers, kept for older widget builds.
       pricePerFtBasic: data.price_per_ft_basic,
       pricePerFtStandard: data.price_per_ft_standard,
@@ -126,6 +137,9 @@ export async function GET(req: Request) {
         basic: Number(r.price_basic) || 0,
         standard: Number(r.price_standard) || 0,
         premium: Number(r.price_premium) || 0,
+        icon: (r as { icon?: string | null }).icon || null,
+        requiresPackage: (r as { requires_package?: boolean }).requires_package !== false,
+        requiresMaterials: !!(r as { requires_materials?: boolean }).requires_materials,
       })),
       // Contractor-defined material colors. tier maps to the per-foot pricing.
       customFinishes: (finishesData || []).map((f) => ({

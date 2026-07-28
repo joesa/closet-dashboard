@@ -1,10 +1,20 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { resolveServiceTiers } from '@/lib/catalog/servicePriceCatalog'
+import { getServiceUxDefaults } from '@/lib/catalog/serviceUxDefaults'
+import { assertOfferedServicesPriced } from '@/lib/pricingGuard'
+import { resolveIndustrySlug } from '@/lib/catalog/serviceCatalog'
 
 export type EngagementModel = 'quote' | 'order' | 'booking' | 'ticket' | string
 
 export type AppendEngagementService = {
   title: string
   description?: string
+  basic?: number
+  standard?: number
+  premium?: number
+  icon?: string
+  requiresPackage?: boolean
+  requiresMaterials?: boolean
 }
 
 export type AppendEngagementResult = {
@@ -17,7 +27,7 @@ function norm(name: string): string {
   return name.trim().toLowerCase()
 }
 
-const DEFAULT_TIERS = { basic: 45, standard: 65, premium: 110 }
+const DEFAULT_TIERS = { basic: 89, standard: 175, premium: 385 }
 
 /**
  * Append brief-introduced services into the engagement engine tables.
@@ -81,7 +91,16 @@ async function appendQuote(
   const existingNames = new Set(
     rows.map((r) => norm(typeof r.name === 'string' ? r.name : '')).filter(Boolean)
   )
-  const tiers = averageTiers(rows)
+
+  const { data: settings } = await supabase
+    .from('contractor_settings')
+    .select('industry')
+    .eq('id', contractorId)
+    .maybeSingle()
+  const industrySlug = resolveIndustrySlug({
+    industry: typeof settings?.industry === 'string' ? settings.industry : null,
+    services: services.map((s) => s.title),
+  })
 
   const toInsert = []
   for (const s of services) {
@@ -91,16 +110,37 @@ async function appendQuote(
       continue
     }
     existingNames.add(norm(title))
+    const catalog = resolveServiceTiers(title, industrySlug)
+    const avg = averageTiers(rows)
+    const tiers = {
+      basic: typeof s.basic === 'number' ? s.basic : catalog.basic || avg.basic,
+      standard: typeof s.standard === 'number' ? s.standard : catalog.standard || avg.standard,
+      premium: typeof s.premium === 'number' ? s.premium : catalog.premium || avg.premium,
+    }
+    const ux = getServiceUxDefaults(title, industrySlug)
     toInsert.push({
       contractor_id: contractorId,
       name: title,
       price_basic: tiers.basic,
       price_standard: tiers.standard,
       price_premium: tiers.premium,
+      icon: s.icon || ux.icon,
+      requires_package:
+        typeof s.requiresPackage === 'boolean' ? s.requiresPackage : ux.requiresPackage,
+      requires_materials:
+        typeof s.requiresMaterials === 'boolean' ? s.requiresMaterials : ux.requiresMaterials,
     })
     appended.push(title)
   }
   if (toInsert.length) {
+    assertOfferedServicesPriced(
+      toInsert.map((r) => ({
+        name: r.name,
+        basic: r.price_basic,
+        standard: r.price_standard,
+        premium: r.price_premium,
+      }))
+    )
     const { error: insErr } = await supabase.from('contractor_rooms').insert(toInsert)
     if (insErr) {
       warnings.push(`Failed to insert contractor_rooms: ${insErr.message}`)

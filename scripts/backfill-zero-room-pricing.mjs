@@ -7,11 +7,12 @@
  * Apply:    node scripts/backfill-zero-room-pricing.mjs --apply
  *
  * Only rooms whose basic+standard+premium sum to 0 are touched, so any room a
- * contractor has already priced is left untouched. Pricing mirrors the same
- * engineProfiles.ts serviceDefaults the fixed provisioning path now uses.
+ * contractor has already priced is left untouched. Prefers the per-service
+ * catalog (servicePriceCatalog) then falls back to engineProfiles defaults.
  */
 import { createClient } from '@supabase/supabase-js'
-import { getEngineProfile } from '../src/lib/catalog/engineProfiles.ts'
+import { resolveServiceTiers } from '../src/lib/catalog/servicePriceCatalog.ts'
+import { resolveIndustrySlug } from '../src/lib/catalog/serviceCatalog.ts'
 
 const APPLY = process.argv.includes('--apply')
 
@@ -22,35 +23,6 @@ if (!url || !key) {
   process.exit(1)
 }
 const supa = createClient(url, key, { auth: { persistSession: false } })
-
-// Human industry label (contractor_settings.industry) -> engine-profile slug.
-// The slug only selects which engineProfiles bucket supplies priceHints; all
-// default-quote trades share the same fallback numbers.
-const LABEL_TO_SLUG = {
-  'Pet Services': 'pet-services',
-  'Medical Care': 'medical-clinic',
-  'Personal Training & Fitness': 'personal-training',
-  'Beauty & Grooming': 'beauty-salon',
-  'Restaurants, Bars & Cafes': 'restaurants-bars',
-  'Cleaning Services': 'cleaning',
-  'Landscaping': 'landscaping',
-  'Tree Service': 'tree-service',
-  // Everything below resolves to the default quote profile (89/249/1200):
-  'Electrical': 'electrical',
-  'Custom Closets & Storage': 'custom-closets',
-  'Roofing': 'roofing',
-  'Plumbing': 'plumbing',
-}
-
-function tierDefaults(label) {
-  const slug = LABEL_TO_SLUG[label] || 'unknown-default-quote'
-  const tiers = getEngineProfile(slug)?.serviceDefaults?.[0]?.tiers ?? []
-  const hintFor = (t) => tiers.find((x) => x.tier === t)?.priceHint
-  const standard = hintFor('standard') ?? tiers[0]?.priceHint ?? 65
-  const basic = hintFor('basic') ?? Math.max(1, Math.round(standard * 0.7))
-  const premium = hintFor('premium') ?? Math.round(standard * 1.6)
-  return { basic, standard, premium }
-}
 
 async function main() {
   const { data: rooms, error } = await supa
@@ -82,7 +54,11 @@ async function main() {
       industryCache.set(room.contractor_id, cs || {})
     }
     const cs = industryCache.get(room.contractor_id)
-    const d = tierDefaults(cs.industry)
+    const slug = resolveIndustrySlug({
+      industry: cs.industry,
+      services: [room.name],
+    })
+    const d = resolveServiceTiers(room.name, slug)
     console.log(
       `${APPLY ? 'UPDATE' : 'DRY  '} [${cs.company_name} · ${cs.industry}] ${room.name} -> ${d.basic}/${d.standard}/${d.premium}`
     )

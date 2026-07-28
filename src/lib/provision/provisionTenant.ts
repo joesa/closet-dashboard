@@ -54,8 +54,13 @@ import {
   defaultProductSpecs,
 } from '@/lib/provision/defaultCopy'
 import { generateImageVariants } from '@/lib/ai/generateImagesBatch'
-import { getEngineProfile } from '@/lib/catalog/engineProfiles'
 import type { IndustrySlug } from '@/lib/catalog/types'
+import {
+  resolveServiceTiers,
+  type TierDefaults,
+} from '@/lib/catalog/servicePriceCatalog'
+import { getServiceUxDefaults } from '@/lib/catalog/serviceUxDefaults'
+import { assertOfferedServicesPriced, roomIsUnpriced } from '@/lib/pricingGuard'
 import {
   DEFAULT_DOMAIN_CONFIG,
   ROOM_TYPES,
@@ -86,35 +91,14 @@ function inferDisabledDefaultRooms(services: string[] | null | undefined): strin
   return ROOM_TYPES.filter((room) => !offered.has(room))
 }
 
-type CustomRoomInput = { name: string; basic?: number; standard?: number; premium?: number }
-
-type TierDefaults = { basic: number; standard: number; premium: number }
-
-// Sensible starting prices for a business's industry, sourced from the engine
-// profile's serviceDefaults priceHints (engineProfiles.ts). Used whenever no
-// AI/user-supplied pricing is available so the quote/booking/ticket/order
-// calculator never ships all-$0 tiers. Falls back to generic trade prices when
-// a profile omits a given tier.
-function getEngineTierDefaults(slug: IndustrySlug): TierDefaults {
-  const tiers = getEngineProfile(slug)?.serviceDefaults?.[0]?.tiers ?? []
-  const hintFor = (tier: 'basic' | 'standard' | 'premium') =>
-    tiers.find((t) => t.tier === tier)?.priceHint
-  const standard = hintFor('standard') ?? tiers[0]?.priceHint ?? 65
-  const basic = hintFor('basic') ?? Math.max(1, Math.round(standard * 0.7))
-  const premium = hintFor('premium') ?? Math.round(standard * 1.6)
-  return { basic, standard, premium }
-}
-
-// A room is effectively unpriced when every tier is missing or 0. (A flat_tiered
-// room legitimately has basic=0 but a non-zero standard/premium, so we only
-// treat the room as unpriced when the whole thing sums to 0.)
-function roomIsUnpriced(room: CustomRoomInput): boolean {
-  return (
-    (Number(room.basic) || 0) +
-      (Number(room.standard) || 0) +
-      (Number(room.premium) || 0) ===
-    0
-  )
+type CustomRoomInput = {
+  name: string
+  basic?: number
+  standard?: number
+  premium?: number
+  icon?: string
+  requiresPackage?: boolean
+  requiresMaterials?: boolean
 }
 
 // The admin's "Services Offered" checkboxes (or, for a prospect intake, the
@@ -128,22 +112,23 @@ function roomIsUnpriced(room: CustomRoomInput): boolean {
 function mergeCustomRoomsWithServices(
   customRooms: CustomRoomInput[],
   services: string[] | null | undefined,
-  engineDefaults: TierDefaults
+  industrySlug: IndustrySlug
 ): CustomRoomInput[] {
-  // Prefer the average of whatever pricing the AI already generated so newly
-  // added services stay in the same ballpark; if nothing is priced yet, fall
-  // back to the industry's engine-profile defaults so we never seed all-$0.
-  const avg = (key: 'basic' | 'standard' | 'premium') => {
-    const values = customRooms
-      .map((r) => r[key])
-      .filter((v): v is number => typeof v === 'number' && v > 0)
-    if (values.length === 0) return engineDefaults[key]
-    return Math.round(values.reduce((sum, v) => sum + v, 0) / values.length)
-  }
-  const defaults: TierDefaults = {
-    basic: avg('basic'),
-    standard: avg('standard'),
-    premium: avg('premium'),
+  const withUx = (name: string, tiers: TierDefaults, room?: CustomRoomInput): CustomRoomInput => {
+    const ux = getServiceUxDefaults(name, industrySlug)
+    return {
+      name,
+      basic: tiers.basic,
+      standard: tiers.standard,
+      premium: tiers.premium,
+      icon: room?.icon || ux.icon,
+      requiresPackage:
+        typeof room?.requiresPackage === 'boolean' ? room.requiresPackage : ux.requiresPackage,
+      requiresMaterials:
+        typeof room?.requiresMaterials === 'boolean'
+          ? room.requiresMaterials
+          : ux.requiresMaterials,
+    }
   }
 
   const existingNames = new Set(customRooms.map((r) => r.name.toLowerCase().trim()))
@@ -151,14 +136,28 @@ function mergeCustomRoomsWithServices(
     (s) => s.trim() && !existingNames.has(s.toLowerCase().trim())
   )
 
-  // Backfill sensible prices onto any AI/user room that came through entirely
-  // unpriced (the root cause of the all-$0 calculator), then append rooms for
-  // every selected service the AI never generated.
-  const priced = customRooms.map((r) =>
-    roomIsUnpriced(r) ? { ...r, ...defaults } : r
-  )
+  // Backfill per-service catalog prices onto any AI/user room that came through
+  // entirely unpriced (the root cause of the all-$0 calculator), then append
+  // rooms for every selected service the AI never generated.
+  const priced = customRooms.map((r) => {
+    if (!roomIsUnpriced(r)) {
+      const ux = getServiceUxDefaults(r.name, industrySlug)
+      return {
+        ...r,
+        icon: r.icon || ux.icon,
+        requiresPackage:
+          typeof r.requiresPackage === 'boolean' ? r.requiresPackage : ux.requiresPackage,
+        requiresMaterials:
+          typeof r.requiresMaterials === 'boolean' ? r.requiresMaterials : ux.requiresMaterials,
+      }
+    }
+    return withUx(r.name, resolveServiceTiers(r.name, industrySlug), r)
+  })
 
-  return [...priced, ...missing.map((name) => ({ name, ...defaults }))]
+  return [
+    ...priced,
+    ...missing.map((name) => withUx(name, resolveServiceTiers(name, industrySlug))),
+  ]
 }
 
 function isMissingDesignVariantColumn(error: unknown): boolean {
@@ -1151,12 +1150,16 @@ export async function provisionTenant(
 
   const aiCustomRooms =
     (aiWidgetConfig as { customRooms?: CustomRoomInput[] } | null)?.customRooms ?? []
-  const engineTierDefaults = getEngineTierDefaults(beforeAfterContext.industry)
+  const engineTierDefaults = resolveServiceTiers(
+    aiCustomRooms[0]?.name || services?.[0] || 'Standard Service',
+    beforeAfterContext.industry
+  )
   const mergedCustomRooms = mergeCustomRoomsWithServices(
     aiCustomRooms,
     services,
-    engineTierDefaults
+    beforeAfterContext.industry
   )
+  assertOfferedServicesPriced(mergedCustomRooms)
   if (isOrderBusiness) {
     // Order-industry businesses (see EngagementModel) — seed the menu/catalog
     // items into the menu_items table. If the AI sandbox generated customRooms,
@@ -1233,6 +1236,9 @@ export async function provisionTenant(
           price_basic: r.basic || 0,
           price_standard: r.standard || 0,
           price_premium: r.premium || 0,
+          icon: r.icon || null,
+          requires_package: r.requiresPackage !== false,
+          requires_materials: !!r.requiresMaterials,
         }))
       )
     }
@@ -1289,6 +1295,9 @@ export async function provisionTenant(
   const aiTierNames = widgetCfg.tierNames as
     | { basic?: string; standard?: string; premium?: string }
     | undefined
+  const aiTierColors = widgetCfg.tierColors as
+    | { basic?: string; standard?: string; premium?: string }
+    | undefined
   const aiIndustry =
     typeof widgetCfg.industry === 'string' && widgetCfg.industry.trim().length > 0
       ? widgetCfg.industry.trim()
@@ -1305,6 +1314,7 @@ export async function provisionTenant(
       disabled_default_rooms: disabledRooms,
       ...(disabledFinishes.length > 0 ? { disabled_default_finishes: disabledFinishes } : {}),
       ...(aiTierNames ? { tier_names: aiTierNames } : {}),
+      ...(aiTierColors ? { tier_colors: aiTierColors } : {}),
       industry: resolvedIndustryLabel,
       ...(aiDomainConfig ? { domain_config: aiDomainConfig } : {}),
     })

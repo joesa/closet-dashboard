@@ -18,6 +18,7 @@ import {
   listWidgetThemesForAdmin,
   resolveWidgetTheme,
 } from '@/lib/widgetThemes'
+import { assertOfferedServicesPriced, roomIsUnpriced } from '@/lib/pricingGuard'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -250,6 +251,7 @@ export async function PATCH(
       roomPricing?: unknown
       domainConfig?: unknown
       tierNames?: unknown
+      tierColors?: unknown
       disabledDefaultRooms?: unknown
       disabledDefaultFinishes?: unknown
       widgetThemeId?: unknown
@@ -269,6 +271,14 @@ export async function PATCH(
         basic: typeof t.basic === 'string' ? t.basic : 'Basic',
         standard: typeof t.standard === 'string' ? t.standard : 'Standard',
         premium: typeof t.premium === 'string' ? t.premium : 'Premium',
+      }
+    }
+    if (s.tierColors && typeof s.tierColors === 'object') {
+      const t = s.tierColors as Record<string, unknown>
+      patch.tier_colors = {
+        basic: typeof t.basic === 'string' ? t.basic : '#94a3b8',
+        standard: typeof t.standard === 'string' ? t.standard : '#64748b',
+        premium: typeof t.premium === 'string' ? t.premium : '#1e293b',
       }
     }
     if (Array.isArray(s.disabledDefaultRooms)) {
@@ -313,6 +323,9 @@ export async function PATCH(
       price_basic?: number
       price_standard?: number
       price_premium?: number
+      icon?: string | null
+      requires_package?: boolean
+      requires_materials?: boolean
     }
     if (!u.id) {
       return NextResponse.json({ error: 'roomUpdate.id required' }, { status: 400 })
@@ -322,9 +335,49 @@ export async function PATCH(
     if (typeof u.price_basic === 'number') patch.price_basic = u.price_basic
     if (typeof u.price_standard === 'number') patch.price_standard = u.price_standard
     if (typeof u.price_premium === 'number') patch.price_premium = u.price_premium
+    if (u.icon !== undefined) patch.icon = u.icon
+    if (typeof u.requires_package === 'boolean') patch.requires_package = u.requires_package
+    if (typeof u.requires_materials === 'boolean') patch.requires_materials = u.requires_materials
     if (Object.keys(patch).length === 0) {
       return NextResponse.json({ error: 'No room fields to update' }, { status: 400 })
     }
+
+    // Reject saves that would leave an offered room all-zero.
+    if (
+      u.price_basic !== undefined ||
+      u.price_standard !== undefined ||
+      u.price_premium !== undefined
+    ) {
+      const { data: existingRoom } = await supabase
+        .from('contractor_rooms')
+        .select('name, price_basic, price_standard, price_premium')
+        .eq('id', u.id)
+        .eq('contractor_id', widgetId)
+        .maybeSingle()
+      const merged = {
+        name: (typeof u.name === 'string' ? u.name : existingRoom?.name) || 'Service',
+        basic: typeof u.price_basic === 'number' ? u.price_basic : Number(existingRoom?.price_basic) || 0,
+        standard:
+          typeof u.price_standard === 'number'
+            ? u.price_standard
+            : Number(existingRoom?.price_standard) || 0,
+        premium:
+          typeof u.price_premium === 'number'
+            ? u.price_premium
+            : Number(existingRoom?.price_premium) || 0,
+      }
+      if (roomIsUnpriced(merged)) {
+        try {
+          assertOfferedServicesPriced([merged])
+        } catch (err) {
+          return NextResponse.json(
+            { error: err instanceof Error ? err.message : 'Room pricing cannot be all zero' },
+            { status: 400, headers: NO_STORE }
+          )
+        }
+      }
+    }
+
     const { error } = await supabase
       .from('contractor_rooms')
       .update(patch)
@@ -491,12 +544,28 @@ export async function POST(
         { status: 400 }
       )
     }
+    const price_basic = Number(data.price_basic) || 0
+    const price_standard = Number(data.price_standard) || 0
+    const price_premium = Number(data.price_premium) || 0
+    try {
+      assertOfferedServicesPriced([
+        { name, basic: price_basic, standard: price_standard, premium: price_premium },
+      ])
+    } catch (err) {
+      return NextResponse.json(
+        { error: err instanceof Error ? err.message : 'Room pricing cannot be all zero' },
+        { status: 400, headers: NO_STORE }
+      )
+    }
     row = {
       ...row,
       name,
-      price_basic: Number(data.price_basic) || 0,
-      price_standard: Number(data.price_standard) || 0,
-      price_premium: Number(data.price_premium) || 0,
+      price_basic,
+      price_standard,
+      price_premium,
+      icon: typeof data.icon === 'string' ? data.icon : null,
+      requires_package: data.requires_package !== false,
+      requires_materials: !!data.requires_materials,
     }
   } else if (kind === 'finish') {
     table = 'contractor_finishes'
