@@ -40,6 +40,17 @@ describe('classifySurgicalIntent', () => {
     ).toBe('service_drawer')
   })
 
+  it('routes image lightbox before clickable cards', () => {
+    expect(
+      classifySurgicalIntent(
+        'When images are clicked on they should enlarge. Use lightbox for this.'
+      ).kind
+    ).toBe('image_lightbox')
+    expect(
+      classifySurgicalIntent('Make portfolio photos open in a lightbox').kind
+    ).toBe('image_lightbox')
+  })
+
   it('routes clickable cards when no drawer asked', () => {
     expect(
       classifySurgicalIntent('Make the service cards clickable').kind

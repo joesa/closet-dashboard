@@ -26,6 +26,12 @@ import {
   wireServiceCardDrawers,
 } from '@/lib/ai/surgicalServiceDrawer'
 import {
+  ensureImageLightboxCss,
+  lightboxPriorityPaths,
+  looksLikeImageLightboxRequest,
+  wireImageLightboxes,
+} from '@/lib/ai/surgicalImageLightbox'
+import {
   classifySurgicalIntent,
   looksLikeHeroImageSurgicalRequest,
   looksLikeVideoSurgicalRequest,
@@ -737,6 +743,67 @@ async function trySurgicalServiceDrawerShortcut(opts: {
 }
 
 /**
+ * Deterministic: wrap content images in CSS-only lightbox labels (inline-safe).
+ * Prefer /portfolio (and gallery aliases); skip logos, nav, and service-drawer faces.
+ */
+async function trySurgicalImageLightboxShortcut(opts: {
+  tenantId: string
+  prompt: string
+  base: CustomSiteConfig
+}): Promise<GenerateCustomSiteResult | null> {
+  if (!looksLikeImageLightboxRequest(opts.prompt)) return null
+
+  const draft = cloneCustomConfig(opts.base)
+  const changedPages: string[] = []
+  let total = 0
+  const paths = lightboxPriorityPaths(
+    opts.prompt || '',
+    Object.keys(draft.pages)
+  )
+  for (const path of paths) {
+    const page = draft.pages[path]
+    if (!page?.html) continue
+    const { html, count } = wireImageLightboxes(page.html)
+    if (count > 0) {
+      draft.pages[path] = { ...page, html }
+      changedPages.push(path)
+      total += count
+    }
+  }
+
+  const beforeCss = draft.globalCss || ''
+  draft.globalCss = ensureImageLightboxCss(beforeCss)
+  if (draft.globalCss !== beforeCss && !changedPages.includes('(globalCss)')) {
+    changedPages.push('(globalCss)')
+  }
+
+  if (total === 0) {
+    return {
+      draft: opts.base,
+      warnings: [],
+      errors: [],
+      reply:
+        'Could not find content images to wire into a lightbox (logos, nav, linked images, and service-drawer faces are skipped). Check Portfolio/gallery pages, or attach the images first.',
+      intent: 'surgical',
+      changedPages: [],
+    }
+  }
+
+  const portfolioHit = changedPages.some((p) =>
+    /\/(portfolio|gallery|work|projects)/i.test(p)
+  )
+  return persistSurgicalShortcutDraft({
+    tenantId: opts.tenantId,
+    draft,
+    changedPages,
+    warnings: [],
+    reply: `Wired ${total} image(s) to enlarge on click with a CSS-only lightbox (Inline-safe — no JavaScript)${
+      portfolioHit ? ', including Portfolio/gallery' : ''
+    }. Preview draft and click a photo to confirm.`,
+  })
+}
+
+/**
  * Deterministic: wrap service/product cards in links + append .clickable-card CSS.
  * Never replaces globalCss wholesale. Skips when a drawer was requested.
  */
@@ -1029,6 +1096,15 @@ export async function generateCustomSiteDraft(opts: {
         base,
       })
       if (drawerShortcut) return drawerShortcut
+    }
+
+    if (route.kind === 'image_lightbox') {
+      const lightboxShortcut = await trySurgicalImageLightboxShortcut({
+        tenantId: opts.tenantId,
+        prompt: opts.prompt || '',
+        base,
+      })
+      if (lightboxShortcut) return lightboxShortcut
     }
 
     if (route.kind === 'clickable_cards') {
@@ -2471,7 +2547,7 @@ Hard rules:
 2. PRESERVE layout, structure, CSS classes, colors, navigation, and the widget placeholder (${WIDGET_PLACEHOLDER}) unless asked to change them. Imagery is preserved UNLESS the admin asked to change a hero/photo/background — then you MUST replace that media URL.
 3. Prefer text/copy edits inside existing markup — swap wording, keep the same tags and classes. For hero/image swaps, keep the same section markup and only change the image URL + background-size/object-fit as requested.
 4. Return ONLY pages you actually changed under "pages". List every untouched path in "unchangedPages".
-5. Set "globalCss" to null unless they explicitly asked to restyle site-wide CSS. For small additive rules (e.g. .clickable-card), use "globalCssAppend" (string) or page-level "css" — NEVER replace the whole stylesheet with a snippet. For service-card side drawers in inline mode, use CSS-only checkbox + label (no <script>, no javascript:, no ?service= query hacks).
+5. Set "globalCss" to null unless they explicitly asked to restyle site-wide CSS. For small additive rules (e.g. .clickable-card), use "globalCssAppend" (string) or page-level "css" — NEVER replace the whole stylesheet with a snippet. For service-card side drawers in inline mode, use CSS-only checkbox + label (no <script>, no javascript:, no ?service= query hacks). For image enlarge/lightbox requests, wrap EVERY content <img> (especially /portfolio) in <label class="img-lightbox"><input type="checkbox" class="lightbox-toggle"><img …></label> and append lightbox CSS — do not stop after Process/Financing.
 6. If a page is unchanged, omit it from "pages" entirely (do not echo the full original HTML).
 7. mode stays "${opts.mode}". Do not change render mode.
 8. HTML is BODY CONTENT ONLY. No <script> in inline mode. No javascript: URLs. Keep existing class= attributes and <header>/<nav>/<footer> landmarks. Inline event handlers are stripped on render.

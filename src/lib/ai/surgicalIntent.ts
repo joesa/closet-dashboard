@@ -1,12 +1,13 @@
 /**
  * Rule-based surgical intent router.
- * Fixed priority: video → hero → contact → drawer → clickable → ops → open_ended.
+ * Fixed priority: video → hero → contact → drawer → lightbox → clickable → ops → open_ended.
  */
 
 import { looksLikeContactSurgicalRequest } from '@/lib/ai/surgicalContactReplace'
 import {
   looksLikeClickableCardsRequest,
 } from '@/lib/ai/surgicalIntegrity'
+import { looksLikeImageLightboxRequest } from '@/lib/ai/surgicalImageLightbox'
 import { looksLikeServiceDrawerRequest } from '@/lib/ai/surgicalServiceDrawer'
 
 export type SurgicalRouteKind =
@@ -14,6 +15,7 @@ export type SurgicalRouteKind =
   | 'hero_image'
   | 'contact'
   | 'service_drawer'
+  | 'image_lightbox'
   | 'clickable_cards'
   | 'ops'
   | 'open_ended'
@@ -139,6 +141,10 @@ export function classifySurgicalIntent(
 
   if (looksLikeServiceDrawerRequest(p)) {
     return { kind: 'service_drawer' }
+  }
+
+  if (looksLikeImageLightboxRequest(p)) {
+    return { kind: 'image_lightbox' }
   }
 
   if (looksLikeClickableCardsRequest(p)) {
