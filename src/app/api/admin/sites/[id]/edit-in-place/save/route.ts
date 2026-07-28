@@ -153,12 +153,19 @@ export async function POST(
     }
 
     try {
-      await revalidateTenantSiteCache(tenantId)
+      const origin = req.headers.get('origin') || undefined
+      await revalidateTenantSiteCache(
+        tenantId,
+        origin ? [origin] : undefined
+      )
     } catch (e) {
       console.warn('edit-in-place save revalidate failed', e)
     }
 
-    return NextResponse.json({ ok: true, path }, { headers })
+    return NextResponse.json(
+      { ok: true, path, htmlLength: cleaned.length },
+      { headers }
+    )
   } catch (error) {
     console.error('edit-in-place save error:', error)
     return NextResponse.json(

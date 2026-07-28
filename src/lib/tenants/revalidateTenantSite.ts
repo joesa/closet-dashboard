@@ -2,7 +2,6 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import {
   getTenantPublicUrl,
   isDevHostname,
-  isDnsReadyCustomDomain,
   type PreviewDomainRow,
 } from '@/lib/admin-preview'
 
@@ -13,10 +12,13 @@ import {
  * getConfig.ts + /api/revalidate). Best-effort by design: returns false on
  * any failure and never throws — the site self-heals within 60s regardless.
  *
- * Tries every public hostname for the tenant (not *.localhost), plus optional
- * TENANT_SITES_ORIGIN / VERCEL websites deployment URL.
+ * Tries every public hostname for the tenant (not *.localhost), including
+ * platform subdomains (*.ditchtheform.com), plus optional TENANT_SITES_ORIGIN.
  */
-export async function revalidateTenantSiteCache(tenantId: string): Promise<boolean> {
+export async function revalidateTenantSiteCache(
+  tenantId: string,
+  extraOrigins?: string[]
+): Promise<boolean> {
   const secret = process.env.REVALIDATE_SECRET?.trim()
   if (!secret) return false
 
@@ -33,11 +35,10 @@ export async function revalidateTenantSiteCache(tenantId: string): Promise<boole
     for (const row of rows) {
       const host = (row.hostname || '').trim()
       if (!host || isDevHostname(host)) continue
-      // Prefer verified/DNS-ready, but still try any public hostname.
-      if (isDnsReadyCustomDomain(row) || row.source !== 'platform_subdomain') {
-        const url = getTenantPublicUrl(host)
-        if (url && url !== '#') origins.add(url.replace(/\/$/, ''))
-      }
+      // Always include platform subdomains — edit-in-place / custom-build
+      // saves were silently leaving their unstable_cache stale for 60s.
+      const url = getTenantPublicUrl(host)
+      if (url && url !== '#') origins.add(url.replace(/\/$/, ''))
     }
   } catch (err) {
     console.warn('[revalidateTenantSite] domain lookup failed:', err)
@@ -52,6 +53,17 @@ export async function revalidateTenantSiteCache(tenantId: string): Promise<boole
     .replace(/\/$/, '')
   if (sitesOrigin && /^https?:\/\//i.test(sitesOrigin)) {
     origins.add(sitesOrigin)
+  }
+
+  for (const o of extraOrigins || []) {
+    const cleaned = (o || '').trim().replace(/\/$/, '')
+    if (cleaned && /^https?:\/\//i.test(cleaned) && !isDevHostname(cleaned)) {
+      try {
+        origins.add(new URL(cleaned).origin)
+      } catch {
+        /* ignore */
+      }
+    }
   }
 
   if (origins.size === 0) return false
