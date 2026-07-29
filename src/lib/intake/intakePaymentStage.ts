@@ -93,7 +93,7 @@ export function getIntakePaymentSummary(row: ProspectIntakeRow): IntakePaymentSu
     }
     return {
       stage: 'balance',
-      label: `Balance due (${formatUsd(remainder)})`,
+      label: `Balance due (${formatUsd(remainder)}) — pay after preview approval to launch. Deposit already paid.`,
       checkoutKind: 'balance',
       amountCents: remainder,
       canCheckout: remainder > 0,
