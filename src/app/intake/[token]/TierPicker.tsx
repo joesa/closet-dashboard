@@ -149,12 +149,16 @@ export default function TierPicker({
               )}
               {t.slug === 'ai_premium' && t.depositCents > 0 && (
                 <>
-                  <p className="mt-2 rounded px-2 py-1 text-xs font-medium text-amber-100 bg-amber-500/15">
-                    30% due today: {formatUsd(t.depositCents)} — unlocks AI studio. Balance{' '}
-                    {formatUsd(t.remainderCents)} only if satisfied before launch.
+                  <p className="mt-2 rounded px-2 py-1.5 text-xs font-medium text-amber-100 bg-amber-500/15">
+                    <strong>Today:</strong> {formatUsd(t.depositCents)} (30%) unlocks the AI studio
+                    and starts your build.
+                  </p>
+                  <p className="mt-1 text-xs text-zinc-400">
+                    <strong className="text-zinc-300">Balance:</strong> {formatUsd(t.remainderCents)}{' '}
+                    only after you approve the preview, before launch.
                   </p>
                   <p className="mt-1 text-xs text-emerald-300">
-                    Not satisfied? No balance — deposit returned.
+                    Not satisfied? No balance due — we refund the deposit.
                   </p>
                 </>
               )}

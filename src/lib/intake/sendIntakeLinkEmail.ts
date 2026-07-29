@@ -39,8 +39,9 @@ export async function sendIntakeLinkEmail(opts: {
             <p style="margin:0 0 4px;font-weight:600;">AI Premium${opts.premiumTotalLabel ? ` — ${opts.premiumTotalLabel}` : ''}</p>
             <p style="margin:0 0 12px;font-size:13px;color:#555;">
               Custom AI-generated photos with the AI image studio.
-              ${opts.premiumDepositLabel ? ` ${opts.premiumDepositLabel} (30%) is due today to unlock it.` : ''}
-              ${opts.premiumRemainderLabel ? ` The remaining ${opts.premiumRemainderLabel} is only due once you're happy with the preview, before launch.` : ''}
+              ${opts.premiumDepositLabel ? ` <strong>${opts.premiumDepositLabel} (30%)</strong> is due today to unlock the studio and start the build.` : ''}
+              ${opts.premiumRemainderLabel ? ` The remaining <strong>${opts.premiumRemainderLabel}</strong> is only due after you approve the preview, before launch.` : ''}
+              Not satisfied? You don’t pay the balance — we refund the deposit.
             </p>
             <a href="${opts.verifyPremiumUrl}" style="display:inline-block;background:#6366f1;color:#fff;padding:10px 16px;border-radius:6px;text-decoration:none;font-size:14px;">Pay ${opts.premiumDepositLabel || 'deposit'} &amp; start AI Premium →</a>
           </td>

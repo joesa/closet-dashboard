@@ -106,7 +106,7 @@ export async function createIntakeCheckoutSession(opts: {
       priceId = resolveOneTimePriceId(env.aiPremiumDeposit, amountCents, catalogCents)
       metaKind = 'intake_deposit'
       productName = 'DitchTheForm AI Premium — 30% deposit'
-      description = `30% upfront (${formatUsd(amountCents)}) of ${formatUsd(row.tier_total_cents)} total.`
+      description = `30% deposit (${formatUsd(amountCents)}) of ${formatUsd(row.tier_total_cents)} total. Unlocks AI image studio and starts your site build. Balance due only after you approve the preview before launch; deposit refunded if you decline.`
     } else if (kind === 'balance') {
       amountCents = remainder
       catalogCents = remainder
