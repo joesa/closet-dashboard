@@ -26,7 +26,7 @@ Ops reference for intake, site builds, and Stripe. Automated flows are in-app; u
 | Widget-only | `/signup` (not intake) | — |
 | AI Premium deposit | Auto on tier select or Pay deposit on intake | Refund: intake detail → **Refund deposit** |
 | Preview QA | Wait | **Mark preview approved** → emails pay link |
-| Standard $999 / Premium balance | **Pay to launch** on `/intake/[token]` | Manual: Payment Link with `STRIPE_PRICE_STANDARD_BUILD` or `STRIPE_PRICE_AI_PREMIUM_BALANCE` |
+| Standard $1,299 / Premium balance | **Pay to launch** on `/intake/[token]` | Manual: Payment Link with `STRIPE_PRICE_STANDARD_BUILD` or `STRIPE_PRICE_AI_PREMIUM_BALANCE` |
 | Site live | — | **Mark site live** → unlocks maintenance checkout |
 | Maintenance | Pay maintenance on intake | Manual: `STRIPE_PRICE_SITE_MAINTENANCE_*` subscription |
 

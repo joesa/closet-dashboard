@@ -13,7 +13,7 @@ Step-by-step guide for testing the **full pricing funnel** on your machine after
 | Widget — 30-day trial | `/signup` | None at signup |
 | Widget — skip trial | `/signup?subscribe=1&plan=monthly` or `yearly` | Pro subscription |
 | Widget from get-started | `/get-started` + “I already have a website” | Redirects to signup (no intake) |
-| Standard site build | `/get-started?tier=standard` → intake | $999 after preview approval |
+| Standard site build | `/get-started?tier=standard` → intake | $1,299 after preview approval |
 | AI Premium site build | `/get-started?tier=ai_premium` → intake | $600 deposit → $1,399 balance after approval |
 | Site maintenance | Intake after build paid + **site live** | Maintenance subscription |
 
@@ -41,9 +41,9 @@ cp .env.example .env.local   # if you have not already
 
 **Pricing cents (defaults in `.env.example`):**
 
-- `INTAKE_TIER_STANDARD_CENTS=99900`
-- `INTAKE_TIER_AI_PREMIUM_CENTS=199900`
-- `WIDGET_SUBSCRIPTION_*`, `SITE_MAINTENANCE_*`
+- `INTAKE_TIER_STANDARD_CENTS=129900`
+- `INTAKE_TIER_AI_PREMIUM_CENTS=249900`
+- `WIDGET_SUBSCRIPTION_*`, `SITE_MAINTENANCE_*` ($119 / $1,190)
 
 **Optional but useful:**
 
@@ -90,7 +90,7 @@ When `stripe listen` starts, copy the **`whsec_...`** signing secret into `.env.
 
 ## Quick sanity checks (before scenarios)
 
-1. **Landing** — http://localhost:3000 → pricing matches env ($99 Pro, $999 Standard, $1,999 Premium, $149 maintenance).
+1. **Landing** — http://localhost:3000 → pricing matches env ($99 Pro, $1,299 Standard, $2,499 Premium, $119 maintenance).
 2. **Stripe health** — Log in as admin → open `/api/admin/stripe-health` (JSON, all prices active).
 3. **Webhook** — Complete one checkout; Terminal B shows `checkout.session.completed`; `/admin/stripe-events` shows the event processed.
 
@@ -151,7 +151,7 @@ Expect `400` with message pointing to `/signup`.
 
 ## Scenario 4 — Full site intake (Standard)
 
-**Goal:** Email → verify → tier → submit → admin approval → $999 checkout → optional maintenance.
+**Goal:** Email → verify → tier → submit → admin approval → $1,299 checkout → optional maintenance.
 
 ### 4a — Start intake (public)
 
@@ -182,7 +182,7 @@ Expect `400` with message pointing to `/signup`.
 1. http://localhost:3000/admin/intakes → **Details** on the intake.
 2. Click **Mark preview approved & email pay link** (email only if `RESEND_API_KEY` set).
 3. Reopen intake URL (or `/intake/<TOKEN>?pay=standard_build` for auto-redirect to Stripe).
-4. **Launch payments** → **Pay $999** → Stripe test card.
+4. **Launch payments** → **Pay $1,299** → Stripe test card.
 5. Webhook: `intake_standard_build` → `build_paid_at` set; `intake_payments` row `kind=standard_build`.
 
 ### 4d — Provision + maintenance (optional full path)
@@ -215,7 +215,7 @@ curl -s "http://localhost:3000/api/cron/process-provision-jobs" \
 ### 5b — Deposit
 
 1. Select **AI Premium** (auto-redirects to Stripe for deposit if not paid).
-2. Pay **~$600** (30% of $1,999) on Stripe.
+2. Pay **~$750** (30% of $2,499) on Stripe.
 3. Return `?payment=success` → deposit banner green; image studio unlocked (needs `OPENAI_API_KEY` to generate).
 4. DB: `deposit_status=paid`, `intake_payments.kind=deposit`.
 

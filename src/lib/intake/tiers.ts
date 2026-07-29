@@ -48,7 +48,7 @@ export function formatUsd(cents: number): string {
 }
 
 /**
- * Ongoing site maintenance (both build tiers). Defaults: $149/mo or $1,490/yr
+ * Ongoing site maintenance (both build tiers). Defaults: $119/mo or $1,190/yr
  * (two months free vs monthly — same structure as DitchTheForm Pro widget yearly).
  */
 /** DitchTheForm Pro widget-only subscription (existing website). */
@@ -65,8 +65,8 @@ export function getWidgetSubscriptionPricing(): SiteMaintenancePricing {
 }
 
 export function getSiteMaintenancePricing(): SiteMaintenancePricing {
-  const monthlyCents = parseCents('SITE_MAINTENANCE_MONTHLY_CENTS', 14900)
-  const yearlyCents = parseCents('SITE_MAINTENANCE_YEARLY_CENTS', 149000)
+  const monthlyCents = parseCents('SITE_MAINTENANCE_MONTHLY_CENTS', 11900)
+  const yearlyCents = parseCents('SITE_MAINTENANCE_YEARLY_CENTS', 119000)
   const yearlySavingsCents = Math.max(0, monthlyCents * 12 - yearlyCents)
   return {
     monthlyCents,
@@ -104,8 +104,8 @@ export function maintenanceDisplay(
 }
 
 export function getTierCatalog(): IntakeTierCatalogEntry[] {
-  const standardCents = parseCents('INTAKE_TIER_STANDARD_CENTS', 99900)
-  const premiumCents = parseCents('INTAKE_TIER_AI_PREMIUM_CENTS', 199900)
+  const standardCents = parseCents('INTAKE_TIER_STANDARD_CENTS', 129900)
+  const premiumCents = parseCents('INTAKE_TIER_AI_PREMIUM_CENTS', 249900)
   const maintenance = getSiteMaintenancePricing()
 
   const standardDeposit = 0

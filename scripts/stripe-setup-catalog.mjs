@@ -42,12 +42,12 @@ const cents = (name, fallback) => {
   return Number.isFinite(v) && v >= 0 ? v : fallback
 }
 
-const STANDARD_CENTS = cents('INTAKE_TIER_STANDARD_CENTS', 99900)
-const PREMIUM_CENTS = cents('INTAKE_TIER_AI_PREMIUM_CENTS', 199900)
+const STANDARD_CENTS = cents('INTAKE_TIER_STANDARD_CENTS', 129900)
+const PREMIUM_CENTS = cents('INTAKE_TIER_AI_PREMIUM_CENTS', 249900)
 const DEPOSIT_CENTS = Math.ceil(PREMIUM_CENTS * 0.3)
 const BALANCE_CENTS = PREMIUM_CENTS - DEPOSIT_CENTS
-const MAINT_MONTHLY = cents('SITE_MAINTENANCE_MONTHLY_CENTS', 14900)
-const MAINT_YEARLY = cents('SITE_MAINTENANCE_YEARLY_CENTS', 149000)
+const MAINT_MONTHLY = cents('SITE_MAINTENANCE_MONTHLY_CENTS', 11900)
+const MAINT_YEARLY = cents('SITE_MAINTENANCE_YEARLY_CENTS', 119000)
 const PRO_MONTHLY = cents('WIDGET_SUBSCRIPTION_MONTHLY_CENTS', 9900)
 const PRO_YEARLY = cents('WIDGET_SUBSCRIPTION_YEARLY_CENTS', 99000)
 
@@ -91,21 +91,22 @@ async function ensureProduct({ lookup_key, name, description }) {
 
 async function ensurePrice({ productId, lookup_key, unit_amount, recurring, nickname }) {
   let price = await findPriceByLookupKey(lookup_key)
-  if (price) {
-    if (price.unit_amount !== unit_amount) {
-      console.warn(
-        `  ⚠ price ${lookup_key} exists as ${price.id} but amount ${price.unit_amount} ≠ ${unit_amount}c — using existing (update manually in Stripe if needed)`
-      )
-    } else {
-      console.log(`  price exists: ${lookup_key} → ${price.id} (${unit_amount}c)`)
-    }
+  if (price && price.unit_amount === unit_amount) {
+    console.log(`  price exists: ${lookup_key} → ${price.id} (${unit_amount}c)`)
     return price
+  }
+  if (price && price.unit_amount !== unit_amount) {
+    console.warn(
+      `  ⚠ ${lookup_key} amount ${price.unit_amount}c → ${unit_amount}c — creating new price and transferring lookup_key`
+    )
+    await stripe.prices.update(price.id, { active: false })
   }
   price = await stripe.prices.create({
     product: productId,
     currency: 'usd',
     unit_amount,
     lookup_key,
+    transfer_lookup_key: true,
     nickname,
     ...(recurring ? { recurring } : {}),
   })
@@ -195,7 +196,7 @@ const maintProduct = await ensureProduct({
   lookup_key: 'cq_site_maintenance',
   name: 'DitchTheForm Site Maintenance',
   description:
-    'Managed hosting, SSL, updates, and DitchTheForm Pro after your site launches.',
+    'Managed hosting, SSL, DitchTheForm Pro, and 1 content tweak per month after your site launches.',
 })
 const maintMonthly = await ensurePrice({
   productId: maintProduct.id,

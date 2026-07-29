@@ -133,7 +133,7 @@ function StartChoiceModal({
             className="flex flex-col items-start gap-2 rounded-2xl border border-emerald-500/25 bg-emerald-950/20 p-5 text-left transition hover:border-emerald-500/40 hover:bg-emerald-950/30"
           >
             <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-medium uppercase tracking-widest text-emerald-300">
-              From $999
+              From {formatUsd(getTierCatalog().find((t) => t.slug === 'standard')!.totalCents)}
             </span>
             <span className="mt-2 text-sm font-semibold text-white">
               I don&apos;t have a website yet
@@ -311,7 +311,8 @@ export default function LandingPage() {
             href="#pricing"
             className="rounded-full border border-white/10 px-8 py-3.5 text-sm font-medium text-slate-400 transition hover:border-white/20 hover:text-white"
           >
-            Need a full site? From $999
+            Need a full site? From{' '}
+            {formatUsd(getTierCatalog().find((t) => t.slug === 'standard')!.totalCents)}
           </a>
         </div>
       </section>
@@ -766,7 +767,7 @@ const STANDARD_FEATURES = [
   'Professional stock hero & service imagery',
   'Unlimited lead capture via SMS & email',
   'Custom service & option pricing',
-  'Managed hosting, SSL & DitchTheForm Pro (ongoing)',
+  'After launch: hosting, SSL, Pro widget, and 1 content tweak/month',
 ]
 
 const PREMIUM_FEATURES = [
@@ -775,9 +776,9 @@ const PREMIUM_FEATURES = [
   'AI-written selling copy for every page — no blank or placeholder content',
   'Custom AI hero & service photos (you pick during setup)',
   'Photoreal, art-directed imagery — no generic AI-looking renders',
-  'AI art-directed site copy & calculator config',
+  'Firecrawl-informed market pricing for your metro',
+  '2 revision rounds in the first 30 days after launch',
   'Up to 3 generations per image (3 options each)',
-  'Same intake flow — build + maintenance match what you see',
 ]
 
 function HowSiteBuildPaymentWorks() {
@@ -832,6 +833,7 @@ function HowSiteBuildPaymentWorks() {
             Pay {formatUsd(premium.depositCents)} (30%) on intake to generate custom hero and product
             images. We build with the shots you choose. The remaining{' '}
             {formatUsd(premium.remainderCents)} is only due if you&apos;re satisfied before launch.
+            Includes 2 revision rounds in the first 30 days after launch.
           </p>
           <div className="mt-5 grid gap-3 sm:grid-cols-2">
             <div className="rounded-lg border border-emerald-500/20 bg-black/30 px-4 py-3">
@@ -1037,7 +1039,8 @@ function PricingSection() {
             <span className="block text-xs text-slate-500 mt-0.5">{siteMaint.billedLabel}</span>
           </p>
           <p className="mb-2 text-xs text-slate-400">
-            Maintenance includes DitchTheForm Pro — no separate {formatUsd(widgetSub.monthlyCents)}/mo widget fee.
+            Maintenance includes hosting, SSL, DitchTheForm Pro, and 1 content tweak per month —
+            no separate {formatUsd(widgetSub.monthlyCents)}/mo widget fee.
           </p>
           <p className="mb-4 text-xs font-medium text-slate-200 bg-white/[0.04] border border-white/10 rounded-lg px-3 py-2">
             No upfront deposit. Pay {formatUsd(standard.totalCents)} when satisfied — then launch and
@@ -1073,7 +1076,8 @@ function PricingSection() {
             <span className="block text-xs text-emerald-200/60 mt-0.5">{siteMaint.billedLabel}</span>
           </p>
           <p className="mb-2 text-xs text-emerald-200/70">
-            Maintenance includes DitchTheForm Pro — no separate widget subscription.
+            Same maintenance as Standard: hosting, SSL, Pro widget, and 1 content tweak/month —
+            plus 2 revision rounds in your first 30 days (included in the build).
           </p>
           <p className="mb-2 text-xs font-medium text-amber-200/90 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
             30% today: {formatUsd(premium.depositCents)} · Balance{' '}

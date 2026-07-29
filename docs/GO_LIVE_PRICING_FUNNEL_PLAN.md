@@ -11,26 +11,26 @@ locked model** (matches current landing, env defaults, and Stripe catalog).
 | Offering | One-time | Recurring (after launch) | Day-1 Stripe |
 |----------|----------|---------------------------|--------------|
 | **DitchTheForm Pro** (has a site) | — | $99/mo or $990/yr (2 mo free) | Subscription checkout |
-| **Standard site build** | $999 | $149/mo or $1,490/yr maintenance* | Build + maintenance checkout |
-| **AI Premium site build** | $1,999 total | Same maintenance* | $600 deposit† + balance + maintenance |
+| **Standard site build** | $1,299 | $119/mo or $1,190/yr maintenance* | Build + maintenance checkout |
+| **AI Premium site build** | $2,499 total | Same maintenance* | $750 deposit† + balance + maintenance |
 
-\* Maintenance includes DitchTheForm Pro + managed hosting (state clearly on cards).  
-† Deposit = 30% of $1,999 → **$599.70** (UI shows **$600**); balance **$1,399.30** (UI **$1,399**).
+\* Maintenance includes DitchTheForm Pro + managed hosting + 1 content tweak/mo (state clearly on cards).  
+† Deposit = 30% of $2,499 → **$749.70** (UI shows **$750**); balance **$1,749.30** (UI **$1,749**).
 
 **Env (cents)** — keep in Vercel + `.env.example`:
 
 ```bash
-INTAKE_TIER_STANDARD_CENTS=99900
-INTAKE_TIER_AI_PREMIUM_CENTS=199900
+INTAKE_TIER_STANDARD_CENTS=129900
+INTAKE_TIER_AI_PREMIUM_CENTS=249900
 WIDGET_SUBSCRIPTION_MONTHLY_CENTS=9900
 WIDGET_SUBSCRIPTION_YEARLY_CENTS=99000
-SITE_MAINTENANCE_MONTHLY_CENTS=14900
-SITE_MAINTENANCE_YEARLY_CENTS=149000
+SITE_MAINTENANCE_MONTHLY_CENTS=11900
+SITE_MAINTENANCE_YEARLY_CENTS=119000
 ```
 
 **Stripe lookup keys** (from `npm run stripe:catalog`): `cq_pro_*`, `cq_standard_build_onetime`, `cq_ai_premium_*`, `cq_site_maintenance_*`.
 
-No price changes required for go-live; optional later test: **$1,299 Standard** promo for first 10 customers (separate coupon in Stripe, not env).
+No price changes required for go-live beyond the locked catalog above; optional later test: **$999 Standard** promo for first 10 customers (separate coupon in Stripe, not env).
 
 ---
 
@@ -117,7 +117,7 @@ flowchart TB
 
 | Task | Change |
 |------|--------|
-| Hero secondary CTA | “Need a full site? From $999” → `/#pricing` |
+| Hero secondary CTA | “Need a full site? From $1,299” → `/#pricing` |
 | Pricing toggle hint | Under monthly/yearly: “Applies to Pro subscription and site maintenance. Build fees are one-time.” |
 | Site-build cards | Explicit: “Maintenance includes DitchTheForm Pro — no separate $99 widget fee.” |
 | Nav “Start Free” | Keep; optional dropdown later: Trial / Get a site |
@@ -130,7 +130,7 @@ Create `docs/ops/BILLING_RUNBOOK.md`:
 
 1. **Premium deposit refund** (not satisfied): Stripe Dashboard refund on session; set intake `deposit_status` + audit log; template email.
 2. **Premium balance ($1,399)**: Until P2 automated — Payment Link or Checkout with `STRIPE_PRICE_AI_PREMIUM_BALANCE`.
-3. **Standard $999** (satisfied): Same — `STRIPE_PRICE_STANDARD_BUILD` Payment Link.
+3. **Standard $1,299** (satisfied): Same — `STRIPE_PRICE_STANDARD_BUILD` Payment Link.
 4. **Maintenance start**: Payment Link `STRIPE_PRICE_SITE_MAINTENANCE_*` or P2 flow; tie to `stripe_customer_id` on contractor after provision.
 5. **Escalation**: admin@ditchtheform.com, link to `/admin/intakes`, `/admin/stripe-events`.
 
@@ -173,7 +173,7 @@ Webhook `checkout.session.completed` metadata `kind`:
 
 | Surface | Purpose |
 |---------|---------|
-| **Intake “Pay to launch” block** | After submit + preview ready (or admin marks “ready for payment”) — buttons: Pay $999 / Pay $1,399 |
+| **Intake “Pay to launch” block** | After submit + preview ready (or admin marks “ready for payment”) — buttons: Pay $1,299 / Pay $1,749 |
 | **Email template** | “Your site is ready — pay to launch” with magic link `/intake/[token]?pay=balance` |
 
 Admin action: **Mark preview approved** → triggers email + unlocks pay CTA (manual QA gate).
@@ -249,7 +249,7 @@ ALTER TABLE prospect_intakes
 | Channel | Primary offer | CTA |
 |---------|---------------|-----|
 | Cold email / ads (has site) | 30-day trial | Hero → signup |
-| Cold email (no site) | Standard $999 or Premium | `#pricing` → get-started |
+| Cold email (no site) | Standard $1,299 or Premium | `#pricing` → get-started |
 | Sales call | AI Premium + deposit | Send intake link `?tier=ai_premium` |
 | Partner / scraper | Match pipeline A → signup, B → full intake | Existing `pipelineToRequestedProduct` |
 
