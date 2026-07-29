@@ -89,6 +89,9 @@ const THEME_ARCHETYPE: Record<string, DesignArchetype> = {
   'fleet-logistics': 'modern',
   'media-creative': 'modern',
   'gourmet-warm': 'editorial',
+
+  // Bespoke demo themes (hand-assigned, not in the provisioner catalog)
+  'garage-loadrated': 'bold',
 }
 
 function weightVector(len: number, boosts: Record<number, number>): number[] {
@@ -211,6 +214,9 @@ const THEME_VOICE: Record<string, VoiceFamily> = {
   'fleet-logistics': 'modernSans',
   'media-creative': 'modernSans',
   'gourmet-warm': 'editorial',
+
+  // Bespoke demo themes
+  'garage-loadrated': 'boldDisplay',
 }
 
 // Accent swatch pool SIZE per theme (lengths of THEME_ACCENTS in theme.ts).
@@ -271,6 +277,9 @@ const ACCENT_POOL_SIZE: Record<string, number> = {
   'fleet-logistics': 3,
   'media-creative': 3,
   'gourmet-warm': 4,
+
+  // Bespoke demo themes (single-swatch pool: the accent is the brand)
+  'garage-loadrated': 1,
 }
 
 /**
