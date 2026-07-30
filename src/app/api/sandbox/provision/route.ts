@@ -3,6 +3,7 @@ import { getCurrentAdmin } from '@/lib/admin';
 import { provisionTenant } from '@/lib/provision/provisionTenant';
 import { ProvisionReviewError } from '@/lib/provision/types';
 import { publicAppOrigin } from '@/lib/urls';
+import { buildTenantPreviewUrl } from '@/lib/admin-preview';
 
 export async function POST(req: Request) {
   try {
@@ -37,11 +38,14 @@ export async function POST(req: Request) {
       sendWelcomeEmail: true,
     });
 
+    const bypassUrl = result.url ? buildTenantPreviewUrl(result.url) : null;
+
     return NextResponse.json({
       success: true,
       mode: result.mode,
       tenantId: result.tenantId,
       url: result.url,
+      bypassUrl,
       domain: result.domain,
       widgetId: result.widgetId,
       embedSnippet: result.embedSnippet,

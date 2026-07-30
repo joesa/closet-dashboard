@@ -3,6 +3,7 @@ import { notFound, redirect } from 'next/navigation'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import {
   buildTenantPreviewUrl,
+  buildTenantPreviewUrlFromDomains,
   getTenantLaunchSiteUrl,
 } from '@/lib/admin-preview'
 import { getIntakePaymentSummary, isLaunchBuildPaid } from '@/lib/intake/intakePaymentStage'
@@ -116,10 +117,9 @@ export default async function IntakeDetailPage({
     data.provisioned_contractor_id &&
     tenantSiteStatus !== 'active'
 
-  const bypassUrl =
-    tenantSiteUrl && tenantSiteStatus && tenantSiteStatus !== 'active'
-      ? buildTenantPreviewUrl(tenantSiteUrl)
-      : null
+  const bypassUrl = tenantSiteUrl
+    ? buildTenantPreviewUrl(tenantSiteUrl)
+    : (data.provisioned_contractor_id ? buildTenantPreviewUrlFromDomains(domainRows) : null)
 
   return (
     <div>
@@ -221,11 +221,22 @@ export default async function IntakeDetailPage({
             </form>
           )}
 
+          {bypassUrl && (
+            <a
+              href={bypassUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-purple-700 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-purple-600 shadow-sm"
+            >
+              <span>🔍 Preview Site (Admin Bypass)</span>
+            </a>
+          )}
+
           {tenantSiteStatus === 'awaiting_launch_payment' && (
             <p className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
               The customer&apos;s domain (including any custom domain) shows a{' '}
               <strong>pay-to-launch</strong> page—not the full site—until launch payment is
-              complete. Use admin preview to review the built site.
+              complete. Use admin preview above to review the built site.
             </p>
           )}
 

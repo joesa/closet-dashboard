@@ -59,7 +59,7 @@ export default function IntakeAdminAlerts({
                 rel="noopener noreferrer"
                 className="text-blue-600 hover:underline font-semibold"
               >
-                Preview Customer Unapprove Site
+                Preview Site (Admin Bypass)
               </a>
             </>
           )}

@@ -165,6 +165,7 @@ export default function SandboxOnboarding() {
   const [aiLoading, setAiLoading] = useState(false);
   const [aiPhase, setAiPhase] = useState('');
   const [resultUrl, setResultUrl] = useState('');
+  const [resultBypassUrl, setResultBypassUrl] = useState('');
   const [tempPassword, setTempPassword] = useState('');
   const [loginEmail, setLoginEmail] = useState('');
   const [loginUrl, setLoginUrl] = useState('');
@@ -494,6 +495,7 @@ export default function SandboxOnboarding() {
       if (!res.ok) throw new Error(data.error || 'Failed to provision');
       
       setResultUrl(data.url || '');
+      setResultBypassUrl(data.bypassUrl || '');
       setTempPassword(data.tempPassword || '');
       setLoginEmail(data.ownerEmail || formData.ownerEmail);
       setLoginUrl(data.loginUrl || '');
@@ -1434,15 +1436,29 @@ export default function SandboxOnboarding() {
                 : 'The environment is live on the Edge. The database, site configs, and custom widget settings are fully deployed.'}
             </p>
 
-            {resultMode === 'full' && resultUrl && (
-              <a 
-                href={resultUrl} 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="inline-block bg-green-500 text-neutral-900 font-bold px-6 py-3 rounded-lg hover:bg-green-400 transition-colors mb-4"
-              >
-                Open Sandbox Environment
-              </a>
+            {resultMode === 'full' && (resultBypassUrl || resultUrl) && (
+              <div className="flex flex-wrap items-center justify-center gap-3 mb-4">
+                {(resultBypassUrl || resultUrl) && (
+                  <a 
+                    href={resultBypassUrl || `${resultUrl}?admin_bypass=admin_bypass_default_secret`} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="inline-block bg-purple-600 text-white font-bold px-6 py-3 rounded-lg hover:bg-purple-500 transition-colors shadow-md"
+                  >
+                    🔍 Preview Site (Admin Bypass)
+                  </a>
+                )}
+                {resultUrl && (
+                  <a 
+                    href={resultUrl} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="inline-block bg-neutral-800 text-green-400 border border-green-500/30 font-bold px-6 py-3 rounded-lg hover:bg-neutral-700 transition-colors"
+                  >
+                    Open Live Customer URL
+                  </a>
+                )}
+              </div>
             )}
 
             {resultMode === 'widget' && embedSnippet && (

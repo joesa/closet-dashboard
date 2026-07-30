@@ -218,18 +218,14 @@ export default async function TenantDetailsPage({
               href={previewUrl}
               target="_blank"
               rel="noreferrer"
-              className="px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white font-medium rounded-lg transition-colors flex items-center gap-2 shadow-lg shadow-blue-500/20"
+              className="px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold rounded-lg transition-colors flex items-center gap-2 shadow-lg shadow-indigo-500/20"
             >
-              {tenant.site_status !== 'active' ? 'Preview Customer Unapprove Site' : 'Review Staging View'}
+              <span>🔍 Preview Site (Admin Bypass)</span>
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
               </svg>
             </a>
-          ) : (
-            <span className="text-sm text-neutral-500">
-              Set ADMIN_BYPASS_SECRET to enable staging preview
-            </span>
-          )}
+          ) : null}
           
           {tenant.site_status === 'pending_approval' && readyForApproval && (
             <ApproveSiteButton tenantId={tenant.id} editInPlace={editInPlace} />
