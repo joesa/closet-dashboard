@@ -326,27 +326,46 @@ async function generateWithProvider(
 export async function generateTextWithFallback(
   opts: TextGenerationOpts
 ): Promise<TextGenerationResult> {
-  if (opts.preferredProvider === 'anthropic' && process.env.ANTHROPIC_API_KEY) {
-    return generateWithProvider('anthropic', opts)
+  const chain: AiTextProvider[] = [];
+
+  if (opts.preferredProvider && providerConfigured(opts.preferredProvider)) {
+    chain.push(opts.preferredProvider);
   }
 
-  if (opts.preferredProvider === 'openai' && process.env.OPENAI_API_KEY) {
-    return generateWithProvider('openai', opts)
+  const defaultOrder: AiTextProvider[] = ['gemini', 'openai', 'anthropic'];
+  for (const p of defaultOrder) {
+    if (!chain.includes(p) && providerConfigured(p)) {
+      chain.push(p);
+    }
   }
 
-  if (opts.preferredProvider === 'gemini' && process.env.GEMINI_API_KEY) {
-    return generateWithProvider('gemini', opts)
+  if (chain.length === 0) {
+    throw new Error('Missing GEMINI_API_KEY / OPENAI_API_KEY / ANTHROPIC_API_KEY — cannot generate text');
   }
 
-  if (process.env.GEMINI_API_KEY) {
-    return generateWithProvider('gemini', opts)
+  let lastErr: unknown = null;
+  for (let i = 0; i < chain.length; i++) {
+    const provider = chain[i]!;
+    try {
+      const result = await generateWithProvider(provider, opts);
+      if (i > 0) {
+        console.warn(
+          `[aiTextProvider] generateTextWithFallback succeeded on fallback provider=${provider} model=${result.model ?? '?'}`
+        );
+      }
+      return result;
+    } catch (err) {
+      lastErr = err;
+      const msg = err instanceof Error ? err.message : String(err);
+      const next = chain[i + 1];
+      console.warn(
+        `[aiTextProvider] ${provider} failed${next ? ` — falling back to ${next}` : ''}: ${msg.slice(0, 300)}`
+      );
+    }
   }
 
-  if (process.env.OPENAI_API_KEY) {
-    return generateWithProvider('openai', opts)
-  }
-
-  throw new Error('Missing GEMINI_API_KEY / OPENAI_API_KEY — cannot generate text')
+  const msg = lastErr instanceof Error ? lastErr.message : String(lastErr);
+  throw new Error(`AI generation failed on all providers: ${msg}`);
 }
 
 /**
