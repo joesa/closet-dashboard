@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { requireAdmin, logAdminAction } from '@/lib/admin';
+import { teardownTenantData } from '@/lib/provision/teardownTenantData';
 
 export async function POST(req: Request) {
   try {
@@ -16,19 +17,9 @@ export async function POST(req: Request) {
 
     const supabase = getSupabaseAdmin();
     
-    // We rely on ON DELETE CASCADE for foreign keys in Supabase (if setup)
-    // If not, we should delete site_configs and domains first.
-    // Assuming cascading is setup or we manually do it here just in case:
-    await supabase.from('site_configs').delete().eq('tenant_id', tenantId);
-    await supabase.from('domains').delete().eq('tenant_id', tenantId);
-    
-    // Delete tenant
-    const { error } = await supabase
-      .from('tenants')
-      .delete()
-      .eq('id', tenantId);
-
-    if (error) throw error;
+    // Tear down all child tables (service_catalog, service_ux_defaults, site_configs, domains, etc.)
+    // to guarantee safe deletion without foreign key constraint errors.
+    await teardownTenantData(supabase, tenantId);
 
     await logAdminAction({
       actor: admin,

@@ -1,6 +1,7 @@
 import { v4 as uuidv4 } from 'uuid'
 import { Resend } from 'resend'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { teardownTenantData } from '@/lib/provision/teardownTenantData'
 import { widgetEmbedSnippet } from '@/lib/urls'
 import { generateTempPassword } from '@/lib/clientLoginCredentials'
 import {
@@ -300,30 +301,11 @@ export async function provisionTenant(
     .maybeSingle()
   if (existingTenant) {
     // Tear down the previous tenant so the admin can redeploy cleanly.
-    // Check every delete — silent failures used to leave the row in place and
-    // the following insert then blew up with tenants_owner_email_key (23505).
+    // Cleans up all child tables (service_catalog, service_ux_defaults, contractor_rooms, etc.)
+    // in reverse dependency order to prevent foreign key constraint violations.
     const oldId = existingTenant.id
-    const teardown: Array<{ table: string; column: string }> = [
-      { table: 'site_configs', column: 'tenant_id' },
-      { table: 'domains', column: 'tenant_id' },
-      { table: 'contractor_rooms', column: 'contractor_id' },
-      { table: 'contractor_addons', column: 'contractor_id' },
-      { table: 'contractor_finishes', column: 'contractor_id' },
-      // tenants.widget_id → contractor_settings(id): delete tenant before settings
-      { table: 'tenants', column: 'id' },
-      { table: 'contractor_settings', column: 'id' },
-    ]
-    for (const step of teardown) {
-      const { error: delErr } = await supabase
-        .from(step.table)
-        .delete()
-        .eq(step.column, oldId)
-      if (delErr) {
-        throw new Error(
-          `Failed to tear down ${step.table} for ${ownerEmail}: ${delErr.message}`
-        )
-      }
-    }
+    await teardownTenantData(supabase, oldId, ownerEmail)
+
     const { data: stillThere } = await supabase
       .from('tenants')
       .select('id')
