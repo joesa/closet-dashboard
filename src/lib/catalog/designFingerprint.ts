@@ -92,6 +92,7 @@ const THEME_ARCHETYPE: Record<string, DesignArchetype> = {
 
   // Bespoke demo themes (hand-assigned, not in the provisioner catalog)
   'garage-loadrated': 'bold',
+  'lumina-atelier': 'editorial',
 }
 
 function weightVector(len: number, boosts: Record<number, number>): number[] {
@@ -217,6 +218,7 @@ const THEME_VOICE: Record<string, VoiceFamily> = {
 
   // Bespoke demo themes
   'garage-loadrated': 'boldDisplay',
+  'lumina-atelier': 'editorial',
 }
 
 // Accent swatch pool SIZE per theme (lengths of THEME_ACCENTS in theme.ts).
@@ -280,6 +282,7 @@ const ACCENT_POOL_SIZE: Record<string, number> = {
 
   // Bespoke demo themes (single-swatch pool: the accent is the brand)
   'garage-loadrated': 1,
+  'lumina-atelier': 1,
 }
 
 /**
