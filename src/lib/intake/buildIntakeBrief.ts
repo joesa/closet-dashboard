@@ -28,6 +28,35 @@ export function buildIntakeBrief(row: ProspectIntakeRow): string {
     lines.push(`Differentiators: ${row.differentiators.join(', ')}`)
   }
 
+  const facts: string[] = []
+  const addFact = (label: string, value: string | null | undefined) => {
+    if (value?.trim()) facts.push(`- ${label}: ${value.trim()}`)
+  }
+
+  addFact('What they measure, and to what tolerance', row.craft_spec)
+  addFact('Rule the shop never breaks', row.shop_rule)
+  addFact('What goes wrong on local jobs, and why', row.local_conditions)
+  addFact('Who does the work', row.crew_shape)
+  addFact('What the customer receives or reviews', row.client_artifact)
+  addFact('A real recent job', row.recent_job)
+  addFact('What cheaper competitors get wrong', row.competitor_tell)
+  addFact('Real timeframes', row.timeline_facts)
+  addFact('Guarantee, in the owner’s words', row.guarantee_terms)
+  if (row.signature_materials?.length) {
+    addFact('Named materials / brands / equipment', row.signature_materials.join(', '))
+  }
+
+  if (facts.length) {
+    lines.push('')
+    lines.push('PROPRIETARY FACTS — the only sanctioned source of concrete claims.')
+    lines.push(
+      'Every statistic, process step, and proof point on the site must trace back to a line below. ' +
+        'Do not round, embellish, or invent siblings for them. Where a section has no fact to stand on, ' +
+        'make that section shorter rather than filling it with adjectives.'
+    )
+    lines.push(...facts)
+  }
+
   add('Contact', row.contact_name)
   add('Phone', row.contact_phone)
   add('Email', row.contact_email)

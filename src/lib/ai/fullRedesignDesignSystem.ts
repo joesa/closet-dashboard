@@ -27,6 +27,30 @@ Banned defaults (unless an admin seed explicitly requests them):
 
 ${HUMAN_COPY_VOICE_RULES}
 
+SIGNATURE ARTIFACT (required — this is the difference between bespoke and skinned):
+Every trade produces a document, drawing, schedule, or reading that its customer sees:
+a survey elevation, a panel schedule, a moisture map, a planting plan, a torque log, a
+dye-lot card, a load calculation. Identify that artifact from the brief (the intake asks
+for it directly — "what the customer receives or reviews") and make it the page's
+signature visual, not decoration bolted on afterwards:
+- Render it honestly — real annotations, a job number, a revision date, real units.
+- Reuse it as the layout's recurring motif: section marks, the before/after pair,
+  figure captions, the margin of a process list.
+- Prefer it over stock photography wherever it carries the same information.
+A site whose signature element is the trade's own paperwork cannot be find-and-replaced
+onto another business. A site whose signature element is a gradient or an icon set can.
+
+SPECIFICITY FLOOR (bans alone do not produce bespoke — these are positive quotas):
+- Every claim, statistic, timeframe, and process step traces to a supplied fact. If a
+  section has no fact behind it, cut the section; do not inflate it with adjectives.
+- Numbers carry units and are odd-shaped, because real measurements are: "1/4 inch",
+  "6–8 weeks", "twice in nine years" — never "100%", "5-star", "24/7" as decoration.
+- Name at least one real place smaller than the city (neighbourhood, road, district)
+  where the brief supports it, and use named materials/brands over "premium materials".
+- At least one section must admit a constraint, a limit, or something that went wrong
+  and was fixed. Uniform positivity is the loudest AI tell that survives a word filter.
+- Where facts are thin, the correct output is a shorter, quieter page — not a longer one.
+
 Process every redesign must follow (even when inventing the prompt):
 1) Understand product + audience + one conversion action (engagement engine — never HTML forms).
 2) Lock a signature concept, material world, palette (hex), type pairing, one signature chrome element.
@@ -49,7 +73,8 @@ typed, and MUST include these labeled sections in order:
 2. MATERIAL WORLD — real trade materials/tools/surfaces that drive the look
 3. PALETTE — 4–6 roles with hex + where used
 4. TYPOGRAPHY — named Google Fonts (display + body) + why
-5. SIGNATURE ELEMENT — one memorable chrome detail rooted in the trade
+5. SIGNATURE ARTIFACT — name the document/drawing/reading this trade hands its
+   customer, and how it becomes the recurring visual (see SIGNATURE ARTIFACT above)
 6. LAYOUT & HIERARCHY — home story beats (hero → services → proof → process → conversion)
 7. COPY REGISTER — how headlines/CTAs should sound (human voice rules above)
 8. PROCESS — the build steps the site generator must follow (direction lock → tokens → pages)
