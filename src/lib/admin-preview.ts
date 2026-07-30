@@ -26,7 +26,7 @@ export function buildPlatformFallbackPreviewUrl(hostname: string): string | null
   if (!host || isDevHostname(host)) return null
   const secret = process.env.ADMIN_BYPASS_SECRET?.trim() || 'admin_bypass_default_secret'
   const origin = publicAppOrigin()
-  return `${origin}/${host}?admin_bypass=${secret}`
+  return `${origin}/site-preview/${encodeURIComponent(host)}?admin_bypass=${secret}`
 }
 
 /** Dev-only fixture hostnames that resolve solely on a developer's machine. */
