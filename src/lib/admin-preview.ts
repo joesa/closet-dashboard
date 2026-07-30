@@ -1,3 +1,5 @@
+import { publicAppOrigin } from '@/lib/urls'
+
 /**
  * Build a tenant site preview URL with the admin bypass query param.
  * Uses the same ADMIN_BYPASS_SECRET as custom-closets-websites/src/proxy.ts.
@@ -13,6 +15,18 @@ export function buildTenantPreviewUrl(siteUrl: string): string | null {
   } catch {
     return null
   }
+}
+
+/**
+ * Direct platform path-based preview URL (e.g. https://www.ditchtheform.com/wikidos-pediatrics.ditchtheform.com?admin_bypass=SECRET).
+ * Guaranteed to open on the main platform domain even when subdomain DNS is propagating or pending Vercel attachment.
+ */
+export function buildPlatformFallbackPreviewUrl(hostname: string): string | null {
+  const host = (hostname || '').trim()
+  if (!host || isDevHostname(host)) return null
+  const secret = process.env.ADMIN_BYPASS_SECRET?.trim() || 'admin_bypass_default_secret'
+  const origin = publicAppOrigin()
+  return `${origin}/${host}?admin_bypass=${secret}`
 }
 
 /** Dev-only fixture hostnames that resolve solely on a developer's machine. */
