@@ -26,6 +26,7 @@ import {
   maxPagesForTier,
   maxAdditionalPagesForTier,
 } from '@/lib/catalog/sitePages';
+import { listIndustries, resolveIndustrySlug, getIndustry, getEngagementModel, isLowConfidenceResolution } from '@/lib/catalog/serviceCatalog';
 import { getBeforeAfterCategory } from '@/lib/images/beforeAfterPrompt';
 import { detectVertical, getCraftFieldsForVertical, getMaterialsLabelAndPlaceholder } from '@/lib/ai/suggestCraftAnswers';
 
