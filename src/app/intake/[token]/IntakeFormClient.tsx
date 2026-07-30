@@ -26,8 +26,8 @@ import {
   maxPagesForTier,
   maxAdditionalPagesForTier,
 } from '@/lib/catalog/sitePages';
-import { listIndustries, resolveIndustrySlug, getIndustry, getEngagementModel, isLowConfidenceResolution } from '@/lib/catalog/serviceCatalog';
 import { getBeforeAfterCategory } from '@/lib/images/beforeAfterPrompt';
+import { detectVertical, getCraftFieldsForVertical, getMaterialsLabelAndPlaceholder } from '@/lib/ai/suggestCraftAnswers';
 
 /** Split the free-text services field into individual service/job labels. */
 function parseServiceList(text: string): string[] {
@@ -544,6 +544,13 @@ export default function IntakeFormClient({
   const [maxStepIndexVisited, setMaxStepIndexVisited] = useState(0);
   const [isGeneratingCraft, setIsGeneratingCraft] = useState(false);
   const [generatingCraftField, setGeneratingCraftField] = useState<string | null>(null);
+
+  const craftVertical = useMemo(
+    () => detectVertical(form.industry, form.services, form.otherServices),
+    [form.industry, form.services, form.otherServices]
+  );
+  const craftFields = useMemo(() => getCraftFieldsForVertical(craftVertical), [craftVertical]);
+  const materialsMeta = useMemo(() => getMaterialsLabelAndPlaceholder(craftVertical), [craftVertical]);
 
   const logoInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRefs = useRef<(HTMLInputElement | null)[]>([]);
@@ -2709,7 +2716,7 @@ export default function IntakeFormClient({
                 </div>
               </div>
 
-              {CRAFT_FIELDS.map((field) => (
+              {craftFields.map((field) => (
                 <div key={field.key} className="mb-5">
                   <div className="mb-1.5 flex items-center justify-between">
                     <label className={label} htmlFor={`craft-${field.key}`}>
@@ -2740,7 +2747,7 @@ export default function IntakeFormClient({
 
               <div className="mb-1.5 mt-5 flex items-center justify-between">
                 <label className={label} htmlFor="craft-materials">
-                  Materials, brands, or equipment you actually use
+                  {materialsMeta.label}
                 </label>
                 <button
                   type="button"
@@ -2760,11 +2767,10 @@ export default function IntakeFormClient({
                 className={input}
                 value={form.signatureMaterials}
                 onChange={(e) => set('signatureMaterials', e.target.value)}
-                placeholder="e.g. Blum soft-close runners, white oak veneer, 2700K LED strip — comma separated"
+                placeholder={materialsMeta.placeholder}
               />
               <p className="mt-2 text-xs text-zinc-500">
-                Named products beat &ldquo;premium materials&rdquo; every time. These also
-                give us the colours and textures your site is designed around.
+                {materialsMeta.hint}
               </p>
             </section>
           </div>
