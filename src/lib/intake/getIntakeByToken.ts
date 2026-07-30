@@ -61,6 +61,22 @@ export type ProspectIntakeRow = {
   gallery_images: string[]
   page_contents: Record<string, string>
   menu_items: Array<{ name: string; price: number; category?: string }>
+  /**
+   * Proprietary facts — the operational specifics generated copy is written
+   * from. Taste fields (vibe/tone) describe how a site should feel; these
+   * describe what is true, which is the only thing that survives the swap test
+   * in siteValidator. See 20260731030000_intake_proprietary_facts.sql.
+   */
+  craft_spec: string | null
+  shop_rule: string | null
+  local_conditions: string | null
+  crew_shape: string | null
+  client_artifact: string | null
+  recent_job: string | null
+  competitor_tell: string | null
+  timeline_facts: string | null
+  guarantee_terms: string | null
+  signature_materials: string[]
 }
 
 const INTAKE_SELECT = `
@@ -78,7 +94,10 @@ const INTAKE_SELECT = `
   notification_email, notification_phone, desired_domain, domain_purchase_requested,
   include_quiz,
   other_services, industry,
-  requested_pages, gallery_images, page_contents, menu_items
+  requested_pages, gallery_images, page_contents, menu_items,
+  craft_spec, shop_rule, local_conditions, crew_shape, client_artifact,
+  recent_job, competitor_tell, timeline_facts, guarantee_terms,
+  signature_materials
 `
 
 export async function getIntakeByToken(token: string): Promise<ProspectIntakeRow | null> {

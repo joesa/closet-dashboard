@@ -234,6 +234,16 @@ export async function POST(
       domain_purchase_requested: body.domainPurchaseRequested === true,
       include_quiz: body.includeQuiz === true,
       notes: toStr(body.notes),
+      craft_spec: toStr(body.craftSpec),
+      shop_rule: toStr(body.shopRule),
+      local_conditions: toStr(body.localConditions),
+      crew_shape: toStr(body.crewShape),
+      client_artifact: toStr(body.clientArtifact),
+      recent_job: toStr(body.recentJob),
+      competitor_tell: toStr(body.competitorTell),
+      timeline_facts: toStr(body.timelineFacts),
+      guarantee_terms: toStr(body.guaranteeTerms),
+      signature_materials: toArr(body.signatureMaterials),
       requested_pages: clampPagesForTier(
         body.pages,
         intakeTier

@@ -3,11 +3,66 @@
  * Keep wording concrete: models follow explicit bans better than "sound human."
  */
 
+/**
+ * Machine-readable ban list. This is the single source of truth: the prompt text
+ * below is generated from it, and src/lib/validation/specificityGate.ts scans
+ * shipped copy for the same strings. Keeping one array means a phrase can never
+ * be banned in the prompt but unenforced in the gate, or vice versa.
+ *
+ * Matched case-insensitively on word boundaries, so entries stay in base form.
+ */
+export const AI_TELL_PHRASES: readonly string[] = [
+  'elevate',
+  'elevating',
+  'elevated',
+  'seamless',
+  'seamlessly',
+  'unleash',
+  'empower',
+  'supercharge',
+  'next-generation',
+  'next-gen',
+  'revolutionize',
+  'unlock',
+  'transform your',
+  'look no further',
+  "we've got you covered",
+  'we have got you covered',
+  'one-stop shop',
+  'cutting-edge',
+  'state-of-the-art',
+  'world-class',
+  'best-in-class',
+  'tailored solutions',
+  'holistic',
+  'synergy',
+  'leverage',
+  'utilize',
+  'delve',
+  'embark',
+  'commitment to excellence',
+  'unparalleled',
+  'unmatched quality',
+  'experience the difference',
+  'to the next level',
+  "in today's fast-paced world",
+  'in todays fast-paced world',
+  "whether you're looking for",
+  'whether you are looking for',
+  'and beyond',
+  'quiet luxury',
+  'gallery-like restraint',
+  'meticulously crafted',
+  'nestled in',
+  'at the heart of everything',
+] as const
+
 export const HUMAN_COPY_VOICE_RULES = `HUMAN VOICE (NON-NEGOTIABLE for all headlines, subheads, body, CTAs, process steps, service blurbs, FAQ, testimonials labels):
 Write like a sharp local owner or their best salesperson — specific, useful, slightly imperfect. Prefer short sentences and concrete nouns (trade, city, materials, outcomes). Active voice. One idea per sentence when possible.
 
 Banned AI tells (never use these words/phrases unless the business brief already contains them verbatim):
-Elevate, Elevating, Seamless, Unleash, Empower, Supercharge, Next-generation, Next-gen, Revolutionize, Unlock, Transform your, Look no further, We've got you covered, Your one-stop shop, Cutting-edge, State-of-the-art, World-class, Best-in-class, Tailored solutions, Holistic, Synergy, Leverage, Utilize (prefer "use"), Delve, Embark, Journey, Passion/Passionate about (as filler), Commitment to excellence, Unparalleled, Unmatched quality, Experience the difference, Take your … to the next level, In today's fast-paced world, Whether you're looking for, Not just X — Y, From X to Y and beyond.
+${AI_TELL_PHRASES.join(', ')}.
+Also banned in the same spirit: Journey, Passion/Passionate about (as filler), "Not just X — Y", "From X to Y".
 
 Also ban:
 - Em-dash stacks and "rule of three" filler lists that say nothing concrete

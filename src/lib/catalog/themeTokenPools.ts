@@ -8,6 +8,11 @@
  *
  * KEEP IN SYNC with custom-closets-websites/src/lib/theme.ts's
  * SURFACE_POOL / SHAPE_POOL / SWATCH / HEADING_VOICE+BODY_VOICE keys.
+ *
+ * One deliberate asymmetry: the renderer's SWATCH is a superset of SWATCH_TOKENS
+ * below. Every id offered here must exist there, but the renderer also keeps
+ * retired ids alive so already-published sites keep their colour. Adding an id
+ * here without adding it there falls back to `slate` at render time.
  */
 
 export type ThemeTokenSelection = {
@@ -48,24 +53,30 @@ export const VOICE_TOKENS = [
 // hex mirrors the `hex` value of the matching key in custom-closets-websites'
 // SWATCH table (lib/theme.ts) — used only for an accurate color preview chip
 // in the intake review step; the renderer owns the real Tailwind classes.
+// Offered to new builds only. `indigo`, `violet`, `purple`, `fuchsia` and `cyan`
+// are deliberately NOT here: they are Tailwind's default ramp values, and
+// FULL_REDESIGN_DESIGN_SYSTEM bans the indigo/violet SaaS look outright, so the
+// pool must not keep offering it. The renderer still defines those keys, because
+// sites published before this change render from them and must not shift colour.
 export const SWATCH_TOKENS = [
   { id: 'amber', description: 'Warm amber/gold', hex: '#b45309' },
   { id: 'gold', description: 'Bright gold/yellow', hex: '#ca8a04' },
   { id: 'copper', description: 'Burnt orange/copper', hex: '#c2410c' },
   { id: 'bronze', description: 'Deep bronze brown', hex: '#92400e' },
+  { id: 'brass', description: 'Aged brass — warm metallic neutral', hex: '#8a7256' },
+  { id: 'clay', description: 'Fired clay / terracotta red-brown', hex: '#96482f' },
+  { id: 'ochre', description: 'Dark ochre — earthy mustard', hex: '#8a6a1f' },
   { id: 'blue', description: 'Classic corporate blue', hex: '#2563eb' },
-  { id: 'indigo', description: 'Rich indigo/violet-blue', hex: '#4f46e5' },
+  { id: 'denim', description: 'Workwear denim — muted navy-blue', hex: '#35506b' },
   { id: 'teal', description: 'Teal/blue-green', hex: '#0d9488' },
-  { id: 'cyan', description: 'Bright cyan/electric blue', hex: '#06b6d4' },
   { id: 'sky', description: 'Soft sky blue', hex: '#0284c7' },
   { id: 'emerald', description: 'Emerald green', hex: '#059669' },
   { id: 'green', description: 'Classic green', hex: '#15803d' },
+  { id: 'pine', description: 'Deep pine — forest green, low chroma', hex: '#2f4f43' },
   { id: 'rose', description: 'Soft rose/pink', hex: '#f43f5e' },
   { id: 'red', description: 'Bold red', hex: '#b91c1c' },
   { id: 'wine', description: 'Deep wine/burgundy', hex: '#8c2a35' },
-  { id: 'purple', description: 'Rich purple', hex: '#9333ea' },
-  { id: 'violet', description: 'Bright violet', hex: '#7c3aed' },
-  { id: 'fuchsia', description: 'Vivid fuchsia/magenta', hex: '#d946ef' },
+  { id: 'oxblood', description: 'Oxblood — dark brick red, leather-bound', hex: '#6b2733' },
   { id: 'slate', description: 'Neutral slate grey', hex: '#475569' },
   { id: 'zen', description: 'Muted sage grey-green', hex: '#7d8276' },
 ] as const

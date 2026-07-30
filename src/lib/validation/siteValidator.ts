@@ -21,6 +21,7 @@ import {
   isCustomSiteConfig,
   validateCustomConfig,
 } from '@/lib/customSite'
+import { analyzeSpecificity, analyzeToneBalance } from '@/lib/validation/specificityGate'
 
 export type ValidationSeverity = 'error' | 'warning'
 
@@ -201,6 +202,11 @@ export async function validateTenantSite(tenantId: string): Promise<ValidationRe
   const theme = config.theme as ThemeSlug | undefined
   const layoutStyle = config.layout_style as LayoutSlug | undefined
 
+  // Copy the specificity gate reads. Custom sites carry every page's HTML in the
+  // artifact, so they can be judged without a network round-trip; engine sites
+  // fall back to the live homepage fetched during the crawl below.
+  const copyPages: string[] = []
+
   // ── 1b. Custom-build widget mount (Full Redesign empty-box class of bug) ──
   if (config.render_mode === 'custom') {
     const published = isCustomSiteConfig(config.custom_config) ? config.custom_config : null
@@ -226,6 +232,9 @@ export async function validateTenantSite(tenantId: string): Promise<ValidationRe
           fixable: true,
           meta: { source: published ? 'published' : 'draft' },
         })
+      }
+      for (const page of Object.values(artifact.pages)) {
+        if (page?.html) copyPages.push(page.html)
       }
       const homeHtml = artifact.pages['/']?.html || artifact.pages['']?.html || ''
       if (!htmlHasInjectableWidget(homeHtml)) {
@@ -371,6 +380,7 @@ export async function validateTenantSite(tenantId: string): Promise<ValidationRe
         })
       } else {
         const html = await res.text()
+        if (copyPages.length === 0) copyPages.push(html)
 
         if (navLinks.length > 0 && !/<nav[\s>]/.test(html)) {
           issues.push({
@@ -445,6 +455,43 @@ export async function validateTenantSite(tenantId: string): Promise<ValidationRe
         code: 'crawl_failed',
         severity: 'warning',
         message: `Live crawl failed: ${err instanceof Error ? err.message : String(err)}. This may just mean the site hasn't finished deploying yet — re-run validation shortly.`,
+        fixable: false,
+      })
+    }
+  }
+
+  // ── Specificity gate: the mechanical half of the swap test ──
+  //
+  // Reported as warnings, deliberately. These findings are about whether copy is
+  // generic, and the honest fix is a fact the prospect has to supply — not
+  // something the validator or the auto-fixer can invent, so `fixable` is false
+  // throughout. Raising them to 'error' would fail launches for every tenant
+  // provisioned before the Craft & proof intake step existed. Once back-filled,
+  // flipping `severity` here is the whole change needed to start enforcing.
+  {
+    const businessName = (config.brand_name || tenant.business_name || '').trim()
+    for (const [index, pageHtml] of copyPages.entries()) {
+      // Locality is not joined in here, so a city name still counts as a named
+      // place. That errs toward passing, which is the right way for a new check
+      // to be wrong.
+      for (const finding of analyzeSpecificity({ text: pageHtml, businessName })) {
+        issues.push({
+          code: finding.code,
+          severity: 'warning',
+          message:
+            copyPages.length > 1
+              ? `Page ${index + 1} of ${copyPages.length}: ${finding.message}`
+              : finding.message,
+          fixable: false,
+          meta: finding.samples.length > 0 ? { samples: finding.samples } : undefined,
+        })
+      }
+    }
+    for (const finding of analyzeToneBalance(copyPages)) {
+      issues.push({
+        code: finding.code,
+        severity: 'warning',
+        message: finding.message,
         fixable: false,
       })
     }

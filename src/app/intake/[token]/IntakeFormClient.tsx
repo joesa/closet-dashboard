@@ -156,7 +156,78 @@ type Form = {
   notes: string;
   pages: string[];
   pageContents: Record<string, string>;
+  /** Proprietary facts — see the "Craft & proof" step and buildIntakeBrief. */
+  craftSpec: string;
+  shopRule: string;
+  localConditions: string;
+  crewShape: string;
+  clientArtifact: string;
+  recentJob: string;
+  competitorTell: string;
+  timelineFacts: string;
+  guaranteeTerms: string;
+  signatureMaterials: string;
 };
+
+/**
+ * The "Craft & proof" step. Each prompt is written to return a noun, a number,
+ * or a rule — never an adjective — because generated copy can only be as
+ * specific as the brief it is written from. Placeholders deliberately span
+ * different trades so the examples do not steer every business toward the same
+ * answer shape.
+ */
+const CRAFT_FIELDS: Array<{
+  key: 'craftSpec' | 'shopRule' | 'localConditions' | 'crewShape' | 'clientArtifact'
+    | 'recentJob' | 'competitorTell' | 'timelineFacts' | 'guaranteeTerms';
+  label: string;
+  placeholder: string;
+}> = [
+  {
+    key: 'craftSpec',
+    label: 'What do you measure, and how precisely?',
+    placeholder: 'e.g. We laser every wall and build to the quarter-inch — old houses rarely give us a true wall.',
+  },
+  {
+    key: 'clientArtifact',
+    label: 'What does a customer actually receive or sign off on?',
+    placeholder: 'e.g. A hand-drawn elevation of their wall. Nothing gets cut before they sign it.',
+  },
+  {
+    key: 'shopRule',
+    label: 'A rule you never break',
+    placeholder: 'e.g. If a rail is half an inch off the drawing at install, it goes back to the shop.',
+  },
+  {
+    key: 'localConditions',
+    label: 'What goes wrong on jobs in your area, and why?',
+    placeholder: 'e.g. Pre-war houses here have out-of-square corners and no insulation behind the plaster.',
+  },
+  {
+    key: 'recentJob',
+    label: 'One real recent job — what was wrong, what you did',
+    placeholder: 'e.g. Job 24-0619: one bare bulb, a water stain we chased to a flashing leak, one sagging wire shelf.',
+  },
+  {
+    key: 'timelineFacts',
+    label: 'Real timeframes',
+    placeholder: 'e.g. Quote in 48 hours, six to eight weeks from survey to install.',
+  },
+  {
+    key: 'crewShape',
+    label: 'Who does the work?',
+    placeholder: 'e.g. Two senior fitters, both on staff nine years. We never subcontract the install.',
+  },
+  {
+    key: 'competitorTell',
+    label: 'What do cheaper competitors get wrong?',
+    placeholder: 'e.g. They screw into drywall anchors instead of finding studs, so the rail sags in a year.',
+  },
+  {
+    key: 'guaranteeTerms',
+    label: 'Your guarantee, in your own words',
+    placeholder: 'e.g. Ten years on the boxes, lifetime on the soft-close runners. We come back and fix it.',
+  },
+];
 
 type WidgetHintsSnapshot = {
   industry?: string;
@@ -289,7 +360,10 @@ function emptyForm(
     addOnText: widgetHints?.addOnText || '',
     calculatorNotes: widgetHints?.calculatorNotes || '',
     pricingNotes: '',
-    primaryColorHex: '#6C47FF',
+    // Warm graphite, not the violet this used to default to: whatever sits in
+    // this input becomes the brand colour for every prospect who never opens the
+    // picker, and a SaaS violet is the most recognisable AI-generated tell there is.
+    primaryColorHex: '#3F3A34',
     vibe: '',
     tone: '',
     customers: '',
@@ -302,6 +376,16 @@ function emptyForm(
     notes: '',
     pages,
     pageContents: pageContents || {},
+    craftSpec: '',
+    shopRule: '',
+    localConditions: '',
+    crewShape: '',
+    clientArtifact: '',
+    recentJob: '',
+    competitorTell: '',
+    timelineFacts: '',
+    guaranteeTerms: '',
+    signatureMaterials: '',
   };
 }
 
@@ -1444,6 +1528,11 @@ export default function IntakeFormClient({
           industry: form.industry,
           services: serviceList,
           otherServices: undefined,
+          // Collected as one comma-separated line; the column is text[].
+          signatureMaterials: form.signatureMaterials
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean),
           menuItems: form.menuItems
             .filter((item) => item.name.trim().length > 0)
             .map((item) => ({
@@ -1483,6 +1572,7 @@ export default function IntakeFormClient({
       { key: 'business', title: 'Business & contact' },
       { key: 'domain', title: 'Website domain' },
       { key: 'services', title: 'Services & pricing' },
+      { key: 'craft', title: 'Craft & proof' },
     ];
     if (form.pages.length > 0) arr.push({ key: 'pageContent', title: 'Page content' });
     if (canUseImageStudio && studioServices.length > 0) {
@@ -2504,6 +2594,53 @@ export default function IntakeFormClient({
             </section>
             </div>
           )}
+
+          <div className={currentStepIndex === stepIdx.craft ? '' : 'hidden'}>
+            <section className={sectionClass}>
+              <h2 className={sectionTitle}>Craft &amp; proof</h2>
+              <p className="mb-1 text-sm text-zinc-300">
+                This is the step that decides whether your site reads as yours or as
+                a template with your name on it.
+              </p>
+              <p className="mb-5 text-sm text-zinc-400">
+                We write your site only from what you tell us here. Every answer below
+                replaces a paragraph of filler with something a competitor could not
+                copy. Answer what you can in plain language — half sentences and rough
+                numbers are fine, we&apos;ll shape them. Skip anything that doesn&apos;t
+                apply; we&apos;d rather have four real answers than nine vague ones.
+              </p>
+
+              {CRAFT_FIELDS.map((field) => (
+                <div key={field.key} className="mb-5">
+                  <label className={label} htmlFor={`craft-${field.key}`}>
+                    {field.label}
+                  </label>
+                  <textarea
+                    id={`craft-${field.key}`}
+                    className={`${input} min-h-[76px]`}
+                    value={form[field.key]}
+                    onChange={(e) => set(field.key, e.target.value)}
+                    placeholder={field.placeholder}
+                  />
+                </div>
+              ))}
+
+              <label className={label} htmlFor="craft-materials">
+                Materials, brands, or equipment you actually use
+              </label>
+              <input
+                id="craft-materials"
+                className={input}
+                value={form.signatureMaterials}
+                onChange={(e) => set('signatureMaterials', e.target.value)}
+                placeholder="e.g. Blum soft-close runners, white oak veneer, 2700K LED strip — comma separated"
+              />
+              <p className="mt-2 text-xs text-zinc-500">
+                Named products beat &ldquo;premium materials&rdquo; every time. These also
+                give us the colours and textures your site is designed around.
+              </p>
+            </section>
+          </div>
 
           {form.pages.length > 0 && (
             <div className={currentStepIndex === stepIdx.pageContent ? '' : 'hidden'}>
