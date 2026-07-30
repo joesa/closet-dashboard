@@ -34,18 +34,22 @@ export type TradeVertical =
   | 'medical'
   | 'professional'
   | 'wellness'
+  | 'instruction'
+  | 'creative'
   | 'cleaning'
   | 'auto'
   | 'food'
   | 'trade_closets'
   | 'trade_plumbing'
   | 'trade_hvac'
-  | 'trade_general';
+  | 'trade_general'
+  | 'general_service';
 
 /**
  * Detect the business vertical category from industry title + services list.
- * Crucial to ensure medical, professional, wellness, and auto businesses get
- * copy tailored to their actual work (NOT building/construction assumptions).
+ * Open-ended classifier supporting 100s of service categories:
+ * Healthcare, Professional Services, Wellness/Fitness, Education/Childcare,
+ * Creative/Events, Automotive, Cleaning, Hospitality, Trades, and General Services.
  */
 export function detectVertical(industry?: string | null, services?: string[] | null, otherServices?: string | null): TradeVertical {
   const combined = [
@@ -54,49 +58,63 @@ export function detectVertical(industry?: string | null, services?: string[] | n
     otherServices || '',
   ].join(' ').toLowerCase();
 
-  // Medical / Healthcare / Clinic
+  // 1. Medical / Healthcare / Clinic / Vet / Dental
   if (
-    /med|clinic|pediatr|doctor|health|urgent care|hospital|dental|dentist|physician|therapy|therapist|optom|eye care|dermatol|chiro|podiatr|vet|psych|counsel/i.test(combined)
+    /med|clinic|pediatr|doctor|health|urgent care|hospital|dental|dentist|physician|therapy|therapist|optom|eye care|dermatol|chiro|podiatr|vet\b|veterin|psych|counsel|rehab/i.test(combined)
   ) {
     return 'medical';
   }
 
-  // Professional Services / Legal / Financial / Real Estate
+  // 2. Professional Services / Legal / Financial / Real Estate / Tech / Consulting
   if (
-    /legal|law|attorney|lawyer|account|cpa|tax|financial|wealth|real estate|realtor|broker|insurance|consulting|marketing|agency|architect/i.test(combined)
+    /legal|law|attorney|lawyer|account|cpa|tax|financial|wealth|real estate|realtor|broker|insurance|consulting|marketing|agency|architect|it support|cybersecurity|mortgage|notary|investig/i.test(combined)
   ) {
     return 'professional';
   }
 
-  // Personal Care / Wellness / Salon / Fitness
+  // 3. Wellness / Fitness / Beauty / Salon / Spa
   if (
-    /salon|spa|barber|hair|beauty|esthetic|skincare|fitness|gym|yoga|massage|lash|nail|tanning|wellness/i.test(combined)
+    /salon|spa|barber|hair|beauty|esthetic|skincare|fitness|gym|yoga|pilates|massage|lash|nail|tanning|wellness|martial arts|dojo|boxing/i.test(combined)
   ) {
     return 'wellness';
   }
 
-  // Cleaning / Janitorial
+  // 4. Education / Childcare / Instruction / Training
   if (
-    /clean|janitor|maid|carpet clean|pressure wash|power wash|window clean|housekeeping/i.test(combined)
+    /daycare|childcare|preschool|nursery|tutoring|music school|music lesson|dance studio|driving school|swim school|academy|learning|camp\b/i.test(combined)
   ) {
-    return 'cleaning';
+    return 'instruction';
   }
 
-  // Automotive / Transport
+  // 5. Creative / Photography / Events / Design
   if (
-    /auto|car|towing|tow|detail|tint|mechanic|wrap|transmission|body shop|vehicle|roadside/i.test(combined)
+    /photog|videog|dj\b|event plan|wedding|graphic design|tattoo|piercing|florist|interior design|party|print shop/i.test(combined)
+  ) {
+    return 'creative';
+  }
+
+  // 6. Automotive / Transport / Logistics
+  if (
+    /auto|car\b|towing|tow\b|detail|tint|mechanic|wrap|transmission|body shop|vehicle|roadside|fleet|trucking|moving company|mover/i.test(combined)
   ) {
     return 'auto';
   }
 
-  // Food / Hospitality
+  // 7. Cleaning / Janitorial / Sanitation
   if (
-    /restaurant|cater|bakery|bake|bar\b|pub\b|food|bistro|cafe|pizza|kitchen/i.test(combined)
+    /clean|janitor|maid|carpet clean|pressure wash|power wash|window clean|housekeeping|disinfect/i.test(combined)
+  ) {
+    return 'cleaning';
+  }
+
+  // 8. Food / Hospitality / Catering
+  if (
+    /restaurant|cater|bakery|bake|bar\b|pub\b|food|bistro|cafe|pizza|kitchen|brewery|distillery|hotel/i.test(combined)
   ) {
     return 'food';
   }
 
-  // Specialty Trades
+  // 9. Specialty Physical Trades
   if (/closet|storage|cabinet|millwork|organiz/i.test(combined)) {
     return 'trade_closets';
   }
@@ -106,8 +124,14 @@ export function detectVertical(industry?: string | null, services?: string[] | n
   if (/hvac|heat|air cond|cooling|furnace|duct/i.test(combined)) {
     return 'trade_hvac';
   }
+  if (
+    /roof|landscap|lawn|paint|floor|remodel|mason|deck|fence|concrete|handyman|solar|pest|construction|builder|general contractor|drywall|tile/i.test(combined)
+  ) {
+    return 'trade_general';
+  }
 
-  return 'trade_general';
+  // Default for any non-trade service business (e.g. Pet Grooming, Funeral Home, Rental, Pawn Shop, etc.)
+  return 'general_service';
 }
 
 export type CraftFieldMeta = {
@@ -267,7 +291,157 @@ export function getCraftFieldsForVertical(vertical: TradeVertical): CraftFieldMe
     ];
   }
 
-  // Default / Trades / General
+  if (vertical === 'instruction') {
+    return [
+      {
+        key: 'craftSpec',
+        label: 'What do you evaluate, and how precisely for each student/child?',
+        placeholder: 'e.g. We assess developmental milestones and skill levels to craft an individualized learning roadmap.',
+      },
+      {
+        key: 'clientArtifact',
+        label: 'What do parents/students receive to track progress?',
+        placeholder: 'e.g. Weekly digital progress reports, video milestone recordings, and skill achievement certificates.',
+      },
+      {
+        key: 'shopRule',
+        label: 'A safety or educational rule you never break',
+        placeholder: 'e.g. Low student-to-teacher ratios guaranteed — maximum 4 children per certified instructor.',
+      },
+      {
+        key: 'localConditions',
+        label: 'What challenges do families face locally, and why?',
+        placeholder: 'e.g. Crowded local programs with 15+ kids per class often leave individual students behind.',
+      },
+      {
+        key: 'recentJob',
+        label: 'One real student/child success story — what changed?',
+        placeholder: 'e.g. Helped a shy 4-year-old gain full reading confidence and social engagement within 6 weeks.',
+      },
+      {
+        key: 'timelineFacts',
+        label: 'Real scheduling & milestone timeframes',
+        placeholder: 'e.g. Flexible morning & afternoon sessions; visible skill milestones every 4 weeks.',
+      },
+      {
+        key: 'crewShape',
+        label: 'Who teaches or cares for the students?',
+        placeholder: 'e.g. Certified educators and CPR/first-aid trained staff with background checks on file.',
+      },
+      {
+        key: 'competitorTell',
+        label: 'What do large commercial chains get wrong?',
+        placeholder: 'e.g. Commercial chains rotate unvetted part-time staff weekly, destroying continuity of care.',
+      },
+      {
+        key: 'guaranteeTerms',
+        label: 'Your educational/care commitment',
+        placeholder: 'e.g. 100% satisfaction guarantee — if your child doesn\'t love their first week, full refund.',
+      },
+    ];
+  }
+
+  if (vertical === 'creative') {
+    return [
+      {
+        key: 'craftSpec',
+        label: 'What details or moments do you focus on, and how precisely?',
+        placeholder: 'e.g. We shoot in 4K HDR color-matched profiles, capturing authentic candid moments and fine details.',
+      },
+      {
+        key: 'clientArtifact',
+        label: 'What does a client actually receive after the project?',
+        placeholder: 'e.g. An online high-res gallery, full print rights, and a custom linen-bound heirloom album.',
+      },
+      {
+        key: 'shopRule',
+        label: 'A creative or service rule you never break',
+        placeholder: 'e.g. We back up all raw files to dual off-site cloud vaults before leaving the event location.',
+      },
+      {
+        key: 'localConditions',
+        label: 'What local venue or lighting challenges do you solve?',
+        placeholder: 'e.g. Dark historic venues in our area require specialized off-camera flash setups for crisp photos.',
+      },
+      {
+        key: 'recentJob',
+        label: 'One real recent project story — what happened?',
+        placeholder: 'e.g. Captured a 12-hour wedding event across 3 locations, delivering 650 edited photos in 10 days.',
+      },
+      {
+        key: 'timelineFacts',
+        label: 'Real delivery timeframes',
+        placeholder: 'e.g. 48-hour sneak peek gallery; full delivered project inside 14 business days.',
+      },
+      {
+        key: 'crewShape',
+        label: 'Who creates the work?',
+        placeholder: 'e.g. Lead artist and dedicated second shooter. We never subcontract your event to freelancers.',
+      },
+      {
+        key: 'competitorTell',
+        label: 'What do budget operators get wrong?',
+        placeholder: 'e.g. Budget shooters use harsh direct flash, lose unbacked files, and take 3 months to deliver.',
+      },
+      {
+        key: 'guaranteeTerms',
+        label: 'Your creative commitment',
+        placeholder: 'e.g. Guaranteed on-time delivery and complete gallery satisfaction, or we re-edit for free.',
+      },
+    ];
+  }
+
+  if (vertical === 'general_service') {
+    return [
+      {
+        key: 'craftSpec',
+        label: 'What standards do you measure or track for every client?',
+        placeholder: 'e.g. We track every client requirement and measure quality standards to 100% accuracy.',
+      },
+      {
+        key: 'clientArtifact',
+        label: 'What does a client or customer actually receive?',
+        placeholder: 'e.g. A clear service summary, transparent itemized proposal or care plan, and direct contact line.',
+      },
+      {
+        key: 'shopRule',
+        label: 'A service rule you never break',
+        placeholder: 'e.g. We return every client message within 24 hours and never compromise on quality or safety.',
+      },
+      {
+        key: 'localConditions',
+        label: 'What goes wrong with local competitors, and why?',
+        placeholder: 'e.g. Scheduling delays and rushed 5-minute service at large chains often compromise quality.',
+      },
+      {
+        key: 'recentJob',
+        label: 'One real recent client story — what was wrong, what you did',
+        placeholder: 'e.g. Assisted a local client with an urgent request, resolving their issue smoothly in under 2 hours.',
+      },
+      {
+        key: 'timelineFacts',
+        label: 'Real response & completion timeframes',
+        placeholder: 'e.g. Initial response within 2 hours; fast, reliable scheduling suited to your availability.',
+      },
+      {
+        key: 'crewShape',
+        label: 'Who provides the service?',
+        placeholder: 'e.g. Experienced, background-checked in-house staff with years of dedicated service.',
+      },
+      {
+        key: 'competitorTell',
+        label: 'What do cheap competitors get wrong?',
+        placeholder: 'e.g. Impersonal national chains rush clients out without listening to their specific needs.',
+      },
+      {
+        key: 'guaranteeTerms',
+        label: 'Your service commitment, in your own words',
+        placeholder: 'e.g. 100% satisfaction guarantee — if something isn\'t right, we fix it immediately at no extra charge.',
+      },
+    ];
+  }
+
+  // Default / Physical Trades / Construction
   return [
     {
       key: 'craftSpec',
@@ -339,6 +513,27 @@ export function getMaterialsLabelAndPlaceholder(vertical: TradeVertical): { labe
       hint: 'Named premium products and tools beat generic "quality products" every time.',
     };
   }
+  if (vertical === 'instruction') {
+    return {
+      label: 'Educational materials, curriculum, or safety tools you use',
+      placeholder: 'e.g. Montessori sensory kits, certified CPR kits, digital progress portals — comma separated',
+      hint: 'Named educational tools signal quality instruction and child safety.',
+    };
+  }
+  if (vertical === 'creative') {
+    return {
+      label: 'Camera gear, software, or finishing materials you use',
+      placeholder: 'e.g. Sony FX3 4K cine gear, Lightroom Pro, hand-stitched linen albums — comma separated',
+      hint: 'Named professional gear signals technical mastery and high production value.',
+    };
+  }
+  if (vertical === 'general_service') {
+    return {
+      label: 'Software, equipment, or service systems you actually use',
+      placeholder: 'e.g. Dedicated client portals, instant dispatch software, 24/7 communication lines — comma separated',
+      hint: 'Named tools signal modern operations and quality customer care.',
+    };
+  }
   return {
     label: 'Materials, brands, or equipment you actually use',
     placeholder: 'e.g. Blum soft-close runners, white oak veneer, 2700K LED strip — comma separated',
@@ -346,7 +541,10 @@ export function getMaterialsLabelAndPlaceholder(vertical: TradeVertical): { labe
   };
 }
 
-/** Static fallbacks tailored by trade category when AI is offline or key missing. */
+/**
+ * Universal static fallbacks tailored by trade vertical when AI is offline or key missing.
+ * ZERO construction/building terms for non-construction businesses!
+ */
 export function getTradeFallbackCraft(industry?: string | null, serviceArea?: string | null, services?: string[] | null): CraftAnswers {
   const vertical = detectVertical(industry, services);
   const area = serviceArea || 'your area';
@@ -394,6 +592,34 @@ export function getTradeFallbackCraft(industry?: string | null, serviceArea?: st
         signatureMaterials: 'Organic botanical formulations, medical-grade skin barrier serums, Dyson professional tools.',
       };
 
+    case 'instruction':
+      return {
+        craftSpec: 'We assess developmental milestones and skill levels to craft an individualized learning roadmap for each student.',
+        clientArtifact: 'Weekly digital progress reports, video milestone recordings, and skill achievement certificates.',
+        shopRule: 'Low student-to-teacher ratios guaranteed — maximum 4 children per certified instructor.',
+        localConditions: 'Crowded local programs in ' + area + ' with 15+ kids per class often leave individual students behind.',
+        recentJob: 'Helped a shy 4-year-old gain full reading confidence and social engagement within 6 weeks.',
+        timelineFacts: 'Flexible morning & afternoon sessions; visible skill milestones every 4 weeks.',
+        crewShape: 'Certified educators and CPR/first-aid trained staff with background checks on file.',
+        competitorTell: 'Commercial chains rotate unvetted part-time staff weekly, destroying continuity of care.',
+        guaranteeTerms: '100% satisfaction guarantee — if your child doesn\'t love their first week, full refund.',
+        signatureMaterials: 'Montessori sensory kits, certified CPR kits, digital progress portals.',
+      };
+
+    case 'creative':
+      return {
+        craftSpec: 'We shoot in 4K HDR color-matched profiles, capturing authentic candid moments and fine details.',
+        clientArtifact: 'An online high-res gallery, full print rights, and a custom linen-bound heirloom album.',
+        shopRule: 'We back up all raw files to dual off-site cloud vaults before leaving the event location.',
+        localConditions: 'Dark historic venues in ' + area + ' require specialized off-camera flash setups for crisp photos.',
+        recentJob: 'Captured a 12-hour wedding event across 3 locations, delivering 650 edited photos in 10 days.',
+        timelineFacts: '48-hour sneak peek gallery; full delivered project inside 14 business days.',
+        crewShape: 'Lead artist and dedicated second shooter. We never subcontract your event to freelancers.',
+        competitorTell: 'Budget shooters use harsh direct flash, lose unbacked files, and take 3 months to deliver.',
+        guaranteeTerms: 'Guaranteed on-time delivery and complete gallery satisfaction, or we re-edit for free.',
+        signatureMaterials: 'Sony FX3 4K cine gear, Lightroom Pro, hand-stitched linen albums.',
+      };
+
     case 'cleaning':
       return {
         craftSpec: 'We follow a 50-point deep cleaning checklist, inspecting every baseboard, light switch, and corner.',
@@ -434,6 +660,20 @@ export function getTradeFallbackCraft(industry?: string | null, serviceArea?: st
         competitorTell: 'Budget caterers use pre-made frozen trays that get dry and lukewarm before serving.',
         guaranteeTerms: 'On-time delivery guarantee and 100% fresh presentation for every event.',
         signatureMaterials: 'Locally sourced organic produce, prime cuts, scratch-made sauces.',
+      };
+
+    case 'general_service':
+      return {
+        craftSpec: 'We track every client request and measure quality standards to 100% accuracy before completion.',
+        clientArtifact: 'A clear service summary, transparent itemized proposal or care plan, and direct contact line.',
+        shopRule: 'We return every client message within 24 hours and never compromise on quality, safety, or client privacy.',
+        localConditions: 'Scheduling delays and rushed 5-minute service at large chains often compromise quality in ' + area + '.',
+        recentJob: 'Assisted a local client with an urgent request, resolving their issue smoothly in under 2 hours.',
+        timelineFacts: 'Initial response within 2 hours; fast, reliable scheduling suited to your availability.',
+        crewShape: 'Experienced, background-checked in-house professionals with years of dedicated service. No unvetted temps.',
+        competitorTell: 'Impersonal national chains rush clients out without listening to their specific needs or checking details.',
+        guaranteeTerms: '100% satisfaction guarantee — if something isn\'t right, we fix it immediately at no extra charge.',
+        signatureMaterials: 'Dedicated client portals, instant dispatch software, 24/7 direct communication lines.',
       };
 
     case 'trade_closets':
@@ -496,9 +736,10 @@ export function getTradeFallbackCraft(industry?: string | null, serviceArea?: st
 }
 
 /**
- * AI generator for bespoke Craft & Proof answers.
- * Detects trade vertical (Medical, Legal, Wellness, Auto, Food, Cleaning, Construction)
- * and feeds vertical-specific personas and field guides to Gemini.
+ * Universal AI generator for bespoke Craft & Proof answers.
+ * Dynamically synthesizes copy for ANY of 100s of business & service types.
+ * Passes the exact industry, services, and domain to Gemini so the AI crafts
+ * 100% authentic, bespoke answers regardless of niche.
  */
 export async function suggestCraftAnswers(
   input: SuggestCraftAnswersInput
@@ -520,147 +761,42 @@ export async function suggestCraftAnswers(
   const differentiators = (input.differentiators || []).filter(Boolean);
   const singleField = (input.singleField || '').trim();
 
-  let personaInstruction = '';
-  let fieldExamples = '';
+  const isPhysicalTrade = vertical.startsWith('trade_');
 
-  if (vertical === 'medical') {
-    personaInstruction = `You are a lead physician and medical director (e.g. Pediatrician, Clinic Director, Dental Director) writing authentic, patient-first copy for your local medical practice or clinic. You treat patients, provide urgent care, appointments, and specialized medical care.
-CRITICAL: Do NOT write like a building contractor, plumber, or carpenter! Do NOT mention building, plywood, construction, laser levels, framing, or project foremen! Write 100% about medical/clinical care, patients, triage, doctor credentials, and health outcomes.`;
+  const prompt = `You are a master copywriter and veteran business operator writing authentic, highly specific copy for a local business or professional service website's "Craft & Proof" section.
 
-    fieldExamples = `
-FIELD GUIDELINES FOR MEDICAL/HEALTHCARE PRACTICE:
-- craftSpec: What do you measure or track, and how precisely? (e.g. "We triage every sick child immediately and track growth percentiles, vitals, and diagnostic accuracy to strict clinical standards.")
-- clientArtifact: What does a patient actually receive? (e.g. "A same-day appointment summary, personalized care guide, and electronic prescription sent straight to their pharmacy.")
-- shopRule: A clinical rule you never break (e.g. "Every sick child gets seen the same day, and room sterilization happens between every single patient visit.")
-- localConditions: What goes wrong in local healthcare, and why? (e.g. "Overcrowded ERs in ${area || 'our area'} and rushed 4-minute visits at corporate medical chains often miss underlying symptoms.")
-- recentJob: One real recent patient case — what was wrong, what you did (e.g. "A 3-year-old with a 103°F fever on a Sunday — evaluated in 10 minutes, diagnosed acute otitis media, and sent amoxicillin to their local pharmacy.")
-- timelineFacts: Real timeframes (e.g. "Same-day walk-in or appointment within 2 hours; 10-minute average lobby wait time.")
-- crewShape: Who provides the care? (e.g. "Board-certified physicians and dedicated pediatric RNs on staff. You see the same doctor every visit.")
-- competitorTell: What do corporate urgent care chains get wrong? (e.g. "Corporate med-factories rush kids out in 4 minutes without listening to parents or checking full symptoms.")
-- guaranteeTerms: Your commitment in your own words (e.g. "Same-day access when your child is sick, plus direct 24/7 triage nurse phone access.")
-- signatureMaterials: Clinical tools or equipment you actually use (e.g. "Welch Allyn diagnostic sets, pediatric-dose neb treatments, 24/7 direct patient portal.")`;
-  } else if (vertical === 'professional') {
-    personaInstruction = `You are a managing partner / principal attorney / CPA writing authentic copy for your local professional services firm. Do NOT write about construction/building! Focus on legal/financial precision, client confidentiality, strategy, and results.`;
-    fieldExamples = `
-FIELD GUIDELINES FOR PROFESSIONAL SERVICES:
-- craftSpec: What do you audit or measure? (e.g. "We audit every document for 100% regulatory compliance and tax precision.")
-- clientArtifact: What does a client receive? (e.g. "A comprehensive strategy roadmap, clear fee breakdown, and binding legal agreement.")
-- shopRule: A professional rule you never break (e.g. "We return every client phone call or email within 24 hours — zero unreturned messages.")
-- localConditions: Local regulatory issues (e.g. "Complex local regulations in ${area || 'our area'} create compliance traps for growing businesses if not audited early.")
-- recentJob: Real client outcome (e.g. "Resolved a complex partnership dispute inside 14 days without going to court.")
-- timelineFacts: Real timeframes (e.g. "Initial consultation in 24 hours; clear milestone roadmap on day one.")
-- crewShape: Who does the work? (e.g. "Managing partners handle your file directly. No junior interns.")
-- competitorTell: What do big impersonal firms get wrong? (e.g. "Large firms hand files off to inexperienced paralegals who take weeks to respond.")
-- guaranteeTerms: Billing commitment (e.g. "Transparent, upfront fixed-fee pricing with zero surprise invoice charges.")
-- signatureMaterials: Tools/software used (e.g. "Encrypted client portals, secure document vaults, advanced compliance software.")`;
-  } else if (vertical === 'wellness') {
-    personaInstruction = `You are a master esthetician / salon director / fitness principal writing copy for your local wellness/beauty business. Focus on skin/hair care, customized regimens, sanitation, and client transformations. Do NOT mention construction/building!`;
-    fieldExamples = `
-FIELD GUIDELINES FOR WELLNESS/BEAUTY:
-- craftSpec: What do you analyze? (e.g. "We perform a detailed skin or hair analysis before starting any treatment to match your exact profile.")
-- clientArtifact: What does a client receive? (e.g. "A customized home-care regimen and personalized treatment plan sheet.")
-- shopRule: A hygiene/care rule (e.g. "Every tool is autoclaved or single-use sanitized between clients. We never double-book.")
-- localConditions: Local skin/hair challenges (e.g. "High humidity and hard water in ${area || 'our area'} cause skin barrier breakdown and hair damage.")
-- recentJob: Real client transformation (e.g. "Restored a client's damaged skin barrier over 4 tailored sessions using organic botanical treatments.")
-- timelineFacts: Timeframes (e.g. "60 to 90-minute dedicated sessions; zero waiting past your scheduled appointment time.")
-- crewShape: Credentials (e.g. "Master licensed estheticians and stylists with 8+ years specialized experience.")
-- competitorTell: What do budget chains get wrong? (e.g. "Budget chains rush clients out in 15 minutes using cheap synthetic products that strip natural oils.")
-- guaranteeTerms: Satisfaction promise (e.g. "Love your look guarantee — free touch-up within 7 days if you're not completely delighted.")
-- signatureMaterials: Products/tools (e.g. "Organic botanical formulations, medical-grade skin barrier serums, Dyson professional tools.")`;
-  } else if (vertical === 'cleaning') {
-    personaInstruction = `You are a professional cleaning director writing copy for your local cleaning business. Focus on deep-cleaning standards, cross-contamination prevention, HEPA filtration, and non-toxic products. Do NOT mention building/construction!`;
-    fieldExamples = `
-FIELD GUIDELINES FOR CLEANING:
-- craftSpec: Cleaning standard (e.g. "We follow a 50-point deep cleaning checklist, inspecting every baseboard, light switch, and corner.")
-- clientArtifact: What client receives (e.g. "A completed 50-point cleaning inspection sheet and sanitized environment sign-off.")
-- shopRule: Sanity rule (e.g. "We use color-coded microfiber cloths for bathrooms vs kitchens to guarantee zero cross-contamination.")
-- localConditions: Local dirt/pollen issues (e.g. "Heavy seasonal pollen and hard water in ${area || 'our area'} cause rapid buildup on glass and tile grout.")
-- recentJob: Real cleaning transformation (e.g. "Deep-cleaned a 3,200 sq ft home before move-in, removing 5 years of pet dander and hard water scale.")
-- timelineFacts: Timeframes (e.g. "Free quote in 2 hours; 2 to 3 hour thorough cleaning visits.")
-- crewShape: Staffing (e.g. "Background-checked, bonded, and insured in-house staff cleaners. Zero unvetted gig workers.")
-- competitorTell: What cheap cleaners get wrong (e.g. "Cheap cleaners rush through in 45 minutes, skipping baseboards and using harsh chemical residue.")
-- guaranteeTerms: Guarantee (e.g. "24-hour re-clean guarantee — if any spot is missed, we come back and fix it free.")
-- signatureMaterials: Equipment (e.g. "Commercial HEPA vacuums, eco-friendly non-toxic solutions, hospital-grade microfiber systems.")`;
-  } else if (vertical === 'auto') {
-    personaInstruction = `You are a master automotive technician / detailing director writing copy for your auto service business. Focus on diagnostic precision, OEM parts, paint microns, torque specs, and vehicle protection.`;
-    fieldExamples = `
-FIELD GUIDELINES FOR AUTOMOTIVE:
-- craftSpec: Measurement (e.g. "We measure paint depth down to microns and double-check wheel torque with calibrated digital tools.")
-- clientArtifact: What customer receives (e.g. "A digital vehicle inspection report with high-res photos and an itemized fixed-price estimate.")
-- shopRule: Shop rule (e.g. "We put down protective seat covers and floor mats before touching a single key.")
-- localConditions: Local vehicle issues (e.g. "Road salt and UV intensity in ${area || 'our area'} cause rapid paint oxidation and undercarriage rust.")
-- recentJob: Real repair/detail case (e.g. "Diagnosed an intermittent electrical fault in 20 minutes that two other shops missed.")
-- timelineFacts: Timeframes (e.g. "Same-day turnaround for standard maintenance; 30-minute roadside dispatch.")
-- crewShape: Credentials (e.g. "ASE-certified master technicians led by a shop foreman with 15+ years experience.")
-- competitorTell: What quick-lube shops get wrong (e.g. "Quick-lube shops strip drain plugs and use cheap recycled oil that damages modern engines.")
-- guaranteeTerms: Warranty (e.g. "24-month / 24,000-mile warranty on all repairs and installed parts.")
-- signatureMaterials: Equipment (e.g. "Snap-On diagnostic scanners, ceramic quartz paint coatings, OEM factory replacement parts.")`;
-  } else if (vertical === 'food') {
-    personaInstruction = `You are an executive chef / restaurant & catering owner writing copy for your culinary business. Focus on fresh daily ingredients, scratch cooking, temp controls, and event execution.`;
-    fieldExamples = `
-FIELD GUIDELINES FOR FOOD/HOSPITALITY:
-- craftSpec: Standards (e.g. "We source ingredients fresh daily and maintain strict kitchen temperature controls down to the degree.")
-- clientArtifact: What client receives (e.g. "A customized event menu proposal, dietary restriction map, and tasting schedule.")
-- shopRule: Kitchen rule (e.g. "Everything is made from scratch daily — zero frozen pre-cooked meals or artificial preservatives.")
-- localConditions: Local event challenges (e.g. "Hot summers in ${area || 'our area'} require specialized refrigerated transport for outdoor events.")
-- recentJob: Real catering event (e.g. "Catered a 150-person wedding with a 3-course plated dinner, serving every guest inside 18 minutes.")
-- timelineFacts: Timeframes (e.g. "Custom catering proposal in 24 hours; tasting session booked within 3 days.")
-- crewShape: Staffing (e.g. "Executive chef and trained culinary team with 10+ years hospitality experience.")
-- competitorTell: What budget caterers get wrong (e.g. "Budget caterers use pre-made frozen trays that get dry and lukewarm before serving.")
-- guaranteeTerms: Promise (e.g. "On-time delivery guarantee and 100% fresh presentation for every event.")
-- signatureMaterials: Ingredients (e.g. "Locally sourced organic produce, prime cuts, scratch-made sauces.")`;
-  } else {
-    personaInstruction = `You are a master craftsman and licensed trade contractor writing authentic, highly specific copy for your local business website's "Craft & Proof" section.`;
-    fieldExamples = `
-FIELD GUIDELINES FOR TRADES/CONTRACTING:
-- craftSpec: What do you measure? (e.g. "We laser every wall and build to the 1/4 inch — old houses in ${area || 'our area'} rarely give us a true wall.")
-- clientArtifact: What customer receives (e.g. "A dimensioned 2D elevation drawing with exact specs. Nothing gets cut until you sign.")
-- shopRule: Shop rule (e.g. "If a panel is a half-inch off the drawing at install, it comes back to the shop. No hacking it on-site.")
-- localConditions: Local building challenges (e.g. "Older homes in ${area || 'our area'} often have out-of-square plaster walls.")
-- recentJob: Real job case (e.g. "Job 24-0619: Replaced sagging wire rack and bare bulb with 6-drawer walnut stack.")
-- timelineFacts: Timeframes (e.g. "Detailed quote in 48 hours; 6 to 8 weeks from survey to install.")
-- crewShape: Crew (e.g. "Two senior fitters on staff for 8+ years. We never subcontract.")
-- competitorTell: What cheap competitors get wrong (e.g. "Cheaper installers screw into hollow drywall anchors instead of structural studs.")
-- guaranteeTerms: Warranty (e.g. "Ten years on structures, lifetime warranty on soft-close runners.")
-- signatureMaterials: Materials (e.g. "Blum soft-close runners, 5/8 plywood, 2700K integrated LED strips.")`;
-  }
+CRITICAL CONTEXT ANALYSIS:
+- Industry / Profession: "${industry || 'Specialty Business'}"
+- Business Name: "${businessName || 'Local Business'}"
+- Primary Services Offered: ${services.length > 0 ? services.join(', ') : 'Specialty Services'} ${other ? `(${other})` : ''}
+- Location / Service Area: "${area || 'Local Area'}"
+- Tone & Vibe: ${vibe || 'Professional'}, ${tone || 'Trustworthy'}
+- Key Differentiators: ${differentiators.length > 0 ? differentiators.join(', ') : 'Quality in-house staff, dedicated service'}
 
-  const prompt = `${personaInstruction}
-
-BUSINESS CONTEXT:
-- Business Name: ${businessName || 'Local Business'}
-- Trade / Industry: ${industry || 'Specialty Business'}
-- Detected Vertical Category: ${vertical.toUpperCase()}
-- Primary Services: ${services.join(', ') || 'Specialty Services'} ${other ? `(${other})` : ''}
-- Location / Service Area: ${area || 'Local Area'}
-- Tone / Vibe: ${vibe || 'Professional & Direct'}, ${tone || 'Trustworthy'}
-- Differentiators: ${differentiators.join(', ') || 'In-house staff, precision work'}
-
-${fieldExamples}
-
-CRITICAL RULES FOR ALL ANSWERS:
-1. Speak in first person ("We", "Our doctors", "Our staff", "Our crew"). Write like a real, experienced local business owner talking to a client/patient.
-2. Be CONCRETE and SPECIFIC: include relevant real numbers (e.g. 15 minutes, 100%, 24/7, 10 years, Job 25-0104), tools, methods, or credentials matching THE EXACT INDUSTRY (${industry}).
-3. NEVER use AI tell-words or marketing fluff. BANNED WORDS: "solutions", "leverage", "cutting-edge", "state-of-the-art", "comprehensive", "game-changer", "synergy", "streamline", "empower", "whether you need", "we are committed to", "our team of experienced professionals".
-4. Keep each answer concise (1-2 tight sentences max).
-5. MATCH THE INDUSTRY (${industry}): If this is medical/pediatrics, write 100% about medical/clinical care! If legal, write about legal! If closets, write about closets!
+UNIVERSAL COPYWRITING INSTRUCTIONS:
+1. DEEPLY ANALYZE THIS EXACT PROFESSION (${industry}): Whether it is Pediatrics, Law, Dog Grooming, Daycare, Music Lessons, Photography, Car Detailing, Plumbing, Solar Energy, or Funeral Services — write 100% tailored, authentic copy for THIS SPECIFIC INDUSTRY.
+2. ${isPhysicalTrade ? 'This is a physical trade / construction business. Use trade terms (drawings, measurements, materials, install rules).' : 'IMPORTANT: This is NOT a construction or building business! DO NOT mention laser levels, plywood, framing, project foremen, elevation drawings, or cabinet rails unless the industry explicitly involves construction! Write strictly about the actual services provided.'}
+3. Speak in first person ("We", "Our doctors", "Our team", "Our instructors", "Our technicians", "Our shop").
+4. Be CONCRETE and SPECIFIC: include real metrics, timeframes, credentials, tools, software, or specialized methods relevant to ${industry}.
+5. BANNED FLUFF WORDS: "solutions", "leverage", "cutting-edge", "state-of-the-art", "comprehensive", "game-changer", "synergy", "streamline", "empower", "whether you need", "we are committed to", "our team of experienced professionals".
+6. Keep each answer concise (1-2 tight sentences max).
 
 REQUIRED JSON OUTPUT FORMAT (Return JSON only, no markdown):
 {
-  "craftSpec": "answer text",
-  "clientArtifact": "answer text",
-  "shopRule": "answer text",
-  "localConditions": "answer text",
-  "recentJob": "answer text",
-  "timelineFacts": "answer text",
-  "crewShape": "answer text",
-  "competitorTell": "answer text",
-  "guaranteeTerms": "answer text",
-  "signatureMaterials": "answer text"
+  "craftSpec": "What do you measure, track, or analyze, and how precisely? Tailor to ${industry}.",
+  "clientArtifact": "What does a client/patient/customer actually receive after a visit or project? Tailor to ${industry}.",
+  "shopRule": "An operational or service rule you never break in your business.",
+  "localConditions": "What goes wrong with competitors or local market conditions in ${area || 'your area'}, and why?",
+  "recentJob": "One real recent client/patient case study or project — what was wrong, what you did.",
+  "timelineFacts": "Real turnaround, response, or scheduling timeframes for ${industry}.",
+  "crewShape": "Who provides the service or handles the work? (Credentials, experience, in-house staff).",
+  "competitorTell": "What do cheap competitors or large impersonal chains get wrong?",
+  "guaranteeTerms": "Your service guarantee or commitment in your own words.",
+  "signatureMaterials": "Specific tools, equipment, software, or products you actually use for ${industry}."
 }
 
 ${singleField ? `Focus especially on generating a brilliant, industry-specific answer for field "${singleField}".` : ''}
-Generate tailored answers for ALL fields matching ${industry || 'the business'}.`;
+Generate tailored answers for ALL fields matching ${industry || 'this business'}.`;
 
   try {
     const { text: rawText, provider } = await generateTextWithFallback({

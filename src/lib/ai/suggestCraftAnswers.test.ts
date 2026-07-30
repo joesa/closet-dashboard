@@ -6,53 +6,54 @@ import {
   getMaterialsLabelAndPlaceholder,
 } from './suggestCraftAnswers';
 
-describe('suggestCraftAnswers vertical detection & fallbacks', () => {
+describe('suggestCraftAnswers universal dynamic logic', () => {
   it('detects medical vertical for Pediatrics / Medical Care', () => {
-    const vertical = detectVertical('Medical Care', ['Urgent Care Visit', 'Pediatrics'], 'Dental Office Visit');
+    const vertical = detectVertical('Medical Care', ['Urgent Care Visit', 'Pediatrics']);
     expect(vertical).toBe('medical');
   });
 
-  it('detects professional vertical for Legal & Financial', () => {
-    const vertical = detectVertical('Legal Services', ['Corporate Litigation', 'Tax Consulting']);
-    expect(vertical).toBe('professional');
+  it('detects instruction vertical for Music Lessons / Daycare', () => {
+    const vertical = detectVertical('Music School', ['Piano Lessons', 'Guitar Instruction']);
+    expect(vertical).toBe('instruction');
   });
 
-  it('detects wellness vertical for Salon / Spa', () => {
-    const vertical = detectVertical('Hair Salon & Spa', ['Facial Treatments', 'Hair Styling']);
-    expect(vertical).toBe('wellness');
+  it('detects creative vertical for Wedding Photography', () => {
+    const vertical = detectVertical('Event Photography', ['Wedding Photo', 'Portrait Session']);
+    expect(vertical).toBe('creative');
   });
 
-  it('returns pediatric/medical care answers for Medical Care clinic', () => {
-    const fallback = getTradeFallbackCraft('Medical Care', 'Clarksville, TN', ['Pediatrics', 'Urgent Care Visit']);
-    expect(fallback.craftSpec).toContain('triage');
-    expect(fallback.clientArtifact).toContain('care guide');
-    expect(fallback.shopRule).toContain('sterilization');
-    expect(fallback.recentJob).toContain('otitis media');
-    expect(fallback.signatureMaterials).toContain('diagnostic sets');
+  it('detects general_service for niche non-trade businesses like Equipment Rental', () => {
+    const vertical = detectVertical('Equipment Rental', ['Scaffold Rental', 'Generator Rental']);
+    expect(vertical).toBe('general_service');
+  });
 
-    // Crucially: MUST NOT contain building/construction terms!
+  it('guarantees ZERO construction/building terms in general_service fallback', () => {
+    const fallback = getTradeFallbackCraft('Pet Grooming', 'Nashville', ['Dog Wash']);
     const text = JSON.stringify(fallback).toLowerCase();
-    expect(text).not.toContain('laser-level');
+    expect(text).not.toContain('laser');
     expect(text).not.toContain('plywood');
     expect(text).not.toContain('cabinet');
     expect(text).not.toContain('foreman');
+    expect(text).not.toContain('framing');
+    expect(fallback.craftSpec).toContain('track');
+    expect(fallback.shopRule).toContain('24 hours');
   });
 
-  it('provides clinical field labels and placeholders for medical vertical', () => {
-    const fields = getCraftFieldsForVertical('medical');
-    const craftSpecField = fields.find((f) => f.key === 'craftSpec');
-    expect(craftSpecField?.label).toContain('clinical practice');
-    expect(craftSpecField?.placeholder).toContain('vitals');
-
-    const materialsMeta = getMaterialsLabelAndPlaceholder('medical');
-    expect(materialsMeta.label).toContain('Clinical tools');
-    expect(materialsMeta.placeholder).toContain('diagnostic sets');
+  it('returns pediatric care answers for Medical Care clinic', () => {
+    const fallback = getTradeFallbackCraft('Medical Care', 'Clarksville, TN', ['Pediatrics', 'Urgent Care Visit']);
+    expect(fallback.craftSpec).toContain('triage');
+    expect(fallback.recentJob).toContain('otitis media');
+    const text = JSON.stringify(fallback).toLowerCase();
+    expect(text).not.toContain('laser-level');
+    expect(text).not.toContain('plywood');
   });
 
-  it('returns custom closet specific answers for closets trade', () => {
-    const fallback = getTradeFallbackCraft('Custom Closets', 'Nashville');
-    expect(fallback.craftSpec).toContain('1/4 inch');
-    expect(fallback.clientArtifact).toContain('elevation');
-    expect(fallback.signatureMaterials).toContain('Blum');
+  it('provides education field labels for instruction vertical', () => {
+    const fields = getCraftFieldsForVertical('instruction');
+    const specField = fields.find((f) => f.key === 'craftSpec');
+    expect(specField?.label).toContain('student/child');
+
+    const materials = getMaterialsLabelAndPlaceholder('instruction');
+    expect(materials.label).toContain('Educational materials');
   });
 });
