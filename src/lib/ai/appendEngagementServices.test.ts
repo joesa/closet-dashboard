@@ -16,7 +16,14 @@ function mockSupabase(opts: {
       return { select, insert }
     }
     return {
-      select: () => ({ eq: () => Promise.resolve({ data: [], error: null }) }),
+      select: () => ({
+        // Thenable AND maybeSingle-capable: appendQuote awaits
+        // contractor_settings .select().eq().maybeSingle() for the industry.
+        eq: () =>
+          Object.assign(Promise.resolve({ data: [], error: null }), {
+            maybeSingle: async () => ({ data: null, error: null }),
+          }),
+      }),
       insert,
     }
   })
@@ -48,13 +55,15 @@ describe('appendEngagementServices', () => {
     })
     expect(result.skipped).toEqual(['Exterior Detail'])
     expect(result.appended).toEqual(['Ceramic Coating'])
+    // Curated catalog pricing (auto-detailing slug inferred from the service
+    // names) takes precedence over the average-of-existing-rows fallback.
     expect(sb.insert).toHaveBeenCalledWith([
       expect.objectContaining({
         contractor_id: 'c1',
         name: 'Ceramic Coating',
-        price_basic: 40,
-        price_standard: 60,
-        price_premium: 90,
+        price_basic: 650,
+        price_standard: 1450,
+        price_premium: 2850,
       }),
     ])
   })
