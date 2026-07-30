@@ -20,43 +20,49 @@ export async function GET(
     return NextResponse.redirect(new URL('/admin/sites', req.url));
   }
 
-  // Upstream website rendering engine host (custom-closets-websites Vercel deployment)
-  const sitesBaseUrl = (
-    process.env.CUSTOM_SITES_URL ||
-    process.env.NEXT_PUBLIC_WEBSITES_URL ||
-    'https://custom-closets-websites.vercel.app'
-  ).replace(/\/$/, '');
+  // Candidate URLs for custom-closets-websites upstream Vercel deployment
+  const candidateUrls = [
+    process.env.CUSTOM_SITES_URL,
+    process.env.NEXT_PUBLIC_WEBSITES_URL,
+    'https://custom-closets-websites.vercel.app',
+  ]
+    .filter(Boolean)
+    .map((u) => u!.replace(/\/$/, ''));
 
-  // 1. Attempt proxy fetch from custom-closets-websites upstream deployment
-  try {
-    const targetUrl = `${sitesBaseUrl}/${encodeURIComponent(targetHost)}?admin_bypass=${encodeURIComponent(bypassSecret)}`;
-    const upstreamRes = await fetch(targetUrl, {
-      headers: {
-        'User-Agent': 'DitchTheForm-AdminPreviewProxy/1.0',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-      },
-      cache: 'no-store',
-    });
-
-    if (upstreamRes.ok) {
-      const html = await upstreamRes.text();
-      return new NextResponse(html, {
-        status: 200,
+  // 1. Attempt proxy fetch from upstream website rendering engine
+  for (const sitesBaseUrl of candidateUrls) {
+    try {
+      const targetUrl = `${sitesBaseUrl}/${encodeURIComponent(targetHost)}?admin_bypass=${encodeURIComponent(bypassSecret)}`;
+      const upstreamRes = await fetch(targetUrl, {
         headers: {
-          'Content-Type': 'text/html; charset=utf-8',
-          'Cache-Control': 'no-store, max-age=0',
+          'User-Agent': 'DitchTheForm-AdminPreviewProxy/1.0',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         },
+        cache: 'no-store',
       });
+
+      if (upstreamRes.ok) {
+        const html = await upstreamRes.text();
+        // If upstream didn't return a 404/blank page, serve it directly
+        if (html && !html.includes('This page could not be found') && html.length > 500) {
+          return new NextResponse(html, {
+            status: 200,
+            headers: {
+              'Content-Type': 'text/html; charset=utf-8',
+              'Cache-Control': 'no-store, max-age=0',
+            },
+          });
+        }
+      }
+    } catch (err) {
+      console.warn(`[site-preview-proxy] Upstream fetch failed for ${sitesBaseUrl}:`, err);
     }
-  } catch (err) {
-    console.warn('[site-preview-proxy] Upstream fetch failed:', err);
   }
 
-  // 2. Fallback: query Supabase directly and render an Admin Site Preview Shell
+  // 2. Fallback: query Supabase directly and render an Admin Site Details & Preview Shell
   const supabase = getSupabaseAdmin();
-
-  // Try matching domains table first by hostname or subdomain prefix
   const prefix = targetHost.split('.')[0];
+
   const { data: domainRows } = await supabase
     .from('domains')
     .select('tenant_id, hostname, tenants(id, business_name, owner_email, site_status, site_configs(*))')
@@ -68,6 +74,7 @@ export async function GET(
   const configs = tenant?.site_configs;
   const config = Array.isArray(configs) ? configs[0] : configs;
   const businessName = tenant?.business_name || matched?.hostname || targetHost;
+  const directSubdomainUrl = `https://${targetHost}/?admin_bypass=${bypassSecret}`;
 
   const fallbackHtml = `<!DOCTYPE html>
 <html lang="en">
@@ -84,7 +91,7 @@ export async function GET(
     </div>
     <div>
       <h1 class="text-3xl font-bold text-white">${businessName}</h1>
-      <p class="text-zinc-400 text-sm mt-1">Host: <code class="text-purple-300 font-mono">${targetHost}</code></p>
+      <p class="text-zinc-400 text-sm mt-1">Platform Host: <code class="text-purple-300 font-mono">${targetHost}</code></p>
     </div>
 
     <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 uppercase tracking-wider">
@@ -116,9 +123,21 @@ export async function GET(
     `
     }
 
+    <div class="bg-purple-950/40 border border-purple-800/50 rounded-xl p-4 text-left text-xs text-purple-200 space-y-2">
+      <p class="font-semibold text-purple-300 text-sm">⚙️ Vercel Setup Required for Live Web Previews:</p>
+      <ol class="list-decimal pl-4 space-y-1 opacity-90">
+        <li>In Vercel Dashboard &rarr; <strong>custom-closets-websites</strong> project &rarr; Settings &rarr; Domains &rarr; Add <code>*.ditchtheform.com</code>.</li>
+        <li>In Vercel Dashboard &rarr; <strong>closet-dashboard</strong> project &rarr; Environment Variables &rarr; Add <code>CUSTOM_SITES_URL</code> set to your website deployment URL.</li>
+      </ol>
+    </div>
+
     <div class="pt-4 border-t border-zinc-800 flex flex-col gap-3 sm:flex-row sm:justify-center">
-      <a href="${publicAppOrigin()}/admin/sites" class="px-5 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-lg font-medium text-sm transition-colors">
-        ← Back to Admin Sites
+      <a href="${directSubdomainUrl}" target="_blank" rel="noopener noreferrer" class="px-5 py-2.5 bg-purple-600 hover:bg-purple-500 text-white rounded-lg font-semibold text-sm transition-colors shadow-lg shadow-purple-500/20 flex items-center justify-center gap-2">
+        <span>🔍 Open Direct Subdomain Site</span>
+        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+      </a>
+      <a href="${publicAppOrigin()}/admin/intakes" class="px-5 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-lg font-medium text-sm transition-colors flex items-center justify-center">
+        ← Back to Admin Intakes
       </a>
     </div>
   </div>
