@@ -542,6 +542,8 @@ export default function IntakeFormClient({
 
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [maxStepIndexVisited, setMaxStepIndexVisited] = useState(0);
+  const [isGeneratingCraft, setIsGeneratingCraft] = useState(false);
+  const [generatingCraftField, setGeneratingCraftField] = useState<string | null>(null);
 
   const logoInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRefs = useRef<(HTMLInputElement | null)[]>([]);
@@ -1564,6 +1566,73 @@ export default function IntakeFormClient({
       setError(err instanceof Error ? err.message : 'Failed to submit');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleSuggestCraft = async (singleField?: string) => {
+    if (isGeneratingCraft) return;
+    setIsGeneratingCraft(true);
+    setGeneratingCraftField(singleField || null);
+    setError('');
+
+    try {
+      const activeIndustry = form.industry.trim();
+      const res = await fetch(`/api/intake/${token}/suggest-craft`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          industry: activeIndustry,
+          businessName: form.businessName,
+          services: form.services,
+          otherServices: form.otherServices,
+          serviceArea: form.serviceArea || form.addressLocality,
+          vibe: form.vibe,
+          tone: form.tone,
+          differentiators: form.differentiators,
+          singleField,
+        }),
+      });
+
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.error || 'Failed to generate craft suggestions.');
+      }
+
+      const data = await res.json();
+      const answers = data.answers || {};
+
+      if (singleField) {
+        const val = answers[singleField as keyof typeof answers];
+        if (typeof val === 'string' && val.trim()) {
+          set(singleField as keyof Form, val.trim());
+        }
+      } else {
+        // Master suggest: fill all fields
+        const keys: (keyof typeof answers)[] = [
+          'craftSpec',
+          'clientArtifact',
+          'shopRule',
+          'localConditions',
+          'recentJob',
+          'timelineFacts',
+          'crewShape',
+          'competitorTell',
+          'guaranteeTerms',
+          'signatureMaterials',
+        ];
+        for (const k of keys) {
+          const val = answers[k];
+          if (typeof val === 'string' && val.trim()) {
+            set(k as keyof Form, val.trim());
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Craft suggestion error:', err);
+      setError(err instanceof Error ? err.message : 'Could not generate craft answers.');
+    } finally {
+      setIsGeneratingCraft(false);
+      setGeneratingCraftField(null);
     }
   };
 
@@ -2610,11 +2679,55 @@ export default function IntakeFormClient({
                 apply; we&apos;d rather have four real answers than nine vague ones.
               </p>
 
+              <div className="mb-6 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 sm:p-5">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <h3 className="flex items-center gap-2 text-sm font-semibold text-amber-100">
+                      <span>✨</span> Need ideas? Let AI draft answers tailored to {form.industry?.trim() || 'your trade'}
+                    </h3>
+                    <p className="mt-1 text-xs text-amber-200/80">
+                      Generates realistic, specific answers based on your services and area. You can edit any answer.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleSuggestCraft()}
+                    disabled={isGeneratingCraft}
+                    className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-amber-500 px-4 py-2 text-sm font-semibold text-zinc-950 transition-all hover:bg-amber-400 disabled:opacity-50"
+                  >
+                    {isGeneratingCraft && !generatingCraftField ? (
+                      <>
+                        <span className="h-4 w-4 animate-spin rounded-full border-2 border-zinc-950 border-t-transparent" />
+                        <span>Drafting answers...</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>✨ Auto-fill with AI</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+
               {CRAFT_FIELDS.map((field) => (
                 <div key={field.key} className="mb-5">
-                  <label className={label} htmlFor={`craft-${field.key}`}>
-                    {field.label}
-                  </label>
+                  <div className="mb-1.5 flex items-center justify-between">
+                    <label className={label} htmlFor={`craft-${field.key}`}>
+                      {field.label}
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => handleSuggestCraft(field.key)}
+                      disabled={isGeneratingCraft}
+                      className="flex items-center gap-1 text-xs font-medium text-amber-400 opacity-80 transition-opacity hover:text-amber-300 hover:opacity-100 disabled:opacity-40"
+                    >
+                      {generatingCraftField === field.key ? (
+                        <span className="animate-pulse">Writing...</span>
+                      ) : (
+                        <span>✨ AI Suggest</span>
+                      )}
+                    </button>
+                  </div>
                   <textarea
                     id={`craft-${field.key}`}
                     className={`${input} min-h-[76px]`}
@@ -2625,9 +2738,23 @@ export default function IntakeFormClient({
                 </div>
               ))}
 
-              <label className={label} htmlFor="craft-materials">
-                Materials, brands, or equipment you actually use
-              </label>
+              <div className="mb-1.5 mt-5 flex items-center justify-between">
+                <label className={label} htmlFor="craft-materials">
+                  Materials, brands, or equipment you actually use
+                </label>
+                <button
+                  type="button"
+                  onClick={() => handleSuggestCraft('signatureMaterials')}
+                  disabled={isGeneratingCraft}
+                  className="flex items-center gap-1 text-xs font-medium text-amber-400 opacity-80 transition-opacity hover:text-amber-300 hover:opacity-100 disabled:opacity-40"
+                >
+                  {generatingCraftField === 'signatureMaterials' ? (
+                    <span className="animate-pulse">Writing...</span>
+                  ) : (
+                    <span>✨ AI Suggest</span>
+                  )}
+                </button>
+              </div>
               <input
                 id="craft-materials"
                 className={input}
