@@ -26,21 +26,25 @@ async function fixWikidosPediatrics() {
   const tenantId = tenants[0].id
   console.log(`Found tenant ID: ${tenantId} (${tenants[0].business_name})`)
 
-  // 1. Update site_configs
+  // 1. Update site_configs using tenant_id
   const medicalProcess = {
     title: 'The Wikidos Care Approach',
+    subtitle: 'Compassionate pediatric care',
     signatureEyebrow: 'Compassionate Care',
     signatureMotif: 'dot',
     steps: [
       {
+        number: '01',
         title: 'Schedule Visit',
         description: 'Choose a convenient appointment time for your child online or by phone.',
       },
       {
+        number: '02',
         title: 'Pediatric Evaluation',
         description: 'Our board-certified pediatric team provides thorough, gentle care in a welcoming setting.',
       },
       {
+        number: '03',
         title: 'Care Plan & Support',
         description: 'Receive personalized care instructions, prescription routing, and direct follow-up access.',
       },
@@ -52,14 +56,19 @@ async function fixWikidosPediatrics() {
       'At Wikidos Pediatrics, we provide compassionate, dedicated medical care for infants, children, and teens across Clarksville, TN. Our board-certified pediatricians and care team ensure every child receives personalized, gentle attention in a warm, welcoming environment.',
   }
 
-  // Fetch current site_config
-  const { data: configs } = await supabase
+  // Fetch current site_config by tenant_id
+  const { data: configs, error: fetchConfigErr } = await supabase
     .from('site_configs')
     .select('*')
-    .eq('contractor_id', tenantId)
+    .eq('tenant_id', tenantId)
+
+  if (fetchConfigErr) {
+    console.error('Error fetching site_configs:', fetchConfigErr)
+  }
 
   if (configs && configs.length > 0) {
     const configId = configs[0].id
+    console.log(`Updating site_config ID: ${configId}`)
     const currentProducts = Array.isArray(configs[0].products_config)
       ? configs[0].products_config.filter((p) => !/dental/i.test(p?.title || ''))
       : []
@@ -79,6 +88,8 @@ async function fixWikidosPediatrics() {
     } else {
       console.log('Successfully updated site_config theme to care-comfort & medical copy!')
     }
+  } else {
+    console.warn('No site_config found for tenant_id:', tenantId)
   }
 
   // 2. Set price_cents = 0 on service_catalog for medical appointments & remove dental

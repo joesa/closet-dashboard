@@ -361,6 +361,18 @@ export function injectGalleryImagesIntoPages(
   })
 }
 
+const DEFAULT_PUBLIC_SUBHEADLINES: Record<string, string> = {
+  about: 'Learn more about our team, values, and commitment to excellence.',
+  services: 'Explore our complete range of professional services.',
+  portfolio: 'View photos of our recent work and completed projects.',
+  process: 'How we deliver quality results step-by-step.',
+  testimonials: 'Read what our clients say about working with us.',
+  financing: 'Flexible payment and financing options suited to your budget.',
+  faq: 'Answers to frequently asked questions.',
+  'service-areas': 'Local communities and regions we proudly serve.',
+  contact: 'Get in touch with our team today.',
+}
+
 /**
  * Scaffold real page records for non-AI (Standard) builds straight from the
  * prospect's chosen pages, so the Standard build ships the exact pages the
@@ -382,13 +394,16 @@ export function buildBasicPagesConfig(
           {
             type: 'text',
             heading: title,
-            body: opt?.description || `Detailed information about ${title.toLowerCase()}.`,
+            body: `Detailed information about ${title.toLowerCase()}.`,
           } as PageContentBlock,
         ]
     return {
       slug: `/${slug}`,
       title,
-      hero: { headline: title, subheadline: opt?.description ?? '' },
+      hero: {
+        headline: title,
+        subheadline: DEFAULT_PUBLIC_SUBHEADLINES[slug] || `Everything you need to know about ${title.toLowerCase()}.`,
+      },
       content_blocks,
     }
   })
