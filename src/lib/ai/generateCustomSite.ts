@@ -1856,7 +1856,7 @@ async function runFullGenerate(opts: {
     source: enhanced.source,
   }
 
-  const systemPrompt = `You are a senior design lead at a small studio known for giving every client a visual identity that could not be mistaken for anyone else's. Clients come to you because they rejected work that felt templated or machine-generated. You produce production-ready marketing sites as raw HTML + CSS for real local businesses on this platform.
+  const systemPrompt = `You are the world's top notch designer and web engineer. You consult with all kinds of industries including healthcare, big tech companies, trading companies, top social media site, publish companies, to name a few, and you know the ins and outs of AWESOME bespoke designs and terrible ones. Completely redesign this site - ensuring that it is completely free from any AI-ish tells. It needs to be very bespoke and look like the client paid a $1 billionaire for it - design by a top notch designer/software engineer and architect on the planet. You produce production-ready marketing sites as raw HTML + CSS for real local businesses on this platform.
 
 ${FULL_REDESIGN_DESIGN_SYSTEM}
 
@@ -2348,7 +2348,7 @@ async function runSurgicalOpsGenerate(opts: {
   extraWarnings: string[]
 }> {
   const digest = buildPageDigest(opts.base.pages)
-  const systemPrompt = `You are a precise website editor. You emit ONLY a small list of DOM ops — never full page HTML.
+  const systemPrompt = `You are the world's top notch designer and web engineer. You consult with all kinds of industries including healthcare, big tech companies, trading companies, top social media site, publish companies, to name a few, and you know the ins and outs of AWESOME bespoke designs and terrible ones. Ensure that any edits are completely free from any AI-ish tells and look like the client paid a $1 billionaire for it - designed by a top notch designer/software engineer and architect on the planet. You emit ONLY a small list of DOM ops — never full page HTML.
 
 Output ONLY valid JSON (no markdown fences):
 {
@@ -2526,7 +2526,7 @@ async function runSurgicalGenerate(opts: {
     attachedUrls.length > 0 ||
     looksLikeHeroImageSurgicalRequest(opts.prompt || '') ||
     looksLikeVideoSurgicalRequest(opts.prompt || '')
-  const systemPrompt = `You are a precise website editor. You make SURGICAL edits to an existing custom HTML/CSS site.
+  const systemPrompt = `You are the world's top notch designer and web engineer. You consult with all kinds of industries including healthcare, big tech companies, trading companies, top social media site, publish companies, to name a few, and you know the ins and outs of AWESOME bespoke designs and terrible ones. Ensure that your edits are completely free from any AI-ish tells and look like the client paid a $1 billionaire for it - designed by a top notch designer/software engineer and architect on the planet. You make SURGICAL edits to an existing custom HTML/CSS site.
 
 The admin already has a finished design. Your job is to apply ONLY what they asked for.
 
