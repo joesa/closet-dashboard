@@ -20,8 +20,14 @@ export async function GET(
     return NextResponse.redirect(new URL('/admin/sites', req.url));
   }
 
-  // Candidate URLs for custom-closets-websites upstream Vercel deployment
+  // Candidate URLs for custom-closets-websites upstream Vercel deployment:
+  // 1. Direct host target (e.g. https://wikidos-pediatrics.ditchtheform.com) — bypasses Vercel preview deployment login wall!
+  // 2. Configured custom sites URL / environment override
+  // 3. Fallback vercel.app deployment URL
+  const hostOrigin = targetHost.startsWith('http') ? targetHost : `https://${targetHost}`;
+
   const candidateUrls = [
+    hostOrigin,
     process.env.CUSTOM_SITES_URL,
     process.env.NEXT_PUBLIC_WEBSITES_URL,
     'https://custom-closets-websites.vercel.app',
@@ -32,7 +38,10 @@ export async function GET(
   // 1. Attempt proxy fetch from upstream website rendering engine
   for (const sitesBaseUrl of candidateUrls) {
     try {
-      const targetUrl = `${sitesBaseUrl}/${encodeURIComponent(targetHost)}?admin_bypass=${encodeURIComponent(bypassSecret)}`;
+      const targetUrl = sitesBaseUrl.includes(targetHost)
+        ? `${sitesBaseUrl}/?admin_bypass=${encodeURIComponent(bypassSecret)}`
+        : `${sitesBaseUrl}/${encodeURIComponent(targetHost)}?admin_bypass=${encodeURIComponent(bypassSecret)}`;
+
       const upstreamRes = await fetch(targetUrl, {
         headers: {
           'User-Agent': 'DitchTheForm-AdminPreviewProxy/1.0',
@@ -43,9 +52,25 @@ export async function GET(
 
       if (upstreamRes.ok) {
         const html = await upstreamRes.text();
-        // If upstream didn't return a 404/blank page, serve it directly
-        if (html && !html.includes('This page could not be found') && html.length > 500) {
-          return new NextResponse(html, {
+        const isVercelAuthPage =
+          html.includes('Log in to Vercel') ||
+          html.includes('Continue with Google') ||
+          html.includes('Continue with GitHub') ||
+          html.includes('Vercel Authentication');
+        const is404Page =
+          html.includes('This page could not be found') ||
+          html.includes('404: This page could not be found');
+
+        if (html && !isVercelAuthPage && !is404Page && html.length > 500) {
+          // Inject <base href="..."> into <head> so relative assets load cleanly
+          let proxiedHtml = html;
+          if (proxiedHtml.includes('<head>')) {
+            proxiedHtml = proxiedHtml.replace('<head>', `<head><base href="${hostOrigin}/">`);
+          } else if (proxiedHtml.includes('<head ')) {
+            proxiedHtml = proxiedHtml.replace(/<head[^>]*>/, `$&<base href="${hostOrigin}/">`);
+          }
+
+          return new NextResponse(proxiedHtml, {
             status: 200,
             headers: {
               'Content-Type': 'text/html; charset=utf-8',
@@ -124,11 +149,8 @@ export async function GET(
     }
 
     <div class="bg-purple-950/40 border border-purple-800/50 rounded-xl p-4 text-left text-xs text-purple-200 space-y-2">
-      <p class="font-semibold text-purple-300 text-sm">⚙️ Vercel Setup Required for Live Web Previews:</p>
-      <ol class="list-decimal pl-4 space-y-1 opacity-90">
-        <li>In Vercel Dashboard &rarr; <strong>custom-closets-websites</strong> project &rarr; Settings &rarr; Domains &rarr; Add <code>*.ditchtheform.com</code>.</li>
-        <li>In Vercel Dashboard &rarr; <strong>closet-dashboard</strong> project &rarr; Environment Variables &rarr; Add <code>CUSTOM_SITES_URL</code> set to your website deployment URL.</li>
-      </ol>
+      <p class="font-semibold text-purple-300 text-sm">⚙️ Live Subdomain Available:</p>
+      <p class="opacity-90">Click below to view the live website directly on its subdomain.</p>
     </div>
 
     <div class="pt-4 border-t border-zinc-800 flex flex-col gap-3 sm:flex-row sm:justify-center">
