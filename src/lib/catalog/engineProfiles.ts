@@ -1,9 +1,35 @@
 import type { IndustrySlug, EngineProfile } from './types'
 
 export function getEngineProfile(slug: IndustrySlug): EngineProfile {
-  // Booking Engines
+  // Medical / Healthcare Booking — appointments are not consumer-priced
+  const medicalIndustries = ['medical-clinic', 'therapy-rehab', 'senior-care']
+
+  if (medicalIndustries.includes(slug)) {
+    return {
+      engagementModel: 'booking',
+      ctaVerb: 'Schedule Appointment',
+      widgetSectionTitle: 'Schedule an Appointment',
+      widgetSubtitle: 'Choose a service and convenient time for your visit.',
+      dashboardLabel: 'Appointment Scheduler',
+      dashboardIcon: '🩺',
+      dashboardHelpText: 'Manage appointment types, clinic hours, and view upcoming patient visits.',
+      serviceDefaults: [
+        {
+          name: 'Office Visit',
+          unitLabel: 'per visit',
+          tiers: [
+            { tier: 'basic', name: 'Brief Visit', priceHint: 0, description: 'Quick 15-minute consultation' },
+            { tier: 'standard', name: 'Standard Visit', priceHint: 0, description: 'Standard 30-minute appointment', popular: true },
+            { tier: 'premium', name: 'Comprehensive Visit', priceHint: 0, description: 'Extended 45-minute evaluation' }
+          ]
+        }
+      ]
+    }
+  }
+
+  // Booking Engines (non-medical)
   const bookingIndustries = [
-    'medical-clinic', 'therapy-rehab', 'senior-care', 'beauty-salon', 'spa-wellness',
+    'beauty-salon', 'spa-wellness',
     'fitness-studio', 'massage-therapy', 'personal-training', 'tutoring', 'pet-services'
   ]
   

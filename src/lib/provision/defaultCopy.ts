@@ -58,14 +58,35 @@ export function defaultProductSpecs(
   return [`Focused on ${svc}`, 'Upfront communication', 'Done right the first time']
 }
 
+// ── Lightweight vertical hint for copy selection ────────────────────────────
+type CopyVertical = 'medical' | 'general'
+
+function detectCopyVertical(industrySlug?: string | null): CopyVertical {
+  const slug = (industrySlug || '').toLowerCase()
+  if (/medical|therapy|rehab|senior|clinic|dental|hospital/.test(slug)) return 'medical'
+  return 'general'
+}
+
 export function buildDefaultAbout(
   businessName: string,
   primaryService: string,
   serviceArea: string | undefined,
-  seed: string
+  seed: string,
+  industrySlug?: string | null
 ): { description: string } {
   const svc = (primaryService || 'quality work').toLowerCase()
   const area = serviceArea?.trim() || 'the areas we serve'
+  const vertical = detectCopyVertical(industrySlug)
+
+  if (vertical === 'medical') {
+    const medicalVariants = [
+      `${businessName} provides compassionate, dedicated ${svc} across ${area}. Our team ensures every patient receives personalized attention in a warm, welcoming environment.`,
+      `Across ${area}, ${businessName} is trusted for attentive ${svc}. You get clear communication, coordinated care, and a team that listens.`,
+      `${businessName} is committed to reliable ${svc} with honest communication from the first visit through every follow-up.`,
+    ]
+    return { description: medicalVariants[hashSeed(`${seed}:about`) % medicalVariants.length] }
+  }
+
   const variants = [
     `${businessName} delivers dependable ${svc} across ${area}. We treat every job with care and respect for your property, and we stand behind the result.`,
     `Across ${area}, ${businessName} is known for straightforward ${svc}. You get clear expectations, fair pricing, and work that holds up.`,
@@ -83,9 +104,37 @@ type ProcessConfig = {
 export function buildDefaultProcess(
   engagementModel: string,
   primaryService: string,
-  seed: string
+  seed: string,
+  industrySlug?: string | null
 ): ProcessConfig {
   const svc = (primaryService || 'the work').toLowerCase()
+  const vertical = detectCopyVertical(industrySlug)
+
+  // Medical booking gets dedicated healthcare-appropriate steps
+  if (vertical === 'medical' && (engagementModel || 'quote').toLowerCase() === 'booking') {
+    const medicalBooking: ProcessConfig[] = [
+      {
+        title: 'How It Works',
+        subtitle: 'From appointment to care',
+        steps: [
+          { number: '01', title: 'Schedule', description: `Request an appointment online or by phone at a time that works for your family.` },
+          { number: '02', title: 'Visit', description: 'Our care team provides thorough, attentive treatment in a welcoming clinical setting.' },
+          { number: '03', title: 'Follow-Up', description: 'Receive personalized care instructions and easy access for any follow-up needs.' },
+        ],
+      },
+      {
+        title: 'Your Visit',
+        subtitle: 'Patient-centered care',
+        steps: [
+          { number: '01', title: 'Book', description: 'Choose a convenient appointment time for your visit.' },
+          { number: '02', title: 'Evaluation', description: 'Our team provides a thorough evaluation with personalized attention.' },
+          { number: '03', title: 'Care Plan', description: 'Leave with a clear care plan, prescriptions routed, and direct follow-up access.' },
+        ],
+      },
+    ]
+    return medicalBooking[hashSeed(`${seed}:process:booking_medical`) % medicalBooking.length]
+  }
+
   const byModel: Record<string, ProcessConfig[]> = {
     booking: [
       {
@@ -94,7 +143,7 @@ export function buildDefaultProcess(
         steps: [
           { number: '01', title: 'Book', description: `Pick a time that works for you and request your ${svc}.` },
           { number: '02', title: 'Confirm', description: 'We confirm the details and arrive on schedule.' },
-          { number: '03', title: 'Done', description: 'We finish the job and make sure you’re satisfied.' },
+          { number: '03', title: 'Done', description: 'We finish the job and make sure you\u2019re satisfied.' },
         ],
       },
       {
@@ -102,7 +151,7 @@ export function buildDefaultProcess(
         subtitle: 'Straightforward scheduling',
         steps: [
           { number: '01', title: 'Schedule', description: `Choose a convenient appointment for your ${svc}.` },
-          { number: '02', title: 'Service', description: 'Our team shows up prepared and gets to work.' },
+          { number: '02', title: 'Service', description: 'Our team arrives prepared and delivers the service with care.' },
           { number: '03', title: 'Follow Up', description: 'We check in to make sure everything meets your expectations.' },
         ],
       },
@@ -162,8 +211,8 @@ export function buildDefaultProcess(
         subtitle: 'Practical next steps',
         steps: [
           { number: '01', title: 'Connect', description: `Start with a quick conversation about your ${svc}.` },
-          { number: '02', title: 'Scope', description: 'We outline what’s included and what it costs.' },
-          { number: '03', title: 'Complete', description: 'We do the work carefully and confirm you’re happy.' },
+          { number: '02', title: 'Scope', description: 'We outline what\u2019s included and what it costs.' },
+          { number: '03', title: 'Complete', description: 'We do the work carefully and confirm you\u2019re happy.' },
         ],
       },
     ],

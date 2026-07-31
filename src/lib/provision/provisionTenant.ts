@@ -688,11 +688,14 @@ export async function provisionTenant(
     const signature = buildProvisionSignature({
       businessName,
       seed: designVariant || copySeed,
+      industry: aiWidgetIndustryText,
+      services,
     })
     const defaultProcess = buildDefaultProcess(
       resolvedEngagementModel,
       selectedServices[0] || '',
-      copySeed
+      copySeed,
+      beforeAfterContext.industry
     )
 
     let siteConfigData: Record<string, unknown> = {
@@ -725,7 +728,8 @@ export async function provisionTenant(
             businessName,
             selectedServices[0] || '',
             setup.serviceArea,
-            copySeed
+            copySeed,
+            beforeAfterContext.industry
           ).description,
       },
       process_config: {
@@ -1167,6 +1171,10 @@ export async function provisionTenant(
       )
     }
   } else if (isBookingBusiness) {
+    // Medical/healthcare booking: appointments are not consumer-priced.
+    // Patients pay via insurance/copay, not fixed dollar amounts on the website.
+    const ZERO_PRICE_INDUSTRIES = ['medical-clinic', 'therapy-rehab', 'senior-care']
+    const isMedicalBooking = ZERO_PRICE_INDUSTRIES.includes(beforeAfterContext.industry)
     // Seed booking services from AI customRooms
     if (mergedCustomRooms.length) {
       await supabase.from('service_catalog').insert(
@@ -1174,7 +1182,7 @@ export async function provisionTenant(
           contractor_id: tenantId,
           name: r.name,
           duration_minutes: 60,
-          price_cents: (r.standard || r.basic || engineTierDefaults.standard) * 100, // custom rooms are in dollars
+          price_cents: isMedicalBooking ? 0 : (r.standard || r.basic || engineTierDefaults.standard) * 100, // medical = $0, others = custom rooms in dollars
           sort_order: i,
         }))
       )
