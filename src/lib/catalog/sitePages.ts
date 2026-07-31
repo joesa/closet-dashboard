@@ -122,13 +122,25 @@ export function sanitizePageSlugs(input: unknown): string[] {
   return out
 }
 
+/** Filter out page types that are inappropriate for specific verticals (e.g. medical clinics don't have contractor portfolios). */
+export function filterInappropriatePagesForIndustry(slugs: string[], industrySlug?: string | null): string[] {
+  const norm = (industrySlug || '').toLowerCase()
+  const isMedical = /medical|therapy|rehab|senior|clinic|dental|hospital/.test(norm)
+  if (isMedical) {
+    return slugs.filter((s) => s !== 'portfolio')
+  }
+  return slugs
+}
+
 /**
  * Sanitize AND enforce the tier's additional-page cap. This is the
  * authoritative gate: whatever survives here is what gets built — admins
  * never re-decide the sitemap.
  */
-export function clampPagesForTier(input: unknown, tier: string | null | undefined): string[] {
-  return sanitizePageSlugs(input).slice(0, maxAdditionalPagesForTier(tier))
+export function clampPagesForTier(input: unknown, tier: string | null | undefined, industrySlug?: string | null): string[] {
+  const sanitized = sanitizePageSlugs(input)
+  const filtered = filterInappropriatePagesForIndustry(sanitized, industrySlug)
+  return filtered.slice(0, maxAdditionalPagesForTier(tier))
 }
 
 

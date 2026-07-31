@@ -1028,7 +1028,7 @@ export async function provisionTenant(
         .map((p) => p?.image)
         .filter((u): u is string => typeof u === 'string' && u.length > 0)
       const basicPages = buildBasicPagesConfig(
-        clampPagesForTier(requestedPageSlugs, intakeTierForPages),
+        clampPagesForTier(requestedPageSlugs, intakeTierForPages, beforeAfterContext.industry),
         pageContents,
         stdImagePool.length > 0 ? stdImagePool : PRODUCT_IMAGE_POOL
       )
