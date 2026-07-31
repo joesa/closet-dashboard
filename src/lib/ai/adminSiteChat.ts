@@ -234,6 +234,7 @@ RULES for "changes":
 - Keep hero headlines (site hero and every page hero) to 6 words or fewer — longer headlines overflow the large-type designs.
 - When adding a page to pages_config, also add a matching entry to nav_links if it should be reachable from the nav.
 - Keep copy quality high: specific to this business and trade, no lorem ipsum, no placeholders.
+- NEVER output spec-sheet metadata, artificial reference codes (e.g. "DOC: INQ-LOG", "REV: 2024", "REF: 01 / 02"), or code comment syntax ("//") on public site copy.
 - Honor conversation history: if a prior turn already applied a change, build on the CURRENT config (which already includes it). Do not revert prior admin-approved edits unless asked.
 - If the request is unsafe, out of scope (billing, deleting the site, custom code), or you cannot do it with the columns below, say so in "reply" and make no changes.
 - IMPORTANT — /services cards are driven by products_config (short description on the card; details.longDescription + specifications in the drawer). Do NOT put full long service copy into pages_config grid items.

@@ -1876,6 +1876,7 @@ Banned defaults (unless the brief explicitly requests them):
 - Near-black + single acid-green / neon lime / cyan / gold accent applied regardless of fit; carbon texture; skewed italic CTAs
 - Hero template: vague headline ("Build faster. Ship smarter."), gray subhead, two buttons, gradient blob / abstract 3D on the right
 - Numbered markers (01 / 02 / 03) when content is not a real sequence
+- Spec-sheet / technical document metadata: NEVER output artificial reference tags, spec sheet codes, or engineering document markers like "DOC. REF: ABT-01", "DOC: INQ-LOG", "REV: 2024", "REF: 01 / 02 / 03", "Case File", "System Spec //", "FIG 1", or programming comment syntax ("//") on public content. UI badges and labels must be natural, human, and industry-appropriate.
 - Emoji in headings, UI copy, or feature lists
 - Glassmorphism cards, floating blurred orbs, dot-grid as default texture
 - Three identical icon-title-sentence cards with generic line icons that could describe any product
@@ -2367,7 +2368,8 @@ Hard rules:
 2. Never invent redesigns. Apply ONLY the admin request.
 3. Do NOT return pages HTML. Do NOT replace globalCss wholesale — use appendCss for additive rules only.
 4. find/replace strings must match the digest text exactly (case-insensitive apply is fine).
-5. If you cannot identify a concrete edit, return { "reply": "…need specifics…", "ops": [] }.`
+5. If you cannot identify a concrete edit, return { "reply": "…need specifics…", "ops": [] }.
+6. NEVER output spec-sheet metadata, artificial reference codes (e.g. "DOC: INQ-LOG", "REV: 2024", "REF: 01 / 02"), or code comment syntax ("//") in public UI content.`
 
   const userPrompt = `Surgical op-list edit for "${opts.brandName}".
 
@@ -2563,7 +2565,8 @@ ${
   hasImages || attachedUrls.length
     ? `13. ATTACHED IMAGES: the admin attached image(s). Prefer context.attachedAssetUrls / mediaLibrary https URLs — those are already on the CDN and MUST be used verbatim when placing the image on the site (hero, section, etc.). Use vision to understand crop/composition; keep the whole subject visible (background-size:contain / object-fit:contain, or carefully framed cover when they ask to fill). Do not invent other image URLs for those placements.`
     : ''
-}`
+}
+14. NO SPEC SHEET TAGS: NEVER output artificial reference tags, spec sheet codes, or engineering document markers like "DOC: INQ-LOG", "REV: 2024", "REF: 01 / 02 / 03", "DOC. REF:", "Case File", "System Spec //", "FIG 1", or programming comment syntax ("//") on public UI content. Badges and labels must be natural, human, and industry-appropriate.`
 
   const attachedBlock = attachedUrls.length
     ? `ATTACHED CDN ASSET URLS (use these exact https URLs when placing images):\n${attachedUrls
