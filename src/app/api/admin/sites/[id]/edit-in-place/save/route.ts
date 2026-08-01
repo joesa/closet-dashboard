@@ -13,6 +13,7 @@ import {
   type CustomSiteConfig,
 } from '@/lib/customSite'
 import { revalidateTenantSiteCache } from '@/lib/tenants/revalidateTenantSite'
+import { validateCustomSiteArtifact } from '@/lib/validation/siteArtifactValidator'
 
 function corsHeaders(req: Request): HeadersInit {
   const origin = req.headers.get('origin') || '*'
@@ -42,8 +43,8 @@ async function authorizeEdit(
 }
 
 /**
- * Persist one page of custom HTML from the edit-in-place editor.
- * Writes custom_config and mirrors into custom_config_draft.
+ * Persist one page of custom HTML from the edit-in-place editor as a draft.
+ * Published HTML is unchanged until the validated draft is promoted.
  */
 export async function POST(
   req: Request,
@@ -131,11 +132,24 @@ export async function POST(
       },
     }
 
+    const { data: tenant } = await supabase
+      .from('tenants')
+      .select('business_name')
+      .eq('id', tenantId)
+      .maybeSingle()
+    const report = validateCustomSiteArtifact(draft, {
+      businessName: tenant?.business_name,
+    })
+
     const { error: upErr } = await supabase
       .from('site_configs')
       .update({
-        custom_config: published,
         custom_config_draft: draft,
+        draft_artifact_kind: 'custom',
+        draft_validation_status: report.status,
+        draft_validation_report: report.issues,
+        draft_validated_at: report.checkedAt,
+        draft_artifact_hash: report.artifactHash,
         custom_updated_at: new Date().toISOString(),
       })
       .eq('tenant_id', tenantId)
@@ -163,7 +177,16 @@ export async function POST(
     }
 
     return NextResponse.json(
-      { ok: true, path, htmlLength: cleaned.length },
+      {
+        ok: true,
+        path,
+        htmlLength: cleaned.length,
+        validation: {
+          status: report.status,
+          issues: report.issues,
+          artifactHash: report.artifactHash,
+        },
+      },
       { headers }
     )
   } catch (error) {

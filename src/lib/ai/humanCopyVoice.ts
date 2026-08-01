@@ -3,19 +3,22 @@
  * Keep wording concrete: models follow explicit bans better than "sound human."
  */
 
+export type AiTellRule = {
+  phrase: string
+  /** Narrow trade phrases where the words describe the product, not marketing tone. */
+  allowedContexts?: readonly RegExp[]
+}
+
 /**
- * Machine-readable ban list. This is the single source of truth: the prompt text
- * below is generated from it, and src/lib/validation/specificityGate.ts scans
- * shipped copy for the same strings. Keeping one array means a phrase can never
- * be banned in the prompt but unenforced in the gate, or vice versa.
- *
- * Matched case-insensitively on word boundaries, so entries stay in base form.
+ * Machine-readable rules shared by prompts and shipped-copy validation.
+ * Rules may exempt narrow, literal trade terminology; broad exemptions belong
+ * in sourceText instead so generated marketing cannot bypass the gate.
  */
-export const AI_TELL_PHRASES: readonly string[] = [
+export const AI_TELL_RULES: readonly AiTellRule[] = [
   'elevate',
   'elevating',
   'elevated',
-  'seamless',
+  { phrase: 'seamless', allowedContexts: [/\bseamless\s+(?:aluminum\s+|copper\s+)?gutters?\b/i] },
   'seamlessly',
   'unleash',
   'empower',
@@ -55,7 +58,33 @@ export const AI_TELL_PHRASES: readonly string[] = [
   'meticulously crafted',
   'nestled in',
   'at the heart of everything',
-] as const
+].map((rule) => (typeof rule === 'string' ? { phrase: rule } : rule))
+
+/** Backwards-compatible phrase list used to render the generation prompts. */
+export const AI_TELL_PHRASES: readonly string[] = AI_TELL_RULES.map((rule) => rule.phrase)
+
+function escapeRe(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+export function findAiTellPhrases(text: string, sourceText = ''): string[] {
+  const hits: string[] = []
+  for (const rule of AI_TELL_RULES) {
+    const phraseRe = new RegExp(`\\b${escapeRe(rule.phrase)}\\b`, 'gi')
+    const sourceHasPhrase = sourceText ? phraseRe.test(sourceText) : false
+    phraseRe.lastIndex = 0
+    if (sourceHasPhrase) continue
+
+    for (const match of text.matchAll(phraseRe)) {
+      const start = Math.max(0, (match.index ?? 0) - 40)
+      const end = Math.min(text.length, (match.index ?? 0) + match[0].length + 40)
+      const context = text.slice(start, end)
+      if (rule.allowedContexts?.some((allowed) => allowed.test(context))) continue
+      hits.push(match[0])
+    }
+  }
+  return hits
+}
 
 export const HUMAN_COPY_VOICE_RULES = `HUMAN VOICE (NON-NEGOTIABLE for all headlines, subheads, body, CTAs, process steps, service blurbs, FAQ, testimonials labels):
 Write like a sharp local owner or their best salesperson — specific, useful, slightly imperfect. Prefer short sentences and concrete nouns (trade, city, materials, outcomes). Active voice. One idea per sentence when possible.

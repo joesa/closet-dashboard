@@ -54,6 +54,12 @@ type Status = {
   renderMode: 'engine' | 'custom';
   editInPlace?: boolean;
   customUpdatedAt?: string | null;
+  draftValidation?: {
+    status: 'pending' | 'passed' | 'failed';
+    issues: Array<{ code?: string; message?: string; severity?: string }>;
+    validatedAt?: string | null;
+    artifactHash?: string | null;
+  } | null;
   draft: { mode: string; pageKeys: string[]; globalCssLength?: number } | null;
   published: { mode: string; pageKeys: string[]; globalCssLength?: number } | null;
   draftAhead?: boolean;
@@ -768,6 +774,7 @@ export default function AdminCustomBuild({
     if (!previewUrl || !status?.editInPlace) return null;
     try {
       const u = new URL(previewUrl);
+      u.searchParams.set('draft', '1');
       if (editToken) u.searchParams.set('edit_token', editToken);
       return u.toString();
     } catch {
@@ -843,7 +850,7 @@ export default function AdminCustomBuild({
             <p className="text-sm font-medium text-white">Edit in place (WYSIWYG)</p>
             <p className="text-xs text-neutral-400 mt-0.5">
               {status?.renderMode === 'custom'
-                ? 'While ON, the public site is offline. Edit text and images on the live HTML, then turn OFF before Visit live or Approve.'
+                ? 'While ON, the public site is offline. Changes save to the draft for validation before publish.'
                 : 'Requires a published custom site (Live: CUSTOM). Publish a custom build first.'}
             </p>
           </div>
@@ -892,6 +899,22 @@ export default function AdminCustomBuild({
           </div>
         ) : null}
       </div>
+
+      {mounted && status?.draftValidation?.status === 'failed' ? (
+        <div className="rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-100">
+          <p className="font-semibold text-red-200">Draft needs quality fixes before publish</p>
+          <ul className="mt-2 space-y-1 list-disc pl-5">
+            {status.draftValidation.issues
+              .filter((issue) => issue.severity === 'error')
+              .slice(0, 6)
+              .map((issue, index) => (
+                <li key={`${issue.code || 'issue'}-${index}`}>
+                  {issue.message || issue.code || 'Draft validation failed'}
+                </li>
+              ))}
+          </ul>
+        </div>
+      ) : null}
 
       {mounted && status?.draftCssBroken ? (
         <div className="rounded-lg border border-red-500/50 bg-red-500/10 px-4 py-3 text-sm text-red-100 space-y-2">

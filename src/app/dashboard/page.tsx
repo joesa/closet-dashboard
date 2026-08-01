@@ -1414,7 +1414,7 @@ export default function DashboardPage() {
           })()}
 
           {/* Website Pages Manager */}
-          <PageManager contractorId={form.id} />
+          <PageManager />
 
           {/* Custom / purchased domains for the hosted site */}
           <DomainManager variant="dashboard" />

@@ -13,7 +13,7 @@
  * check here and still be dull; nothing that fails them is bespoke.
  */
 
-import { AI_TELL_PHRASES } from '@/lib/ai/humanCopyVoice'
+import { findAiTellPhrases } from '@/lib/ai/humanCopyVoice'
 
 export type SpecificityCode =
   | 'copy_ai_tell_phrase'
@@ -35,6 +35,8 @@ export type SpecificityInput = {
    *  template already interpolates them, so they prove nothing about the copy. */
   businessName?: string | null
   locality?: string | null
+  /** Verbatim owner-supplied language may be retained without blaming generation. */
+  sourceText?: string | null
 }
 
 /** Round marketing numbers that read as decoration rather than measurement. */
@@ -95,16 +97,10 @@ function escapeRe(value: string): string {
 export function analyzeSpecificity(input: SpecificityInput): SpecificityFinding[] {
   const text = stripToText(input.text)
   const findings: SpecificityFinding[] = []
-  // Very short pages (a bare contact stub) have nothing to judge.
-  if (text.split(/\s+/).length < 40) return findings
 
-  // 1. Phrases the prompt already bans. Shared list, so the two cannot drift.
-  const hits: string[] = []
-  for (const phrase of AI_TELL_PHRASES) {
-    const re = new RegExp(`\\b${escapeRe(phrase)}`, 'gi')
-    const found = text.match(re)
-    if (found) hits.push(...found)
-  }
+  // 1. Phrases the prompt already bans. This runs even on short headlines and
+  // CTAs; the broader specificity checks below need enough prose to be fair.
+  const hits = findAiTellPhrases(text, input.sourceText || '')
   if (hits.length > 0) {
     findings.push({
       code: 'copy_ai_tell_phrase',
@@ -112,6 +108,9 @@ export function analyzeSpecificity(input: SpecificityInput): SpecificityFinding[
       samples: uniq(hits),
     })
   }
+
+  // Very short pages (a bare contact stub) have nothing else to judge.
+  if (text.split(/\s+/).length < 40) return findings
 
   // 2. The swap test proper. Strip the two values every template interpolates,
   //    then ask whether anything left ties this copy to this business.

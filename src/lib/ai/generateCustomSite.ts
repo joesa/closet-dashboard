@@ -111,6 +111,11 @@ import {
   mergeCustomBuildNotes,
 } from '@/lib/ai/applyBriefServiceImages'
 import { FULL_REDESIGN_DESIGN_SYSTEM } from '@/lib/ai/fullRedesignDesignSystem'
+import { validateCustomSiteArtifact } from '@/lib/validation/siteArtifactValidator'
+import {
+  saveValidationReport,
+  validateTenantSite,
+} from '@/lib/validation/siteValidator'
 
 export type CustomBuildIntent = 'full' | 'surgical'
 
@@ -2908,9 +2913,33 @@ export async function publishCustomSiteDraft(tenantId: string): Promise<{
   }
 
   const sanitized = sanitizeCustomConfig(data.custom_config_draft)
-  const check = validateCustomConfig(sanitized)
-  if (!check.ok) {
-    throw new Error(`Cannot publish: ${check.errors.join('; ')}`)
+  const { data: tenant } = await supabase
+    .from('tenants')
+    .select('business_name, site_status')
+    .eq('id', tenantId)
+    .maybeSingle()
+  const draftReport = validateCustomSiteArtifact(sanitized, {
+    businessName: tenant?.business_name,
+  })
+
+  if (draftReport.status === 'failed') {
+    await supabase
+      .from('site_configs')
+      .update({
+        custom_config_draft: sanitized,
+        draft_artifact_kind: 'custom',
+        draft_validation_status: draftReport.status,
+        draft_validation_report: draftReport.issues,
+        draft_validated_at: draftReport.checkedAt,
+        draft_artifact_hash: draftReport.artifactHash,
+      })
+      .eq('tenant_id', tenantId)
+    const summary = draftReport.issues
+      .filter((issue) => issue.severity === 'error')
+      .slice(0, 3)
+      .map((issue) => issue.message)
+      .join('; ')
+    throw new Error(`Cannot publish: ${summary}`)
   }
 
   const { error: updateErr } = await supabase
@@ -2918,26 +2947,30 @@ export async function publishCustomSiteDraft(tenantId: string): Promise<{
     .update({
       custom_config: sanitized,
       render_mode: 'custom',
+      draft_artifact_kind: 'custom',
+      draft_validation_status: draftReport.status,
+      draft_validation_report: draftReport.issues,
+      draft_validated_at: draftReport.checkedAt,
+      draft_artifact_hash: draftReport.artifactHash,
       custom_updated_at: new Date().toISOString(),
     })
     .eq('tenant_id', tenantId)
 
   if (updateErr) throw new Error(`Failed to publish: ${updateErr.message}`)
 
-  const { data: tenant } = await supabase
-    .from('tenants')
-    .select('site_status')
-    .eq('id', tenantId)
-    .maybeSingle()
   const siteStatus =
     typeof tenant?.site_status === 'string' ? tenant.site_status : null
   const publicVisible = siteStatus === 'active'
 
   const { revalidateTenantSiteCache } = await import('@/lib/tenants/revalidateTenantSite')
   const liveNow = await revalidateTenantSiteCache(tenantId)
+  const publishedReport = await validateTenantSite(tenantId)
+  await saveValidationReport(tenantId, publishedReport)
 
   return {
-    warnings: check.warnings,
+    warnings: draftReport.issues
+      .filter((issue) => issue.severity === 'warning')
+      .map((issue) => issue.message),
     errors: [],
     liveNow,
     siteStatus,
@@ -2968,6 +3001,11 @@ export async function discardCustomDraft(tenantId: string): Promise<void> {
     .from('site_configs')
     .update({
       custom_config_draft: null,
+      draft_artifact_kind: null,
+      draft_validation_status: null,
+      draft_validation_report: null,
+      draft_validated_at: null,
+      draft_artifact_hash: null,
       custom_updated_at: new Date().toISOString(),
     })
     .eq('tenant_id', tenantId)

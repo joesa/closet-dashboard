@@ -1,7 +1,6 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
-import { supabaseBrowser } from '@/lib/supabase-browser'
 
 type PageConfig = {
   slug: string
@@ -16,26 +15,32 @@ type NavLink = {
   slug: string
 }
 
-export default function PageManager({ contractorId }: { contractorId: string }) {
+type ValidationIssue = { code?: string; message?: string; severity?: string }
+
+export default function PageManager() {
   const [pages, setPages] = useState<PageConfig[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [publishing, setPublishing] = useState(false)
+  const [validationStatus, setValidationStatus] = useState<string | null>(null)
+  const [issues, setIssues] = useState<ValidationIssue[]>([])
+  const [message, setMessage] = useState('')
 
   useEffect(() => {
     async function load() {
-      const { data, error } = await supabaseBrowser
-        .from('site_configs')
-        .select('pages_config')
-        .eq('tenant_id', contractorId)
-        .maybeSingle()
-      
-      if (data && data.pages_config) {
-        setPages(data.pages_config as PageConfig[])
+      const res = await fetch('/api/dashboard/site-draft', { cache: 'no-store' })
+      const data = await res.json().catch(() => ({}))
+      if (res.ok) {
+        setPages((data.draft?.pagesConfig || data.published?.pagesConfig || []) as PageConfig[])
+        setValidationStatus(data.validation?.status || null)
+        setIssues(Array.isArray(data.validation?.issues) ? data.validation.issues : [])
+      } else {
+        setMessage(data.error || 'Failed to load website pages')
       }
       setLoading(false)
     }
     load()
-  }, [contractorId])
+  }, [])
 
   const togglePage = (index: number) => {
     const updated = [...pages]
@@ -47,6 +52,7 @@ export default function PageManager({ contractorId }: { contractorId: string }) 
 
   const handleSave = async () => {
     setSaving(true)
+    setMessage('')
     // Update pages_config
     // Also derive new nav_links from the updated pages
     const navLinks: NavLink[] = [{ label: 'Home', slug: '/' }]
@@ -56,15 +62,49 @@ export default function PageManager({ contractorId }: { contractorId: string }) 
       }
     })
 
-    await supabaseBrowser
-      .from('site_configs')
-      .update({
-        pages_config: pages,
-        nav_links: navLinks
+    try {
+      const res = await fetch('/api/dashboard/site-draft', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pagesConfig: pages, navLinks }),
       })
-      .eq('tenant_id', contractorId)
+      const data = await res.json().catch(() => ({}))
+      if (res.ok) {
+        setValidationStatus(data.validation?.status || null)
+        setIssues(Array.isArray(data.validation?.issues) ? data.validation.issues : [])
+        setMessage(
+          data.validation?.status === 'passed'
+            ? 'Draft saved and validated. Publish when ready.'
+            : 'Draft saved with quality issues. Published pages are unchanged.'
+        )
+      } else {
+        setMessage(data.error || 'Failed to save draft')
+      }
+    } catch {
+      setMessage('Failed to save draft')
+    } finally {
+      setSaving(false)
+    }
+  }
 
-    setSaving(false)
+  const handlePublish = async () => {
+    setPublishing(true)
+    setMessage('')
+    try {
+      const res = await fetch('/api/dashboard/site-draft', { method: 'PUT' })
+      const data = await res.json().catch(() => ({}))
+      if (res.ok) {
+        setValidationStatus(null)
+        setIssues([])
+        setMessage('Website pages published.')
+      } else {
+        setMessage(data.error || 'Failed to publish draft')
+      }
+    } catch {
+      setMessage('Failed to publish draft')
+    } finally {
+      setPublishing(false)
+    }
   }
 
   if (loading) {
@@ -79,8 +119,22 @@ export default function PageManager({ contractorId }: { contractorId: string }) 
     <section className="rounded-2xl border border-white/[0.06] bg-[#12151C] p-8 mt-10">
       <h2 className="text-2xl font-semibold tracking-tight mb-2">Website Pages</h2>
       <p className="text-sm text-zinc-500 mb-8">
-        Toggle the pages you want to show on your website. Hidden pages will be completely removed from the site navigation and return a 404.
+        Toggle pages, save a validated draft, then publish. Hidden pages are removed from navigation and return a 404.
       </p>
+
+      {message ? (
+        <p className={`mb-4 text-sm ${validationStatus === 'failed' ? 'text-amber-300' : 'text-zinc-300'}`}>
+          {message}
+        </p>
+      ) : null}
+
+      {validationStatus === 'failed' && issues.length > 0 ? (
+        <ul className="mb-6 list-disc space-y-1 pl-5 text-sm text-amber-200">
+          {issues.filter((issue) => issue.severity === 'error').slice(0, 6).map((issue, index) => (
+            <li key={`${issue.code || 'issue'}-${index}`}>{issue.message || issue.code}</li>
+          ))}
+        </ul>
+      ) : null}
 
       <div className="space-y-4 mb-8">
         {pages.map((page, i) => (
@@ -110,13 +164,20 @@ export default function PageManager({ contractorId }: { contractorId: string }) 
         ))}
       </div>
 
-      <div className="flex justify-end border-t border-white/[0.06] pt-6">
+      <div className="flex flex-wrap gap-3">
         <button
           onClick={handleSave}
-          disabled={saving}
-          className="rounded-xl bg-indigo-500 px-8 py-3 text-sm font-bold text-white shadow-lg transition hover:bg-indigo-400 disabled:opacity-50"
+          disabled={saving || publishing}
+          className="px-6 py-3 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 rounded-lg font-medium transition-colors"
         >
-          {saving ? 'Saving...' : 'Save Pages'}
+          {saving ? 'Validating...' : 'Save Draft'}
+        </button>
+        <button
+          onClick={handlePublish}
+          disabled={publishing || saving || validationStatus !== 'passed'}
+          className="px-6 py-3 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 rounded-lg font-medium transition-colors"
+        >
+          {publishing ? 'Publishing...' : 'Publish Draft'}
         </button>
       </div>
     </section>

@@ -90,6 +90,23 @@ describe('analyzeSpecificity', () => {
     expect(analyzeSpecificity({ text: 'Call us on 615-555-0188 for a quote.', ...OWN })).toEqual([])
   })
 
+  it('still scans short headlines for banned marketing tells', () => {
+    expect(codes('Elevate your home with storage made for you.')).toContain('copy_ai_tell_phrase')
+  })
+
+  it('allows literal trade terminology and verbatim owner language', () => {
+    expect(codes('We install seamless aluminum gutters in Clarksville.')).not.toContain(
+      'copy_ai_tell_phrase'
+    )
+    expect(
+      analyzeSpecificity({
+        text: 'Quiet luxury, built around your wardrobe.',
+        sourceText: 'Our preferred phrase is quiet luxury.',
+        ...OWN,
+      }).map((finding) => finding.code)
+    ).not.toContain('copy_ai_tell_phrase')
+  })
+
   it('reads copy out of markup', () => {
     expect(stripToText('<h1>Hello</h1><script>ignore()</script><p>there &amp; back</p>')).toBe(
       'Hello there & back'
