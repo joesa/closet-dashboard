@@ -1608,10 +1608,18 @@ export default function IntakeFormClient({
 
       const data = await res.json();
       const answers = data.answers || {};
+      const qualityFindings = Array.isArray(data.quality?.findings)
+        ? data.quality.findings as Array<{ unitId?: string; message?: string }>
+        : [];
+      const failedUnitIds = new Set(
+        qualityFindings
+          .map((finding) => finding.unitId)
+          .filter((unitId): unitId is string => typeof unitId === 'string')
+      );
 
       if (singleField) {
         const val = answers[singleField as keyof typeof answers];
-        if (typeof val === 'string' && val.trim()) {
+        if (!failedUnitIds.has(singleField) && typeof val === 'string' && val.trim()) {
           set(singleField as keyof Form, val.trim());
         }
       } else {
@@ -1630,10 +1638,16 @@ export default function IntakeFormClient({
         ];
         for (const k of keys) {
           const val = answers[k];
-          if (typeof val === 'string' && val.trim()) {
+          if (!failedUnitIds.has(String(k)) && typeof val === 'string' && val.trim()) {
             set(k as keyof Form, val.trim());
           }
         }
+      }
+      if (failedUnitIds.size > 0) {
+        const affected = Array.from(failedUnitIds).join(', ');
+        setError(
+          `Some suggestions still sounded generic after two rewrites and were not applied: ${affected}. Add a specific fact in those fields or try again.`
+        );
       }
     } catch (err) {
       console.error('Craft suggestion error:', err);

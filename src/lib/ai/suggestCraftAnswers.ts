@@ -1,4 +1,7 @@
 import { generateTextWithFallback } from '@/lib/ai/aiTextProvider';
+import { generateWithQualityRetry } from '@/lib/ai/generateWithQualityRetry';
+import { HUMAN_COPY_VOICE_RULES } from '@/lib/ai/humanCopyVoice';
+import { validateGeneratedUnits } from '@/lib/validation/generatedContentQuality';
 
 export type SuggestCraftAnswersInput = {
   industry?: string | null;
@@ -28,7 +31,42 @@ export type CraftAnswers = {
 export type SuggestCraftAnswersResult = {
   answers: CraftAnswers;
   source: 'default' | 'openai' | 'gemini' | 'anthropic';
+  quality: {
+    status: 'passed' | 'failed';
+    attempts: number;
+    findings: Array<{ unitId: string; code: string; message: string; samples: string[] }>;
+    retryError?: string;
+  };
 };
+
+const CRAFT_ANSWER_KEYS = [
+  'craftSpec',
+  'clientArtifact',
+  'shopRule',
+  'localConditions',
+  'recentJob',
+  'timelineFacts',
+  'crewShape',
+  'competitorTell',
+  'guaranteeTerms',
+  'signatureMaterials',
+] as const;
+
+type CraftAnswerKey = (typeof CRAFT_ANSWER_KEYS)[number];
+
+function normalizeCraftAnswers(parsed: CraftAnswers, fallback: CraftAnswers): Record<CraftAnswerKey, string> {
+  return Object.fromEntries(
+    CRAFT_ANSWER_KEYS.map((key) => [key, (parsed[key] || fallback[key] || '').trim()])
+  ) as Record<CraftAnswerKey, string>;
+}
+
+function validateCraftAnswers(answers: Record<CraftAnswerKey, string>) {
+  return validateGeneratedUnits({
+    stage: 'intake.craft-suggestions',
+    profile: 'label',
+    units: CRAFT_ANSWER_KEYS.map((id) => ({ id, text: answers[id] })),
+  });
+}
 
 export type TradeVertical =
   | 'medical'
@@ -748,7 +786,9 @@ export async function suggestCraftAnswers(
   const fallback = getTradeFallbackCraft(input.industry, input.serviceArea, input.services);
 
   if (!process.env.GEMINI_API_KEY) {
-    return { answers: fallback, source: 'default' };
+    const answers = normalizeCraftAnswers(fallback, fallback);
+    const quality = validateCraftAnswers(answers);
+    return { answers, source: 'default', quality: { ...quality, attempts: 1 } };
   }
 
   const industry = (input.industry || '').trim();
@@ -781,6 +821,8 @@ UNIVERSAL COPYWRITING INSTRUCTIONS:
 5. BANNED FLUFF WORDS: "solutions", "leverage", "cutting-edge", "state-of-the-art", "comprehensive", "game-changer", "synergy", "streamline", "empower", "whether you need", "we are committed to", "our team of experienced professionals".
 6. Keep each answer concise (1-2 tight sentences max).
 
+${HUMAN_COPY_VOICE_RULES}
+
 REQUIRED JSON OUTPUT FORMAT (Return JSON only, no markdown):
 {
   "craftSpec": "What do you measure, track, or analyze, and how precisely? Tailor to ${industry}.",
@@ -809,22 +851,57 @@ Generate tailored answers for ALL fields matching ${industry || 'this business'}
     const cleaned = rawText.replace(/```json/gi, '').replace(/```/g, '').trim();
     const parsed = JSON.parse(cleaned) as CraftAnswers;
 
-    const result: CraftAnswers = {
-      craftSpec: (parsed.craftSpec || fallback.craftSpec)?.trim(),
-      clientArtifact: (parsed.clientArtifact || fallback.clientArtifact)?.trim(),
-      shopRule: (parsed.shopRule || fallback.shopRule)?.trim(),
-      localConditions: (parsed.localConditions || fallback.localConditions)?.trim(),
-      recentJob: (parsed.recentJob || fallback.recentJob)?.trim(),
-      timelineFacts: (parsed.timelineFacts || fallback.timelineFacts)?.trim(),
-      crewShape: (parsed.crewShape || fallback.crewShape)?.trim(),
-      competitorTell: (parsed.competitorTell || fallback.competitorTell)?.trim(),
-      guaranteeTerms: (parsed.guaranteeTerms || fallback.guaranteeTerms)?.trim(),
-      signatureMaterials: (parsed.signatureMaterials || fallback.signatureMaterials)?.trim(),
-    };
+    const initial = normalizeCraftAnswers(parsed, fallback);
+    const retried = await generateWithQualityRetry({
+      initial,
+      validate: validateCraftAnswers,
+      regenerate: async ({ failedUnitIds, findings, current }) => {
+        const repairPrompt = `Repair only the failed Craft & Proof fields below.
+Return one JSON object containing exactly these keys: ${failedUnitIds.join(', ')}.
+Do not return or rewrite any other field.
 
-    return { answers: result, source: provider };
+Business context:
+- Industry: ${industry || 'Specialty Business'}
+- Services: ${services.join(', ') || 'Specialty Services'}
+- Service area: ${area || 'Local Area'}
+
+Failed fields and findings:
+${findings.map((finding) => `- ${finding.unitId}: ${finding.code} — ${finding.message}${finding.samples.length ? ` (${finding.samples.join(', ')})` : ''}`).join('\n')}
+
+Current failed values:
+${failedUnitIds.map((unitId) => `- ${unitId}: ${current[unitId as CraftAnswerKey]}`).join('\n')}
+
+${HUMAN_COPY_VOICE_RULES}`;
+        const { text } = await generateTextWithFallback({
+          prompt: repairPrompt,
+          jsonMode: true,
+          temperature: 0.3,
+          maxOutputTokens: 800,
+          preferredProvider: provider,
+        });
+        const repair = JSON.parse(text.replace(/```json/gi, '').replace(/```/g, '').trim()) as CraftAnswers;
+        return Object.fromEntries(
+          failedUnitIds
+            .filter((unitId): unitId is CraftAnswerKey => CRAFT_ANSWER_KEYS.includes(unitId as CraftAnswerKey))
+            .filter((unitId) => typeof repair[unitId] === 'string')
+            .map((unitId) => [unitId, repair[unitId]!.trim()])
+        );
+      },
+    });
+
+    return {
+      answers: retried.output,
+      source: provider,
+      quality: {
+        ...retried.report,
+        attempts: retried.attempts,
+        retryError: retried.retryError,
+      },
+    };
   } catch (err) {
     console.error('suggestCraftAnswers AI error:', err);
-    return { answers: fallback, source: 'default' };
+    const answers = normalizeCraftAnswers(fallback, fallback);
+    const quality = validateCraftAnswers(answers);
+    return { answers, source: 'default', quality: { ...quality, attempts: 1 } };
   }
 }

@@ -1,10 +1,23 @@
-import { describe, it, expect } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
+import { generateTextWithFallback } from './aiTextProvider';
 import {
   detectVertical,
   getCraftFieldsForVertical,
   getTradeFallbackCraft,
   getMaterialsLabelAndPlaceholder,
+  suggestCraftAnswers,
 } from './suggestCraftAnswers';
+
+vi.mock('./aiTextProvider', () => ({
+  generateTextWithFallback: vi.fn(),
+}));
+
+const mockedGenerate = vi.mocked(generateTextWithFallback);
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  delete process.env.GEMINI_API_KEY;
+});
 
 describe('suggestCraftAnswers universal dynamic logic', () => {
   it('detects medical vertical for Pediatrics / Medical Care', () => {
@@ -55,5 +68,46 @@ describe('suggestCraftAnswers universal dynamic logic', () => {
 
     const materials = getMaterialsLabelAndPlaceholder('instruction');
     expect(materials.label).toContain('Educational materials');
+  });
+
+  it('regenerates only a failing field and preserves clean answers', async () => {
+    process.env.GEMINI_API_KEY = 'test-key';
+    const initial = {
+      craftSpec: 'Elevate every patient visit.',
+      clientArtifact: 'Families receive a same-day visit summary.',
+      shopRule: 'We reserve two sick-visit slots each morning.',
+      localConditions: 'School outbreaks fill local waiting rooms by noon.',
+      recentJob: 'We diagnosed an ear infection during a same-day visit.',
+      timelineFacts: 'Same-day visits are available before 4 p.m.',
+      crewShape: 'A pediatrician and registered nurse handle each visit.',
+      competitorTell: 'Rotating clinicians force families to repeat their history.',
+      guaranteeTerms: 'Parents receive a callback before the clinic closes.',
+      signatureMaterials: 'Welch Allyn diagnostic tools and Epic records.',
+    };
+    mockedGenerate
+      .mockResolvedValueOnce({ text: JSON.stringify(initial), provider: 'gemini', model: 'test' })
+      .mockResolvedValueOnce({
+        text: JSON.stringify({ craftSpec: 'We record vitals before the pediatrician enters.' }),
+        provider: 'gemini',
+        model: 'test',
+      });
+
+    const result = await suggestCraftAnswers({
+      industry: 'Pediatrics',
+      services: ['Sick visits'],
+      serviceArea: 'Clarksville',
+    });
+
+    expect(result.quality.status).toBe('passed');
+    expect(result.quality.attempts).toBe(2);
+    expect(result.answers.craftSpec).toBe('We record vitals before the pediatrician enters.');
+    expect(result.answers.clientArtifact).toBe(initial.clientArtifact);
+    expect(mockedGenerate).toHaveBeenCalledTimes(2);
+    expect(mockedGenerate.mock.calls[1]?.[0].prompt).toContain(
+      'exactly these keys: craftSpec'
+    );
+    expect(mockedGenerate.mock.calls[1]?.[0].prompt).not.toContain(
+      `clientArtifact: ${initial.clientArtifact}`
+    );
   });
 });
