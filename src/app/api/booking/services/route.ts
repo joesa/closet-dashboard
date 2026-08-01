@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
 import { corsHeaders, handleOptions } from '@/lib/cors'
 import { assertEntitled } from '@/lib/gate'
+import { getSupabaseAdmin } from '@/lib/supabase-admin'
 
 export const runtime = 'edge'
 
@@ -26,16 +26,7 @@ export async function GET(req: Request) {
     const blocked = await assertEntitled(contractorId)
     if (blocked) return blocked
 
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-    if (!supabaseUrl || !supabaseKey) {
-      return NextResponse.json(
-        { error: 'Server misconfiguration' },
-        { status: 500, headers: corsHeaders }
-      )
-    }
-
-    const supabase = createClient(supabaseUrl, supabaseKey)
+    const supabase = getSupabaseAdmin()
 
     const { data, error } = await supabase
       .from('service_catalog')

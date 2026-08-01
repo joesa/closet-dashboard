@@ -22,13 +22,13 @@ export async function POST(request: Request) {
   try {
     const body = await request.json()
     const {
-      contractorId, eventId, eventName,
-      name, email, phone, quantity, totalCents
+      contractorId, eventId,
+      name, email, phone, quantity
     } = body
 
     if (!contractorId) return json({ error: 'contractorId is required.' }, 400)
     if (!name || !email) return json({ error: 'name and email are required.' }, 400)
-    if (!eventId || !eventName) return json({ error: 'eventId and eventName are required.' }, 400)
+    if (!eventId) return json({ error: 'eventId is required.' }, 400)
     if (!quantity || quantity < 1) return json({ error: 'valid quantity is required.' }, 400)
 
     const blocked = await assertEntitled(contractorId)
@@ -42,6 +42,17 @@ export async function POST(request: Request) {
     }
 
     const adminSupa = getSupabaseAdmin()
+
+    const { data: event } = await adminSupa
+      .from('ticket_events')
+      .select('id, name, price_cents')
+      .eq('id', eventId)
+      .eq('contractor_id', contractorId)
+      .eq('is_active', true)
+      .maybeSingle()
+    if (!event) return json({ error: 'Event not found for this business.' }, 400)
+    const safeQuantity = Math.min(Math.max(Math.trunc(Number(quantity)), 1), 20)
+    const totalCents = (event.price_cents || 0) * safeQuantity
 
     const { data: settings } = await adminSupa
       .from('contractor_settings')
@@ -61,13 +72,13 @@ export async function POST(request: Request) {
 
     const { error: insertError } = await adminSupa.from('ticket_orders').insert({
       contractor_id: contractorId,
-      event_id: eventId,
-      event_name: eventName,
+      event_id: event.id,
+      event_name: event.name,
       customer_name: `${first || ''} ${last || ''}`.trim() || name,
       customer_email: email,
       customer_phone: phone || null,
-      quantity,
-      total_cents: totalCents || 0,
+      quantity: safeQuantity,
+      total_cents: totalCents,
       status: 'pending'
     })
 
@@ -90,8 +101,8 @@ export async function POST(request: Request) {
         <strong>Email:</strong> ${email}<br/>
         <strong>Phone:</strong> ${phone || 'N/A'}</p>
         <hr/>
-        <p><strong>Event:</strong> ${eventName}<br/>
-        <strong>Tickets:</strong> ${quantity}<br/>
+        <p><strong>Event:</strong> ${event.name}<br/>
+        <strong>Tickets:</strong> ${safeQuantity}<br/>
         <strong>Total:</strong> ${fmtPrice(totalCents || 0)}</p>
       </body>
       </html>`
@@ -99,7 +110,7 @@ export async function POST(request: Request) {
       const { error: emailError } = await resend.emails.send({
         from: platformFromEmail(),
         to: [toEmail],
-        subject: `New ticket request from ${name} for ${eventName}`,
+        subject: `New ticket request from ${name} for ${event.name}`,
         html: emailHtml,
       })
       if (emailError) console.error('send-ticket email failed:', emailError)
@@ -109,7 +120,7 @@ export async function POST(request: Request) {
       try {
         await sendSms(
           contractorPhone,
-          `New ticket request from ${name} for ${quantity}x ${eventName}. Check your email for details.`
+          `New ticket request from ${name} for ${safeQuantity}x ${event.name}. Check your email for details.`
         )
       } catch (err) {
         console.error('send-ticket SMS failed:', err)

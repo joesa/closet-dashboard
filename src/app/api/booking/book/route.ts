@@ -22,14 +22,14 @@ export async function POST(request: Request) {
   try {
     const body = await request.json()
     const {
-      contractorId, serviceId, serviceName, servicePriceCents,
+      contractorId, serviceId,
       date, time, name, email, phone, notes
     } = body
 
     if (!contractorId) return json({ error: 'contractorId is required.' }, 400)
     if (!name || !email) return json({ error: 'name and email are required.' }, 400)
     if (!date || !time) return json({ error: 'date and time are required.' }, 400)
-    if (!serviceName) return json({ error: 'serviceName is required.' }, 400)
+    if (!serviceId) return json({ error: 'serviceId is required.' }, 400)
 
     const blocked = await assertEntitled(contractorId)
     if (blocked) return blocked
@@ -42,6 +42,15 @@ export async function POST(request: Request) {
     }
 
     const adminSupa = getSupabaseAdmin()
+
+    const { data: service } = await adminSupa
+      .from('service_catalog')
+      .select('id, name, price_cents')
+      .eq('id', serviceId)
+      .eq('contractor_id', contractorId)
+      .eq('is_active', true)
+      .maybeSingle()
+    if (!service) return json({ error: 'Service not found for this business.' }, 400)
 
     const { data: settings } = await adminSupa
       .from('contractor_settings')
@@ -62,9 +71,9 @@ export async function POST(request: Request) {
 
     const { error: insertError } = await adminSupa.from('bookings').insert({
       contractor_id: contractorId,
-      service_id: serviceId || null,
-      service_name: serviceName,
-      service_price_cents: servicePriceCents || 0,
+      service_id: service.id,
+      service_name: service.name,
+      service_price_cents: service.price_cents || 0,
       customer_name: `${first || ''} ${last || ''}`.trim() || name,
       customer_email: email,
       customer_phone: phone || null,
@@ -94,7 +103,7 @@ export async function POST(request: Request) {
         <strong>Email:</strong> ${email}<br/>
         <strong>Phone:</strong> ${phone || 'N/A'}</p>
         <hr/>
-        <p><strong>Service:</strong> ${serviceName} (${fmtPrice(servicePriceCents || 0)})<br/>
+        <p><strong>Service:</strong> ${service.name} (${fmtPrice(service.price_cents || 0)})<br/>
         <strong>Date:</strong> ${date}<br/>
         <strong>Time:</strong> ${time}<br/>
         <strong>Notes:</strong> ${notes || 'None'}</p>
@@ -114,7 +123,7 @@ export async function POST(request: Request) {
       try {
         await sendSms(
           contractorPhone,
-          `New booking request from ${name} for ${serviceName} on ${date} at ${time}. Check your email for details.`
+          `New booking request from ${name} for ${service.name} on ${date} at ${time}. Check your email for details.`
         )
       } catch (err) {
         console.error('send-booking SMS failed:', err)
