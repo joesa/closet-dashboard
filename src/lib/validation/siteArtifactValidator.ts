@@ -141,6 +141,30 @@ export function validateCustomSiteArtifact(
   for (const [path, page] of Object.entries(artifact.pages)) {
     const text = [page.title, page.description, page.html].filter(Boolean).join(' ')
     pageTexts.push(text)
+    const specCtas = page.html.match(
+      />\s*(?:view|read|open)\s+(?:protocol|dossier|case file)\s*</gi
+    )
+    if (specCtas) {
+      issues.push({
+        code: 'spec_sheet_cta',
+        severity: 'error',
+        message: `${path}: Replace document-style CTA labels with a natural customer action.`,
+        fixable: true,
+        meta: { path, samples: specCtas.map((sample) => sample.slice(1, -1).trim()) },
+      })
+    }
+    const numberedMarkers = page.html.match(
+      /<(?:span|div|p)\b[^>]*>\s*0[1-9]\s*<\/(?:span|div|p)>/gi
+    )
+    if (numberedMarkers && numberedMarkers.length >= 3) {
+      issues.push({
+        code: 'decorative_numbered_list',
+        severity: 'error',
+        message: `${path}: Remove zero-padded numbering from content that is not a real sequence.`,
+        fixable: true,
+        meta: { path, count: numberedMarkers.length },
+      })
+    }
     for (const finding of analyzeSpecificity({
       text,
       businessName: options.businessName,

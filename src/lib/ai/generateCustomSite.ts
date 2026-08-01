@@ -1880,8 +1880,8 @@ Banned defaults (unless the brief explicitly requests them):
 - Cream/off-white + high-contrast serif display + terracotta/warm-clay accent as a habit skin
 - Near-black + single acid-green / neon lime / cyan / gold accent applied regardless of fit; carbon texture; skewed italic CTAs
 - Hero template: vague headline ("Build faster. Ship smarter."), gray subhead, two buttons, gradient blob / abstract 3D on the right
-- Numbered markers (01 / 02 / 03) when content is not a real sequence
-- Spec-sheet / technical document metadata: NEVER output artificial reference tags, spec sheet codes, or engineering document markers like "DOC. REF: ABT-01", "DOC: INQ-LOG", "REV: 2024", "REF: 01 / 02 / 03", "Case File", "System Spec //", "FIG 1", or programming comment syntax ("//") on public content. UI badges and labels must be natural, human, and industry-appropriate.
+- Numbered markers (01 / 02 / 03) when content is not a real sequence. Never number ordinary service, feature, testimonial, or team lists for decoration.
+- Spec-sheet / technical document metadata: NEVER output artificial reference tags, spec sheet codes, or engineering document markers like "DOC. REF: ABT-01", "DOC: INQ-LOG", "REV: 2024", "REF: 01 / 02 / 03", "Case File", "System Spec //", "FIG 1", or programming comment syntax ("//") on public content. Never use document-style CTA labels such as "View Protocol", "Open Dossier", or "View Case File"; use audience-appropriate actions such as "View Services" or "Learn More". UI badges and labels must be natural, human, and industry-appropriate.
 - Emoji in headings, UI copy, or feature lists
 - Glassmorphism cards, floating blurred orbs, dot-grid as default texture
 - Three identical icon-title-sentence cards with generic line icons that could describe any product

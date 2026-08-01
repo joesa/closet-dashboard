@@ -26,6 +26,18 @@ describe('validateCustomSiteArtifact', () => {
     )
   })
 
+  it('blocks spec-sheet CTAs and decorative service numbering', () => {
+    const report = validateCustomSiteArtifact(
+      artifact(
+        '<span>01</span><span>02</span><span>03</span><a href="/services">View Protocol</a>',
+        '<h2>Our pediatric services</h2>'
+      )
+    )
+    expect(report.issues.map((issue) => issue.code)).toEqual(
+      expect.arrayContaining(['spec_sheet_cta', 'decorative_numbered_list'])
+    )
+  })
+
   it('hashes the exact artifact deterministically', () => {
     const config = artifact(
       '<h1>6–8 week cabinet builds</h1><p>Every drawing names the Blum runners we install.</p>',
