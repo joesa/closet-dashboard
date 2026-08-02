@@ -395,13 +395,19 @@ export default function AdminCustomBuild({
       const surgical = job?.intent === 'surgical';
       const done = (job?.passes_done || []).length;
       const need = (job?.required_paths || []).length || '?';
+      const fullPassLabel =
+        job?.pass === 'design-system:crafting'
+          ? 'crafting new design system'
+          : job?.pass === 'design-system:validating'
+            ? 'validating new design system'
+            : job?.pass || '…';
       setInfo(
         surgical
           ? job?.status === 'processing'
             ? `Surgical edit processing · heartbeat ${hb} · ~${ageMin}m wall`
             : `Surgical edit queued on background worker · heartbeat ${hb}`
           : job?.status === 'processing'
-            ? `Processing · pass ${job?.pass || '…'} · ${done}/${need} pages · heartbeat ${hb} · ~${ageMin}m wall`
+            ? `Processing · ${fullPassLabel} · ${done}/${need} pages · heartbeat ${hb} · ~${ageMin}m wall`
             : `Queued on background worker · heartbeat ${hb} · ~${ageMin}m waiting`
       );
       // Client watchdog mirrors server stale window (~45m). Do not cancel early —

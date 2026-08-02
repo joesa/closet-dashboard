@@ -55,6 +55,20 @@ type EnhanceOpts = {
   avoid?: DesignAvoidList | null
 }
 
+/** Keep user-authored Full redesign input intact through enhancement and review. */
+export function lockAdminSeedInBrief(
+  brief: EnhancedFullRedesignBrief,
+  adminBrief: string
+): EnhancedFullRedesignBrief {
+  const seed = adminBrief.trim()
+  if (!seed) return brief
+  const marker = 'NON-OVERRIDABLE ADMIN INPUT (verbatim):'
+  const optimizedBrief = brief.optimizedBrief.includes(marker)
+    ? brief.optimizedBrief
+    : `${brief.optimizedBrief}\n\n${marker}\n${seed}\n\nTreat every explicit request above as a hard constraint. Resolve only genuine conflicts with platform safety, supplied facts, accessibility, or the requirement to avoid a previously used design; preserve the user’s intent when resolving them.`
+  return { ...brief, optimizedBrief }
+}
+
 function extractJsonObject(raw: string): unknown {
   const trimmed = raw.trim()
   if (trimmed.startsWith('{')) {
@@ -206,7 +220,7 @@ export function fallbackEnhancedBrief(opts: EnhanceOpts): EnhancedFullRedesignBr
         .filter(Boolean)
         .join('\n')
 
-  return mergeExtractedServices(
+  return lockAdminSeedInBrief(mergeExtractedServices(
     {
       signatureConcept,
       materialWorld,
@@ -228,7 +242,7 @@ export function fallbackEnhancedBrief(opts: EnhanceOpts): EnhancedFullRedesignBr
       source: 'fallback',
     },
     opts
-  )
+  ), opts.adminBrief)
 }
 
 /** Union model/fallback servicesToAdd with deterministic extraction from the seed. */
@@ -333,7 +347,7 @@ function normalizeEnhanced(
     },
   }
 
-  return mergeExtractedServices(
+  return lockAdminSeedInBrief(mergeExtractedServices(
     {
       signatureConcept: asString(o.signatureConcept, fallback.signatureConcept),
       materialWorld: asString(o.materialWorld, fallback.materialWorld),
@@ -351,7 +365,7 @@ function normalizeEnhanced(
       source,
     },
     opts
-  )
+  ), opts.adminBrief)
 }
 
 const JSON_SHAPE = `{
@@ -469,6 +483,8 @@ Produce the optimized brief JSON.`
     for (let reviewAttempt = 1; reviewAttempt <= 3; reviewAttempt += 1) {
       const reviewPrompt = `Independently audit and, where necessary, REGENERATE this proposed Full redesign preflight. Do not preserve a weak choice for consistency. Check every design axis, every AI tell, factual grounding, accessibility, responsive feasibility, and novelty against the supplied prior-design block. Return the complete corrected JSON in the required shape. Set validation booleans true only after the corrected system actually passes.
 
+    USER AUTHORITY: The verbatim ADMIN SEED is a first-class, non-optional constraint. Preserve every explicit request about composition, palette, typography, imagery, features, services, tone, and content. Never replace a user choice merely because you prefer another. Change one only when it conflicts with platform safety, supplied facts, accessibility, or a documented prior-design collision; in that case preserve the underlying intent and explain the resolution in validation.rationale.
+
 ${failures.length ? `THE PREVIOUS REVIEW WAS REJECTED FOR:\n- ${failures.join('\n- ')}\nReplace the specific colliding or unresolved choices; do not merely rename them.` : ''}
 
 PROPOSED PREFLIGHT:
@@ -485,11 +501,11 @@ ${userPrompt}`
         preferredProvider: provider,
         anthropicModel: CLAUDE_SONNET_MODEL,
       })
-      candidate = normalizeEnhanced(
+      candidate = lockAdminSeedInBrief(normalizeEnhanced(
         extractJsonObject(reviewedText),
         opts,
         reviewProvider === 'anthropic' ? 'anthropic' : 'gemini'
-      )
+      ), opts.adminBrief)
       failures = validateFullRedesignPreflight(
         candidate,
         opts.avoid?.takenFontKeys,

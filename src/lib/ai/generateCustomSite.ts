@@ -1858,6 +1858,16 @@ async function runFullGenerate(opts: {
       : {}
 
   const resumeLocked = opts.resumeState?.lockedBrief
+  if (!resumeLocked) {
+    await opts.onProgress?.({
+      pass: 'design-system:crafting',
+      passesDone: passesDoneFromDraft(opts.requiredPaths, opts.existingDraft || emptyFullRedesignDraft(opts.mode)),
+      requiredPaths: opts.requiredPaths,
+      reply: adminBrief
+        ? 'Crafting a new design system around your Full redesign instructions…'
+        : 'Crafting a new design system from intake, business context, and platform uniqueness history…',
+    })
+  }
   const enhanced: EnhancedFullRedesignBrief =
     resumeLocked &&
     typeof resumeLocked.optimizedBrief === 'string' &&
@@ -1911,6 +1921,27 @@ async function runFullGenerate(opts: {
           avoid: opts.avoidList,
         })
 
+  await opts.onProgress?.({
+    pass: 'design-system:validating',
+    passesDone: passesDoneFromDraft(opts.requiredPaths, opts.existingDraft || emptyFullRedesignDraft(opts.mode)),
+    requiredPaths: opts.requiredPaths,
+    reply: 'Validating the locked design system for originality, anti-AI quality, coherence, accessibility, and your instructions…',
+    lockedBrief: {
+      signatureConcept: enhanced.signatureConcept,
+      optimizedBrief: enhanced.optimizedBrief,
+      materialWorld: enhanced.materialWorld,
+      palette: enhanced.palette,
+      typography: enhanced.typography,
+      signatureElement: enhanced.signatureElement,
+      copyRegister: enhanced.copyRegister,
+      servicesToAdd: enhanced.servicesToAdd,
+      avoidDefaults: enhanced.avoidDefaults,
+      designSystem: enhanced.designSystem,
+      inventedFromIntake: enhanced.inventedFromIntake,
+      source: enhanced.source,
+    },
+  })
+
   const preflightFailures = validateFullRedesignPreflight(
     enhanced,
     opts.avoidList.takenFontKeys,
@@ -1950,7 +1981,7 @@ AI design clusters around recognizable defaults. Know the tells and design away 
 ${
   seedEmpty || enhanced.inventedFromIntake
     ? `The user message includes a SELF-AUTHORED DESIGN DIRECTION PROMPT invented from intake using our design system (admin left the seed empty). Treat that prompt as if the admin typed it — execute it literally for palette, type, signature element, layout, copy register, and process. Do not invent a competing direction.`
-    : `The user message includes an OPTIMIZED CREATIVE BRIEF (expanded from the admin seed + intake) plus the raw ADMIN SEED. Execute the optimized brief for palette, type, signature element, and layout. When the ADMIN SEED is specific (named colors, dual-lane, services to add, layout asks), those specifics win over the optimizer's fillers.`
+    : `The user message includes an OPTIMIZED CREATIVE BRIEF (expanded from the admin seed + intake) plus the raw ADMIN SEED. The raw ADMIN SEED is the highest-authority creative constraint: execute every explicit request about composition, palette, typography, imagery, features, services, tone, and content. Optimizer additions may fill unspecified axes but may not overwrite user choices. Only platform safety, supplied facts, accessibility, or a documented prior-design collision can require adaptation; preserve the user's underlying intent when adapting.`
 }
 
 Banned defaults (unless the brief explicitly requests them):
