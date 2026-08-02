@@ -20,6 +20,8 @@ type CustomBuildJob = {
   passes_done?: string[];
   required_paths?: string[];
   dead_lettered?: boolean;
+  /** Automatic first redesign — publishes and goes live on its own. */
+  auto_launch?: boolean;
 };
 
 function classifyJobError(error: string | null | undefined): {
@@ -395,14 +397,23 @@ export default function AdminCustomBuild({
       const surgical = job?.intent === 'surgical';
       const done = (job?.passes_done || []).length;
       const need = (job?.required_paths || []).length || '?';
+      const fullPassLabel =
+        job?.pass === 'design-system:crafting'
+          ? 'crafting new design system'
+          : job?.pass === 'design-system:validating'
+            ? 'validating new design system'
+            : job?.pass || '…';
+      // The automatic first redesign runs itself and publishes itself — say so,
+      // so nobody waits to click Publish or thinks a colleague started this.
+      const autoPrefix = job?.auto_launch ? 'Automatic first redesign · ' : '';
       setInfo(
         surgical
           ? job?.status === 'processing'
             ? `Surgical edit processing · heartbeat ${hb} · ~${ageMin}m wall`
             : `Surgical edit queued on background worker · heartbeat ${hb}`
           : job?.status === 'processing'
-            ? `Processing · pass ${job?.pass || '…'} · ${done}/${need} pages · heartbeat ${hb} · ~${ageMin}m wall`
-            : `Queued on background worker · heartbeat ${hb} · ~${ageMin}m waiting`
+            ? `${autoPrefix}Processing · ${fullPassLabel} · ${done}/${need} pages · heartbeat ${hb} · ~${ageMin}m wall`
+            : `${autoPrefix}Queued on background worker · heartbeat ${hb} · ~${ageMin}m waiting`
       );
       // Client watchdog mirrors server stale window (~45m). Do not cancel early —
       // Graphile Worker has no Vercel maxDuration; Claude alone can exceed 5 minutes.

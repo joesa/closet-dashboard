@@ -7,8 +7,8 @@ import {
   jobIdleMs,
   listActiveCustomBuildTenantIds,
 } from '@/lib/ai/customBuildJob'
-import { canEnqueueBackgroundJobs, enqueueJob } from '@/lib/jobs/enqueueJob'
-import { TASK_FULL_REDESIGN } from '@/lib/jobs/taskIds'
+import { canEnqueueBackgroundJobs } from '@/lib/jobs/enqueueJob'
+import { enqueueFullRedesign } from '@/lib/jobs/enqueueFullRedesign'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { isCustomBuildJob } from '@/lib/ai/customBuildJob'
 
@@ -71,15 +71,7 @@ export async function GET(req: Request) {
     const job = await getCustomBuildJob(tenantId)
     if (!job || job.status !== 'queued') continue
     try {
-      await enqueueJob(
-        TASK_FULL_REDESIGN,
-        { tenantId, startedAt: job.started_at },
-        {
-          jobKey: `full_redesign:${tenantId}`,
-          jobKeyMode: 'replace',
-          maxAttempts: 3,
-        }
-      )
+      await enqueueFullRedesign(tenantId, job.started_at)
       enqueued.push(tenantId)
     } catch (err) {
       console.error('[cron custom-build] enqueue failed', tenantId, err)

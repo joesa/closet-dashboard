@@ -88,3 +88,31 @@ export async function logAdminAction(opts: {
     console.error('[admin] failed to write audit log', err)
   }
 }
+
+/**
+ * Audit an action taken by the platform itself with no admin behind it — the
+ * unattended auto-launch sequence (src/lib/launch/autoLaunch.ts) does what an
+ * admin used to click, so it belongs in the same log. `actor_id` is nullable,
+ * so a null actor reads as "system" and is trivially filterable from real
+ * human actions. Best-effort, same as logAdminAction.
+ */
+export async function logSystemAction(opts: {
+  action: string
+  targetType?: string
+  targetId?: string
+  metadata?: Record<string, unknown>
+}) {
+  try {
+    const admin = getSupabaseAdmin()
+    await admin.from('admin_audit_log').insert({
+      actor_id: null,
+      actor_email: 'system:auto-launch',
+      action: opts.action,
+      target_type: opts.targetType ?? null,
+      target_id: opts.targetId ?? null,
+      metadata: opts.metadata ?? {},
+    })
+  } catch (err) {
+    console.error('[admin] failed to write system audit log', err)
+  }
+}

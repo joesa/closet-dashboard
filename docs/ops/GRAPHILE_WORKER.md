@@ -22,7 +22,7 @@ Heartbeats cannot revive a dead isolate. Graphile has no execution time limit.
 
 | Task | Enqueued from | Status column |
 |---|---|---|
-| `full_redesign` | `/api/admin/sites/[id]/custom-build` (`intent: full` **or** `surgical`) | `site_configs.custom_build_job` |
+| `full_redesign` | `/api/admin/sites/[id]/custom-build` (`intent: full` **or** `surgical`), and `startAutoLaunchRedesign` for the automatic first redesign | `site_configs.custom_build_job` |
 | `provision_tenant` | `kickProvisionAfterSubmit` | `provision_jobs` |
 | `intake_generate_site` | `/api/intake/[token]/generate-site` | `prospect_intakes.background_job` |
 | `intake_generate_images` | `/api/intake/[token]/generate-images` | `prospect_intakes.background_job` |
@@ -146,6 +146,35 @@ Prefer **≥2GB** RAM on Render — 512MB OOMs Claude mid-foundation.
 - Admin UI polls the same job panel; Preview stays available while surgical runs.
 - Site-wide renames that used to 504 on Vercel now finish on Render.
 
+## Auto-launch (first redesign, no admin)
+
+A submitted intake now reaches a live bespoke site with **zero admin clicks**
+(`src/lib/launch/autoLaunch.ts`). After `provisionTenant` finishes,
+`startAutoLaunchRedesign` enqueues one `full_redesign` job carrying
+`custom_build_job.auto_launch = true`. When that job succeeds the worker calls
+`finishAutoLaunch` → `publishCustomSiteDraft` → `autoApproveTenantSite`.
+
+Deliberately **redesign-first, reveal-second**: the tenant stays gated at
+`pending_approval` while the redesign runs, so the public never sees the engine
+template. Neither gate is bypassed — the publish quality/uniqueness gate still
+blocks a bad draft, and `syncTenantLaunchAccess` still enforces launch payment
+(paid → `active`, unpaid → `awaiting_launch_payment` + pay link).
+
+- Idempotency lives on the row, not in the job JSON:
+  `site_configs.auto_launch_redesign_at` (enqueued once) and
+  `auto_launch_completed_at` (publish + approve ran once).
+- Terminal failure (Graphile attempts exhausted) → `failAutoLaunch` still
+  reveals the site on the engine template so a paying customer is not stranded.
+  Set `AUTO_LAUNCH_REVEAL_ON_REDESIGN_FAILURE=false` to keep it gated instead.
+- Kill switch: `AUTO_LAUNCH_REDESIGN=false` restores the fully manual flow.
+- Audit rows are written with a **null `actor_id`** and
+  `actor_email = 'system:auto-launch'` — that is how you tell platform actions
+  from human ones in `admin_audit_log`.
+- Every auto site enters the `custom_design_fingerprints` uniqueness registry,
+  so expect more publishes held for admin review as volume grows.
+- Worker `concurrency` is **1** across all task types: each new intake now adds
+  a multi-minute redesign to that single lane.
+
 ## Admin UX + observability
 
 - Site Custom Build panel: Queued → Processing → current pass, heartbeat age,
@@ -154,7 +183,10 @@ Prefer **≥2GB** RAM on Render — 512MB OOMs Claude mid-foundation.
 - `/admin/background-jobs` — `graphile_worker.jobs` + recent `custom_build_job`
   rows, SLO highlights, one-click Re-queue.
 - Render logs: JSON events `full_redesign_start|done|failed` with job id,
-  attempt, durationMs, pageCount, htmlSizes.
+  attempt, durationMs, pageCount, htmlSizes. Auto-launch adds
+  `auto_launch_queued|finished|approved|failed_revealed` (and
+  `auto_launch_finish_error` / `auto_launch_fail_handler_error` when the
+  post-run hook itself throws).
 - Cron `/api/cron/process-custom-build-jobs` re-enqueues orphaned queued jobs and
   emits `[ALERT custom-build]` for queued &gt;2m or stale heartbeat (≥5m silence).
   On Vercel Hobby this runs **once daily** (`5 5 * * *`); Graphile Worker still

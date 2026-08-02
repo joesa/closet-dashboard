@@ -6,6 +6,7 @@ import {
 } from '@/lib/ai/customBuildJob'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { isCustomSiteConfig } from '@/lib/customSite'
+import { failAutoLaunch, finishAutoLaunch } from '@/lib/launch/autoLaunch'
 
 export type FullRedesignPayload = {
   tenantId: string
@@ -145,6 +146,7 @@ export const fullRedesignTask: Task = async (payload, helpers) => {
   }
 
   const pageCount = Object.keys(htmlSizes).length
+  const autoLaunch = after?.auto_launch === true
   if (after?.status === 'failed') {
     const finalAttempt = Number(attempt) >= Number(maxAttempts || 3)
     if (finalAttempt) {
@@ -152,6 +154,22 @@ export const fullRedesignTask: Task = async (payload, helpers) => {
         ...after,
         dead_lettered: true,
       })
+      if (autoLaunch) {
+        // Out of retries on the automatic first redesign. Decide the tenant's
+        // fate now rather than leaving a paying customer invisible forever.
+        try {
+          await failAutoLaunch(tenantId)
+        } catch (err) {
+          helpers.logger.error(
+            JSON.stringify({
+              event: 'auto_launch_fail_handler_error',
+              tenantId,
+              jobId,
+              error: err instanceof Error ? err.message : String(err),
+            })
+          )
+        }
+      }
     }
     helpers.logger.error(
       JSON.stringify({
@@ -186,4 +204,22 @@ export const fullRedesignTask: Task = async (payload, helpers) => {
       passesDone: after?.passes_done || [],
     })
   )
+
+  if (autoLaunch && after?.status === 'succeeded') {
+    // Automatic first redesign finished: publish the draft through the normal
+    // quality gate, then take the site live. Never rethrow — the redesign
+    // itself succeeded, and a Graphile retry would only redo the generation.
+    try {
+      await finishAutoLaunch(tenantId)
+    } catch (err) {
+      helpers.logger.error(
+        JSON.stringify({
+          event: 'auto_launch_finish_error',
+          tenantId,
+          jobId,
+          error: err instanceof Error ? err.message : String(err),
+        })
+      )
+    }
+  }
 }

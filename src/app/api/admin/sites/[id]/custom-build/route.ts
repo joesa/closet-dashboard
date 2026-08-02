@@ -19,31 +19,13 @@ import {
   shouldRequeueCustomBuildJob,
 } from '@/lib/ai/customBuildJob'
 import { cancelCustomBuildJob, requeueCustomBuildJob } from '@/lib/ai/processCustomBuildJob'
-import { canEnqueueBackgroundJobs, enqueueJob } from '@/lib/jobs/enqueueJob'
-import { TASK_FULL_REDESIGN } from '@/lib/jobs/taskIds'
+import { enqueueFullRedesign } from '@/lib/jobs/enqueueFullRedesign'
 import { normalizeAdminImageRefs } from '@/lib/adminImageAttach'
 
 // Full redesign + surgical edits are enqueued to Graphile Worker (Render) —
 // this route only writes UI status + add_job. No Vercel maxDuration for the AI work.
 export const maxDuration = 60
 export const runtime = 'nodejs'
-
-async function enqueueFullRedesign(tenantId: string, startedAt: string) {
-  if (!canEnqueueBackgroundJobs()) {
-    throw new Error(
-      'DATABASE_URL is not configured — cannot enqueue custom build jobs. Set a session-mode Postgres URI and run the Graphile Worker.'
-    )
-  }
-  await enqueueJob(
-    TASK_FULL_REDESIGN,
-    { tenantId, startedAt },
-    {
-      jobKey: `full_redesign:${tenantId}`,
-      jobKeyMode: 'replace',
-      maxAttempts: 3,
-    }
-  )
-}
 
 async function loadCustomBuildStatus(tenantId: string) {
   const supabase = getSupabaseAdmin()

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   buildIntakeHintsForBrief,
   fallbackEnhancedBrief,
+  lockAdminSeedInBrief,
 } from './enhanceFullRedesignBrief'
 import { validateFullRedesignPreflight } from './fullRedesignDesignSystem'
 
@@ -23,6 +24,21 @@ describe('fallbackEnhancedBrief', () => {
     expect(out.optimizedBrief).toMatch(/Hand Wash/)
     expect(out.avoidDefaults.length).toBeGreaterThan(2)
     expect(out.palette.some((p) => p.role === 'acc')).toBe(true)
+  })
+
+  it('locks verbatim user input into a reviewed brief without duplicating it', () => {
+    const seed = 'Use cobalt blue, a diagonal image wall, and add ceramic coating.'
+    const base = fallbackEnhancedBrief({
+      brandName: 'Bay Detail',
+      adminBrief: seed,
+      hasImages: false,
+      engagementLabel: 'booking',
+      services: ['PPF'],
+    })
+    const once = lockAdminSeedInBrief(base, seed)
+    const twice = lockAdminSeedInBrief(once, seed)
+    expect(twice.optimizedBrief).toContain(`NON-OVERRIDABLE ADMIN INPUT (verbatim):\n${seed}`)
+    expect(twice.optimizedBrief.match(/NON-OVERRIDABLE ADMIN INPUT/g)).toHaveLength(1)
   })
 
   it('invents a full design-direction prompt from intake when the seed is empty', () => {
