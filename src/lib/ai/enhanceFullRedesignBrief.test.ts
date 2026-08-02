@@ -56,6 +56,76 @@ describe('fallbackEnhancedBrief', () => {
     expect(out.optimizedBrief).toMatch(/REQUIRED SERVICE ADDS/i)
     expect(out.optimizedBrief).toMatch(/Vehicle Wrapping/)
   })
+
+  it('gives different businesses different palettes and type pairings', () => {
+    const brands = [
+      'Wehora Car Wash',
+      'Ridgeline Closets',
+      'Cypress Plumbing',
+      'Fulton Roofing',
+      'Bayside Cabinetry',
+    ]
+    const briefs = brands.map((brandName) =>
+      fallbackEnhancedBrief({
+        brandName,
+        adminBrief: '',
+        hasImages: false,
+        engagementLabel: 'quote calculator',
+        services: ['General'],
+        city: 'Nashville',
+      })
+    )
+    // This is the regression that matters: the old fallback returned one
+    // hardcoded palette and one placeholder type pairing for every business.
+    const accents = briefs.map((b) => b.palette.find((p) => p.role === 'acc')?.hex)
+    expect(new Set(accents).size).toBeGreaterThan(1)
+    const pairs = briefs.map((b) => `${b.typography.display}+${b.typography.body}`)
+    expect(new Set(pairs).size).toBeGreaterThan(1)
+  })
+
+  it('names real Google Fonts instead of describing them', () => {
+    const out = fallbackEnhancedBrief({
+      brandName: 'Bay Detail',
+      adminBrief: '',
+      hasImages: false,
+      engagementLabel: 'booking',
+      services: ['PPF'],
+    })
+    expect(out.typography.display).not.toMatch(/choose|real Google Font/i)
+    expect(out.typography.body).not.toMatch(/choose|real Google Font/i)
+    expect(out.optimizedBrief).toContain(out.typography.display)
+    expect(out.optimizedBrief).toContain(out.typography.body)
+    expect(out.signatureElement).not.toMatch(/One trade-rooted chrome detail/i)
+    expect(out.optimizedBrief).toContain(out.signatureElement)
+  })
+
+  it('steers around palettes and type pairings already taken', () => {
+    const base = fallbackEnhancedBrief({
+      brandName: 'Ridgeline Closets',
+      adminBrief: '',
+      hasImages: false,
+      engagementLabel: 'quote calculator',
+      services: ['Closets'],
+    })
+    const takenPair = `${base.typography.display}+${base.typography.body}`.toLowerCase()
+    const steered = fallbackEnhancedBrief({
+      brandName: 'Ridgeline Closets',
+      adminBrief: '',
+      hasImages: false,
+      engagementLabel: 'quote calculator',
+      services: ['Closets'],
+      avoid: {
+        taken: [],
+        takenSkeletonKeys: [],
+        takenPaletteKeys: [],
+        takenFontKeys: [takenPair],
+        promptBlock: '',
+      },
+    })
+    expect(
+      `${steered.typography.display}+${steered.typography.body}`.toLowerCase()
+    ).not.toBe(takenPair)
+  })
 })
 
 describe('buildIntakeHintsForBrief', () => {

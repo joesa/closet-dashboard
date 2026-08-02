@@ -1,0 +1,235 @@
+/**
+ * The registry of designs already shipped, and the prompt block that shows them
+ * to the model.
+ *
+ * Two jobs. First, collision detection: a candidate Full redesign must not reuse
+ * a home section rhythm another tenant already has. Second — and this is the
+ * half that actually improves output — an avoid-list the enhancer and the site
+ * generator both see up front, so the model steers away from taken directions
+ * instead of being rejected afterwards.
+ *
+ * The avoid-list is load-bearing here in a way it would not be for most
+ * pipelines: aiTextProvider deliberately does not send `temperature` to Claude
+ * (the models reject it), and Full redesign is Claude-first, so sampling
+ * variation is not available as a diversity lever. Prompt content is the lever.
+ *
+ * Every read is non-fatal. If the table is missing, unreachable, or the query
+ * errors, callers get an empty list and the redesign proceeds exactly as it did
+ * before this feature existed — a uniqueness check is not worth failing a
+ * 40-minute job over. Same posture as resolveDesignSeed's missing-column
+ * back-compat.
+ */
+
+import type { SupabaseClient } from '@supabase/supabase-js'
+import type { CustomSiteConfig } from '@/lib/customSite'
+import {
+  CUSTOM_FINGERPRINT_VERSION,
+  describeFingerprintForAvoidList,
+  extractCustomDesignFingerprint,
+  fingerprintKeys,
+  skeletonSimilarity,
+  type CustomDesignFingerprint,
+} from '@/lib/design/customDesignFingerprint'
+import {
+  AVOID_LIST_MAX_CHARS,
+  AVOID_LIST_MAX_ROWS,
+  SKELETON_COLLISION_THRESHOLD,
+} from '@/lib/validation/designGuardPolicy'
+
+const TABLE = 'custom_design_fingerprints'
+
+export type TakenDesign = {
+  tenantId: string
+  fingerprint: CustomDesignFingerprint
+  signatureConcept: string | null
+}
+
+export type DesignAvoidList = {
+  taken: TakenDesign[]
+  takenSkeletonKeys: string[]
+  takenPaletteKeys: string[]
+  takenFontKeys: string[]
+  /** Ready-to-paste prompt section, capped at AVOID_LIST_MAX_CHARS. Empty when nothing is taken. */
+  promptBlock: string
+}
+
+export const EMPTY_AVOID_LIST: DesignAvoidList = {
+  taken: [],
+  takenSkeletonKeys: [],
+  takenPaletteKeys: [],
+  takenFontKeys: [],
+  promptBlock: '',
+}
+
+function isFingerprint(value: unknown): value is CustomDesignFingerprint {
+  if (!value || typeof value !== 'object') return false
+  const v = value as Partial<CustomDesignFingerprint>
+  return Array.isArray(v.skeleton) && typeof v.version === 'number'
+}
+
+/** Trim a `label: a · b · c` line so the whole block stays inside the budget. */
+function joinCapped(label: string, values: string[], max: number): string {
+  if (values.length === 0) return ''
+  let line = `${label}: `
+  const kept: string[] = []
+  for (const value of values) {
+    if (line.length + value.length + 3 > max) break
+    kept.push(value)
+    line = `${label}: ${kept.join(' · ')}`
+  }
+  return kept.length > 0 ? line : ''
+}
+
+export function buildAvoidPromptBlock(taken: TakenDesign[]): string {
+  if (taken.length === 0) return ''
+  const budget = Math.floor(AVOID_LIST_MAX_CHARS / 4)
+
+  const skeletons = Array.from(
+    new Set(taken.map((t) => t.fingerprint.skeleton.join('→')).filter(Boolean))
+  )
+  const palettes = Array.from(
+    new Set(taken.map((t) => t.fingerprint.paletteBuckets.join(' ')).filter(Boolean))
+  )
+  const fonts = Array.from(
+    new Set(
+      taken
+        .map((t) => [t.fingerprint.fonts.display, t.fingerprint.fonts.body].filter(Boolean).join(' + '))
+        .filter(Boolean)
+    )
+  )
+  const concepts = Array.from(
+    new Set(taken.map((t) => t.signatureConcept?.trim()).filter((c): c is string => !!c))
+  ).map((c) => `"${c.slice(0, 60)}"`)
+
+  const lines = [
+    '# ALREADY USED ON THIS PLATFORM — your direction must differ from every line below',
+    joinCapped('Home section rhythms in use', skeletons, budget),
+    joinCapped('Palettes in use (hue-lightness-chroma buckets)', palettes, budget),
+    joinCapped('Type pairings in use', fonts, budget),
+    joinCapped('Signature concepts already claimed', concepts, budget),
+    'Your home section rhythm MUST NOT match any rhythm above — that is a hard requirement and a build that matches one will be rejected. Palette and type should differ too.',
+  ].filter(Boolean)
+
+  return lines.join('\n').slice(0, AVOID_LIST_MAX_CHARS)
+}
+
+/**
+ * Designs already shipped by other tenants. Platform-wide (UNIQUENESS_SCOPE),
+ * published rows first so a live site outranks somebody's abandoned draft.
+ */
+export async function loadDesignAvoidList(opts: {
+  supabase: SupabaseClient
+  /** Excluded from its own avoid list — a tenant may of course keep its design. */
+  tenantId: string
+  limit?: number
+}): Promise<DesignAvoidList> {
+  try {
+    const { data, error } = await opts.supabase
+      .from(TABLE)
+      .select('tenant_id, fingerprint, signature_concept, status, updated_at')
+      .eq('version', CUSTOM_FINGERPRINT_VERSION)
+      .order('status', { ascending: false }) // 'published' before 'draft'
+      .order('updated_at', { ascending: false })
+      .limit(opts.limit ?? AVOID_LIST_MAX_ROWS)
+
+    if (error || !Array.isArray(data)) {
+      if (error) {
+        console.warn('[designAvoidList] load skipped:', error.message)
+      }
+      return EMPTY_AVOID_LIST
+    }
+
+    const taken: TakenDesign[] = []
+    for (const row of data) {
+      const tenantId = typeof row.tenant_id === 'string' ? row.tenant_id : ''
+      if (!tenantId || tenantId === opts.tenantId) continue
+      if (!isFingerprint(row.fingerprint)) continue
+      taken.push({
+        tenantId,
+        fingerprint: row.fingerprint,
+        signatureConcept:
+          typeof row.signature_concept === 'string' ? row.signature_concept : null,
+      })
+    }
+
+    return {
+      taken,
+      takenSkeletonKeys: taken.map((t) => fingerprintKeys(t.fingerprint).skeletonKey),
+      takenPaletteKeys: taken.map((t) => fingerprintKeys(t.fingerprint).paletteKey),
+      takenFontKeys: taken.map((t) => fingerprintKeys(t.fingerprint).fontKey),
+      promptBlock: buildAvoidPromptBlock(taken),
+    }
+  } catch (err) {
+    console.warn('[designAvoidList] load failed:', err)
+    return EMPTY_AVOID_LIST
+  }
+}
+
+/**
+ * Other tenants whose section rhythm this candidate reproduces.
+ * Sorted worst-first so the caller can name the closest match.
+ */
+export function findSkeletonCollisions(
+  candidate: CustomDesignFingerprint,
+  taken: TakenDesign[],
+  threshold: number = SKELETON_COLLISION_THRESHOLD
+): Array<{ tenantId: string; score: number; signatureConcept: string | null }> {
+  return taken
+    .map((t) => ({
+      tenantId: t.tenantId,
+      score: skeletonSimilarity(candidate, t.fingerprint),
+      signatureConcept: t.signatureConcept,
+    }))
+    .filter((row) => row.score >= threshold)
+    .sort((a, b) => b.score - a.score)
+}
+
+/**
+ * Record this tenant's current design. Upsert on tenant_id: one row per tenant,
+ * always describing its latest artifact.
+ *
+ * Non-fatal by design — a failed write must never fail a redesign or a publish.
+ * Returns the fingerprint regardless so callers can still use it in-memory.
+ */
+export async function recordCustomDesignFingerprint(opts: {
+  supabase: SupabaseClient
+  tenantId: string
+  status: 'draft' | 'published'
+  config: CustomSiteConfig
+  signatureConcept?: string | null
+}): Promise<CustomDesignFingerprint> {
+  const fingerprint = extractCustomDesignFingerprint(opts.config)
+  const keys = fingerprintKeys(fingerprint)
+  try {
+    const { error } = await opts.supabase.from(TABLE).upsert(
+      {
+        tenant_id: opts.tenantId,
+        version: fingerprint.version,
+        status: opts.status,
+        skeleton_key: keys.skeletonKey,
+        palette_key: keys.paletteKey,
+        font_key: keys.fontKey,
+        shape_key: keys.shapeKey,
+        motif_key: keys.motifKey,
+        fingerprint,
+        signature_concept: opts.signatureConcept ?? null,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'tenant_id' }
+    )
+    if (error) console.warn('[designAvoidList] record skipped:', error.message)
+  } catch (err) {
+    console.warn('[designAvoidList] record failed:', err)
+  }
+  return fingerprint
+}
+
+/** One-line summary of the taken rhythms, for the DIRECTION LOCK block. */
+export function describeTakenSkeletons(avoid: DesignAvoidList, max = 6): string {
+  const rhythms = Array.from(
+    new Set(avoid.taken.map((t) => t.fingerprint.skeleton.join('→')).filter(Boolean))
+  ).slice(0, max)
+  return rhythms.join(' · ')
+}
+
+export { describeFingerprintForAvoidList }

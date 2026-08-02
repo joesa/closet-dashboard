@@ -111,11 +111,42 @@ import {
   mergeCustomBuildNotes,
 } from '@/lib/ai/applyBriefServiceImages'
 import { FULL_REDESIGN_DESIGN_SYSTEM } from '@/lib/ai/fullRedesignDesignSystem'
-import { validateCustomSiteArtifact } from '@/lib/validation/siteArtifactValidator'
+import {
+  validateCustomSiteArtifact,
+  type ArtifactValidationIssue,
+} from '@/lib/validation/siteArtifactValidator'
 import {
   saveValidationReport,
   validateTenantSite,
 } from '@/lib/validation/siteValidator'
+import {
+  scanArtifactTells,
+  scanUnitTells,
+  toUnitQualityReport,
+  type DesignTellFinding,
+} from '@/lib/validation/designTellScanner'
+import {
+  MAX_REPAIR_ATTEMPTS_PER_UNIT,
+  REPAIR_CUTOFF_MS,
+  UNIQUENESS_ENFORCEMENT,
+  tellSeverity,
+} from '@/lib/validation/designGuardPolicy'
+import {
+  applyRepairedUnits,
+  repairDesignTells,
+  repairUnitIdForFinding,
+  unitIdForGlobalCss,
+  unitIdForPage,
+  type RepairUnits,
+} from '@/lib/ai/repairDesignTells'
+import {
+  describeTakenSkeletons,
+  findSkeletonCollisions,
+  loadDesignAvoidList,
+  recordCustomDesignFingerprint,
+  type DesignAvoidList,
+} from '@/lib/design/designAvoidList'
+import { extractCustomDesignFingerprint } from '@/lib/design/customDesignFingerprint'
 
 export type CustomBuildIntent = 'full' | 'surgical'
 
@@ -1268,6 +1299,14 @@ export async function generateCustomSiteDraft(opts: {
         })
       : await runFullGenerate({
           brandName,
+          tenantId: opts.tenantId,
+          // Designs already shipped, so the model steers away from taken
+          // directions up front rather than being rejected afterwards. Loaded
+          // here because runFullGenerate has no Supabase access of its own.
+          avoidList: await loadDesignAvoidList({
+            supabase,
+            tenantId: opts.tenantId,
+          }),
           prompt: opts.prompt,
           mode,
           pageHints,
@@ -1633,6 +1672,14 @@ export function extractCssAccent(css: string): string | null {
 /**
  * Soft craft checks after Full redesign — tips for the admin, never blocking.
  * Avoid heuristics that push every multi-service site into a dual-lane / dark-neon look.
+ *
+ * Not superseded by designTellScanner, despite the overlap. The scanner asks
+ * "does the artifact contain a banned default?" and blocks; this asks "did the
+ * build miss something the brief implied?" and only advises. The dual-lane check
+ * below is the clearest case of the difference: it fires when the brief names two
+ * disciplines and the design has only one accent — the opposite polarity to the
+ * scanner's design_dual_lane_gateway, which fires on two lanes the brief never
+ * asked for. Duplicate skin warnings are deduped at the call site, not here.
  */
 export function assessFullRedesignCraft(opts: {
   config: CustomSiteConfig
@@ -1730,6 +1777,9 @@ export function assessFullRedesignCraft(opts: {
 
 async function runFullGenerate(opts: {
   brandName: string
+  tenantId: string
+  /** Designs already on the platform — drives the avoid-list and the collision gate. */
+  avoidList: DesignAvoidList
   prompt: string
   mode: 'inline' | 'iframe'
   pageHints: string
@@ -1845,6 +1895,7 @@ async function runFullGenerate(opts: {
           themeHint:
             typeof opts.context.themeHint === 'string' ? opts.context.themeHint : undefined,
           intakeHints: buildIntakeHintsForBrief(opts.context),
+          avoid: opts.avoidList,
         })
 
   const lockedBriefForJob: CustomBuildLockedBrief = {
@@ -1893,7 +1944,7 @@ Banned defaults (unless the brief explicitly requests them):
 - Stripe/Linear SaaS chrome pasted onto a local service business
 
 Final check: if any part could be find-and-replaced onto a different product, redo that part.
-
+${opts.avoidList.promptBlock ? `\n${opts.avoidList.promptBlock}\n` : ''}
 # Workflow (internal only — never print the analysis)
 
 Pass 1 — Direction (before tokens or HTML):
@@ -1947,6 +1998,10 @@ MULTI-PASS: This run builds the site in multiple model calls (home first, then o
   const paletteLine = enhanced.palette
     .map((p) => `${p.role} ${p.hex}`)
     .join(', ')
+  const takenRhythms = describeTakenSkeletons(opts.avoidList)
+  const rhythmLock = takenRhythms
+    ? `\n- Home section rhythm MUST NOT match any of these (already shipped): ${takenRhythms}`
+    : ''
   const directionBlock = seedEmpty || enhanced.inventedFromIntake
     ? `SELF-AUTHORED DESIGN DIRECTION PROMPT:
 ${enhanced.optimizedBrief}
@@ -1963,7 +2018,7 @@ DIRECTION LOCK:
         enhanced.servicesToAdd.length
           ? enhanced.servicesToAdd.join(' | ')
           : '(none — keep intake services only)'
-      }`
+      }${rhythmLock}`
     : `ADMIN SEED:
 ${adminBrief}
 
@@ -1982,7 +2037,7 @@ DIRECTION LOCK:
         enhanced.servicesToAdd.length
           ? enhanced.servicesToAdd.join(' | ')
           : '(none unless ADMIN SEED names them)'
-      }`
+      }${rhythmLock}`
 
   const extraWarnings: string[] = [
     resumeLocked
@@ -2062,6 +2117,98 @@ DIRECTION LOCK:
         applyPathAliasesToCustomConfig(sanitizeCustomConfig(draftCfg))
       )
     )
+  }
+
+  // ── design guard ──────────────────────────────────────────────────────────
+  // Ordering is the whole safety argument: every guard runs AFTER the checkpoint
+  // that makes a page "done" for remainingFullRedesignPaths. A crash mid-repair
+  // therefore leaves the raw page checkpointed, the resume correctly skips it,
+  // and the finalize scan still catches whatever was not repaired.
+  const guardStartedAt = Date.now()
+  const briefTextForScan = `${adminBrief}\n${enhanced.optimizedBrief}`
+  const unresolvedTells: DesignTellFinding[] = []
+
+  const repairBudgetLeft = () => Date.now() - guardStartedAt < REPAIR_CUTOFF_MS
+
+  const noteUnresolved = (findings: DesignTellFinding[]) => {
+    for (const f of findings) {
+      if (f.severity !== 'error') continue
+      if (unresolvedTells.some((u) => u.code === f.code && u.unitId === f.unitId)) continue
+      unresolvedTells.push(f)
+    }
+  }
+
+  /**
+   * Scan the units just produced and, if something blocking is there, ask the
+   * model for those units back with the exact violations named. Returns the
+   * draft — repaired if the repair was accepted, unchanged otherwise.
+   */
+  const runGuard = async (
+    label: string,
+    draftCfg: CustomSiteConfig,
+    units: RepairUnits,
+    findings: DesignTellFinding[]
+  ): Promise<CustomSiteConfig> => {
+    const blocking = findings.filter((f) => f.severity === 'error')
+    if (blocking.length === 0) return draftCfg
+
+    if (!repairBudgetLeft()) {
+      noteUnresolved(blocking)
+      extraWarnings.push(
+        `Design guard (${label}): ${blocking.length} issue(s) left unrepaired — repair budget for this run is spent.`
+      )
+      return draftCfg
+    }
+
+    const scan = (candidate: RepairUnits) =>
+      toUnitQualityReport(
+        Object.entries(candidate).flatMap(([unitId, content]) => {
+          const path = unitId.startsWith('html:') ? unitId.slice('html:'.length) : null
+          const scanned = path
+            ? scanUnitTells(path, { html: content }, { briefText: briefTextForScan })
+            : scanArtifactTells({
+                globalCss: content,
+                pages: {},
+                briefText: briefTextForScan,
+              })
+          // Re-key onto repair unit ids so failedUnitIds addresses real units.
+          return scanned.map((f) => ({ ...f, unitId: repairUnitIdForFinding(f.unitId) }))
+        })
+      )
+
+    try {
+      const repair = await repairDesignTells({
+        units,
+        findings,
+        brandName: opts.brandName,
+        directionBlock,
+        pageHints: opts.pageHints,
+        callModel: modelJson,
+        scan,
+        maxRetries: MAX_REPAIR_ATTEMPTS_PER_UNIT,
+      })
+      extraWarnings.push(...repair.warnings)
+      if (repair.repairedUnitIds.length > 0) {
+        console.info('[runFullGenerate] design repair', label, repair.repairedUnitIds.join(','))
+      }
+      const stillFailing = findings.filter(
+        (f) =>
+          f.severity === 'error' &&
+          repair.report.failedUnitIds.includes(repairUnitIdForFinding(f.unitId))
+      )
+      noteUnresolved(stillFailing)
+      return repair.repairedUnitIds.length > 0
+        ? applyRepairedUnits(draftCfg, repair.units)
+        : draftCfg
+    } catch (err) {
+      // A repair failure must never fail the build — the draft is already
+      // checkpointed and the publish gate will still catch what survived.
+      const msg = err instanceof Error ? err.message : String(err)
+      console.warn('[runFullGenerate] design repair failed', label, msg)
+      extraWarnings.push(`Design repair pass (${label}) failed: ${msg.slice(0, 140)}`)
+      noteUnresolved(blocking)
+      return draftCfg
+    }
   }
 
   let draft: CustomSiteConfig =
@@ -2165,6 +2312,34 @@ Build globalCss + home "/" only. Output JSON.`
       foundationReply,
     })
     console.info('[runFullGenerate] checkpoint home')
+
+    // Guard the foundation. This is the highest-leverage point: globalCss and
+    // the home layout set the design every later page inherits, so a tell fixed
+    // here is a tell that never reaches the rest of the site.
+    const homeHtml = draft.pages['/']?.html || draft.pages['']?.html || ''
+    const foundationFindings = scanArtifactTells({
+      globalCss: draft.globalCss || '',
+      pages: { '/': { html: homeHtml } },
+      briefText: briefTextForScan,
+      businessName: opts.brandName,
+    })
+    const guarded = await runGuard(
+      'foundation',
+      draft,
+      {
+        [unitIdForGlobalCss()]: draft.globalCss || '',
+        [unitIdForPage('/')]: homeHtml,
+      },
+      foundationFindings
+    )
+    if (guarded !== draft) {
+      draft = guarded
+      await checkpoint(draft)
+      await report('foundation:repair', draft, foundationReply, {
+        serviceUpdates,
+        foundationReply,
+      })
+    }
   } else {
     foundationReply =
       foundationReply ||
@@ -2259,6 +2434,26 @@ Output JSON for ${path} only.`
     await checkpoint(draft)
     await report(path, draft, foundationReply)
     console.info('[runFullGenerate] checkpoint', path)
+
+    // Guard this page. scanUnitTells deliberately skips globalCss-owned and
+    // whole-site codes, so a page is never blamed — or regenerated — for a
+    // palette or a missing font link it does not own.
+    const pageFindings = scanUnitTells(
+      path,
+      { html: pageArt!.html || '' },
+      { briefText: briefTextForScan, businessName: opts.brandName }
+    )
+    const guardedPage = await runGuard(
+      path,
+      draft,
+      { [unitIdForPage(path)]: pageArt!.html || '' },
+      pageFindings
+    )
+    if (guardedPage !== draft) {
+      draft = guardedPage
+      await checkpoint(draft)
+      await report(`${path}:repair`, draft, foundationReply)
+    }
   }
 
   const added = serviceUpdates.added ?? (serviceUpdates.added = [])
@@ -2316,6 +2511,79 @@ Output JSON for ${path} only.`
   }
 
   draft = { ...draft, pages }
+
+  // ── finalize guard ────────────────────────────────────────────────────────
+  // Whole-artifact scan: catches the codes a per-unit scan cannot judge (tone
+  // balance across pages, the missing fonts link) and anything the service
+  // injection above just introduced.
+  const finalFindings = scanArtifactTells({
+    globalCss: draft.globalCss || '',
+    pages: draft.pages,
+    briefText: briefTextForScan,
+    businessName: opts.brandName,
+  })
+  noteUnresolved(finalFindings)
+
+  // Uniqueness. Only the home section rhythm blocks (BLOCKING_AXES); palette and
+  // type are recorded and shown to the model but never rejected, because
+  // platform-wide blocking on them would exhaust the space.
+  let fingerprint = extractCustomDesignFingerprint(draft)
+  let collisions = findSkeletonCollisions(fingerprint, opts.avoidList.taken)
+  if (collisions.length > 0 && repairBudgetLeft()) {
+    const homeHtml = draft.pages['/']?.html || draft.pages['']?.html || ''
+    const reshaped = await runGuard(
+      'uniqueness',
+      draft,
+      { [unitIdForPage('/')]: homeHtml },
+      [
+        {
+          code: 'design_duplicate_skeleton',
+          unitId: '/',
+          severity: 'error',
+          message: `This home has the same section rhythm (${fingerprint.skeleton.join('→')}) as another site already on the platform${
+            collisions[0].signatureConcept ? ` ("${collisions[0].signatureConcept}")` : ''
+          }.`,
+          fix: 'Restructure the home page into a different section rhythm — merge, split, reorder or add a beat that this business actually needs. Keep the palette, the type pairing and every fact of the copy exactly as they are; change only the arrangement.',
+          samples: [fingerprint.skeleton.join('→')],
+        },
+      ]
+    )
+    if (reshaped !== draft) {
+      draft = reshaped
+      await checkpoint(draft)
+      fingerprint = extractCustomDesignFingerprint(draft)
+      collisions = findSkeletonCollisions(fingerprint, opts.avoidList.taken)
+    }
+  }
+  if (collisions.length > 0) {
+    extraWarnings.push(
+      `Home section rhythm still matches ${collisions.length} other site(s) on the platform — ${
+        UNIQUENESS_ENFORCEMENT === 'block'
+          ? 'publish will be blocked until it differs.'
+          : 'review before publishing.'
+      }`
+    )
+  }
+  if (unresolvedTells.length > 0) {
+    extraWarnings.push(
+      `Design guard: ${unresolvedTells.length} issue(s) survived repair — ${unresolvedTells
+        .slice(0, 3)
+        .map((f) => `${f.unitId} ${f.code}`)
+        .join(', ')}.`
+    )
+  }
+
+  // Register this design so the next tenant's avoid-list knows about it. Draft
+  // status: it is not live yet, but a draft still occupies a direction and a
+  // concurrent build should be told so. Non-fatal by construction.
+  await recordCustomDesignFingerprint({
+    supabase: getSupabaseAdmin(),
+    tenantId: opts.tenantId,
+    status: 'draft',
+    config: draft,
+    signatureConcept: enhanced.signatureConcept,
+  })
+
   const configOut = finalizeFullRedesignDraft(draft, opts.requiredPaths)
   await checkpoint(configOut)
   await report('finalize', configOut, foundationReply)
@@ -2922,20 +3190,51 @@ export async function publishCustomSiteDraft(tenantId: string): Promise<{
     businessName: tenant?.business_name,
   })
 
-  if (draftReport.status === 'failed') {
+  // Uniqueness gate. Separate from the artifact report because it is the only
+  // check that needs to look at other tenants — a draft can be flawless on its
+  // own and still be a design somebody else is already using.
+  const avoid = await loadDesignAvoidList({ supabase, tenantId })
+  const fingerprint = extractCustomDesignFingerprint(sanitized)
+  const collisions = findSkeletonCollisions(fingerprint, avoid.taken)
+  const collisionIssues: ArtifactValidationIssue[] =
+    collisions.length > 0
+      ? [
+          {
+            code: 'design_duplicate_skeleton',
+            severity: tellSeverity('design_duplicate_skeleton'),
+            message: `Home section rhythm (${fingerprint.skeleton.join('→')}) matches ${
+              collisions.length
+            } other site on this platform${
+              collisions[0].signatureConcept ? ` ("${collisions[0].signatureConcept}")` : ''
+            }. Run Edit surgically to change the home section arrangement, then publish.`,
+            fixable: false,
+            meta: {
+              path: '/',
+              collidesWith: collisions.slice(0, 3).map((c) => c.tenantId),
+              score: collisions[0].score,
+            },
+          },
+        ]
+      : []
+
+  const blocking = [...draftReport.issues, ...collisionIssues].filter(
+    (issue) => issue.severity === 'error'
+  )
+
+  if (blocking.length > 0) {
+    const issues = [...draftReport.issues, ...collisionIssues]
     await supabase
       .from('site_configs')
       .update({
         custom_config_draft: sanitized,
         draft_artifact_kind: 'custom',
-        draft_validation_status: draftReport.status,
-        draft_validation_report: draftReport.issues,
+        draft_validation_status: 'failed',
+        draft_validation_report: issues,
         draft_validated_at: draftReport.checkedAt,
         draft_artifact_hash: draftReport.artifactHash,
       })
       .eq('tenant_id', tenantId)
-    const summary = draftReport.issues
-      .filter((issue) => issue.severity === 'error')
+    const summary = blocking
       .slice(0, 3)
       .map((issue) => issue.message)
       .join('; ')
@@ -2957,6 +3256,14 @@ export async function publishCustomSiteDraft(tenantId: string): Promise<{
     .eq('tenant_id', tenantId)
 
   if (updateErr) throw new Error(`Failed to publish: ${updateErr.message}`)
+
+  // This design is live now, so it outranks drafts in every future avoid-list.
+  await recordCustomDesignFingerprint({
+    supabase,
+    tenantId,
+    status: 'published',
+    config: sanitized,
+  })
 
   const siteStatus =
     typeof tenant?.site_status === 'string' ? tenant.site_status : null

@@ -137,8 +137,12 @@ export async function POST(
       .select('business_name')
       .eq('id', tenantId)
       .maybeSingle()
+    // Warn-only: an edit-in-place save changes one node. Failing it for a
+    // site-wide tell inherited from generation would block the admin from
+    // fixing a typo on a draft the redesign guard already flagged elsewhere.
     const report = validateCustomSiteArtifact(draft, {
       businessName: tenant?.business_name,
+      enforcement: 'warn',
     })
 
     const { error: upErr } = await supabase

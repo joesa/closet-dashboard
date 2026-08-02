@@ -1,6 +1,12 @@
 import { createHash } from 'node:crypto'
 import { validateCustomConfig, type CustomSiteConfig } from '@/lib/customSite'
 import { analyzeSpecificity, analyzeToneBalance } from '@/lib/validation/specificityGate'
+import { scanArtifactTells } from '@/lib/validation/designTellScanner'
+import {
+  DESIGN_TELL_ENFORCEMENT,
+  tellSeverity,
+  type TellEnforcement,
+} from '@/lib/validation/designGuardPolicy'
 
 export type ArtifactValidationIssue = {
   code: string
@@ -124,9 +130,30 @@ export function validateEngineSiteDraft(
   }
 }
 
+/** Codes the auto-fixer knows how to repair without regenerating the page. */
+const FIXABLE_CODES = new Set(['spec_sheet_cta', 'decorative_numbered_list'])
+
+/**
+ * The publish gate for Full redesign artifacts.
+ *
+ * Both the copy checks and the visual/structural checks come from
+ * scanArtifactTells, so this gate enforces exactly the code set that generation
+ * repairs against — a draft that satisfied the in-loop guards cannot be rejected
+ * here for a rule the guards never saw, and vice versa.
+ */
 export function validateCustomSiteArtifact(
   artifact: CustomSiteConfig,
-  options: { businessName?: string | null } = {}
+  options: {
+    businessName?: string | null
+    locality?: string | null
+    briefText?: string | null
+    /**
+     * Override the global tell policy. Single-node edits (edit-in-place) pass
+     * 'warn' so a site-wide tell inherited from generation does not block an
+     * unrelated one-word change the admin just made.
+     */
+    enforcement?: TellEnforcement
+  } = {}
 ): ArtifactValidationReport {
   const issues: ArtifactValidationIssue[] = []
   const shape = validateCustomConfig(artifact)
@@ -137,56 +164,24 @@ export function validateCustomSiteArtifact(
     issues.push({ code: 'custom_artifact_warning', severity: 'warning', message, fixable: false })
   }
 
-  const pageTexts: string[] = []
-  for (const [path, page] of Object.entries(artifact.pages)) {
-    const text = [page.title, page.description, page.html].filter(Boolean).join(' ')
-    pageTexts.push(text)
-    const specCtas = page.html.match(
-      />\s*(?:view|read|open)\s+(?:protocol|dossier|case file)\s*</gi
-    )
-    if (specCtas) {
-      issues.push({
-        code: 'spec_sheet_cta',
-        severity: 'error',
-        message: `${path}: Replace document-style CTA labels with a natural customer action.`,
-        fixable: true,
-        meta: { path, samples: specCtas.map((sample) => sample.slice(1, -1).trim()) },
-      })
-    }
-    const numberedMarkers = page.html.match(
-      /<(?:span|div|p)\b[^>]*>\s*0[1-9]\s*<\/(?:span|div|p)>/gi
-    )
-    if (numberedMarkers && numberedMarkers.length >= 3) {
-      issues.push({
-        code: 'decorative_numbered_list',
-        severity: 'error',
-        message: `${path}: Remove zero-padded numbering from content that is not a real sequence.`,
-        fixable: true,
-        meta: { path, count: numberedMarkers.length },
-      })
-    }
-    for (const finding of analyzeSpecificity({
-      text,
-      businessName: options.businessName,
-    })) {
-      issues.push({
-        code: finding.code,
-        severity: 'error',
-        message: `${path}: ${finding.message}`,
-        fixable: false,
-        meta: {
-          path,
-          ...(finding.samples.length > 0 ? { samples: finding.samples } : {}),
-        },
-      })
-    }
-  }
-  for (const finding of analyzeToneBalance(pageTexts)) {
+  const enforcement = options.enforcement ?? DESIGN_TELL_ENFORCEMENT
+  for (const finding of scanArtifactTells({
+    globalCss: artifact.globalCss || '',
+    pages: artifact.pages,
+    briefText: options.briefText,
+    businessName: options.businessName,
+    locality: options.locality,
+  })) {
     issues.push({
       code: finding.code,
-      severity: 'error',
+      severity: enforcement === 'warn' ? 'warning' : finding.severity,
       message: finding.message,
-      fixable: false,
+      fixable: FIXABLE_CODES.has(finding.code),
+      meta: {
+        path: finding.unitId,
+        ...(finding.samples.length > 0 ? { samples: finding.samples } : {}),
+        ...(finding.meta ?? {}),
+      },
     })
   }
 

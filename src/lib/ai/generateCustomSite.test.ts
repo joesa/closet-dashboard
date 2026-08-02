@@ -225,6 +225,45 @@ describe('full redesign anti-AI bias', () => {
   })
 })
 
+describe('full redesign design guard', () => {
+  const src = readFileSync(join(__dirname, 'generateCustomSite.ts'), 'utf8')
+
+  it('wires the avoid list into the prompt and the enhancer', () => {
+    expect(src).toContain('loadDesignAvoidList')
+    expect(src).toContain('avoidList.promptBlock')
+    expect(src).toContain('avoid: opts.avoidList')
+    expect(src).toContain('rhythmLock')
+  })
+
+  it('guards the foundation, each page, and the finished artifact', () => {
+    expect(src).toContain("runGuard(\n      'foundation'")
+    expect(src).toContain('scanUnitTells')
+    expect(src).toContain("runGuard(\n      'uniqueness'")
+    expect(src).toContain('findSkeletonCollisions')
+    expect(src).toContain('recordCustomDesignFingerprint')
+  })
+
+  it('checkpoints before every guard so a crash mid-repair stays resumable', () => {
+    // remainingFullRedesignPaths treats any page with usable HTML as done, so a
+    // guard must never run before the checkpoint that records the raw unit —
+    // otherwise a crash during repair loses the page and burns a model call.
+    const foundationCheckpoint = src.indexOf("console.info('[runFullGenerate] checkpoint home')")
+    const foundationGuard = src.indexOf("runGuard(\n      'foundation'")
+    expect(foundationCheckpoint).toBeGreaterThan(0)
+    expect(foundationGuard).toBeGreaterThan(foundationCheckpoint)
+
+    const pageCheckpoint = src.indexOf("console.info('[runFullGenerate] checkpoint', path)")
+    const pageGuard = src.indexOf('const guardedPage = await runGuard(')
+    expect(pageCheckpoint).toBeGreaterThan(0)
+    expect(pageGuard).toBeGreaterThan(pageCheckpoint)
+  })
+
+  it('blocks publish on a duplicated home rhythm', () => {
+    expect(src).toContain('design_duplicate_skeleton')
+    expect(src).toContain('Cannot publish:')
+  })
+})
+
 describe('full redesign brief enhancement', () => {
   it('wires enhanceFullRedesignBrief before site generation', () => {
     const src = readFileSync(join(__dirname, 'generateCustomSite.ts'), 'utf8')
