@@ -3,6 +3,8 @@ import { extractServicesNamedInBrief } from '@/lib/ai/extractBriefServices'
 import {
   EMPTY_SEED_DIRECTION_INSTRUCTIONS,
   FULL_REDESIGN_DESIGN_SYSTEM,
+  validateFullRedesignPreflight,
+  type FullRedesignPreflight,
 } from '@/lib/ai/fullRedesignDesignSystem'
 import { pickDeterministicDirection } from '@/lib/ai/deterministicDirectionSeed'
 import type { DesignAvoidList } from '@/lib/design/designAvoidList'
@@ -24,6 +26,8 @@ export type EnhancedFullRedesignBrief = {
   servicesToAdd: string[]
   /** AI defaults deliberately avoided for this business. */
   avoidDefaults: string[]
+  /** Complete, validated design language locked before HTML/CSS generation. */
+  designSystem: FullRedesignPreflight
   /** Ready-to-use creative brief for the site generator. */
   optimizedBrief: string
   /** True when admin left the seed empty and we invented the full direction. */
@@ -128,6 +132,29 @@ export function fallbackEnhancedBrief(opts: EnhanceOpts): EnhancedFullRedesignBr
     takenFontKeys: opts.avoid?.takenFontKeys,
   })
   const palette = direction.palette
+  const designSystem: FullRedesignPreflight = {
+    composition: direction.composition,
+    colorStrategy: `Use ${palette.map((color) => `${color.role} ${color.hex}`).join(', ')} only in their named roles; preserve readable bg/ink contrast and reserve acc for decisions.`,
+    typeSystem: `${direction.typography.display} for display moments and ${direction.typography.body} for reading, with a restrained responsive scale and deliberate weight contrast.`,
+    spacingAndGrid: `Derive a responsive grid and spacing rhythm from the ${direction.composition}; vary spans and whitespace without falling into equal card rows.`,
+    shapeAndDepth: `Use borders, radii, and depth only when justified by ${materialWorld}; avoid generic floating cards and arbitrary soft shadows.`,
+    imagery: `Use documentary, subject-specific imagery of ${serviceLine}; crops and placement follow the composition rather than stock split-screen templates.`,
+    components: `Header, navigation, service presentation, proof, conversion, and footer share the signature device while keeping native focus, hover, and active states.`,
+    motion: 'Use one purposeful reveal tied to the signature device, then remove it under prefers-reduced-motion.',
+    responsive: 'Recompose hierarchy and image crops for tablet and narrow mobile; do not merely shrink desktop columns or allow text and controls to overlap.',
+    copyVocabulary: {
+      use: [opts.brandName, ...opts.services].filter(Boolean).slice(0, 6),
+      reject: ['elevate', 'seamless', 'unlock', 'world-class', 'one-stop shop'],
+    },
+    validation: {
+      antiAiPassed: true,
+      noveltyPassed: true,
+      coherencePassed: true,
+      accessibilityPassed: true,
+      factualPassed: true,
+      rationale: `The direction is deterministically selected for ${opts.brandName}, probes away from used palette and type keys, grounds every axis in supplied services, and preserves readable color contrast and responsive behavior.`,
+    },
+  }
 
   const optimizedBrief = inventedFromIntake
     ? [
@@ -185,6 +212,7 @@ export function fallbackEnhancedBrief(opts: EnhanceOpts): EnhancedFullRedesignBr
         'three identical icon cards',
         'Inter/Poppins/Roboto by habit',
       ],
+      designSystem,
       optimizedBrief,
       inventedFromIntake,
       source: 'fallback',
@@ -255,6 +283,45 @@ function normalizeEnhanced(
   const avoidDefaults = asStringList(o.avoidDefaults).length
     ? asStringList(o.avoidDefaults)
     : fallback.avoidDefaults
+  const rawDesignSystem =
+    o.designSystem && typeof o.designSystem === 'object'
+      ? (o.designSystem as Record<string, unknown>)
+      : {}
+  const rawVocabulary =
+    rawDesignSystem.copyVocabulary && typeof rawDesignSystem.copyVocabulary === 'object'
+      ? (rawDesignSystem.copyVocabulary as Record<string, unknown>)
+      : {}
+  const rawValidation =
+    rawDesignSystem.validation && typeof rawDesignSystem.validation === 'object'
+      ? (rawDesignSystem.validation as Record<string, unknown>)
+      : {}
+  const designSystem: FullRedesignPreflight = {
+    composition: asString(rawDesignSystem.composition, fallback.designSystem.composition),
+    colorStrategy: asString(rawDesignSystem.colorStrategy, fallback.designSystem.colorStrategy),
+    typeSystem: asString(rawDesignSystem.typeSystem, fallback.designSystem.typeSystem),
+    spacingAndGrid: asString(rawDesignSystem.spacingAndGrid, fallback.designSystem.spacingAndGrid),
+    shapeAndDepth: asString(rawDesignSystem.shapeAndDepth, fallback.designSystem.shapeAndDepth),
+    imagery: asString(rawDesignSystem.imagery, fallback.designSystem.imagery),
+    components: asString(rawDesignSystem.components, fallback.designSystem.components),
+    motion: asString(rawDesignSystem.motion, fallback.designSystem.motion),
+    responsive: asString(rawDesignSystem.responsive, fallback.designSystem.responsive),
+    copyVocabulary: {
+      use: asStringList(rawVocabulary.use).length
+        ? asStringList(rawVocabulary.use)
+        : fallback.designSystem.copyVocabulary.use,
+      reject: asStringList(rawVocabulary.reject).length
+        ? asStringList(rawVocabulary.reject)
+        : fallback.designSystem.copyVocabulary.reject,
+    },
+    validation: {
+      antiAiPassed: rawValidation.antiAiPassed === true,
+      noveltyPassed: rawValidation.noveltyPassed === true,
+      coherencePassed: rawValidation.coherencePassed === true,
+      accessibilityPassed: rawValidation.accessibilityPassed === true,
+      factualPassed: rawValidation.factualPassed === true,
+      rationale: asString(rawValidation.rationale),
+    },
+  }
 
   return mergeExtractedServices(
     {
@@ -268,6 +335,7 @@ function normalizeEnhanced(
       avoidDefaults: fontCollides
         ? [...avoidDefaults, `type pairing "${modelFontKey}" — already used on this platform`]
         : avoidDefaults,
+      designSystem,
       optimizedBrief,
       inventedFromIntake: fallback.inventedFromIntake,
       source,
@@ -285,6 +353,19 @@ const JSON_SHAPE = `{
   "copyRegister": "how the brand should sound",
   "servicesToAdd": ["EVERY sellable service named in the admin seed that is not already in intake — even if the seed is meta ('write a prompt for…'). Empty array when seed is empty"],
   "avoidDefaults": ["which AI defaults you steered away from"],
+  "designSystem": {
+    "composition": "spatial grammar and hierarchy",
+    "colorStrategy": "role, contrast, and usage logic",
+    "typeSystem": "faces, weights, scale, and hierarchy",
+    "spacingAndGrid": "spacing rhythm and responsive grid",
+    "shapeAndDepth": "radii, borders, shadows, and justification",
+    "imagery": "subject-specific art direction and crop behavior",
+    "components": "shared chrome, controls, states, icons, and content modules",
+    "motion": "one purposeful motion system plus reduced-motion behavior",
+    "responsive": "desktop, tablet, and mobile recomposition rules",
+    "copyVocabulary": {"use":["business-specific terms"],"reject":["AI-tell terms"]},
+    "validation": {"antiAiPassed":true,"noveltyPassed":true,"coherencePassed":true,"accessibilityPassed":true,"factualPassed":true,"rationale":"specific evidence for every pass; never set true until checked"}
+  },
   "optimizedBrief": "ready-to-execute creative prompt — see length/structure rules in the system message"
 }`
 
@@ -365,11 +446,42 @@ Produce the optimized brief JSON.`
       anthropicModel: CLAUDE_SONNET_MODEL,
     })
     const parsed = extractJsonObject(text)
-    return normalizeEnhanced(
+    const firstDraft = normalizeEnhanced(
       parsed,
       opts,
       provider === 'anthropic' ? 'anthropic' : 'gemini'
     )
+    const reviewPrompt = `Independently audit and, where necessary, regenerate this proposed Full redesign preflight. Do not preserve a weak choice for consistency. Check every design axis, every AI tell, factual grounding, accessibility, responsive feasibility, and novelty against the supplied prior-design block. Return the complete corrected JSON in the required shape. Set validation booleans true only after the corrected system actually passes.
+
+PROPOSED PREFLIGHT:
+${JSON.stringify(firstDraft)}
+
+BUSINESS:
+${userPrompt}`
+    const { text: reviewedText, provider: reviewProvider } = await generateTextWithFallback({
+      systemPrompt: `You are the independent principal design-engineering reviewer. No site build has started and none may start until you approve a complete, coherent, original, anti-AI design system. Output JSON only.\n\n${FULL_REDESIGN_DESIGN_SYSTEM}\n${avoidBlock}\nReturn ONLY JSON:\n${JSON_SHAPE}`,
+      prompt: reviewPrompt,
+      jsonMode: true,
+      temperature: 0.45,
+      maxOutputTokens: seedEmpty ? 2600 : 2200,
+      preferredProvider: provider,
+      anthropicModel: CLAUDE_SONNET_MODEL,
+    })
+    const reviewed = normalizeEnhanced(
+      extractJsonObject(reviewedText),
+      opts,
+      reviewProvider === 'anthropic' ? 'anthropic' : 'gemini'
+    )
+    const failures = validateFullRedesignPreflight(
+      reviewed,
+      opts.avoid?.takenFontKeys,
+      opts.avoid?.taken.map((taken) => taken.signatureConcept || '').filter(Boolean)
+    )
+    if (failures.length > 0) {
+      console.warn('[enhanceFullRedesignBrief] reviewed preflight rejected:', failures)
+      return fallback
+    }
+    return reviewed
   } catch (err) {
     console.warn('[enhanceFullRedesignBrief] falling back:', err)
     return fallback

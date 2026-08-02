@@ -3,6 +3,7 @@ import {
   buildIntakeHintsForBrief,
   fallbackEnhancedBrief,
 } from './enhanceFullRedesignBrief'
+import { validateFullRedesignPreflight } from './fullRedesignDesignSystem'
 
 describe('fallbackEnhancedBrief', () => {
   it('honors a short admin seed in the signature and optimized brief', () => {
@@ -125,6 +126,46 @@ describe('fallbackEnhancedBrief', () => {
     expect(
       `${steered.typography.display}+${steered.typography.body}`.toLowerCase()
     ).not.toBe(takenPair)
+  })
+
+  it('builds a complete design system that passes preflight before generation', () => {
+    const out = fallbackEnhancedBrief({
+      brandName: 'Ridgeline Closets',
+      adminBrief: '',
+      hasImages: false,
+      engagementLabel: 'quote calculator',
+      services: ['Walk-in Closets', 'Garage Storage'],
+      city: 'Nashville',
+    })
+    expect(validateFullRedesignPreflight(out)).toEqual([])
+    expect(out.designSystem.copyVocabulary.use).toContain('Walk-in Closets')
+    expect(out.designSystem.validation.antiAiPassed).toBe(true)
+  })
+
+  it('blocks unresolved, reused, or self-rejected systems', () => {
+    const out = fallbackEnhancedBrief({
+      brandName: 'Ridgeline Closets',
+      adminBrief: '',
+      hasImages: false,
+      engagementLabel: 'quote calculator',
+      services: ['Closets'],
+    })
+    const rejected = {
+      ...out,
+      typography: { display: 'Inter', body: 'Roboto', why: 'habit' },
+      designSystem: {
+        ...out.designSystem,
+        imagery: '',
+        validation: { ...out.designSystem.validation, noveltyPassed: false },
+      },
+    }
+    expect(validateFullRedesignPreflight(rejected)).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(/banned habitual AI font/),
+        expect.stringMatching(/imagery is unresolved/),
+        expect.stringMatching(/unresolved failed check/),
+      ])
+    )
   })
 })
 
