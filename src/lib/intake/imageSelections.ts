@@ -149,3 +149,87 @@ export function beforeAfterSelectionComplete(
   }
   return false
 }
+
+export type ImageSelectionIssue = {
+  id: string
+  message: string
+  targetId: string
+}
+
+export function getImageSelectionIssues(
+  selections: IntakeImageSelections,
+  serviceNames: string[],
+  beforeAfterRequired: boolean
+): ImageSelectionIssue[] {
+  const issues: ImageSelectionIssue[] = []
+  if (!selections.hero.selectedUrl) {
+    issues.push({
+      id: 'hero',
+      message: 'Choose a hero image.',
+      targetId: 'image-studio-hero',
+    })
+  }
+
+  const synced = syncProductSlots(selections, serviceNames)
+  for (const product of synced.products) {
+    if (!product.selectedUrl) {
+      issues.push({
+        id: `product-${product.productIndex}`,
+        message: `Choose an image for ${product.serviceName}.`,
+        targetId: `image-studio-product-${product.productIndex}`,
+      })
+    }
+  }
+
+  if (!beforeAfterRequired) return issues
+  const beforeAfter = selections.beforeAfter
+  if (beforeAfter?.enabled === false) return issues
+  if (beforeAfter?.enabled !== true) {
+    issues.push({
+      id: 'before-after-choice',
+      message: 'Choose whether to include before/after photos.',
+      targetId: 'image-studio-before-after',
+    })
+    return issues
+  }
+  if (!beforeAfter.mode) {
+    issues.push({
+      id: 'before-after-mode',
+      message: 'Choose how you will provide before/after photos.',
+      targetId: 'image-studio-before-after',
+    })
+    return issues
+  }
+  if (beforeAfter.mode === 'upload_both') {
+    if (!beforeAfter.selectedUrl) {
+      issues.push({
+        id: 'before-photo',
+        message: 'Upload a before photo.',
+        targetId: 'image-studio-before-after',
+      })
+    }
+    if (!beforeAfter.afterSelectedUrl) {
+      issues.push({
+        id: 'after-photo',
+        message: 'Upload an after photo.',
+        targetId: 'image-studio-before-after',
+      })
+    }
+  } else {
+    if (!resolveBeforeAfterAfterUrl(selections)) {
+      issues.push({
+        id: 'after-photo',
+        message: 'Choose a hero image or upload an after photo.',
+        targetId: 'image-studio-before-after',
+      })
+    }
+    if (!beforeAfter.selectedUrl) {
+      issues.push({
+        id: 'before-photo',
+        message: 'Generate or upload the before photo.',
+        targetId: 'image-studio-before-after',
+      })
+    }
+  }
+  return issues
+}

@@ -831,6 +831,12 @@ export default function IntakeImageStudio({
     const max = 5;
     const lastBatch = slotState.history?.[slotState.history.length - 1];
     const genKey = slot === 'hero' ? 'hero' : slot === 'before' ? 'before' : `product-${productIndex}`;
+    const targetId =
+      slot === 'hero'
+        ? 'image-studio-hero'
+        : slot === 'before'
+          ? 'image-studio-before-photo'
+          : `image-studio-product-${productIndex}`;
     const generateDisabled =
       !!genLoading ||
       !prompt.trim() ||
@@ -838,7 +844,7 @@ export default function IntakeImageStudio({
       (slot === 'before' && !selections.hero.selectedUrl);
 
     return (
-      <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
+      <div id={targetId} className="rounded-lg border border-gray-200 bg-gray-50 p-4">
         <h4 className="font-medium text-gray-900">{label}</h4>
         <p className="text-xs text-gray-500 mt-1">
           Up to {max} generations of 3 options each. Attempts used: {attemptsUsed}/{max}.
@@ -995,7 +1001,7 @@ export default function IntakeImageStudio({
           )}
 
           {beforeAfterApplicable && (
-            <div className="rounded-lg border border-indigo-100 bg-indigo-50/50 p-4 space-y-4">
+            <div id="image-studio-before-after" className="rounded-lg border border-indigo-100 bg-indigo-50/50 p-4 space-y-4">
               <div>
                 <h4 className="font-medium text-gray-900">Before / after photos</h4>
                 <p className="mt-1 text-xs text-gray-600">

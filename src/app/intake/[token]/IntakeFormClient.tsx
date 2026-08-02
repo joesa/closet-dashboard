@@ -7,6 +7,7 @@ import type { IntakeCheckoutKind } from '@/lib/intake/intakePaymentStage';
 import { startIntakeCheckout } from '@/lib/intake/startIntakeCheckout';
 import {
   beforeAfterSelectionComplete,
+  getImageSelectionIssues,
   imageSelectionsComplete,
   type IntakeImageSelections,
 } from '@/lib/intake/imageSelections';
@@ -1719,6 +1720,75 @@ export default function IntakeFormClient({
         ? form.pages.length === 0 || pagesSelectionConfirmed
         : true;
 
+  type SubmitBlocker = {
+    id: string;
+    message: string;
+    step: number;
+    targetId?: string;
+    pageSlug?: string;
+  };
+
+  const submitBlockers: SubmitBlocker[] = [];
+  if (collectServicesForSubmit().length === 0) {
+    submitBlockers.push({
+      id: 'services',
+      message: 'Add at least one service or job you offer.',
+      step: stepIdx.services,
+      targetId: 'intake-services',
+    });
+  }
+  if (intakeTier === 'ai_premium' && depositRequiredCents > 0 && depositStatus !== 'paid') {
+    submitBlockers.push({
+      id: 'deposit',
+      message: 'Pay the 30% deposit.',
+      step: stepIdx.business,
+      targetId: 'intake-deposit',
+    });
+  }
+  for (const slug of form.pages) {
+    const content = form.pageContents[slug] || '';
+    const wordCount = content.trim().split(/\s+/).filter(Boolean).length;
+    if (wordCount > 1200) {
+      const label = SITE_PAGE_OPTIONS.find((page) => page.slug === slug)?.label || slug;
+      submitBlockers.push({
+        id: `page-${slug}`,
+        message: `Shorten ${label} by ${wordCount - 1200} word${wordCount - 1200 === 1 ? '' : 's'}.`,
+        step: stepIdx.pageContent,
+        targetId: `page-content-${slug}`,
+        pageSlug: slug,
+      });
+    }
+  }
+  if (intakeTier === 'ai_premium' && canUseImageStudio && studioServices.length > 0) {
+    for (const issue of getImageSelectionIssues(
+      imageSelections,
+      studioServices,
+      beforeAfterRequired
+    )) {
+      submitBlockers.push({
+        id: `image-${issue.id}`,
+        message: issue.message,
+        step: stepIdx.imageStudio,
+        targetId: issue.targetId,
+      });
+    }
+  }
+
+  const goToSubmitBlocker = (blocker: SubmitBlocker) => {
+    if (blocker.step < 0) return;
+    setError('');
+    if (blocker.pageSlug) setExpandedPage(blocker.pageSlug);
+    setMaxStepIndexVisited((visited) => Math.max(visited, blocker.step));
+    setCurrentStepIndex(blocker.step);
+    window.setTimeout(() => {
+      const target = blocker.targetId ? document.getElementById(blocker.targetId) : null;
+      target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      target
+        ?.querySelector<HTMLElement>('input, textarea, select, button')
+        ?.focus({ preventScroll: true });
+    }, 50);
+  };
+
   const goToStep = (idx: number) => {
     if (idx < 0 || idx >= steps.length || idx > maxStepIndexVisited) return;
     setCurrentStepIndex(idx);
@@ -1857,7 +1927,7 @@ export default function IntakeFormClient({
         )}
 
         {currentStepIndex === stepIdx.business && intakeTier === 'ai_premium' && depositRequiredCents > 0 && (
-          <div className="mb-8">
+          <div id="intake-deposit" className="mb-8">
             <DepositCTA
               token={token}
               depositRequiredCents={depositRequiredCents}
@@ -2214,7 +2284,7 @@ export default function IntakeFormClient({
             </section>
           </div>
 
-          <div className={currentStepIndex === stepIdx.services ? '' : 'hidden'}>
+          <div id="intake-services" className={currentStepIndex === stepIdx.services ? '' : 'hidden'}>
           <section className={sectionClass}>
             <h2 className={sectionTitle}>Services &amp; pricing</h2>
             <label className={label}>Services / jobs you offer</label>
@@ -3015,6 +3085,7 @@ export default function IntakeFormClient({
                   return (
                     <div
                       key={slug}
+                      id={`page-content-${slug}`}
                       className={`rounded-lg border transition-all ${
                         isExpanded ? 'border-indigo-400 ring-1 ring-indigo-400 bg-white/[0.04]' : 'border-white/[0.14] bg-white/[0.01]'
                       }`}
@@ -3145,11 +3216,25 @@ export default function IntakeFormClient({
           )}
 
           <div className="">
-            {intakeTier === 'ai_premium' && canUseImageStudio && !premiumImagesReady && (
-              <p className="text-sm text-amber-800 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 mb-4">
-                Complete the AI image studio (hero + each service
-                {beforeAfterRequired ? ' + before/after choice' : ''}) before submitting.
-              </p>
+            {isLastStep && submitBlockers.length > 0 && (
+              <div className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-amber-950">
+                <p className="text-sm font-semibold">
+                  Fix {submitBlockers.length} item{submitBlockers.length === 1 ? '' : 's'} before submitting:
+                </p>
+                <ul className="mt-2 space-y-2">
+                  {submitBlockers.map((blocker) => (
+                    <li key={blocker.id}>
+                      <button
+                        type="button"
+                        onClick={() => goToSubmitBlocker(blocker)}
+                        className="text-left text-sm font-medium underline decoration-amber-500 underline-offset-2 hover:text-amber-700"
+                      >
+                        {blocker.message} Go fix it →
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             )}
 
             {error && (
@@ -3161,11 +3246,15 @@ export default function IntakeFormClient({
             {isLastStep ? (
               <button
                 type="button"
-                disabled={submitting || (intakeTier === 'ai_premium' && !premiumImagesReady)}
+                disabled={submitting || submitBlockers.length > 0}
                 onClick={() => void handleReviewClick()}
                 className="w-full rounded-xl bg-white px-5 py-3 font-bold text-black hover:bg-slate-200 disabled:opacity-50 sm:px-6"
               >
-                {submitting ? 'Submitting…' : 'Submit →'}
+                {submitting
+                  ? 'Submitting…'
+                  : submitBlockers.length > 0
+                    ? `Fix ${submitBlockers.length} item${submitBlockers.length === 1 ? '' : 's'} to submit`
+                    : 'Submit →'}
               </button>
             ) : (
               <div className="flex items-center justify-between gap-3 pt-2">
