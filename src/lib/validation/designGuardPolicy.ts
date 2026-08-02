@@ -39,6 +39,12 @@ export type DesignTellCode =
   | 'design_em_dash_stack'
   | 'spec_sheet_cta'
   | 'decorative_numbered_list'
+  /**
+   * Uniqueness, not a tell: this home reproduces another tenant's section
+   * rhythm. Raised by the finalize guard and the publish gate from the
+   * fingerprint registry, never by scanning a single artifact.
+   */
+  | 'design_duplicate_skeleton'
 
 /** Axes of a custom design fingerprint. Only some of them block. */
 export type FingerprintAxis = 'palette' | 'fonts' | 'skeleton' | 'shape' | 'motifs'
@@ -65,6 +71,11 @@ export const ADVISORY_TELL_CODES: readonly DesignTellCode[] = [
 
 export function tellSeverity(code: DesignTellCode): 'error' | 'warning' {
   if (ADVISORY_TELL_CODES.includes(code)) return 'warning'
+  // Uniqueness has its own switch — it is a different product decision from
+  // "does this artifact contain a banned default".
+  if (code === 'design_duplicate_skeleton') {
+    return UNIQUENESS_ENFORCEMENT === 'block' ? 'error' : 'warning'
+  }
   return DESIGN_TELL_ENFORCEMENT === 'block' ? 'error' : 'warning'
 }
 

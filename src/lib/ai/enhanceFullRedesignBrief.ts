@@ -4,6 +4,8 @@ import {
   EMPTY_SEED_DIRECTION_INSTRUCTIONS,
   FULL_REDESIGN_DESIGN_SYSTEM,
 } from '@/lib/ai/fullRedesignDesignSystem'
+import { pickDeterministicDirection } from '@/lib/ai/deterministicDirectionSeed'
+import type { DesignAvoidList } from '@/lib/design/designAvoidList'
 
 export type EnhancedFullRedesignBrief = {
   /** One-line concept the site will be remembered by. */
@@ -40,6 +42,13 @@ type EnhanceOpts = {
   themeHint?: string
   /** Compact intake facts (about headline, differentiators, etc.). */
   intakeHints?: string
+  /**
+   * Designs already shipped on the platform. Steers the enhancer away from
+   * taken directions up front — cheaper and better than rejecting the build
+   * afterwards, and the only diversity lever available on the Claude path,
+   * which does not accept a temperature.
+   */
+  avoid?: DesignAvoidList | null
 }
 
 function extractJsonObject(raw: string): unknown {
@@ -106,21 +115,27 @@ export function fallbackEnhancedBrief(opts: EnhanceOpts): EnhancedFullRedesignBr
     ? `Interpret theme hint "${opts.themeHint}" through real trade materials and tools for ${serviceLine}, not a stock SaaS skin.`
     : `Derive the look from the real world of ${serviceLine} in ${place} — tools, surfaces, signage, and workwear — not from web design trends.`
 
-  const palette: EnhancedFullRedesignBrief['palette'] = [
-    { role: 'bg', hex: '#eef2f1', use: 'cool shop-floor ground (not cream paper cliché)' },
-    { role: 'ink', hex: '#1a1f1e', use: 'primary text' },
-    { role: 'muted', hex: '#5a6562', use: 'secondary text' },
-    { role: 'line', hex: '#c5d0cc', use: 'rules / borders' },
-    { role: 'acc', hex: '#2f5d50', use: 'primary CTA / enamel accent — not neon or terracotta' },
-  ]
+  // Seeded per business and probed against what has already shipped. This used
+  // to be five hardcoded hexes, identical for every business on the platform,
+  // which made any enhancer outage a guaranteed collision.
+  const direction = pickDeterministicDirection({
+    brandName: opts.brandName,
+    city: opts.city,
+    region: opts.region,
+    services: opts.services,
+    themeHint: opts.themeHint,
+    takenPaletteKeys: opts.avoid?.takenPaletteKeys,
+    takenFontKeys: opts.avoid?.takenFontKeys,
+  })
+  const palette = direction.palette
 
   const optimizedBrief = inventedFromIntake
     ? [
         `1. DESIGN DIRECTION — ${signatureConcept}. Educated guess from intake for ${place}: one conversion job via ${opts.engagementLabel}; look must feel decided for ${opts.brandName}, not a template.`,
         `2. MATERIAL WORLD — ${materialWorld}`,
         `3. PALETTE — ${palette.map((p) => `${p.role} ${p.hex} (${p.use})`).join('; ')}. Prefer light/mid surfaces. Reject purple SaaS, cream+terracotta serif, and dark+neon auto defaults.`,
-        `4. TYPOGRAPHY — Display = characterful Google Font for THIS trade (not Inter/Poppins/Roboto/Syne-by-habit). Body = highly readable companion. Pair must feel decided for ${opts.brandName}.`,
-        `5. SIGNATURE ELEMENT — One memorable chrome detail rooted in the trade (work-order ledger strip, stamped metal tag, bay-ticket rhythm) — reuse in header/hero/footer.`,
+        `4. TYPOGRAPHY — Display = ${direction.typography.display}, Body = ${direction.typography.body} (${direction.typography.why}). Load both from Google Fonts. Never Inter/Poppins/Roboto/Syne-by-habit.`,
+        `5. SIGNATURE ELEMENT — ${direction.signatureElement}. Reuse it in header/hero/footer rather than bolting on decoration.`,
         `6. LAYOUT & HIERARCHY — Home: branded header → hero (one sharp promise + ${opts.engagementLabel} CTA) → all services → proof from real URLs → process/why-us from facts → conversion band with widget → footer.`,
         `7. COPY REGISTER — Plain-spoken, specific to ${serviceLine}. No Elevate/Seamless/Unleash filler. CTAs name the real action (${opts.engagementLabel}).`,
         `8. PROCESS — Lock this direction → emit :root tokens → shared chrome → home → every intake page → mount engagement widget → one deliberate motion → self-check anti-AI.`,
@@ -140,8 +155,8 @@ export function fallbackEnhancedBrief(opts: EnhanceOpts): EnhancedFullRedesignBr
         `MATERIAL WORLD: ${materialWorld}`,
         `ADMIN SEED (honor literally when specific): ${seed}`,
         `PALETTE DIRECTION: ${palette.map((p) => `${p.role} ${p.hex} (${p.use})`).join('; ')}. Adjust hexes if the seed pins colors; otherwise keep subject-derived and avoid purple SaaS, cream+terracotta serif, and dark+neon auto defaults.`,
-        `TYPE: Display = something characterful for THIS trade (not Inter/Poppins/Roboto/Syne-by-habit). Body = highly readable companion. Pair must feel decided for ${opts.brandName}.`,
-        `SIGNATURE ELEMENT: One memorable chrome detail rooted in the trade (e.g. work-order ledger, vinyl chip strip, stamped metal tag) — reuse in header/hero/footer rhythm.`,
+        `TYPE: Display = ${direction.typography.display}, Body = ${direction.typography.body} (${direction.typography.why}). Load both from Google Fonts. Swap only if the admin seed names different faces. Never Inter/Poppins/Roboto/Syne-by-habit.`,
+        `SIGNATURE ELEMENT: ${direction.signatureElement} — reuse in header/hero/footer rhythm.`,
         `COPY: Plain-spoken, specific to ${serviceLine}. No "Elevate/Seamless/Unleash" filler. CTAs name the real action (${opts.engagementLabel}).`,
         `SERVICES: Keep all intake services. Add every offering the admin seed names that is not already in intake.`,
         `ANTI-AI: Self-check — if ten AI tools would produce the same look, revise palette/type/signature before building.`,
@@ -159,12 +174,8 @@ export function fallbackEnhancedBrief(opts: EnhanceOpts): EnhancedFullRedesignBr
       signatureConcept,
       materialWorld,
       palette,
-      typography: {
-        display: 'Trade-specific display (choose a real Google Font that fits)',
-        body: 'Readable companion (choose a real Google Font)',
-        why: 'Must feel decided for this brand, not a default stack',
-      },
-      signatureElement: 'One trade-rooted chrome detail repeated with purpose',
+      typography: direction.typography,
+      signatureElement: direction.signatureElement,
       copyRegister: `Plain, specific, active voice for ${opts.brandName}`,
       servicesToAdd: [],
       avoidDefaults: [
@@ -227,22 +238,36 @@ function normalizeEnhanced(
   if (!optimizedBrief) {
     return { ...fallback, source }
   }
+
+  const modelTypography = {
+    display: asString(typography.display, fallback.typography.display),
+    body: asString(typography.body, fallback.typography.body),
+    why: asString(typography.why, fallback.typography.why),
+  }
+
+  // The model saw the avoid-list but does not always honour it. Rather than
+  // spend another call arguing, keep its brief prose — which is the part worth
+  // having — and substitute the seeded direction for the axis it reused. The
+  // fallback direction was already probed against the same taken keys.
+  const takenFonts = new Set((opts.avoid?.takenFontKeys || []).map((k) => k.toLowerCase()))
+  const modelFontKey = `${modelTypography.display}+${modelTypography.body}`.toLowerCase()
+  const fontCollides = takenFonts.has(modelFontKey)
+  const avoidDefaults = asStringList(o.avoidDefaults).length
+    ? asStringList(o.avoidDefaults)
+    : fallback.avoidDefaults
+
   return mergeExtractedServices(
     {
       signatureConcept: asString(o.signatureConcept, fallback.signatureConcept),
       materialWorld: asString(o.materialWorld, fallback.materialWorld),
       palette: palette.length ? palette : fallback.palette,
-      typography: {
-        display: asString(typography.display, fallback.typography.display),
-        body: asString(typography.body, fallback.typography.body),
-        why: asString(typography.why, fallback.typography.why),
-      },
+      typography: fontCollides ? fallback.typography : modelTypography,
       signatureElement: asString(o.signatureElement, fallback.signatureElement),
       copyRegister: asString(o.copyRegister, fallback.copyRegister),
       servicesToAdd: asStringList(o.servicesToAdd),
-      avoidDefaults: asStringList(o.avoidDefaults).length
-        ? asStringList(o.avoidDefaults)
-        : fallback.avoidDefaults,
+      avoidDefaults: fontCollides
+        ? [...avoidDefaults, `type pairing "${modelFontKey}" — already used on this platform`]
+        : avoidDefaults,
       optimizedBrief,
       inventedFromIntake: fallback.inventedFromIntake,
       source,
@@ -280,12 +305,13 @@ export async function enhanceFullRedesignBrief(
   }
 
   const seedEmpty = !opts.adminBrief.trim()
+  const avoidBlock = opts.avoid?.promptBlock ? `\n${opts.avoid.promptBlock}\n` : ''
 
   const systemPrompt = seedEmpty
     ? `You invent complete Full redesign creative prompts for bespoke local-business websites. Output JSON only.
 
 ${FULL_REDESIGN_DESIGN_SYSTEM}
-
+${avoidBlock}
 ${EMPTY_SEED_DIRECTION_INSTRUCTIONS}
 
 Return ONLY JSON:
@@ -295,7 +321,7 @@ optimizedBrief length: 350-650 words. It IS the admin prompt — write it so a s
     : `You optimize creative briefs for bespoke local-business websites. Output JSON only.
 
 ${FULL_REDESIGN_DESIGN_SYSTEM}
-
+${avoidBlock}
 Given an admin seed (one sentence or a long checklist) plus intake facts, produce an OPTIMIZED creative brief that:
 1. Honors every specific admin instruction (colors named, layout asks, services to add).
 2. Fills every free axis from the business's real world (trade materials, tools, locality, audience) — never from AI design defaults.
@@ -315,6 +341,11 @@ Intake services (must keep): ${opts.services.join(' | ') || '(none listed)'}
 Theme hint: ${opts.themeHint || '(none)'}
 Has reference images: ${opts.hasImages ? 'yes' : 'no'}
 Intake hints: ${opts.intakeHints || '(none)'}
+Designs already shipped on this platform: ${
+    opts.avoid?.taken.length
+      ? `${opts.avoid.taken.length} — see the ALREADY USED block in the system message; your direction must differ from all of them`
+      : 'none yet'
+  }
 
 ADMIN SEED:
 ${opts.adminBrief.trim() || '(EMPTY — invent a complete self-authored design-direction prompt from intake + design system)'}
