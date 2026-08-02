@@ -1633,6 +1633,14 @@ export function extractCssAccent(css: string): string | null {
 /**
  * Soft craft checks after Full redesign — tips for the admin, never blocking.
  * Avoid heuristics that push every multi-service site into a dual-lane / dark-neon look.
+ *
+ * Not superseded by designTellScanner, despite the overlap. The scanner asks
+ * "does the artifact contain a banned default?" and blocks; this asks "did the
+ * build miss something the brief implied?" and only advises. The dual-lane check
+ * below is the clearest case of the difference: it fires when the brief names two
+ * disciplines and the design has only one accent — the opposite polarity to the
+ * scanner's design_dual_lane_gateway, which fires on two lanes the brief never
+ * asked for. Duplicate skin warnings are deduped at the call site, not here.
  */
 export function assessFullRedesignCraft(opts: {
   config: CustomSiteConfig
