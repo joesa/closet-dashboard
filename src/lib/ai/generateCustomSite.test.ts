@@ -239,7 +239,7 @@ describe('full redesign design guard', () => {
     expect(src).toContain("runGuard(\n      'foundation'")
     expect(src).toContain('scanUnitTells')
     expect(src).toContain("runGuard(\n      'uniqueness'")
-    expect(src).toContain('findSkeletonCollisions')
+    expect(src).toContain('findDesignCollisions')
     expect(src).toContain('recordCustomDesignFingerprint')
   })
 
@@ -259,7 +259,7 @@ describe('full redesign design guard', () => {
   })
 
   it('blocks publish on a duplicated home rhythm', () => {
-    expect(src).toContain('design_duplicate_skeleton')
+    expect(src).toContain('design_duplicate_visual')
     expect(src).toContain('Cannot publish:')
   })
 })

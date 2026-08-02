@@ -73,6 +73,8 @@ describe('pickDeterministicDirection', () => {
       takenFontKeys: [directionKeys(first).fontKey],
     })
     expect(directionKeys(second).fontKey).not.toBe(directionKeys(first).fontKey)
+    expect(second.composition).not.toBe(first.composition)
+    expect(second.signatureElement).not.toBe(first.signatureElement)
   })
 
   it('still returns a usable direction when everything is taken', () => {

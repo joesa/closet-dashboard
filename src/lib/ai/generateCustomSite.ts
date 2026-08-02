@@ -141,7 +141,7 @@ import {
 } from '@/lib/ai/repairDesignTells'
 import {
   describeTakenSkeletons,
-  findSkeletonCollisions,
+  findDesignCollisions,
   loadDesignAvoidList,
   recordCustomDesignFingerprint,
   type DesignAvoidList,
@@ -1955,7 +1955,7 @@ Pass 1 — Direction (before tokens or HTML):
 Pass 2 — System + site (then emit JSON only):
 4. Tokens in globalCss :root — implement the optimized palette (adjust only for AA contrast / brief overrides); --df/--bf from the brief's Google Fonts; optional mono only if it fits; one --acc (second accent ONLY for true dual-lane); spacing/radius/shadow consistent with direction (precision brands ≠ soft 24px radii).
 5. Shared chrome: sticky header with real shop name + nav + phone + primary CTA; designed footer with real contact; .wrap .eyebrow .btn(+variants). One atmospheric device that fits (paper grain, wash, photo bleed, hairline grid, air — not mandatory neon seams).
-6. Home (adapt, don't pad): branded header → hero (one sharp promise + primary CTA; second CTA only if dual-lane is real) → services covering ALL intake + brief-added services → proof/gallery from REAL urls only → process/why-us from facts only → conversion band with engagement engine → footer.
+6. Home composition must be invented for this direction, not selected from a house template. Choose a fundamentally distinct spatial grammar (for example immersive image-led, typographic poster, dense catalog, asymmetric editorial, modular utility, horizontal narrative, or restrained single-column), then derive section order and proportions from it. Include services and the engagement engine, but do NOT default to hero → card grid → alternating image/text bands → centered CTA.
 7. Build EVERY required path with the same header/footer. Services page: deep coverage of every service. Contact: tel:/mailto: + hours/address + optional second widget mount — never an HTML form. Use ALL intakePages + services copy; sharpen, don't invent.
 8. Motion: one deliberate CSS moment (load or signature reveal). Respect prefers-reduced-motion. Excess animation is an AI tell.
 9. Quality floor (do not announce): responsive ~768/~420, visible :focus, WCAG AA contrast, performance-conscious (no decorative assets that cost load without purpose).
@@ -2524,11 +2524,11 @@ Output JSON for ${path} only.`
   })
   noteUnresolved(finalFindings)
 
-  // Uniqueness. Only the home section rhythm blocks (BLOCKING_AXES); palette and
-  // type are recorded and shown to the model but never rejected, because
-  // platform-wide blocking on them would exhaust the space.
+  // Uniqueness uses the complete visual system. Reordering sections is not
+  // enough when palette, typography, geometry and recurring motifs still make
+  // the result look like the same template.
   let fingerprint = extractCustomDesignFingerprint(draft)
-  let collisions = findSkeletonCollisions(fingerprint, opts.avoidList.taken)
+  let collisions = findDesignCollisions(fingerprint, opts.avoidList.taken)
   if (collisions.length > 0 && repairBudgetLeft()) {
     const homeHtml = draft.pages['/']?.html || draft.pages['']?.html || ''
     const reshaped = await runGuard(
@@ -2537,14 +2537,14 @@ Output JSON for ${path} only.`
       { [unitIdForPage('/')]: homeHtml },
       [
         {
-          code: 'design_duplicate_skeleton',
+          code: 'design_duplicate_visual',
           unitId: '/',
           severity: 'error',
-          message: `This home has the same section rhythm (${fingerprint.skeleton.join('→')}) as another site already on the platform${
+          message: `This redesign is visually too similar to another design already on the platform${
             collisions[0].signatureConcept ? ` ("${collisions[0].signatureConcept}")` : ''
           }.`,
-          fix: 'Restructure the home page into a different section rhythm — merge, split, reorder or add a beat that this business actually needs. Keep the palette, the type pairing and every fact of the copy exactly as they are; change only the arrangement.',
-          samples: [fingerprint.skeleton.join('→')],
+          fix: 'Rebuild the home with a different composition family, typography pairing, palette relationship, geometry and signature motif. Preserve business facts, services, links and widget mount, but do not merely reorder the same sections.',
+          samples: [`visual similarity ${collisions[0].score.toFixed(2)}`],
         },
       ]
     )
@@ -2552,12 +2552,12 @@ Output JSON for ${path} only.`
       draft = reshaped
       await checkpoint(draft)
       fingerprint = extractCustomDesignFingerprint(draft)
-      collisions = findSkeletonCollisions(fingerprint, opts.avoidList.taken)
+      collisions = findDesignCollisions(fingerprint, opts.avoidList.taken)
     }
   }
   if (collisions.length > 0) {
     extraWarnings.push(
-      `Home section rhythm still matches ${collisions.length} other site(s) on the platform — ${
+      `Visual design still resembles ${collisions.length} prior redesign(s) on the platform — ${
         UNIQUENESS_ENFORCEMENT === 'block'
           ? 'publish will be blocked until it differs.'
           : 'review before publishing.'
@@ -3193,20 +3193,22 @@ export async function publishCustomSiteDraft(tenantId: string): Promise<{
   // Uniqueness gate. Separate from the artifact report because it is the only
   // check that needs to look at other tenants — a draft can be flawless on its
   // own and still be a design somebody else is already using.
-  const avoid = await loadDesignAvoidList({ supabase, tenantId })
   const fingerprint = extractCustomDesignFingerprint(sanitized)
-  const collisions = findSkeletonCollisions(fingerprint, avoid.taken)
+  const avoid = await loadDesignAvoidList({
+    supabase,
+    tenantId,
+    excludeFingerprintHash: fingerprint.hash,
+  })
+  const collisions = findDesignCollisions(fingerprint, avoid.taken)
   const collisionIssues: ArtifactValidationIssue[] =
     collisions.length > 0
       ? [
           {
-            code: 'design_duplicate_skeleton',
-            severity: tellSeverity('design_duplicate_skeleton'),
-            message: `Home section rhythm (${fingerprint.skeleton.join('→')}) matches ${
-              collisions.length
-            } other site on this platform${
+            code: 'design_duplicate_visual',
+            severity: tellSeverity('design_duplicate_visual'),
+            message: `This redesign is visually too similar to ${collisions.length} prior design on this platform${
               collisions[0].signatureConcept ? ` ("${collisions[0].signatureConcept}")` : ''
-            }. Run Edit surgically to change the home section arrangement, then publish.`,
+            }. Run Full redesign again with a different direction before publishing.`,
             fixable: false,
             meta: {
               path: '/',

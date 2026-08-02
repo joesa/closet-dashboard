@@ -7,13 +7,9 @@
  * so the only place its design exists is in the artifact itself. This module
  * reads the design back out of what was emitted.
  *
- * Five axes are extracted; only the skeleton blocks (see BLOCKING_AXES in
- * designGuardPolicy). Home section rhythm is an ordered sequence over a small
- * vocabulary, so platform-wide uniqueness on it stays feasible after thousands
- * of tenants in a way that palette-wide uniqueness would not — the palette space
- * would exhaust and start rejecting good designs. The other four axes are still
- * extracted and recorded, because they are what the avoid-list shows the model
- * so it stops re-converging on directions that already shipped.
+ * Five axes are extracted and jointly compared. Exact/near skeleton reuse is
+ * always a collision; otherwise a weighted visual score catches the same skin
+ * after superficial reordering or recoloring.
  *
  * Skeleton comparison is normalized LCS rather than exact match, deliberately:
  * inserting one section into an otherwise identical rhythm should still count as
@@ -31,6 +27,7 @@ import {
 } from '@/lib/validation/designTellScanner'
 import {
   SKELETON_COLLISION_THRESHOLD,
+  VISUAL_COLLISION_THRESHOLD,
   type FingerprintAxis,
 } from '@/lib/validation/designGuardPolicy'
 
@@ -287,12 +284,40 @@ export function axisSimilarities(
   }
 }
 
+/**
+ * Human-perceived similarity across the artifact's visual system. Skeleton is
+ * deliberately not dominant: two sites with reordered sections still look like
+ * the same template when their palette, type, geometry and recurring chrome
+ * are unchanged.
+ */
+export function visualSimilarity(
+  a: CustomDesignFingerprint,
+  b: CustomDesignFingerprint
+): number {
+  const scores = axisSimilarities(a, b)
+  return (
+    scores.skeleton * 0.4 +
+    scores.palette * 0.2 +
+    scores.fonts * 0.15 +
+    scores.shape * 0.1 +
+    scores.motifs * 0.15
+  )
+}
+
 export function isSkeletonCollision(
   a: CustomDesignFingerprint,
   b: CustomDesignFingerprint,
   threshold: number = SKELETON_COLLISION_THRESHOLD
 ): boolean {
   return skeletonSimilarity(a, b) >= threshold
+}
+
+export function isDesignCollision(
+  a: CustomDesignFingerprint,
+  b: CustomDesignFingerprint,
+  visualThreshold = VISUAL_COLLISION_THRESHOLD
+): boolean {
+  return isSkeletonCollision(a, b) || visualSimilarity(a, b) >= visualThreshold
 }
 
 /** Index keys mirrored into the registry's indexed columns. */

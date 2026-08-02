@@ -4,7 +4,7 @@ import type { CustomSiteConfig } from '@/lib/customSite'
 import {
   buildAvoidPromptBlock,
   describeTakenSkeletons,
-  findSkeletonCollisions,
+  findDesignCollisions,
   loadDesignAvoidList,
   recordCustomDesignFingerprint,
   type TakenDesign,
@@ -47,7 +47,7 @@ function stubSupabase(result: { data?: unknown; error?: { message: string } | nu
 }
 
 describe('loadDesignAvoidList', () => {
-  it('excludes the tenant from its own avoid list', async () => {
+  it('includes the tenant own redesign history', async () => {
     const fp = extractCustomDesignFingerprint(artifact([HERO, GRID, BAND]))
     const { client } = stubSupabase({
       data: [
@@ -56,7 +56,23 @@ describe('loadDesignAvoidList', () => {
       ],
     })
     const avoid = await loadDesignAvoidList({ supabase: client, tenantId: 'me' })
-    expect(avoid.taken.map((t) => t.tenantId)).toEqual(['other'])
+    expect(avoid.taken.map((t) => t.tenantId)).toEqual(['me', 'other'])
+  })
+
+  it('can exclude the exact candidate already recorded as a draft', async () => {
+    const fp = extractCustomDesignFingerprint(artifact([HERO, GRID, BAND]))
+    const { client } = stubSupabase({
+      data: [
+        { tenant_id: 'me', fingerprint: fp, signature_concept: 'current', status: 'draft' },
+        { tenant_id: 'other', fingerprint: fp, signature_concept: 'duplicate', status: 'draft' },
+      ],
+    })
+    const avoid = await loadDesignAvoidList({
+      supabase: client,
+      tenantId: 'me',
+      excludeFingerprintHash: fp.hash,
+    })
+    expect(avoid.taken.map((row) => row.tenantId)).toEqual(['other'])
   })
 
   it('returns an empty list when the query errors, instead of throwing', async () => {
@@ -111,7 +127,8 @@ describe('buildAvoidPromptBlock', () => {
     expect(block).toContain('hero→grid3→band')
     expect(block).toContain('fraunces + karla')
     expect(block).toContain('"shop-ticket ledger"')
-    expect(block).toMatch(/MUST NOT match any rhythm above/)
+    expect(block).toMatch(/complete visual system MUST differ/)
+    expect(block).toContain('Recoloring or reordering the same template is not sufficient.')
   })
 
   it('stays inside the character budget with many taken designs', () => {
@@ -122,31 +139,39 @@ describe('buildAvoidPromptBlock', () => {
   })
 })
 
-describe('findSkeletonCollisions', () => {
+describe('findDesignCollisions', () => {
   const candidate = extractCustomDesignFingerprint(artifact([HERO, GRID, BAND]))
 
   it('finds a tenant with the same rhythm', () => {
-    const hits = findSkeletonCollisions(candidate, [taken('other', [HERO, GRID, BAND], 'theirs')])
+    const hits = findDesignCollisions(candidate, [taken('other', [HERO, GRID, BAND], 'theirs')])
     expect(hits).toHaveLength(1)
     expect(hits[0]).toMatchObject({ tenantId: 'other', score: 1, signatureConcept: 'theirs' })
   })
 
   it('ignores a genuinely different rhythm', () => {
-    expect(findSkeletonCollisions(candidate, [taken('other', [HERO, PROSE])])).toEqual([])
+    const visuallyDifferent = {
+      ...taken('other', [HERO, PROSE]),
+      fingerprint: extractCustomDesignFingerprint({
+        mode: 'inline',
+        globalCss: ':root{--bg:#090909;--ink:#fff;--acc:#e21;--df:"Bitter";--bf:"Public Sans"}',
+        pages: { '/': { html: [HERO, PROSE].join('') } },
+      }),
+    }
+    expect(findDesignCollisions(candidate, [visuallyDifferent])).toEqual([])
   })
 
   it('sorts the closest match first', () => {
-    const hits = findSkeletonCollisions(
+    const hits = findDesignCollisions(
       candidate,
       [taken('near', [HERO, GRID, PROSE, BAND]), taken('exact', [HERO, GRID, BAND])],
-      0.5
+      0.4
     )
     expect(hits.map((h) => h.tenantId)).toEqual(['exact', 'near'])
   })
 })
 
 describe('recordCustomDesignFingerprint', () => {
-  it('upserts one row per tenant with the derived keys', async () => {
+  it('upserts one row per tenant, status, and artifact hash', async () => {
     const { client, builder } = stubSupabase({ data: null })
     const fp = await recordCustomDesignFingerprint({
       supabase: client,
@@ -162,9 +187,10 @@ describe('recordCustomDesignFingerprint', () => {
         status: 'published',
         skeleton_key: 'hero>grid3>band',
         font_key: 'fraunces+karla',
+        artifact_hash: fp.hash,
         signature_concept: 'shop-ticket ledger',
       }),
-      { onConflict: 'tenant_id' }
+      { onConflict: 'tenant_id,status,artifact_hash' }
     )
   })
 

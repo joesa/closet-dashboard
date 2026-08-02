@@ -27,6 +27,7 @@ export type DeterministicDirection = {
   palette: DirectionPaletteRole[]
   typography: { display: string; body: string; why: string }
   signatureElement: string
+  composition: string
   /** How many probes it took to miss the taken lists — 0 on a clean first pick. */
   seedIndex: number
 }
@@ -118,18 +119,33 @@ export const TYPE_PAIR_POOL: readonly TypePair[] = [
   { display: 'Rokkitt', body: 'Nunito Sans', why: 'a narrow slab over a rounded body' },
 ]
 
-/** Trade-agnostic chrome motifs — one recurring detail, never decoration. */
+/** Distinct devices spanning spatial, photographic, typographic and tactile ideas. */
 export const SIGNATURE_POOL: readonly string[] = [
-  'A work-order ledger strip: ruled row, job number, date, repeated as the section mark',
-  'A stamped metal tag used as the eyebrow on every section heading',
-  'A measured margin rule with tick marks, echoing a folding rule',
-  'A bay-ticket rhythm: numbered tab, short label, hairline underline',
-  'A carbon-copy offset on cards, as though each is the second sheet of a docket',
-  'A survey-drawing callout: leader line from a photo to a plain caption',
-  'A punch-card perforation edge along section boundaries',
-  'A grease-pencil underline on the primary heading of each section',
-  'A materials swatch strip in the footer, one chip per named material',
-  'A revision block in the footer: date, initials, what changed',
+  'A full-bleed documentary photograph interrupted by one oversized vertical wordmark',
+  'A compact service index fixed to one edge while the story scrolls beside it',
+  'A typographic poster system with huge plain-language headlines and almost no boxes',
+  'An irregular image mosaic whose crop ratios follow the business work rather than a card grid',
+  'A quiet single-column reading experience with one dramatic scale change per chapter',
+  'A bold horizontal ribbon that carries services through the page as one continuous sequence',
+  'A tactile material strip sampled from the trade and used only at major transitions',
+  'An offset frame system where images deliberately break the text measure and page edge',
+  'A compact utility composition with dense labels, direct actions and minimal decorative copy',
+  'A cinematic sequence of edge-to-edge scenes with captions embedded in the image margins',
+  'A split-screen composition with navigation and conversion fixed opposite a scrolling narrative',
+  'A radial or clustered composition organized around the customer outcome rather than sections',
+]
+
+export const COMPOSITION_POOL: readonly string[] = [
+  'immersive image-led sequence with edge-to-edge transitions and sparse text',
+  'asymmetric editorial canvas with unequal columns and deliberate empty space',
+  'dense catalog index with compact rows, filters-as-labels, and no card grid',
+  'typographic poster with monumental headlines, short copy, and flat color fields',
+  'restrained single-column narrative with strong chapter breaks and inline media',
+  'modular utility layout with varied module spans and action-first hierarchy',
+  'horizontal story rhythm using wide bands and side-scrolling visual cues without JavaScript',
+  'split-screen shell with persistent conversion rail and independently paced content',
+  'irregular photographic mosaic with text anchored to image geometry',
+  'minimal gallery architecture where imagery controls scale, pacing, and navigation',
 ]
 
 function norm(value: string | undefined): string {
@@ -200,7 +216,10 @@ export function pickDeterministicDirection(
       body: pair.body,
       why: pair.why,
     },
-    signatureElement: SIGNATURE_POOL[(seed >>> 11) % SIGNATURE_POOL.length],
+    signatureElement:
+      SIGNATURE_POOL[((seed >>> 11) + seedIndex * 7) % SIGNATURE_POOL.length],
+    composition:
+      COMPOSITION_POOL[((seed >>> 15) + seedIndex * 3) % COMPOSITION_POOL.length],
     seedIndex,
   }
 }

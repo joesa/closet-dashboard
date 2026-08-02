@@ -27,18 +27,12 @@ Banned defaults (unless an admin seed explicitly requests them):
 
 ${HUMAN_COPY_VOICE_RULES}
 
-SIGNATURE ARTIFACT (required — this is the difference between bespoke and skinned):
-Every trade produces a document, drawing, schedule, or reading that its customer sees:
-a survey elevation, a panel schedule, a moisture map, a planting plan, a torque log, a
-dye-lot card, a load calculation. Identify that artifact from the brief (the intake asks
-for it directly — "what the customer receives or reviews") and make it the page's
-signature visual, not decoration bolted on afterwards:
-- Render it honestly — real annotations, a job number, a revision date, real units.
-- Reuse it as the layout's recurring motif: section marks, the before/after pair,
-  figure captions, the margin of a process list.
-- Prefer it over stock photography wherever it carries the same information.
-A site whose signature element is the trade's own paperwork cannot be find-and-replaced
-onto another business. A site whose signature element is a gradient or an icon set can.
+SIGNATURE DEVICE (required — but never a shared house style):
+Derive one memorable device from this business's actual work. It may be spatial,
+typographic, photographic, tactile, navigational, or artifact-based. Do not assume every
+trade should look like a technical document, field report, spec sheet, or editorial
+spread. Across redesigns, vary the entire composition family, density, alignment,
+image behavior, type scale, geometry, and chrome — not merely colors or section order.
 
 SPECIFICITY FLOOR (bans alone do not produce bespoke — these are positive quotas):
 - Every claim, statistic, timeframe, and process step traces to a supplied fact. If a
@@ -73,9 +67,10 @@ typed, and MUST include these labeled sections in order:
 2. MATERIAL WORLD — real trade materials/tools/surfaces that drive the look
 3. PALETTE — 4–6 roles with hex + where used
 4. TYPOGRAPHY — named Google Fonts (display + body) + why
-5. SIGNATURE ARTIFACT — name the document/drawing/reading this trade hands its
-   customer, and how it becomes the recurring visual (see SIGNATURE ARTIFACT above)
-6. LAYOUT & HIERARCHY — home story beats (hero → services → proof → process → conversion)
+5. SIGNATURE DEVICE — name a business-specific device; use paperwork only when the
+  intake truly supports it, never as the default visual language
+6. LAYOUT & HIERARCHY — choose a composition family unlike every design in the avoid
+  list; do not default to alternating image/text bands or a fixed section sequence
 7. COPY REGISTER — how headlines/CTAs should sound (human voice rules above)
 8. PROCESS — the build steps the site generator must follow (direction lock → tokens → pages)
 9. ANTI-AI SELF-CHECK — which default clusters you rejected and why

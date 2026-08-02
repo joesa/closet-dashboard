@@ -3,7 +3,7 @@
  * to the model.
  *
  * Two jobs. First, collision detection: a candidate Full redesign must not reuse
- * a home section rhythm another tenant already has. Second — and this is the
+ * another artifact's composition and visual system. Second — and this is the
  * half that actually improves output — an avoid-list the enhancer and the site
  * generator both see up front, so the model steers away from taken directions
  * instead of being rejected afterwards.
@@ -27,13 +27,13 @@ import {
   describeFingerprintForAvoidList,
   extractCustomDesignFingerprint,
   fingerprintKeys,
-  skeletonSimilarity,
+  isDesignCollision,
+  visualSimilarity,
   type CustomDesignFingerprint,
 } from '@/lib/design/customDesignFingerprint'
 import {
   AVOID_LIST_MAX_CHARS,
   AVOID_LIST_MAX_ROWS,
-  SKELETON_COLLISION_THRESHOLD,
 } from '@/lib/validation/designGuardPolicy'
 
 const TABLE = 'custom_design_fingerprints'
@@ -107,20 +107,22 @@ export function buildAvoidPromptBlock(taken: TakenDesign[]): string {
     joinCapped('Palettes in use (hue-lightness-chroma buckets)', palettes, budget),
     joinCapped('Type pairings in use', fonts, budget),
     joinCapped('Signature concepts already claimed', concepts, budget),
-    'Your home section rhythm MUST NOT match any rhythm above — that is a hard requirement and a build that matches one will be rejected. Palette and type should differ too.',
+    'Your complete visual system MUST differ from every design above. A build is rejected when section rhythm alone matches OR when the weighted combination of composition, palette, typography, geometry, and motifs remains too similar. Recoloring or reordering the same template is not sufficient.',
   ].filter(Boolean)
 
   return lines.join('\n').slice(0, AVOID_LIST_MAX_CHARS)
 }
 
 /**
- * Designs already shipped by other tenants. Platform-wide (UNIQUENESS_SCOPE),
- * published rows first so a live site outranks somebody's abandoned draft.
+ * Designs already generated platform-wide, including this tenant's own history.
+ * Published rows come first so a live site outranks somebody's abandoned draft.
  */
 export async function loadDesignAvoidList(opts: {
   supabase: SupabaseClient
-  /** Excluded from its own avoid list — a tenant may of course keep its design. */
+  /** Same-tenant history is included so repeated Full redesigns cannot converge. */
   tenantId: string
+  /** Publish validation excludes only the exact candidate draft already recorded. */
+  excludeFingerprintHash?: string
   limit?: number
 }): Promise<DesignAvoidList> {
   try {
@@ -142,8 +144,15 @@ export async function loadDesignAvoidList(opts: {
     const taken: TakenDesign[] = []
     for (const row of data) {
       const tenantId = typeof row.tenant_id === 'string' ? row.tenant_id : ''
-      if (!tenantId || tenantId === opts.tenantId) continue
+      if (!tenantId) continue
       if (!isFingerprint(row.fingerprint)) continue
+      if (
+        opts.excludeFingerprintHash &&
+        tenantId === opts.tenantId &&
+        row.fingerprint.hash === opts.excludeFingerprintHash
+      ) {
+        continue
+      }
       taken.push({
         tenantId,
         fingerprint: row.fingerprint,
@@ -166,27 +175,29 @@ export async function loadDesignAvoidList(opts: {
 }
 
 /**
- * Other tenants whose section rhythm this candidate reproduces.
+ * Prior designs whose complete visual system this candidate reproduces.
  * Sorted worst-first so the caller can name the closest match.
  */
-export function findSkeletonCollisions(
+export function findDesignCollisions(
   candidate: CustomDesignFingerprint,
   taken: TakenDesign[],
-  threshold: number = SKELETON_COLLISION_THRESHOLD
+  threshold?: number
 ): Array<{ tenantId: string; score: number; signatureConcept: string | null }> {
   return taken
     .map((t) => ({
       tenantId: t.tenantId,
-      score: skeletonSimilarity(candidate, t.fingerprint),
+      score: visualSimilarity(candidate, t.fingerprint),
+      collides: isDesignCollision(candidate, t.fingerprint, threshold),
       signatureConcept: t.signatureConcept,
     }))
-    .filter((row) => row.score >= threshold)
+    .filter((row) => row.collides)
     .sort((a, b) => b.score - a.score)
+    .map(({ collides: _collides, ...row }) => row)
 }
 
 /**
- * Record this tenant's current design. Upsert on tenant_id: one row per tenant,
- * always describing its latest artifact.
+ * Record a distinct tenant design. History is retained so a later Full redesign
+ * must differ from this tenant's own prior attempts as well as every other site.
  *
  * Non-fatal by design — a failed write must never fail a redesign or a publish.
  * Returns the fingerprint regardless so callers can still use it in-memory.
@@ -211,11 +222,12 @@ export async function recordCustomDesignFingerprint(opts: {
         font_key: keys.fontKey,
         shape_key: keys.shapeKey,
         motif_key: keys.motifKey,
+        artifact_hash: fingerprint.hash,
         fingerprint,
         signature_concept: opts.signatureConcept ?? null,
         updated_at: new Date().toISOString(),
       },
-      { onConflict: 'tenant_id' }
+      { onConflict: 'tenant_id,status,artifact_hash' }
     )
     if (error) console.warn('[designAvoidList] record skipped:', error.message)
   } catch (err) {

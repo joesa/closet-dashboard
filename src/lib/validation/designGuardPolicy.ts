@@ -40,11 +40,11 @@ export type DesignTellCode =
   | 'spec_sheet_cta'
   | 'decorative_numbered_list'
   /**
-   * Uniqueness, not a tell: this home reproduces another tenant's section
-   * rhythm. Raised by the finalize guard and the publish gate from the
-   * fingerprint registry, never by scanning a single artifact.
+    * Uniqueness, not a tell: this artifact reproduces a prior design's visual
+    * system. Raised by the finalize guard and publish gate from the fingerprint
+    * registry, never by scanning a single artifact.
    */
-  | 'design_duplicate_skeleton'
+  | 'design_duplicate_visual'
 
 /** Axes of a custom design fingerprint. Only some of them block. */
 export type FingerprintAxis = 'palette' | 'fonts' | 'skeleton' | 'shape' | 'motifs'
@@ -73,7 +73,7 @@ export function tellSeverity(code: DesignTellCode): 'error' | 'warning' {
   if (ADVISORY_TELL_CODES.includes(code)) return 'warning'
   // Uniqueness has its own switch — it is a different product decision from
   // "does this artifact contain a banned default".
-  if (code === 'design_duplicate_skeleton') {
+  if (code === 'design_duplicate_visual') {
     return UNIQUENESS_ENFORCEMENT === 'block' ? 'error' : 'warning'
   }
   return DESIGN_TELL_ENFORCEMENT === 'block' ? 'error' : 'warning'
@@ -85,16 +85,16 @@ export const UNIQUENESS_SCOPE: 'platform' | 'industry' = 'platform'
 export const UNIQUENESS_ENFORCEMENT: TellEnforcement = 'block'
 
 /**
- * The axes a collision is judged on. Skeleton only, deliberately.
- *
- * Home section rhythm is an ordered sequence over a ~12-symbol vocabulary, so
- * platform-wide uniqueness on it does not exhaust the space the way palette-wide
- * blocking would after a few hundred tenants. The consequence, accepted
- * knowingly: two tenants may share a palette and a type pairing as long as their
- * section rhythm differs. The other axes are still extracted, still recorded,
- * still fed to the model as "already used", and still reported as warnings.
+ * Every extracted visual axis contributes to collision detection. A redesign
+ * cannot escape by reordering sections while retaining the same visual skin.
  */
-export const BLOCKING_AXES: readonly FingerprintAxis[] = ['skeleton']
+export const BLOCKING_AXES: readonly FingerprintAxis[] = [
+  'palette',
+  'fonts',
+  'skeleton',
+  'shape',
+  'motifs',
+]
 
 /**
  * Normalized-LCS score above which two skeletons count as the same design.
@@ -102,6 +102,9 @@ export const BLOCKING_AXES: readonly FingerprintAxis[] = ['skeleton']
  * matters: the same sequence with one section swapped or renamed.
  */
 export const SKELETON_COLLISION_THRESHOLD = 0.85
+
+/** Weighted palette/type/composition/geometry/motif similarity that blocks. */
+export const VISUAL_COLLISION_THRESHOLD = 0.6
 
 /** Repair attempts per failing unit (globalCss counts as one unit). */
 export const MAX_REPAIR_ATTEMPTS_PER_UNIT = 2
@@ -113,5 +116,5 @@ export const MAX_REPAIR_ATTEMPTS_PER_UNIT = 2
  */
 export const REPAIR_CUTOFF_MS = 30 * 60 * 1000
 
-export const AVOID_LIST_MAX_ROWS = 60
+export const AVOID_LIST_MAX_ROWS = 2000
 export const AVOID_LIST_MAX_CHARS = 1400

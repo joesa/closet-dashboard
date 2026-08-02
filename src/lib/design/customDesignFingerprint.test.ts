@@ -6,8 +6,10 @@ import {
   describeFingerprintForAvoidList,
   extractCustomDesignFingerprint,
   fingerprintKeys,
+  isDesignCollision,
   isSkeletonCollision,
   skeletonSimilarity,
+  visualSimilarity,
 } from './customDesignFingerprint'
 
 const CSS_A = `:root{--bg:#f7f4ef;--ink:#1a1f1e;--muted:#5a6562;--line:#c5d0cc;--acc:#2f5d50;--df:"Fraunces";--bf:"Karla"}
@@ -136,6 +138,23 @@ describe('axisSimilarities', () => {
     const fp = extractCustomDesignFingerprint(config(CSS_A, [HERO, GRID, BAND]))
     const scores = axisSimilarities(fp, fp)
     expect(scores).toEqual({ palette: 1, fonts: 1, skeleton: 1, shape: 1, motifs: 1 })
+  })
+})
+
+describe('visual uniqueness', () => {
+  it('rejects the same visual system even when sections are reordered', () => {
+    const a = extractCustomDesignFingerprint(config(CSS_A, [HERO, GRID, SPLIT, BAND]))
+    const b = extractCustomDesignFingerprint(config(CSS_A, [HERO, SPLIT, PROSE, GRID]))
+    expect(skeletonSimilarity(a, b)).toBeLessThan(0.85)
+    expect(visualSimilarity(a, b)).toBeGreaterThanOrEqual(0.6)
+    expect(isDesignCollision(a, b)).toBe(true)
+  })
+
+  it('accepts a genuinely different visual system and composition', () => {
+    const a = extractCustomDesignFingerprint(config(CSS_A, [HERO, GRID, SPLIT, BAND]))
+    const b = extractCustomDesignFingerprint(config(CSS_B, [HERO, PROSE, BAND]))
+    expect(visualSimilarity(a, b)).toBeLessThan(0.6)
+    expect(isDesignCollision(a, b)).toBe(false)
   })
 })
 
