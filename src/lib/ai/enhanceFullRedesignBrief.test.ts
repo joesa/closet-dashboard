@@ -128,6 +128,50 @@ describe('fallbackEnhancedBrief', () => {
     ).not.toBe(takenPair)
   })
 
+  it('regenerates a deterministic signature when the prior concept is taken', () => {
+    const original = fallbackEnhancedBrief({
+      brandName: 'Ridgeline Closets',
+      adminBrief: '',
+      hasImages: false,
+      engagementLabel: 'quote calculator',
+      services: ['Closets'],
+      city: 'Nashville',
+    })
+    const regenerated = fallbackEnhancedBrief({
+      brandName: 'Ridgeline Closets',
+      adminBrief: '',
+      hasImages: false,
+      engagementLabel: 'quote calculator',
+      services: ['Closets'],
+      city: 'Nashville',
+      avoid: {
+        taken: [{
+          tenantId: 'same-tenant',
+          fingerprint: {
+            version: 1,
+            hash: 'prior',
+            skeleton: [],
+            paletteBuckets: [],
+            fonts: { display: '', body: '' },
+            shape: '',
+            motifs: [],
+          },
+          signatureConcept: original.signatureConcept,
+        }],
+        takenSkeletonKeys: [],
+        takenPaletteKeys: [],
+        takenFontKeys: [],
+        promptBlock: '',
+      },
+    })
+    expect(regenerated.signatureConcept).not.toBe(original.signatureConcept)
+    expect(validateFullRedesignPreflight(
+      regenerated,
+      [],
+      [original.signatureConcept]
+    )).toEqual([])
+  })
+
   it('builds a complete design system that passes preflight before generation', () => {
     const out = fallbackEnhancedBrief({
       brandName: 'Ridgeline Closets',

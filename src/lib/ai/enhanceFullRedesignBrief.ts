@@ -112,9 +112,6 @@ export function fallbackEnhancedBrief(opts: EnhanceOpts): EnhancedFullRedesignBr
     opts.services.slice(0, 5).join(', ') || 'the services from intake'
   const seed = opts.adminBrief.trim()
   const inventedFromIntake = !seed
-  const signatureConcept = seed
-    ? `${opts.brandName}: ${seed.slice(0, 120).replace(/\s+/g, ' ')}`
-    : `${opts.brandName} — subject-derived craft for ${place}`
   const materialWorld = opts.themeHint
     ? `Interpret theme hint "${opts.themeHint}" through real trade materials and tools for ${serviceLine}, not a stock SaaS skin.`
     : `Derive the look from the real world of ${serviceLine} in ${place} — tools, surfaces, signage, and workwear — not from web design trends.`
@@ -132,6 +129,19 @@ export function fallbackEnhancedBrief(opts: EnhanceOpts): EnhancedFullRedesignBr
     takenFontKeys: opts.avoid?.takenFontKeys,
   })
   const palette = direction.palette
+  const baseSignatureConcept = seed
+    ? `${opts.brandName}: ${seed.slice(0, 120).replace(/\s+/g, ' ')}`
+    : `${opts.brandName} — subject-derived craft for ${place}`
+  const takenConcepts = new Set(
+    (opts.avoid?.taken || [])
+      .map((taken) => taken.signatureConcept?.trim().toLowerCase().replace(/\s+/g, ' '))
+      .filter(Boolean)
+  )
+  const signatureConcept = takenConcepts.has(
+    baseSignatureConcept.toLowerCase().replace(/\s+/g, ' ')
+  )
+    ? `${opts.brandName} — ${direction.signatureElement}; ${direction.composition}`
+    : baseSignatureConcept
   const designSystem: FullRedesignPreflight = {
     composition: direction.composition,
     colorStrategy: `Use ${palette.map((color) => `${color.role} ${color.hex}`).join(', ')} only in their named roles; preserve readable bg/ink contrast and reserve acc for decisions.`,
@@ -451,37 +461,55 @@ Produce the optimized brief JSON.`
       opts,
       provider === 'anthropic' ? 'anthropic' : 'gemini'
     )
-    const reviewPrompt = `Independently audit and, where necessary, regenerate this proposed Full redesign preflight. Do not preserve a weak choice for consistency. Check every design axis, every AI tell, factual grounding, accessibility, responsive feasibility, and novelty against the supplied prior-design block. Return the complete corrected JSON in the required shape. Set validation booleans true only after the corrected system actually passes.
+    const takenConcepts = opts.avoid?.taken
+      .map((taken) => taken.signatureConcept || '')
+      .filter(Boolean)
+    let candidate = firstDraft
+    let failures: string[] = []
+    for (let reviewAttempt = 1; reviewAttempt <= 3; reviewAttempt += 1) {
+      const reviewPrompt = `Independently audit and, where necessary, REGENERATE this proposed Full redesign preflight. Do not preserve a weak choice for consistency. Check every design axis, every AI tell, factual grounding, accessibility, responsive feasibility, and novelty against the supplied prior-design block. Return the complete corrected JSON in the required shape. Set validation booleans true only after the corrected system actually passes.
+
+${failures.length ? `THE PREVIOUS REVIEW WAS REJECTED FOR:\n- ${failures.join('\n- ')}\nReplace the specific colliding or unresolved choices; do not merely rename them.` : ''}
 
 PROPOSED PREFLIGHT:
-${JSON.stringify(firstDraft)}
+${JSON.stringify(candidate)}
 
 BUSINESS:
 ${userPrompt}`
-    const { text: reviewedText, provider: reviewProvider } = await generateTextWithFallback({
-      systemPrompt: `You are the independent principal design-engineering reviewer. No site build has started and none may start until you approve a complete, coherent, original, anti-AI design system. Output JSON only.\n\n${FULL_REDESIGN_DESIGN_SYSTEM}\n${avoidBlock}\nReturn ONLY JSON:\n${JSON_SHAPE}`,
-      prompt: reviewPrompt,
-      jsonMode: true,
-      temperature: 0.45,
-      maxOutputTokens: seedEmpty ? 2600 : 2200,
-      preferredProvider: provider,
-      anthropicModel: CLAUDE_SONNET_MODEL,
-    })
-    const reviewed = normalizeEnhanced(
-      extractJsonObject(reviewedText),
-      opts,
-      reviewProvider === 'anthropic' ? 'anthropic' : 'gemini'
-    )
-    const failures = validateFullRedesignPreflight(
-      reviewed,
-      opts.avoid?.takenFontKeys,
-      opts.avoid?.taken.map((taken) => taken.signatureConcept || '').filter(Boolean)
-    )
-    if (failures.length > 0) {
-      console.warn('[enhanceFullRedesignBrief] reviewed preflight rejected:', failures)
-      return fallback
+      const { text: reviewedText, provider: reviewProvider } = await generateTextWithFallback({
+        systemPrompt: `You are the independent principal design-engineering reviewer. No site build has started and none may start until you approve a complete, coherent, original, anti-AI design system. Output JSON only.\n\n${FULL_REDESIGN_DESIGN_SYSTEM}\n${avoidBlock}\nReturn ONLY JSON:\n${JSON_SHAPE}`,
+        prompt: reviewPrompt,
+        jsonMode: true,
+        temperature: 0.45 + reviewAttempt * 0.1,
+        maxOutputTokens: seedEmpty ? 2600 : 2200,
+        preferredProvider: provider,
+        anthropicModel: CLAUDE_SONNET_MODEL,
+      })
+      candidate = normalizeEnhanced(
+        extractJsonObject(reviewedText),
+        opts,
+        reviewProvider === 'anthropic' ? 'anthropic' : 'gemini'
+      )
+      failures = validateFullRedesignPreflight(
+        candidate,
+        opts.avoid?.takenFontKeys,
+        takenConcepts
+      )
+      if (failures.length === 0) return candidate
+      console.warn(
+        `[enhanceFullRedesignBrief] preflight review ${reviewAttempt} rejected:`,
+        failures
+      )
     }
-    return reviewed
+    const fallbackFailures = validateFullRedesignPreflight(
+      fallback,
+      opts.avoid?.takenFontKeys,
+      takenConcepts
+    )
+    if (fallbackFailures.length > 0) {
+      console.warn('[enhanceFullRedesignBrief] fallback preflight rejected:', fallbackFailures)
+    }
+    return fallback
   } catch (err) {
     console.warn('[enhanceFullRedesignBrief] falling back:', err)
     return fallback
