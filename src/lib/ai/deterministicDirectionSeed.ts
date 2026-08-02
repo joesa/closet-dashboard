@@ -20,6 +20,7 @@
  */
 
 import { hashSeed } from '@/lib/catalog/designFingerprint'
+import { paletteFingerprintKey } from '@/lib/design/customDesignFingerprint'
 
 export type DirectionPaletteRole = { role: string; hex: string; use: string }
 
@@ -153,7 +154,13 @@ function norm(value: string | undefined): string {
 }
 
 function paletteKeyOf(ground: Ground, accent: Accent): string {
-  return `${ground.id}+${accent.id}`
+  return paletteFingerprintKey([
+    { role: 'bg', hex: ground.bg },
+    { role: 'ink', hex: ground.ink },
+    { role: 'muted', hex: ground.muted },
+    { role: 'line', hex: ground.line },
+    { role: 'acc', hex: accent.hex },
+  ])
 }
 
 function fontKeyOf(pair: TypePair): string {

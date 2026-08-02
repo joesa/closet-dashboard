@@ -8,6 +8,7 @@ import {
 } from '@/lib/ai/fullRedesignDesignSystem'
 import { pickDeterministicDirection } from '@/lib/ai/deterministicDirectionSeed'
 import type { DesignAvoidList } from '@/lib/design/designAvoidList'
+import { paletteFingerprintKey } from '@/lib/design/customDesignFingerprint'
 
 export type EnhancedFullRedesignBrief = {
   /** One-line concept the site will be remembered by. */
@@ -302,8 +303,15 @@ function normalizeEnhanced(
   // having — and substitute the seeded direction for the axis it reused. The
   // fallback direction was already probed against the same taken keys.
   const takenFonts = new Set((opts.avoid?.takenFontKeys || []).map((k) => k.toLowerCase()))
+  const takenPalettes = new Set(
+    (opts.avoid?.takenPaletteKeys || []).map((k) => k.toLowerCase())
+  )
   const modelFontKey = `${modelTypography.display}+${modelTypography.body}`.toLowerCase()
   const fontCollides = takenFonts.has(modelFontKey)
+  const modelPalette = palette.length ? palette : fallback.palette
+  const modelPaletteKey = paletteFingerprintKey(modelPalette).toLowerCase()
+  const paletteCollides = takenPalettes.has(modelPaletteKey)
+  const directionCollides = fontCollides || paletteCollides
   const avoidDefaults = asStringList(o.avoidDefaults).length
     ? asStringList(o.avoidDefaults)
     : fallback.avoidDefaults
@@ -319,7 +327,7 @@ function normalizeEnhanced(
     rawDesignSystem.validation && typeof rawDesignSystem.validation === 'object'
       ? (rawDesignSystem.validation as Record<string, unknown>)
       : {}
-  const designSystem: FullRedesignPreflight = {
+  const modelDesignSystem: FullRedesignPreflight = {
     composition: asString(rawDesignSystem.composition, fallback.designSystem.composition),
     colorStrategy: asString(rawDesignSystem.colorStrategy, fallback.designSystem.colorStrategy),
     typeSystem: asString(rawDesignSystem.typeSystem, fallback.designSystem.typeSystem),
@@ -346,21 +354,27 @@ function normalizeEnhanced(
       rationale: asString(rawValidation.rationale),
     },
   }
+  const designSystem = directionCollides ? fallback.designSystem : modelDesignSystem
+  const resolvedOptimizedBrief = directionCollides
+    ? `${optimizedBrief}\n\nCOLLISION OVERRIDE — the proposed visual direction reused a platform design. Use this replacement as the final authority for every visual axis:\nPALETTE: ${fallback.palette.map((p) => `${p.role} ${p.hex}`).join(', ')}\nTYPE: ${fallback.typography.display} + ${fallback.typography.body}\nSIGNATURE: ${fallback.signatureElement}\nCOMPOSITION: ${fallback.designSystem.composition}\nDo not retain the rejected palette, geometry, motif system, or composition family.`
+    : optimizedBrief
 
   return lockAdminSeedInBrief(mergeExtractedServices(
     {
       signatureConcept: asString(o.signatureConcept, fallback.signatureConcept),
       materialWorld: asString(o.materialWorld, fallback.materialWorld),
-      palette: palette.length ? palette : fallback.palette,
+      palette: paletteCollides ? fallback.palette : modelPalette,
       typography: fontCollides ? fallback.typography : modelTypography,
-      signatureElement: asString(o.signatureElement, fallback.signatureElement),
+      signatureElement: directionCollides
+        ? fallback.signatureElement
+        : asString(o.signatureElement, fallback.signatureElement),
       copyRegister: asString(o.copyRegister, fallback.copyRegister),
       servicesToAdd: asStringList(o.servicesToAdd),
       avoidDefaults: fontCollides
         ? [...avoidDefaults, `type pairing "${modelFontKey}" — already used on this platform`]
         : avoidDefaults,
       designSystem,
-      optimizedBrief,
+      optimizedBrief: resolvedOptimizedBrief,
       inventedFromIntake: fallback.inventedFromIntake,
       source,
     },
