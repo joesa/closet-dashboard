@@ -5,6 +5,7 @@ import {
   lockAdminSeedInBrief,
 } from './enhanceFullRedesignBrief'
 import { validateFullRedesignPreflight } from './fullRedesignDesignSystem'
+import { paletteFingerprintKey } from '@/lib/design/customDesignFingerprint'
 
 describe('fallbackEnhancedBrief', () => {
   it('honors a short admin seed in the signature and optimized brief', () => {
@@ -125,6 +126,7 @@ describe('fallbackEnhancedBrief', () => {
       services: ['Closets'],
     })
     const takenPair = `${base.typography.display}+${base.typography.body}`.toLowerCase()
+    const takenPalette = paletteFingerprintKey(base.palette)
     const steered = fallbackEnhancedBrief({
       brandName: 'Ridgeline Closets',
       adminBrief: '',
@@ -134,7 +136,7 @@ describe('fallbackEnhancedBrief', () => {
       avoid: {
         taken: [],
         takenSkeletonKeys: [],
-        takenPaletteKeys: [],
+        takenPaletteKeys: [takenPalette],
         takenFontKeys: [takenPair],
         promptBlock: '',
       },
@@ -142,6 +144,9 @@ describe('fallbackEnhancedBrief', () => {
     expect(
       `${steered.typography.display}+${steered.typography.body}`.toLowerCase()
     ).not.toBe(takenPair)
+    expect(paletteFingerprintKey(steered.palette)).not.toBe(takenPalette)
+    expect(steered.designSystem.composition).not.toBe(base.designSystem.composition)
+    expect(steered.signatureElement).not.toBe(base.signatureElement)
   })
 
   it('regenerates a deterministic signature when the prior concept is taken', () => {

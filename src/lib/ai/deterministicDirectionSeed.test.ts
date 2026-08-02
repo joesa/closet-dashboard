@@ -7,6 +7,7 @@ import {
   pickDeterministicDirection,
 } from './deterministicDirectionSeed'
 import { scanDesignTells } from '@/lib/validation/designTellScanner'
+import { paletteFingerprintKey } from '@/lib/design/customDesignFingerprint'
 
 const BRANDS = [
   'Ridgeline Closets',
@@ -64,6 +65,15 @@ describe('pickDeterministicDirection', () => {
     })
     expect(directionKeys(second).paletteKey).not.toBe(taken.paletteKey)
     expect(second.seedIndex).toBeGreaterThan(first.seedIndex)
+    expect(second.composition).not.toBe(first.composition)
+    expect(second.signatureElement).not.toBe(first.signatureElement)
+  })
+
+  it('uses the same palette key format as artifact fingerprints', () => {
+    const direction = pickDeterministicDirection({ brandName: 'Ridgeline Closets' })
+    expect(directionKeys(direction).paletteKey).toBe(
+      paletteFingerprintKey(direction.palette)
+    )
   })
 
   it('probes past a taken type pairing', () => {
@@ -78,7 +88,17 @@ describe('pickDeterministicDirection', () => {
   })
 
   it('still returns a usable direction when everything is taken', () => {
-    const allPalettes = GROUND_POOL.flatMap((g) => ACCENT_POOL.map((a) => `${g.id}+${a.id}`))
+    const allPalettes = GROUND_POOL.flatMap((ground) =>
+      ACCENT_POOL.map((accent) =>
+        paletteFingerprintKey([
+          { role: 'bg', hex: ground.bg },
+          { role: 'ink', hex: ground.ink },
+          { role: 'muted', hex: ground.muted },
+          { role: 'line', hex: ground.line },
+          { role: 'acc', hex: accent.hex },
+        ])
+      )
+    )
     const allFonts = TYPE_PAIR_POOL.map((p) => `${p.display}+${p.body}`.toLowerCase())
     const d = pickDeterministicDirection({
       brandName: 'Ridgeline Closets',

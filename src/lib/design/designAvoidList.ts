@@ -142,6 +142,7 @@ export async function loadDesignAvoidList(opts: {
     }
 
     const taken: TakenDesign[] = []
+    const seenHashes = new Set<string>()
     for (const row of data) {
       const tenantId = typeof row.tenant_id === 'string' ? row.tenant_id : ''
       if (!tenantId) continue
@@ -153,6 +154,8 @@ export async function loadDesignAvoidList(opts: {
       ) {
         continue
       }
+      if (seenHashes.has(row.fingerprint.hash)) continue
+      seenHashes.add(row.fingerprint.hash)
       taken.push({
         tenantId,
         fingerprint: row.fingerprint,

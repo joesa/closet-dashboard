@@ -49,10 +49,11 @@ function stubSupabase(result: { data?: unknown; error?: { message: string } | nu
 describe('loadDesignAvoidList', () => {
   it('includes the tenant own redesign history', async () => {
     const fp = extractCustomDesignFingerprint(artifact([HERO, GRID, BAND]))
+    const otherFp = extractCustomDesignFingerprint(artifact([HERO, PROSE, BAND]))
     const { client } = stubSupabase({
       data: [
         { tenant_id: 'me', fingerprint: fp, signature_concept: 'mine', status: 'published' },
-        { tenant_id: 'other', fingerprint: fp, signature_concept: 'theirs', status: 'published' },
+        { tenant_id: 'other', fingerprint: otherFp, signature_concept: 'theirs', status: 'published' },
       ],
     })
     const avoid = await loadDesignAvoidList({ supabase: client, tenantId: 'me' })
@@ -73,6 +74,19 @@ describe('loadDesignAvoidList', () => {
       excludeFingerprintHash: fp.hash,
     })
     expect(avoid.taken.map((row) => row.tenantId)).toEqual(['other'])
+  })
+
+  it('counts an identical draft and published artifact as one prior design', async () => {
+    const fp = extractCustomDesignFingerprint(artifact([HERO, GRID, BAND]))
+    const { client } = stubSupabase({
+      data: [
+        { tenant_id: 'other', fingerprint: fp, signature_concept: 'published', status: 'published' },
+        { tenant_id: 'other', fingerprint: fp, signature_concept: 'draft', status: 'draft' },
+      ],
+    })
+    const avoid = await loadDesignAvoidList({ supabase: client, tenantId: 'me' })
+    expect(avoid.taken).toHaveLength(1)
+    expect(avoid.taken[0].signatureConcept).toBe('published')
   })
 
   it('returns an empty list when the query errors, instead of throwing', async () => {

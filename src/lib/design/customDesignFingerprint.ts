@@ -67,6 +67,19 @@ function colorBucket(hex: string): string | null {
   return `h${String(h).padStart(2, '0')}-l${l}-c${c}`
 }
 
+/** Canonical registry key for a named palette before CSS is generated. */
+export function paletteFingerprintKey(
+  colors: readonly { role: string; hex: string }[]
+): string {
+  return colors
+    .map(({ role, hex }) => {
+      const bucket = colorBucket(hex)
+      return bucket ? `${role.trim().toLowerCase()}:${bucket}` : ''
+    })
+    .filter(Boolean)
+    .join('|') || 'none'
+}
+
 const PALETTE_ROLES: Array<{ role: string; re: RegExp }> = [
   { role: 'bg', re: /^(?:bg|background|surface|paper|ground|canvas|base)\b/ },
   { role: 'ink', re: /^(?:ink|text|fg|foreground|body)\b/ },
