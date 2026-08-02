@@ -1,6 +1,3 @@
-import { getSupabaseAdmin } from '@/lib/supabase-admin'
-import { isLaunchBuildPaid } from '@/lib/intake/intakePaymentStage'
-
 export type AutoQaResult = { passed: boolean; reasons: string[] }
 
 export function runAutoQaChecks(opts: {
@@ -17,22 +14,7 @@ export function runAutoQaChecks(opts: {
   return { passed: reasons.length === 0, reasons }
 }
 
-export async function maybeAutoApproveTenant(tenantId: string, qa: AutoQaResult) {
-  if (process.env.AUTO_APPROVE_PROVISION_JOBS !== 'true') return
-  if (!qa.passed) return
-
-  const admin = getSupabaseAdmin()
-  const { data: intake } = await admin
-    .from('prospect_intakes')
-    .select('intake_tier, build_paid_at, balance_paid_at')
-    .eq('provisioned_contractor_id', tenantId)
-    .maybeSingle()
-
-  if (intake && !isLaunchBuildPaid(intake)) return
-
-  await admin
-    .from('tenants')
-    .update({ site_status: 'active' })
-    .eq('id', tenantId)
-    .eq('site_status', 'pending_approval')
-}
+// maybeAutoApproveTenant lived here behind AUTO_APPROVE_PROVISION_JOBS. It is
+// superseded by src/lib/launch/autoLaunch.ts, which is unconditional, runs the
+// first Full redesign before revealing the site, and — unlike the old bypass —
+// actually respects tenants.validation_status.

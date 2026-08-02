@@ -1,7 +1,11 @@
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { buildTemplateProvisionPayload } from '@/lib/provision/buildTemplateSiteConfig'
 import { assertNoDuplicateProvision } from '@/lib/provision/dedupe'
-import { runAutoQaChecks, maybeAutoApproveTenant } from '@/lib/provision/autoQa'
+import { runAutoQaChecks } from '@/lib/provision/autoQa'
+import {
+  autoApproveTenantSite,
+  startAutoLaunchRedesign,
+} from '@/lib/launch/autoLaunch'
 import { resolveSubdomain } from '@/lib/provision/resolveSubdomain'
 import { provisionTenant } from '@/lib/provision/provisionTenant'
 import { depositSatisfied } from '@/lib/intake/intakeTierGates'
@@ -188,7 +192,7 @@ export async function provisionFromIntakeJob(
       ...(aiWidgetConfigFromHints ? { aiWidgetConfig: aiWidgetConfigFromHints } : {}),
     })
 
-    await maybeAutoApproveTenant(result.tenantId, qa)
+    await kickAutoLaunch(result.tenantId)
     return
   }
 
@@ -294,7 +298,25 @@ export async function provisionFromIntakeJob(
       services: row.services ?? null,
       subdomain: subdomain!,
     })
-    await maybeAutoApproveTenant(result.tenantId, qa)
+    if (!qa.passed) {
+      console.warn('Auto-QA warnings:', qa.reasons.join(', '))
+    }
+    await kickAutoLaunch(result.tenantId)
+  }
+}
+
+/**
+ * Hand a freshly provisioned tenant to auto-launch: queue its first Full
+ * redesign, and only if that cannot start (no worker, kill switch off, already
+ * ran) reveal the site on the engine template instead. Never fail provisioning
+ * over this — the tenant exists either way and an admin can take it from here.
+ */
+async function kickAutoLaunch(tenantId: string): Promise<void> {
+  try {
+    const started = await startAutoLaunchRedesign(tenantId)
+    if (!started) await autoApproveTenantSite(tenantId, { reason: 'redesign_unavailable' })
+  } catch (err) {
+    console.error('[provisionFromIntake] auto-launch failed', tenantId, err)
   }
 }
 

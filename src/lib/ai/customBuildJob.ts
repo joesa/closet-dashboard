@@ -67,6 +67,13 @@ export type CustomBuildJob = {
   foundation_reply?: string | null
   /** True after Graphile max attempts or stale expire — show Re-queue. */
   dead_lettered?: boolean
+  /**
+   * Set only on the automatic first redesign a newly provisioned tenant gets
+   * (see src/lib/launch/autoLaunch.ts). Tells the worker to publish the draft
+   * and take the site live when this run finishes. Admin-triggered redesigns
+   * never set it, so they keep the existing review-then-publish flow.
+   */
+  auto_launch?: boolean
 }
 
 /**
