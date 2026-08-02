@@ -1,4 +1,5 @@
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import type { FullRedesignPreflight } from '@/lib/ai/fullRedesignDesignSystem'
 
 export type CustomBuildJobStatus =
   | 'queued'
@@ -17,6 +18,7 @@ export type CustomBuildLockedBrief = {
   copyRegister?: string
   servicesToAdd?: string[]
   avoidDefaults?: string[]
+  designSystem?: FullRedesignPreflight
   inventedFromIntake?: boolean
   source?: string
 }

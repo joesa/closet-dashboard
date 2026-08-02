@@ -45,6 +45,7 @@ import { HUMAN_COPY_VOICE_RULES_SURGICAL } from '@/lib/ai/humanCopyVoice'
 import {
   buildIntakeHintsForBrief,
   enhanceFullRedesignBrief,
+  fallbackEnhancedBrief,
   type EnhancedFullRedesignBrief,
 } from '@/lib/ai/enhanceFullRedesignBrief'
 import type { CustomBuildLockedBrief } from '@/lib/ai/customBuildJob'
@@ -110,7 +111,10 @@ import {
   buildInventedRedesignBriefNote,
   mergeCustomBuildNotes,
 } from '@/lib/ai/applyBriefServiceImages'
-import { FULL_REDESIGN_DESIGN_SYSTEM } from '@/lib/ai/fullRedesignDesignSystem'
+import {
+  FULL_REDESIGN_DESIGN_SYSTEM,
+  validateFullRedesignPreflight,
+} from '@/lib/ai/fullRedesignDesignSystem'
 import {
   validateCustomSiteArtifact,
   type ArtifactValidationIssue,
@@ -1875,6 +1879,15 @@ async function runFullGenerate(opts: {
           avoidDefaults: Array.isArray(resumeLocked.avoidDefaults)
             ? resumeLocked.avoidDefaults
             : [],
+          designSystem:
+            resumeLocked.designSystem ||
+            fallbackEnhancedBrief({
+              brandName: opts.brandName,
+              adminBrief,
+              hasImages,
+              engagementLabel,
+              services,
+            }).designSystem,
           optimizedBrief: resumeLocked.optimizedBrief,
           inventedFromIntake: !!resumeLocked.inventedFromIntake,
           source:
@@ -1898,6 +1911,19 @@ async function runFullGenerate(opts: {
           avoid: opts.avoidList,
         })
 
+  const preflightFailures = validateFullRedesignPreflight(
+    enhanced,
+    opts.avoidList.takenFontKeys,
+    opts.avoidList.taken
+      .map((taken) => taken.signatureConcept || '')
+      .filter(Boolean)
+  )
+  if (preflightFailures.length > 0) {
+    throw new Error(
+      `Full redesign design-system preflight failed before generation: ${preflightFailures.join('; ')}`
+    )
+  }
+
   const lockedBriefForJob: CustomBuildLockedBrief = {
     signatureConcept: enhanced.signatureConcept,
     optimizedBrief: enhanced.optimizedBrief,
@@ -1908,11 +1934,12 @@ async function runFullGenerate(opts: {
     copyRegister: enhanced.copyRegister,
     servicesToAdd: enhanced.servicesToAdd,
     avoidDefaults: enhanced.avoidDefaults,
+    designSystem: enhanced.designSystem,
     inventedFromIntake: enhanced.inventedFromIntake,
     source: enhanced.source,
   }
 
-  const systemPrompt = `You are the world's top notch designer and web engineer. You consult with all kinds of industries including healthcare, big tech companies, trading companies, top social media site, publish companies, to name a few, and you know the ins and outs of AWESOME bespoke designs and terrible ones. Completely redesign this site - ensuring that it is completely free from any AI-ish tells. It needs to be very bespoke and look like the client paid a $1 billionaire for it - design by a top notch designer/software engineer and architect on the planet. You produce production-ready marketing sites as raw HTML + CSS for real local businesses on this platform.
+  const systemPrompt = `You produce production-ready marketing sites as raw HTML + CSS for real local businesses on this platform. The complete design language below was created, independently reviewed, deterministically validated, and locked before this build began. Execute it precisely; do not fall back to a familiar house style.
 
 ${FULL_REDESIGN_DESIGN_SYSTEM}
 
@@ -2013,6 +2040,7 @@ DIRECTION LOCK:
 - Type: ${enhanced.typography.display} + ${enhanced.typography.body}
 - Signature element: ${enhanced.signatureElement}
 - Copy register: ${enhanced.copyRegister}
+- Validated design system: ${JSON.stringify(enhanced.designSystem)}
 - Avoid: ${enhanced.avoidDefaults.join('; ') || 'AI default clusters'}
 - Services to add: ${
         enhanced.servicesToAdd.length
@@ -2032,6 +2060,7 @@ DIRECTION LOCK:
 - Type: ${enhanced.typography.display} + ${enhanced.typography.body}
 - Signature element: ${enhanced.signatureElement}
 - Copy register: ${enhanced.copyRegister}
+- Validated design system: ${JSON.stringify(enhanced.designSystem)}
 - Avoid: ${enhanced.avoidDefaults.join('; ') || 'AI default clusters'}
 - Services to add: ${
         enhanced.servicesToAdd.length
