@@ -212,6 +212,34 @@ Note that the `[ALERT custom-build]` signals come from
 `/api/cron/process-custom-build-jobs`, which `vercel.json` schedules **once
 daily** on Hobby — that is not sufficient alerting for a self-hosted worker.
 
+### Auto-deploy
+
+There is no deploy-on-push — that was a Render feature. `worker-auto-update.timer`
+replaces it by polling `origin/main` every 5 minutes:
+
+```bash
+sudo systemctl enable --now worker-auto-update.timer
+systemctl list-timers worker-auto-update.timer
+journalctl -u worker-auto-update.service -n 50
+```
+
+Pull-based on purpose. The security list allows no inbound port but SSH, so a
+webhook would mean opening one and a GitHub Actions deploy would mean handing a
+private key to a CI runner. Polling keeps every credential on the box.
+
+It only rebuilds when something that actually ships in the image changed —
+`src/`, `worker/`, `package.json`, `package-lock.json`, `.dockerignore`. A
+docs-only commit fast-forwards the checkout and leaves the container alone.
+
+It cannot interrupt work: `redeploy.sh` aborts when a job holds a lock, and
+aborts *before* pulling, so the checkout is untouched and the next tick retries
+the same change. An in-flight deferral is logged as normal, not as a failure.
+
+Bootstrap installs the units but leaves the timer **disabled** — on a fresh box
+`.env.local` has no secrets, and a timer firing first would start a container
+that crash-loops on a missing `DATABASE_URL`. Enable it after the first good
+manual deploy.
+
 ### Stale locks after a restart
 
 A worker that dies mid-job keeps the row lock. Graphile hands that job to nobody

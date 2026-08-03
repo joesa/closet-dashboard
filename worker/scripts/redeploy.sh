@@ -21,8 +21,11 @@ COMPOSE="worker/docker-compose.prod.yml"
 echo "== disk before =="
 df -h --output=source,size,used,avail,pcent . | tail -1
 
-git pull --ff-only
-
+# The guard runs BEFORE the pull, deliberately. If it aborted after pulling, the
+# clone would sit ahead of the running image, and an automated caller comparing
+# HEAD to origin/main would conclude it was already up to date and never deploy
+# the change at all. Abort must leave the checkout exactly as it found it.
+#
 # Never recreate the container out from under a running job. Doing so kills the
 # worker while it still holds the row lock, and Graphile hands that job to
 # nobody until the lock expires — 4 hours by default. It looks frozen mid-run
@@ -49,6 +52,8 @@ if docker compose -f "$COMPOSE" ps --status running --quiet | grep -q .; then
     [ -z "${FORCE:-}" ] && exit 1
   fi
 fi
+
+git pull --ff-only
 
 # WORKER_MEM_LIMIT is a compose substitution variable read from the shell, so it
 # has to be exported here rather than living in .env.local. Default suits a 6GB

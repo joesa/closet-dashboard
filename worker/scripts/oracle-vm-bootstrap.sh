@@ -98,6 +98,40 @@ UNIT
   sudo systemctl daemon-reload
   sudo systemctl enable --now docker-prune.timer
 
+  # Pull-based auto-deploy. There is no deploy-on-push here — that was a Render
+  # feature — so without this the box silently drifts behind main.
+  log "Installing auto-update timer (polls origin/main every 5 minutes)"
+  sudo tee /etc/systemd/system/worker-auto-update.service >/dev/null <<UNIT
+[Unit]
+Description=Redeploy the Graphile worker when origin/main changes
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=$USER
+WorkingDirectory=$APP_DIR
+ExecStart=$APP_DIR/worker/scripts/auto-update.sh
+UNIT
+  sudo tee /etc/systemd/system/worker-auto-update.timer >/dev/null <<'UNIT'
+[Unit]
+Description=Poll origin/main for worker changes
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=5min
+# Do not fire every missed tick at once after the VM has been off.
+Persistent=false
+
+[Install]
+WantedBy=timers.target
+UNIT
+  sudo systemctl daemon-reload
+  # Deliberately NOT enabled here. On a fresh box .env.local has no secrets yet,
+  # and a timer that fired first would build and start a container that
+  # crash-loops on a missing DATABASE_URL. Enabled by hand after the first
+  # successful manual deploy — see the closing instructions.
+
   log "Fetching the dashboard into $APP_DIR"
   if [ -d "$APP_DIR/.git" ]; then
     git -C "$APP_DIR" fetch --quiet origin "$REPO_BRANCH"
@@ -134,6 +168,15 @@ Bootstrap complete. Two things left, in order:
      docker compose -f $COMPOSE_FILE logs -f
 
    Expect: [worker] connected — listening for jobs
+
+3. Once that is healthy, turn on auto-deploy:
+     sudo systemctl enable --now worker-auto-update.timer
+
+   Polls origin/main every 5 minutes and rebuilds only when something that
+   ships in the image changed. It will not recreate the container while a job
+   is running — it defers to the next tick.
+     systemctl list-timers worker-auto-update.timer
+     journalctl -u worker-auto-update.service -n 50
 ------------------------------------------------------------------
 EOF
 
