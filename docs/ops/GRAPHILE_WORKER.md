@@ -96,15 +96,22 @@ Host requirements: Docker Engine + compose plugin, outbound HTTPS only. The
 worker opens **no inbound ports** — it connects out to Supabase and the AI APIs,
 so it needs no public IP, no reverse proxy, and no tunnel.
 
+On a fresh VM, `worker/scripts/oracle-vm-bootstrap.sh` does the whole setup
+(Docker Engine + compose plugin, clone, `.env.local` staged from the example,
+Docker enabled at boot so the worker survives a reboot). It is idempotent and
+stops before starting the worker, since the container is useless until real
+secrets are in place:
+
 ```bash
-git clone https://github.com/joesa/closet-dashboard.git
-cd closet-dashboard
-cp worker/worker.env.example .env.local   # then fill in real values
+curl -fsSL https://raw.githubusercontent.com/joesa/closet-dashboard/main/worker/scripts/oracle-vm-bootstrap.sh | bash
+nano ~/closet-dashboard/.env.local          # fill in real values
+cd ~/closet-dashboard
 docker compose -f worker/docker-compose.prod.yml up -d --build
 docker compose -f worker/docker-compose.prod.yml logs -f
 ```
 
-Logs should show: `[worker] connected — listening for jobs`.
+Logs should show `[worker] starting Graphile Worker (concurrency=3)` with the
+six task IDs, then `[worker] connected — listening for jobs`.
 
 Notes:
 
@@ -121,6 +128,30 @@ Concurrency defaults to **3**, overridable with `WORKER_CONCURRENCY`. It was
 pinned to 1 only because Render's 512MB Starter box OOMed on two concurrent Full
 redesigns; on a ≥2GB host the real ceiling is the **Supabase session connection
 limit**, since the pool opens `WORKER_CONCURRENCY + 2` connections.
+
+Measured on 2026-08-02: the Supabase instance reports `max_connections = 60`
+(3 superuser-reserved) with ~22 backends already in use by the Next app. At the
+default 3 the worker takes 5 of the ~35 spare, so the headroom is real but not
+unlimited — re-measure before going past ~10, and remember every Vercel
+serverless instance opens its own pool against the same 60.
+
+### arm64 verification (done — 2026-08-02)
+
+The Ampere host is arm64, and `sharp` is the one native dependency. It is
+reached lazily (`customSiteAssets.ts` → `await import('@/lib/images/optimizeUpload')`),
+so a bad binary would surface mid-redesign rather than at boot. This was checked
+by building the image for `linux/arm64` and exercising it under emulation:
+
+- `sharp` 0.35.3 / libvips 8.18.3 loads and both encodes WEBP and resizes PNG.
+  `@img/sharp-linux-arm64` is already pinned in `package-lock.json`.
+- `tsx` resolves the `@/*` alias at runtime, including the dynamic import above,
+  and all six task modules load.
+- The image boots as the unprivileged `node` user, registers all six tasks at
+  `concurrency=3`, and opens a TLS session to the Supabase pooler.
+
+So the arm64 risk is retired ahead of provisioning. What is still VM-only is
+everything that needs a *running* job: crash-resume, dead-letter, `jobKey`
+dedupe, three concurrent redesigns under real memory, and auto-launch.
 
 ### Worker env checklist
 
