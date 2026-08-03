@@ -23,6 +23,33 @@ df -h --output=source,size,used,avail,pcent . | tail -1
 
 git pull --ff-only
 
+# Never recreate the container out from under a running job. Doing so kills the
+# worker while it still holds the row lock, and Graphile hands that job to
+# nobody until the lock expires — 4 hours by default. It looks frozen mid-run
+# next to an idle worker, which is a genuinely confusing thing to debug.
+#
+# Skipped when nothing is running yet (first deploy). FORCE=1 overrides, and
+# then the recovery is:
+#   force_unlock_workers(array['<locked_by>'])   -- see worker/src/lockedJobs.ts
+if docker compose -f "$COMPOSE" ps --status running --quiet | grep -q .; then
+  echo "== checking for in-flight jobs =="
+  if LOCKED=$(docker compose -f "$COMPOSE" exec -T graphile-worker \
+      ./node_modules/.bin/tsx --tsconfig worker/tsconfig.json worker/src/lockedJobs.ts 2>&1 | tail -1) \
+      && [ "$LOCKED" -eq "$LOCKED" ] 2>/dev/null; then
+    if [ "$LOCKED" -gt 0 ] && [ -z "${FORCE:-}" ]; then
+      echo "ABORT: $LOCKED job(s) currently locked by the worker." >&2
+      echo "Redeploying now would strand them for ~4h. Wait, or re-run with FORCE=1." >&2
+      exit 1
+    fi
+    echo "in-flight jobs: $LOCKED"
+  else
+    # A failed check must not read as "nothing running".
+    echo "ABORT: could not determine in-flight job count ($LOCKED)." >&2
+    echo "Re-run with FORCE=1 if you are sure nothing is mid-job." >&2
+    [ -z "${FORCE:-}" ] && exit 1
+  fi
+fi
+
 # WORKER_MEM_LIMIT is a compose substitution variable read from the shell, so it
 # has to be exported here rather than living in .env.local. Default suits a 6GB
 # host; export 8g before running this on a 12GB one.

@@ -212,6 +212,27 @@ Note that the `[ALERT custom-build]` signals come from
 `/api/cron/process-custom-build-jobs`, which `vercel.json` schedules **once
 daily** on Hobby — that is not sufficient alerting for a self-hosted worker.
 
+### Stale locks after a restart
+
+A worker that dies mid-job keeps the row lock. Graphile hands that job to nobody
+until the lock expires — **4 hours** by default — so it sits frozen at whatever
+page it reached, next to a worker that looks perfectly healthy and idle. This is
+not a crash-resume failure; resume works, it just cannot start until the lock
+clears.
+
+`stop_grace_period` is 60s, which a multi-minute Claude call will not fit
+inside, so **any** recreate during a job produces this.
+
+```sql
+select id, attempts, locked_at, locked_by from graphile_worker.jobs
+ where locked_at is not null;
+select graphile_worker.force_unlock_workers(array['<locked_by>']);
+```
+
+The job then gets picked up within seconds and resumes from its checkpoint with
+`attempts` incremented. `worker/scripts/redeploy.sh` refuses to recreate the
+container while any job is locked (`FORCE=1` overrides).
+
 ### Disk
 
 Steady-state usage is flat. The job path writes nothing to local disk —
