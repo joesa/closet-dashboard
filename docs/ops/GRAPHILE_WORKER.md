@@ -173,12 +173,30 @@ Kept in sync with `worker/worker.env.example` via CI (`npm run check:worker-env`
 ```
 - DATABASE_URL
 - NEXT_PUBLIC_SUPABASE_URL
+- NEXT_PUBLIC_SUPABASE_ANON_KEY
 - SUPABASE_SERVICE_ROLE_KEY
 - ANTHROPIC_API_KEY
 - GEMINI_API_KEY
 - OPENAI_API_KEY
 - CUSTOM_SITE_CLAUDE_MODEL
+- TENANT_BASE_DOMAIN
+- REVALIDATE_SECRET
+- RESEND_API_KEY
 ```
+
+The last three were absent from this list until the first real deploy, and all
+three fail *quietly* rather than loudly — worth knowing when a job "succeeds"
+but the result is wrong:
+
+| Missing | Consequence |
+| --- | --- |
+| `TENANT_BASE_DOMAIN` | `resolveSubdomain()` falls back to `localhost`; tenants provision onto subdomains that resolve nowhere |
+| `REVALIDATE_SECRET` | published tenant sites can keep serving stale content |
+| `RESEND_API_KEY` | `sendIntakeLaunchEmail()` returns early; auto-launch finishes and nobody is told |
+
+Everything else the task path reads has a working default:
+`AUTO_LAUNCH_REDESIGN` (enabled unless `'false'`), `CUSTOM_SITE_GEMINI_MODEL`,
+`CUSTOM_SITE_OPENAI_MODEL`, `PROVISION_BATCH_SIZE`, `PROVISION_MAX_ATTEMPTS`.
 
 ### Monitoring
 

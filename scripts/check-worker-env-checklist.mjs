@@ -17,10 +17,18 @@ const docsPath = path.join(root, 'docs/ops/GRAPHILE_WORKER.md')
 const REQUIRED_KEYS = [
   'DATABASE_URL',
   'NEXT_PUBLIC_SUPABASE_URL',
+  'NEXT_PUBLIC_SUPABASE_ANON_KEY',
   'SUPABASE_SERVICE_ROLE_KEY',
   'ANTHROPIC_API_KEY',
   'GEMINI_API_KEY',
   'OPENAI_API_KEY',
+  // Below are read by the task call path but were missing from this list until
+  // the first real deploy. TENANT_BASE_DOMAIN is the dangerous one: it falls
+  // back to 'localhost' in resolveSubdomain(), so an unset value does not throw
+  // — it silently provisions tenants onto unreachable subdomains.
+  'TENANT_BASE_DOMAIN',
+  'REVALIDATE_SECRET',
+  'RESEND_API_KEY',
 ]
 
 /**
