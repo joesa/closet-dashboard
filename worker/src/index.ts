@@ -26,6 +26,25 @@ if (!connectionString) {
   process.exit(1)
 }
 
+/**
+ * Concurrent jobs per worker process. Historically pinned to 1 because Render's
+ * 512MB Starter box OOMed on two Full redesigns; on a ≥2GB host that limit is
+ * just a throughput cap (every intake queued behind one lane). Raise via
+ * WORKER_CONCURRENCY, bounded by the Supabase session connection limit.
+ */
+function getWorkerConcurrency(): number {
+  const raw = process.env.WORKER_CONCURRENCY?.trim()
+  if (!raw) return 3
+  const parsed = Number(raw)
+  if (!Number.isInteger(parsed) || parsed < 1) {
+    console.warn(
+      `[worker] ignoring invalid WORKER_CONCURRENCY=${raw} (want a positive integer); using 3`
+    )
+    return 3
+  }
+  return parsed
+}
+
 const taskList: TaskList = {
   [TASK_FULL_REDESIGN]: fullRedesignTask,
   [TASK_PROVISION_TENANT]: provisionTenantTask,
@@ -36,15 +55,18 @@ const taskList: TaskList = {
 }
 
 async function main() {
+  const concurrency = getWorkerConcurrency()
+
   console.log(
-    '[worker] starting Graphile Worker (concurrency=1). Tasks:',
+    `[worker] starting Graphile Worker (concurrency=${concurrency}). Tasks:`,
     Object.keys(taskList).join(', ')
   )
 
-  const pgPool = createGraphilePool(connectionString)
+  // One dedicated LISTEN client + one per concurrent job.
+  const pgPool = createGraphilePool(connectionString, { max: concurrency + 2 })
   const runner = await run({
     pgPool,
-    concurrency: 1,
+    concurrency,
     pollInterval: 1000,
     // Install / upgrade graphile_worker schema on boot.
     taskList,

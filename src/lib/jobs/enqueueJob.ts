@@ -28,7 +28,7 @@ export type EnqueueJobOptions = {
 }
 
 /**
- * Enqueue a Graphile Worker task. The always-on worker (Render) picks it up —
+ * Enqueue a Graphile Worker task. The always-on worker process picks it up —
  * never run the heavy work inside a Vercel function.
  */
 export async function enqueueJob(
