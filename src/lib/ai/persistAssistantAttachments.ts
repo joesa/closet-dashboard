@@ -77,15 +77,16 @@ export function adminWantsAttachmentsOnSite(message: string): boolean {
     return false
   }
   return (
-    /\b(use|set|put|place|add|replace|upload|make|as)\b[\s\S]{0,80}\b(hero|background|image|photo|logo|before|after|service|product|gallery|portfolio|page)\b/i.test(
+    /\b(use|set|put|place|add|replace|upload|make|feature|show|display|insert|embed|publish)\b[\s\S]{0,100}\b(hero|banner|background|image|photo|picture|logo|before|after|service|product|gallery|portfolio|page|site|website|section|card)\b/i.test(
       t
     ) ||
-    /\b(hero|background|logo|before|after|gallery|portfolio)\b[\s\S]{0,60}\b(image|photo|pic|this|these|attached)\b/i.test(
+    /\b(hero|banner|background|logo|before|after|gallery|portfolio|service|product|page|section|card)\b[\s\S]{0,80}\b(image|photo|picture|pic|file|this|these|attached|uploaded)\b/i.test(
       t
     ) ||
-    /\b(this|these|the)\s+(image|photo|pic|attachment|attached)\b[\s\S]{0,40}\b(as|for|on|to)\b/i.test(
+    /\b(this|these|the|attached|uploaded)\s+(image|photo|picture|pic|file|attachment)s?\b[\s\S]{0,80}\b(as|for|on|onto|in|inside|to)\b[\s\S]{0,60}\b(hero|banner|background|logo|before|after|gallery|portfolio|service|product|page|site|website|section|card)\b/i.test(
       t
     ) ||
-    /\buse\s+(this|these|it|them)\b/i.test(t)
+    /\b(use|feature|show|display|insert|embed|publish)\s+(this|these|it|them)\b/i.test(t) ||
+    /\bmake\s+(this|these|it|them)\s+(the|my|our|a|an)\s+(hero|banner|background|logo|before|after|gallery|portfolio|service|product)\b/i.test(t)
   )
 }

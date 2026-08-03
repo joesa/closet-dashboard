@@ -290,6 +290,17 @@ describe('surgical + intake copy model', () => {
   })
 })
 
+describe('custom-build attachment placement policy', () => {
+  it('keeps attachments reference-only unless the admin explicitly requests placement', () => {
+    const src = readFileSync(join(__dirname, 'generateCustomSite.ts'), 'utf8')
+    expect(src).toContain('adminWantsAttachmentsOnSite')
+    expect(src).toContain('placeableAssetUrls')
+    expect(src).toContain('REFERENCE-ONLY ATTACHMENTS')
+    expect(src).toContain('do not insert, embed, upload, publish, or reproduce')
+    expect(src).not.toContain('apply the implied fix')
+  })
+})
+
 describe('surgical hero image helpers', () => {
   const oldUrl =
     'https://example.supabase.co/storage/v1/object/public/site-assets/custom/t/old.jpg'

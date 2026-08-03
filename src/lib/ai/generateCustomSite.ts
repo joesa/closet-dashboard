@@ -151,6 +151,7 @@ import {
   type DesignAvoidList,
 } from '@/lib/design/designAvoidList'
 import { extractCustomDesignFingerprint } from '@/lib/design/customDesignFingerprint'
+import { adminWantsAttachmentsOnSite } from '@/lib/ai/persistAssistantAttachments'
 
 export type CustomBuildIntent = 'full' | 'surgical'
 
@@ -1078,11 +1079,13 @@ export async function generateCustomSiteDraft(opts: {
   const hydratedImages = await hydrateAdminImagesForModel(opts.images)
   const attachmentImages = hydratedImages.vision
   const attachedAssetUrls = hydratedImages.assetUrls
+  const placeAttachmentsOnSite = adminWantsAttachmentsOnSite(opts.prompt || '')
+  const placeableAssetUrls = placeAttachmentsOnSite ? attachedAssetUrls : []
 
   if (intent === 'surgical' && base) {
     const route = classifySurgicalIntent(opts.prompt || '', {
       hasImages: !!(opts.images && opts.images.length > 0),
-      attachedAssetUrls,
+      attachedAssetUrls: placeableAssetUrls,
     })
 
     if (route.kind === 'hero_image') {
@@ -1090,7 +1093,7 @@ export async function generateCustomSiteDraft(opts: {
         tenantId: opts.tenantId,
         prompt: opts.prompt || '',
         base,
-        attachedAssetUrls,
+        attachedAssetUrls: placeableAssetUrls,
       })
       if (heroShortcut) return heroShortcut
     }
@@ -1236,11 +1239,13 @@ export async function generateCustomSiteDraft(opts: {
      * Prompt attachments already uploaded to the CDN — use these exact URLs
      * when the admin asks to place an image (hero, gallery, etc.).
      */
-    attachedAssetUrls,
+    attachedAssetUrls: placeableAssetUrls,
+    attachmentsAreReferenceOnly:
+      attachedAssetUrls.length > 0 && !placeAttachmentsOnSite,
     /** Uploaded CDN assets the admin can reference without pasting URLs. */
     // Cap media list so Full redesign prompts stay within the serverless time budget.
     mediaLibrary: [
-      ...attachedAssetUrls.map((url, i) => ({
+      ...placeableAssetUrls.map((url, i) => ({
         kind: 'image' as const,
         name: `prompt-attachment-${i + 1}`,
         url,
@@ -1334,10 +1339,10 @@ export async function generateCustomSiteDraft(opts: {
     intent === 'surgical' &&
     base &&
     looksLikeHeroImageSurgicalRequest(opts.prompt || '') &&
-    attachedAssetUrls.length > 0
+    placeableAssetUrls.length > 0
   ) {
     const heroUrl =
-      attachedAssetUrls.find((u) => looksLikeImageUrl(u)) || attachedAssetUrls[0]
+      placeableAssetUrls.find((u) => looksLikeImageUrl(u)) || placeableAssetUrls[0]
     const homeHtml = result.config.pages['/']?.html || ''
     if (heroUrl && !homeHtml.includes(heroUrl)) {
       const fit = resolveHeroImageFit(opts.prompt || '')
@@ -1830,6 +1835,7 @@ async function runFullGenerate(opts: {
         .filter((u): u is string => typeof u === 'string' && /^https:\/\//i.test(u))
         .slice(0, 4)
     : []
+  const attachmentsAreReferenceOnly = opts.context.attachmentsAreReferenceOnly === true
   const adminBrief = (opts.prompt || '').trim()
   const seedEmpty = !adminBrief
   const hasBrief = adminBrief.length > 0 || hasImages || attachedAssetUrls.length > 0
@@ -2046,8 +2052,8 @@ ALLOWED CSS-only interactivity: :hover/:focus-within, sticky nav, scroll-behavio
 ${
   attachedAssetUrls.length
     ? `ATTACHED CDN ASSETS (already uploaded — use these EXACT https URLs in HTML when the brief asks for a hero/photo; object-fit:contain or cover so the whole subject stays in view; do not invent other image URLs for those placements):\n${attachedAssetUrls.map((u, i) => `${i + 1}. ${u}`).join('\n')}`
-    : hasImages
-      ? `REFERENCE IMAGES — part of the creative brief (vision only). Match feel/craft. Do not invent image URLs; only use https URLs from context.mediaLibrary.`
+    : hasImages || attachmentsAreReferenceOnly
+      ? `REFERENCE-ONLY ATTACHMENTS — vision/context only. Use them to understand the request, visual problem, subject, or desired feel. The admin did NOT explicitly ask to place these files on the site: do not insert, embed, upload, publish, or reproduce them in page HTML/CSS, and do not choose a visually similar mediaLibrary URL as a substitute.`
       : ''
 }
 
@@ -2856,6 +2862,7 @@ async function runSurgicalGenerate(opts: {
         (u): u is string => typeof u === 'string' && /^https?:\/\//i.test(u)
       )
     : []
+  const attachmentsAreReferenceOnly = opts.context.attachmentsAreReferenceOnly === true
   const mediaOrHeroSwap =
     hasImages ||
     attachedUrls.length > 0 ||
@@ -2895,8 +2902,10 @@ Hard rules:
 11. When the admin asks to add/embed a video (or says they don't see the video), use a URL from mediaLibrary in the business context — do NOT ask them to paste a URL that is already listed there. Insert a <video controls><source src="URL" type="video/mp4"></video> block after the hero on "/".
 12. ${HUMAN_COPY_VOICE_RULES_SURGICAL}
 ${
-  hasImages || attachedUrls.length
+  attachedUrls.length
     ? `13. ATTACHED IMAGES: the admin attached image(s). Prefer context.attachedAssetUrls / mediaLibrary https URLs — those are already on the CDN and MUST be used verbatim when placing the image on the site (hero, section, etc.). Use vision to understand crop/composition; keep the whole subject visible (background-size:contain / object-fit:contain, or carefully framed cover when they ask to fill). Do not invent other image URLs for those placements.`
+    : hasImages || attachmentsAreReferenceOnly
+      ? `13. REFERENCE-ONLY ATTACHMENTS: use the attached files only to understand the request, visual problem, subject, or desired direction. The admin did NOT explicitly ask to place them on the site. Do not insert, embed, upload, publish, or reproduce them in HTML/CSS, and do not replace existing site imagery because attachments were provided.`
     : ''
 }
 14. NO SPEC SHEET TAGS: NEVER output artificial reference tags, spec sheet codes, or engineering document markers like "DOC: INQ-LOG", "REV: 2024", "REF: 01 / 02 / 03", "DOC. REF:", "Case File", "System Spec //", "FIG 1", or programming comment syntax ("//") on public UI content. Badges and labels must be natural, human, and industry-appropriate.`
@@ -2910,7 +2919,7 @@ ${
   const userPrompt = `Surgical edit for "${opts.brandName}".
 
 ${attachedBlock}Admin request (apply ONLY this):
-${opts.prompt || (hasImages ? 'See the attached image(s) — apply the implied fix or match the reference as closely as the existing design allows.' : 'No specific change requested — return an empty pages object and ask for clarification.')}
+${opts.prompt || 'No specific change requested. Treat any attachments as reference-only, return an empty pages object, and ask what should change.'}
 
 Existing custom site JSON (source of truth — preserve everything not explicitly changed):
 ${JSON.stringify(opts.base).slice(0, 70000)}
