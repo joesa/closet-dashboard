@@ -20,13 +20,13 @@ import type { ProspectIntakeRow } from '@/lib/intake/getIntakeByToken'
  * Auto-launch — a submitted intake becomes a live, bespoke site with no admin click.
  *
  * Sequence, all unattended:
- *   provisionFromIntakeJob → startAutoLaunchRedesign()   (enqueue first Full redesign)
- *   full_redesign worker   → finishAutoLaunch()          (publish draft, then reveal)
+ *   provisionFromIntakeJob → deploy + validate engine site
+ *   full_redesign worker   → verify admin-bypass engine preview, then redesign
+ *                          → finishAutoLaunch()          (publish draft, then reveal)
  *                          → failAutoLaunch()            (dead-lettered: reveal template)
  *
- * Deliberately ordered redesign-before-reveal: the tenant stays gated at
- * pending_approval while the redesign runs, so the public never sees the
- * generic engine template. Costs a few minutes of time-to-visible.
+ * The intake-built engine site exists first and is viewable to admins through
+ * admin_bypass. The tenant remains gated from the public while redesign runs.
  *
  * What this does NOT do: bypass any quality or payment gate. The publish gate
  * (validateCustomSiteArtifact + design-uniqueness) and the launch-payment gate

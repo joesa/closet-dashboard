@@ -7,6 +7,7 @@ import {
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { isCustomSiteConfig } from '@/lib/customSite'
 import { failAutoLaunch, finishAutoLaunch } from '@/lib/launch/autoLaunch'
+import { assertInitialAdminPreviewReady } from '@/lib/launch/initialAdminPreview'
 
 export type FullRedesignPayload = {
   tenantId: string
@@ -43,6 +44,34 @@ export const fullRedesignTask: Task = async (payload, helpers) => {
 
   const current = await getCustomBuildJob(tenantId)
   const intent = current?.intent === 'surgical' ? 'surgical' : 'full'
+
+  if (current?.auto_launch === true) {
+    await setCustomBuildJob(tenantId, {
+      ...current,
+      status: 'queued',
+      pass: 'initial-site:verifying',
+      reply: 'Verifying the intake-built site is deployed and available to admin preview before redesign…',
+    })
+    try {
+      await assertInitialAdminPreviewReady(tenantId)
+      helpers.logger.info(
+        JSON.stringify({ event: 'auto_launch_initial_preview_ready', tenantId, jobId, attempt })
+      )
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      await setCustomBuildJob(tenantId, {
+        ...current,
+        status: 'queued',
+        pass: 'initial-site:waiting',
+        reply: `Waiting for the intake-built admin preview before redesign: ${message}`,
+        error: null,
+      })
+      helpers.logger.warn(
+        JSON.stringify({ event: 'auto_launch_initial_preview_wait', tenantId, jobId, attempt, error: message })
+      )
+      throw err
+    }
+  }
 
   if (
     current &&
