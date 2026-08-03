@@ -47,3 +47,9 @@ et -a
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# OCI / Oracle Cloud credentials — never commit (this repo is public)
+my_oci
+.oci/
+oci_api_key*
+*.oci.config
