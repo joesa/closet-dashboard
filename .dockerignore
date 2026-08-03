@@ -1,0 +1,15 @@
+# Keep host build output OUT of the image. node_modules matters most: copying a
+# host (x86_64/darwin) tree into an arm64 image ships the wrong sharp/libvips
+# binaries and the worker fails at runtime, deep in the redesign path.
+node_modules
+.next
+.git
+.github
+
+# Secrets are injected via env_file at run time, never baked into the image.
+.env
+.env.*
+
+npm-debug.log*
+*.tsbuildinfo
+.DS_Store

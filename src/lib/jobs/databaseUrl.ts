@@ -42,8 +42,25 @@ function normalizeConnectionString(url: string): string {
   return out
 }
 
+/** Enqueue-side default. The Next app opens a pool per serverless instance, so
+ * this stays small; only the always-on worker widens it (see GraphilePoolOptions). */
+const DEFAULT_POOL_MAX = 2
+
+export type GraphilePoolOptions = {
+  /**
+   * Max pooled connections. Graphile Worker needs one dedicated LISTEN client
+   * plus one per concurrent job, so the worker passes `concurrency + 2`.
+   * Leave unset everywhere else — raising it app-wide multiplies connections
+   * across every Next instance and exhausts the Supabase session limit.
+   */
+  max?: number
+}
+
 /** pg.Pool options that work with Supabase session pooler TLS. */
-export function graphilePoolConfig(connectionString?: string): PoolConfig {
+export function graphilePoolConfig(
+  connectionString?: string,
+  opts?: GraphilePoolOptions
+): PoolConfig {
   const cs = normalizeConnectionString(
     connectionString?.trim() || getGraphileDatabaseUrl()
   )
@@ -51,12 +68,15 @@ export function graphilePoolConfig(connectionString?: string): PoolConfig {
     connectionString: cs,
     // Supabase presents a chain that Node rejects under verify-full aliases.
     ssl: { rejectUnauthorized: false },
-    max: 2,
+    max: opts?.max ?? DEFAULT_POOL_MAX,
   }
 }
 
-export function createGraphilePool(connectionString?: string): Pool {
-  const pool = new Pool(graphilePoolConfig(connectionString))
+export function createGraphilePool(
+  connectionString?: string,
+  opts?: GraphilePoolOptions
+): Pool {
+  const pool = new Pool(graphilePoolConfig(connectionString, opts))
   // Graphile Worker requires both listeners when you pass a custom pgPool.
   pool.on('error', (err) => {
     console.error('[graphile-pool] idle client error:', err.message)

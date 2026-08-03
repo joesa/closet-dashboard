@@ -16,7 +16,7 @@ function authorize(req: Request): boolean {
 
 const GONE = {
   error:
-    'Deprecated. Full redesign is processed by Graphile Worker via enqueueJob(full_redesign). Use DATABASE_URL + the Render worker.',
+    'Deprecated. Full redesign is processed by Graphile Worker via enqueueJob(full_redesign). Use DATABASE_URL + the always-on worker.',
   deprecated: true,
 }
 

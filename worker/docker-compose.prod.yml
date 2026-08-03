@@ -1,0 +1,31 @@
+# Production Graphile Worker (Oracle Always Free VM, or any always-on ≥2GB host).
+#
+#   cd closet-dashboard
+#   docker compose -f worker/docker-compose.prod.yml up -d --build
+#   docker compose -f worker/docker-compose.prod.yml logs -f
+#
+# Differs from the repo-root docker-compose.worker.yml, which is a LOCAL DEV file:
+# that one bind-mounts the source and runs `npm ci` as its command, so with a
+# restart policy it would reinstall the full dependency tree on every container
+# start and every VM reboot. This one bakes an image instead.
+services:
+  graphile-worker:
+    build:
+      # Repo root — the worker imports out of src/ via the @/* alias.
+      context: ..
+      dockerfile: worker/Dockerfile
+    env_file:
+      # Same secrets the Next app uses. See worker/worker.env.example.
+      - ../.env.local
+    restart: unless-stopped
+    # Render rotated logs for you; a bare VM does not. Without this the JSON
+    # job events fill the boot volume and the worker dies with ENOSPC.
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '5'
+    # Full redesign holds a multi-minute Claude call plus page HTML in memory.
+    # Sized for concurrency=3 with headroom on a 12GB Ampere instance.
+    mem_limit: 6g
+    stop_grace_period: 60s
