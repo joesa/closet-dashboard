@@ -26,6 +26,12 @@ services:
         max-size: '10m'
         max-file: '5'
     # Full redesign holds a multi-minute Claude call plus page HTML in memory.
-    # Sized for concurrency=3 with headroom on a 12GB Ampere instance.
-    mem_limit: 6g
+    # The default is sized to be safe on the SMALLEST host we might land on —
+    # a 1 OCPU / 6GB A1 — where the old hardcoded 6g was the entire machine and
+    # let the container take the host down instead of being constrained.
+    # On a 12GB instance, raise it:
+    #   WORKER_MEM_LIMIT=8g docker compose -f worker/docker-compose.prod.yml up -d
+    # Substitution reads the shell environment, not .env.local (that file is
+    # env_file, which injects into the container — a different mechanism).
+    mem_limit: ${WORKER_MEM_LIMIT:-4g}
     stop_grace_period: 60s

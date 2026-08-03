@@ -23,6 +23,12 @@ df -h --output=source,size,used,avail,pcent . | tail -1
 
 git pull --ff-only
 
+# WORKER_MEM_LIMIT is a compose substitution variable read from the shell, so it
+# has to be exported here rather than living in .env.local. Default suits a 6GB
+# host; export 8g before running this on a 12GB one.
+export WORKER_MEM_LIMIT="${WORKER_MEM_LIMIT:-4g}"
+echo "mem_limit=$WORKER_MEM_LIMIT"
+
 docker compose -f "$COMPOSE" up -d --build
 
 # Prune AFTER the new container is up, never before: an image still referenced

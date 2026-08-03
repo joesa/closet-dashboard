@@ -129,6 +129,18 @@ pinned to 1 only because Render's 512MB Starter box OOMed on two concurrent Full
 redesigns; on a ≥2GB host the real ceiling is the **Supabase session connection
 limit**, since the pool opens `WORKER_CONCURRENCY + 2` connections.
 
+Memory is capped separately by `WORKER_MEM_LIMIT` (default **4g**), sized to be
+safe on the smallest host worth using — a 1 OCPU / 6GB A1. On a 12GB instance
+raise it at deploy time:
+
+```bash
+WORKER_MEM_LIMIT=8g docker compose -f worker/docker-compose.prod.yml up -d
+```
+
+That is a compose *substitution* variable, so it comes from the shell, not from
+`.env.local` — that file is `env_file`, which injects into the container and is
+a different mechanism. `WORKER_CONCURRENCY` does come from `.env.local`.
+
 Measured on 2026-08-02: the Supabase instance reports `max_connections = 60`
 (3 superuser-reserved) with ~22 backends already in use by the Next app. At the
 default 3 the worker takes 5 of the ~35 spare, so the headroom is real but not
