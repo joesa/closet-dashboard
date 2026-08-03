@@ -182,6 +182,31 @@ Note that the `[ALERT custom-build]` signals come from
 `/api/cron/process-custom-build-jobs`, which `vercel.json` schedules **once
 daily** on Hobby — that is not sufficient alerting for a self-hosted worker.
 
+### Disk
+
+Steady-state usage is flat. The job path writes nothing to local disk —
+generated images stream to Supabase Storage — and container logs are capped by
+the compose `logging` block. A worker running for a year uses what it used on
+day one.
+
+Redeploys are what fill a disk. Each `up -d --build` bakes a fresh ~2GB image
+and orphans the previous one, plus build cache, so on a 40–50GB boot volume
+roughly a dozen rebuilds is enough to run out. Nothing reclaims it
+automatically — Render did that for you.
+
+Two defenses, both installed:
+
+- Redeploy with **`worker/scripts/redeploy.sh`** (pull, rebuild, then prune)
+  rather than calling `docker compose up --build` by hand. It prints disk
+  before and after. Pruning runs *after* the new container is up, so the image
+  in use is never a candidate.
+- `oracle-vm-bootstrap.sh` installs a **weekly `docker-prune.timer`** as a
+  backstop for manual rebuilds.
+
+Check with `df -h /` and `docker system df`. If a build ever fails oddly or the
+worker dies with `ENOSPC`, look here first — jobs stay safe in
+`graphile_worker.jobs`, but nothing claims them until the box has room.
+
 ## Full redesign multi-pass + resume
 
 Full redesign no longer asks the model for every page in one JSON blob.

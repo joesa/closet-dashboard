@@ -70,6 +70,34 @@ https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_C
     NEEDS_RELOGIN=1
   fi
 
+  # Every `up -d --build` strands the previous ~2GB image plus build cache.
+  # worker/scripts/redeploy.sh sweeps as it goes, but a manual rebuild will not
+  # — and a full boot disk kills the worker with ENOSPC. This is the backstop.
+  # Images referenced by a running container are never touched by prune.
+  log "Installing weekly Docker prune timer"
+  sudo tee /etc/systemd/system/docker-prune.service >/dev/null <<'UNIT'
+[Unit]
+Description=Reclaim orphaned Docker images and build cache
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/docker image prune -af --filter until=168h
+ExecStart=/usr/bin/docker builder prune -f --filter until=168h
+UNIT
+  sudo tee /etc/systemd/system/docker-prune.timer >/dev/null <<'UNIT'
+[Unit]
+Description=Weekly Docker prune
+
+[Timer]
+OnCalendar=weekly
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+UNIT
+  sudo systemctl daemon-reload
+  sudo systemctl enable --now docker-prune.timer
+
   log "Fetching the dashboard into $APP_DIR"
   if [ -d "$APP_DIR/.git" ]; then
     git -C "$APP_DIR" fetch --quiet origin "$REPO_BRANCH"
