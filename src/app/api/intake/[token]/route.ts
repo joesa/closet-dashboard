@@ -345,10 +345,13 @@ export async function POST(
       try {
         const enqueue = await enqueueProvisionJob(intakeRow.id, jobMode)
         provisionQueued = enqueue.queued
-        if (enqueue.queued && !enqueue.duplicate) {
-          kickProvisionAfterSubmit(intakeRow.id)
-        } else if (enqueue.duplicate && enqueue.status === 'pending') {
-          kickProvisionAfterSubmit(intakeRow.id)
+        // Kick unless another deploy already owns this intake (processing, or
+        // finished). `pending` — new, or revived from a terminal state — always
+        // gets a worker job, and the kick is awaited so the deploy is durably
+        // queued before this request returns; see kickProvisionAfterSubmit.
+        if (enqueue.status !== 'processing' && enqueue.status !== 'succeeded') {
+          const kick = await kickProvisionAfterSubmit(intakeRow.id)
+          provisionQueued = kick.queued
         }
       } catch (enqueueErr) {
         // Intake data is saved — log the enqueue failure but don't surface a 500

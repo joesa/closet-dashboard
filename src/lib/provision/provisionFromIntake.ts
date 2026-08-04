@@ -6,6 +6,7 @@ import {
   autoApproveTenantSite,
   startAutoLaunchRedesign,
 } from '@/lib/launch/autoLaunch'
+import { waitForInitialSiteDeployed } from '@/lib/launch/waitForInitialSite'
 import { resolveSubdomain } from '@/lib/provision/resolveSubdomain'
 import { provisionTenant } from '@/lib/provision/provisionTenant'
 import { depositSatisfied } from '@/lib/intake/intakeTierGates'
@@ -306,13 +307,27 @@ export async function provisionFromIntakeJob(
 }
 
 /**
- * Hand a freshly provisioned tenant to auto-launch: queue its first Full
- * redesign, and only if that cannot start (no worker, kill switch off, already
- * ran) reveal the site on the engine template instead. Never fail provisioning
- * over this — the tenant exists either way and an admin can take it from here.
+ * Hand a freshly provisioned tenant to auto-launch: wait for its template site
+ * to be genuinely deployed, queue its first Full redesign, and only if that
+ * cannot start (no worker, kill switch off, already ran) reveal the site on the
+ * engine template instead. Never fail provisioning over this — the tenant exists
+ * either way and an admin can take it from here.
+ *
+ * The wait is the ordering the whole flow depends on: the redesign rewrites the
+ * site the template deploy just produced, so it must not start until that deploy
+ * is serving. A timed-out wait still queues the redesign — the worker re-checks
+ * the same gate and can retry — rather than stranding the tenant.
  */
 async function kickAutoLaunch(tenantId: string): Promise<void> {
   try {
+    const wait = await waitForInitialSiteDeployed(tenantId)
+    if (!wait.ready) {
+      console.warn(
+        '[provisionFromIntake] template site not previewable yet; queueing redesign anyway',
+        tenantId,
+        wait.lastError
+      )
+    }
     const started = await startAutoLaunchRedesign(tenantId)
     if (!started) await autoApproveTenantSite(tenantId, { reason: 'redesign_unavailable' })
   } catch (err) {

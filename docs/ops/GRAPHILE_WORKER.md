@@ -324,10 +324,29 @@ Prefer **≥2GB** RAM on the worker host — 512MB OOMs Claude mid-foundation.
 ## Auto-launch (first redesign, no admin)
 
 A submitted intake now reaches a live bespoke site with **zero admin clicks**
-(`src/lib/launch/autoLaunch.ts`). After `provisionTenant` finishes,
-`startAutoLaunchRedesign` enqueues one `full_redesign` job carrying
-`custom_build_job.auto_launch = true`. When that job succeeds the worker calls
-`finishAutoLaunch` → `publishCustomSiteDraft` → `autoApproveTenantSite`.
+(`src/lib/launch/autoLaunch.ts`). The chain:
+
+1. `POST /api/intake/[token]` writes the intake, then **awaits**
+   `enqueueProvisionJob` + `kickProvisionAfterSubmit`. Awaited on purpose — as
+   fire-and-forget, the serverless instance froze on response before `add_job`
+   committed, the `provision_jobs` row sat `pending`, and nothing deployed until
+   the 05:00 cron swept it. It looked exactly like "intake submit never
+   provisions", and an admin ended up deploying by hand from
+   `/admin/sandbox/onboarding`.
+2. `provision_tenant` → `provisionFromIntakeJob` → `provisionTenant` deploys the
+   template site (the unattended equivalent of **Deploy Simulated Site**).
+3. `waitForInitialSiteDeployed` polls `assertInitialAdminPreviewReady` until that
+   site actually serves through the admin bypass — provisioning returns before
+   the subdomain has registered, resolved and got a certificate, which takes
+   longer than the redesign's entire 3-attempt budget. Budget/interval:
+   `AUTO_LAUNCH_SITE_WAIT_MS` (600000) / `AUTO_LAUNCH_SITE_POLL_MS` (15000). A
+   timed-out wait still queues the redesign; the worker re-checks the same gate.
+4. `startAutoLaunchRedesign` enqueues one `full_redesign` job carrying
+   `custom_build_job.auto_launch = true`. When that job succeeds the worker calls
+   `finishAutoLaunch` → `publishCustomSiteDraft` → `autoApproveTenantSite`.
+
+The only remaining opt-out is per-intake: `provisioning_mode = 'manual'` (the
+admin's "manual build" checkbox), which is ignored for AI Premium.
 
 Deliberately **redesign-first, reveal-second**: the tenant stays gated at
 `pending_approval` while the redesign runs, so the public never sees the engine
@@ -362,7 +381,10 @@ blocks a bad draft, and `syncTenantLaunchAccess` still enforces launch payment
   attempt, durationMs, pageCount, htmlSizes. Auto-launch adds
   `auto_launch_queued|finished|approved|failed_revealed` (and
   `auto_launch_finish_error` / `auto_launch_fail_handler_error` when the
-  post-run hook itself throws).
+  post-run hook itself throws). The pre-redesign wait emits
+  `initial_site_ready` (with `attempts` / `waitedMs`) or
+  `initial_site_wait_timeout` — a timeout there means the tenant's subdomain
+  took longer than `AUTO_LAUNCH_SITE_WAIT_MS` to serve.
 - Cron `/api/cron/process-custom-build-jobs` re-enqueues orphaned queued jobs and
   emits `[ALERT custom-build]` for queued &gt;2m or stale heartbeat (≥5m silence).
   On Vercel Hobby this runs **once daily** (`5 5 * * *`); Graphile Worker still
