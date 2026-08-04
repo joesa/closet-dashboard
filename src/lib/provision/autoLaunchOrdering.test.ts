@@ -3,15 +3,12 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 /**
- * The unattended sequence a submitted intake must follow:
- *
- *   intake POST → provision job (awaited) → template site deployed and serving
- *              → first Full redesign
- *
- * Each link is asserted at its source, because breaking one of them fails
- * silently in production: the intake still saves, the tenant row still exists,
- * and only the deploy that was supposed to happen without an admin quietly
- * doesn't.
+ * The first link of the unattended sequence — intake POST → provision job —
+ * asserted at its source, because it cannot be exercised in a unit test and it
+ * fails silently in production: the intake still saves, the response is still
+ * 200, and only the deploy that was supposed to happen without an admin quietly
+ * doesn't. The rest of the sequence (deploy → wait → approve → redesign) is
+ * covered behaviourally in provisionFromIntake.test.ts.
  */
 const read = (rel: string) => readFileSync(join(process.cwd(), rel), 'utf8')
 
@@ -33,16 +30,8 @@ describe('intake submit starts the deploy', () => {
   })
 })
 
-describe('first redesign waits for the deployed template site', () => {
-  it('waits for the site to serve before queueing the redesign', () => {
-    const src = read('src/lib/provision/provisionFromIntake.ts')
-    const waited = src.indexOf('await waitForInitialSiteDeployed(tenantId)')
-    const queued = src.indexOf('await startAutoLaunchRedesign(tenantId)')
-    expect(waited).toBeGreaterThan(0)
-    expect(queued).toBeGreaterThan(waited)
-  })
-
-  it('hands every provisioned marketing site to auto-launch', () => {
+describe('every provisioned marketing site enters the launch sequence', () => {
+  it('hands both the template and AI Premium paths to auto-launch', () => {
     const src = read('src/lib/provision/provisionFromIntake.ts')
     // Both the AI Premium and template paths, so neither tier needs an admin.
     expect(src.match(/await kickAutoLaunch\(result\.tenantId\)/g)).toHaveLength(2)

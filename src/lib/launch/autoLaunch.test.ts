@@ -99,6 +99,7 @@ function seed(overrides: {
       {
         tenant_id: TENANT,
         auto_launch_redesign_at: null,
+        auto_launch_approved_at: null,
         auto_launch_completed_at: null,
         edit_in_place: false,
         ...overrides.siteConfig,
@@ -294,20 +295,33 @@ describe('autoApproveTenantSite', () => {
     expect(sendIntakeLaunchPaymentEmail).not.toHaveBeenCalled()
   })
 
-  it('busts the tenant site cache and stamps completion', async () => {
+  it('busts the tenant site cache and stamps the approval', async () => {
     const tables = seed()
 
     await autoApproveTenantSite(TENANT)
 
     expect(revalidateTenantSiteCache).toHaveBeenCalledWith(TENANT)
-    expect(tables.site_configs[0].auto_launch_completed_at).toBeTruthy()
+    expect(tables.site_configs[0].auto_launch_approved_at).toBeTruthy()
+    // Completion belongs to the post-redesign publish, which has not run yet.
+    // Stamping it here is what used to make finishAutoLaunch skip publishing.
+    expect(tables.site_configs[0].auto_launch_completed_at).toBeNull()
   })
 
-  it('is a no-op once it has already completed', async () => {
+  it('is a no-op once it has already approved', async () => {
+    seed({ siteConfig: { auto_launch_approved_at: '2026-08-01T00:00:00Z' } })
+
+    await expect(autoApproveTenantSite(TENANT)).resolves.toBe(false)
+    expect(syncTenantLaunchAccess).not.toHaveBeenCalled()
+  })
+
+  it('is a no-op for a tenant that completed under the old ordering', async () => {
+    // Pre-migration rows only have completed_at; re-approving would re-send a
+    // launch-payment email to a customer who has been live for weeks.
     seed({ siteConfig: { auto_launch_completed_at: '2026-08-01T00:00:00Z' } })
 
     await expect(autoApproveTenantSite(TENANT)).resolves.toBe(false)
     expect(syncTenantLaunchAccess).not.toHaveBeenCalled()
+    expect(sendIntakeLaunchPaymentEmail).not.toHaveBeenCalled()
   })
 
   it('still approves when the tenant has no intake row', async () => {
@@ -329,6 +343,28 @@ describe('finishAutoLaunch', () => {
 
     expect(publishCustomSiteDraft).toHaveBeenCalledWith(TENANT)
     expect(syncTenantLaunchAccess).toHaveBeenCalled()
+  })
+
+  it('publishes over the already-live template site', async () => {
+    // The tenant went live before the redesign started, so approval is spent.
+    // Guarding the publish on that stamp would strand a finished redesign as an
+    // unpublished draft while the customer stays on the engine template.
+    const tables = seed({
+      siteConfig: { auto_launch_approved_at: '2026-08-04T00:00:00Z' },
+    })
+
+    await finishAutoLaunch(TENANT)
+
+    expect(publishCustomSiteDraft).toHaveBeenCalledWith(TENANT)
+    expect(tables.site_configs[0].auto_launch_completed_at).toBeTruthy()
+  })
+
+  it('busts the cache so the live site stops serving the template', async () => {
+    seed({ siteConfig: { auto_launch_approved_at: '2026-08-04T00:00:00Z' } })
+
+    await finishAutoLaunch(TENANT)
+
+    expect(revalidateTenantSiteCache).toHaveBeenCalledWith(TENANT)
   })
 
   it('still reveals — without publishing — when the quality gate blocks', async () => {

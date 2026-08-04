@@ -21,16 +21,23 @@ import type { ProspectIntakeRow } from '@/lib/intake/getIntakeByToken'
  *
  * Sequence, all unattended:
  *   provisionFromIntakeJob → deploy + validate engine site
- *   full_redesign worker   → verify admin-bypass engine preview, then redesign
- *                          → finishAutoLaunch()          (publish draft, then reveal)
- *                          → failAutoLaunch()            (dead-lettered: reveal template)
+ *                          → waitForInitialSiteDeployed() (it actually serves)
+ *                          → autoApproveTenantSite()      (live on the template)
+ *                          → startAutoLaunchRedesign()
+ *   full_redesign worker   → re-verify admin-bypass preview, then redesign
+ *                          → finishAutoLaunch()           (publish draft in place)
+ *                          → failAutoLaunch()             (dead-lettered: stay on template)
  *
- * The intake-built engine site exists first and is viewable to admins through
- * admin_bypass. The tenant remains gated from the public while redesign runs.
+ * Deploy-and-approve first, redesign second. The customer is live on the engine
+ * template within minutes of submitting, and the redesign upgrades that live
+ * site in place when it lands. The trade-off is deliberate: the public may see
+ * the template for the length of one redesign, which beats a customer who paid
+ * and can see nothing at all.
  *
  * What this does NOT do: bypass any quality or payment gate. The publish gate
- * (validateCustomSiteArtifact + design-uniqueness) and the launch-payment gate
- * (syncTenantLaunchAccess) both still apply exactly as they do for an admin.
+ * (validateCustomSiteArtifact + design-uniqueness), the site-validation gate
+ * (tenants.validation_status) and the launch-payment gate
+ * (syncTenantLaunchAccess) all still apply exactly as they do for an admin.
  */
 
 /** Kill switch — set AUTO_LAUNCH_REDESIGN=false to restore the manual flow. */
@@ -50,6 +57,9 @@ function revealOnRedesignFailure(): boolean {
 
 type AutoLaunchRow = {
   auto_launch_redesign_at: string | null
+  /** Site taken live without an admin — set before the redesign is queued. */
+  auto_launch_approved_at: string | null
+  /** Post-redesign publish ran — the end of the unattended sequence. */
   auto_launch_completed_at: string | null
   edit_in_place: boolean | null
 }
@@ -57,7 +67,9 @@ type AutoLaunchRow = {
 async function loadAutoLaunchRow(tenantId: string): Promise<AutoLaunchRow | null> {
   const { data, error } = await getSupabaseAdmin()
     .from('site_configs')
-    .select('auto_launch_redesign_at, auto_launch_completed_at, edit_in_place')
+    .select(
+      'auto_launch_redesign_at, auto_launch_approved_at, auto_launch_completed_at, edit_in_place'
+    )
     .eq('tenant_id', tenantId)
     .maybeSingle()
   if (error || !data) return null
@@ -173,11 +185,13 @@ export async function startAutoLaunchRedesign(tenantId: string): Promise<boolean
 }
 
 /**
- * Redesign finished successfully: publish the draft, then take the site live.
+ * Redesign finished successfully: publish the draft over the already-live
+ * template site (and approve, for the rare tenant the pre-redesign approval
+ * could not take live — a validator that had not passed yet, say).
  *
  * A publish blocked by the quality/uniqueness gate is not an error here — the
- * draft stays for the admin with draft_validation_status='failed', and we still
- * reveal the site so the customer is not left waiting on a human.
+ * draft stays for the admin with draft_validation_status='failed', and the site
+ * simply stays on the template it launched with rather than waiting on a human.
  */
 export async function finishAutoLaunch(tenantId: string): Promise<void> {
   const row = await loadAutoLaunchRow(tenantId)
@@ -211,16 +225,34 @@ export async function finishAutoLaunch(tenantId: string): Promise<void> {
     })
   }
 
+  // Normally a no-op: the site went live on the template before the redesign
+  // started. It still matters for a tenant whose validator had not passed then.
   await autoApproveTenantSite(tenantId, {
     reason: published ? 'redesign_published' : 'publish_blocked',
   })
+
+  if (published) {
+    // The site is already live, so the swap to the bespoke design is only real
+    // once the cache drops the template. autoApproveTenantSite used to do this
+    // on its way past; it no longer runs here.
+    await revalidateTenantSiteCache(tenantId).catch((err) =>
+      console.warn('[auto-launch] post-publish revalidate failed', err)
+    )
+  }
+
+  await stampAutoLaunchCompleted(tenantId)
 
   console.info(
     JSON.stringify({ event: 'auto_launch_finished', tenantId, published })
   )
 }
 
-/** Redesign exhausted its attempts — reveal on the engine template (or don't). */
+/**
+ * Redesign exhausted its attempts. The site is already live on the engine
+ * template (approved before the redesign started), so there is nothing to
+ * reveal — this closes the sequence out and covers the tenant whose earlier
+ * approval could not go through.
+ */
 export async function failAutoLaunch(tenantId: string): Promise<void> {
   await logSystemAction({
     action: 'site.auto_launch_redesign_failed',
@@ -238,12 +270,22 @@ export async function failAutoLaunch(tenantId: string): Promise<void> {
   }
 
   await autoApproveTenantSite(tenantId, { reason: 'redesign_failed' })
+  await stampAutoLaunchCompleted(tenantId)
   console.info(JSON.stringify({ event: 'auto_launch_failed_revealed', tenantId }))
+}
+
+/** Close out the unattended sequence; nothing auto-launch does runs twice. */
+async function stampAutoLaunchCompleted(tenantId: string): Promise<void> {
+  await getSupabaseAdmin()
+    .from('site_configs')
+    .update({ auto_launch_completed_at: new Date().toISOString() })
+    .eq('tenant_id', tenantId)
 }
 
 /**
  * Take the site live without an admin — the unattended equivalent of
- * "Approve preview" + "Approve & Go Live".
+ * "Approve preview" + "Approve & Go Live". Called on the freshly deployed
+ * template site, before the first Full redesign is queued.
  *
  * Applies the same gates the manual route does (validation_status must be
  * 'passed', edit-in-place must be off), then resolves the public status
@@ -258,7 +300,10 @@ export async function autoApproveTenantSite(
   const supabase = getSupabaseAdmin()
 
   const row = await loadAutoLaunchRow(tenantId)
-  if (row?.auto_launch_completed_at) {
+  // Guarded on approval, not completion, since the two are now separate steps
+  // with a whole redesign between them. completed_at is still honoured for
+  // tenants that launched under the old redesign-first ordering.
+  if (row?.auto_launch_approved_at || row?.auto_launch_completed_at) {
     console.info('[auto-launch] approval already ran', tenantId)
     return false
   }
@@ -349,7 +394,7 @@ export async function autoApproveTenantSite(
 
   await supabase
     .from('site_configs')
-    .update({ auto_launch_completed_at: new Date().toISOString() })
+    .update({ auto_launch_approved_at: new Date().toISOString() })
     .eq('tenant_id', tenantId)
 
   await logSystemAction({

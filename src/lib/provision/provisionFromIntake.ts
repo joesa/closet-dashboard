@@ -307,29 +307,44 @@ export async function provisionFromIntakeJob(
 }
 
 /**
- * Hand a freshly provisioned tenant to auto-launch: wait for its template site
- * to be genuinely deployed, queue its first Full redesign, and only if that
- * cannot start (no worker, kill switch off, already ran) reveal the site on the
- * engine template instead. Never fail provisioning over this — the tenant exists
- * either way and an admin can take it from here.
+ * Hand a freshly provisioned tenant to auto-launch, in this order:
  *
- * The wait is the ordering the whole flow depends on: the redesign rewrites the
- * site the template deploy just produced, so it must not start until that deploy
- * is serving. A timed-out wait still queues the redesign — the worker re-checks
- * the same gate and can retry — rather than stranding the tenant.
+ *   1. wait until the template site actually serves,
+ *   2. approve it — the site goes live with no admin click,
+ *   3. queue the first Full redesign, which later publishes over the live site.
+ *
+ * Steps 1 and 2 gate step 3 on purpose. The redesign rewrites the site the
+ * template deploy just produced, so it must not start until that deploy is
+ * serving; and approving first means the customer is live within minutes of
+ * submitting instead of waiting out a multi-minute redesign.
+ *
+ * A timed-out wait still approves and queues — the redesign worker re-checks
+ * the same readiness gate and can retry — rather than stranding the tenant.
+ * Never fail provisioning over any of this: the tenant exists either way and an
+ * admin can take it from here.
  */
 async function kickAutoLaunch(tenantId: string): Promise<void> {
   try {
     const wait = await waitForInitialSiteDeployed(tenantId)
     if (!wait.ready) {
       console.warn(
-        '[provisionFromIntake] template site not previewable yet; queueing redesign anyway',
+        '[provisionFromIntake] template site not previewable yet; approving anyway',
         tenantId,
         wait.lastError
       )
     }
+
+    // Not conditional on the redesign: a site that cannot be redesigned (no
+    // worker, kill switch off) must still go live on the template it deployed.
+    await autoApproveTenantSite(tenantId, { reason: 'template_deployed' })
+
     const started = await startAutoLaunchRedesign(tenantId)
-    if (!started) await autoApproveTenantSite(tenantId, { reason: 'redesign_unavailable' })
+    if (!started) {
+      console.info(
+        '[provisionFromIntake] no first redesign queued; live on the template',
+        tenantId
+      )
+    }
   } catch (err) {
     console.error('[provisionFromIntake] auto-launch failed', tenantId, err)
   }

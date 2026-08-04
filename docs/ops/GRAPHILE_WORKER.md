@@ -340,26 +340,36 @@ A submitted intake now reaches a live bespoke site with **zero admin clicks**
    the subdomain has registered, resolved and got a certificate, which takes
    longer than the redesign's entire 3-attempt budget. Budget/interval:
    `AUTO_LAUNCH_SITE_WAIT_MS` (600000) / `AUTO_LAUNCH_SITE_POLL_MS` (15000). A
-   timed-out wait still queues the redesign; the worker re-checks the same gate.
-4. `startAutoLaunchRedesign` enqueues one `full_redesign` job carrying
+   timed-out wait still proceeds; the worker re-checks the same gate.
+4. `autoApproveTenantSite` takes it live — the unattended "Approve preview" +
+   "Approve & Go Live". The customer is live on the template within minutes of
+   submitting, before any redesign starts.
+5. `startAutoLaunchRedesign` enqueues one `full_redesign` job carrying
    `custom_build_job.auto_launch = true`. When that job succeeds the worker calls
-   `finishAutoLaunch` → `publishCustomSiteDraft` → `autoApproveTenantSite`.
+   `finishAutoLaunch` → `publishCustomSiteDraft`, swapping the bespoke design
+   onto the already-live site (and busting its cache).
 
 The only remaining opt-out is per-intake: `provisioning_mode = 'manual'` (the
 admin's "manual build" checkbox), which is ignored for AI Premium.
 
-Deliberately **redesign-first, reveal-second**: the tenant stays gated at
-`pending_approval` while the redesign runs, so the public never sees the engine
-template. Neither gate is bypassed — the publish quality/uniqueness gate still
-blocks a bad draft, and `syncTenantLaunchAccess` still enforces launch payment
-(paid → `active`, unpaid → `awaiting_launch_payment` + pay link).
+Deliberately **deploy-and-approve first, redesign second**. The trade-off: the
+public may see the engine template for the length of one redesign, which beats a
+paying customer who can see nothing at all. No gate is bypassed — the publish
+quality/uniqueness gate still blocks a bad draft, `tenants.validation_status`
+must still be `passed` before anything goes live, and `syncTenantLaunchAccess`
+still enforces launch payment (paid → `active`, unpaid →
+`awaiting_launch_payment` + pay link).
 
 - Idempotency lives on the row, not in the job JSON:
-  `site_configs.auto_launch_redesign_at` (enqueued once) and
-  `auto_launch_completed_at` (publish + approve ran once).
-- Terminal failure (Graphile attempts exhausted) → `failAutoLaunch` still
-  reveals the site on the engine template so a paying customer is not stranded.
-  Set `AUTO_LAUNCH_REVEAL_ON_REDESIGN_FAILURE=false` to keep it gated instead.
+  `site_configs.auto_launch_redesign_at` (enqueued once),
+  `auto_launch_approved_at` (went live once), `auto_launch_completed_at`
+  (post-redesign publish ran once). Approval and completion are **separate
+  stamps**: sharing one made `finishAutoLaunch` skip publishing the finished
+  redesign, leaving the tenant live on the template with an unpublished draft.
+- Terminal failure (Graphile attempts exhausted) → `failAutoLaunch`. The site is
+  already live on the engine template, so nobody is stranded; it only closes the
+  sequence out and catches up an approval that could not run earlier.
+  `AUTO_LAUNCH_REVEAL_ON_REDESIGN_FAILURE=false` skips that catch-up.
 - Kill switch: `AUTO_LAUNCH_REDESIGN=false` restores the fully manual flow.
 - Audit rows are written with a **null `actor_id`** and
   `actor_email = 'system:auto-launch'` — that is how you tell platform actions
