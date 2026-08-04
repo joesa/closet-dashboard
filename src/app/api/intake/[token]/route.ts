@@ -138,6 +138,12 @@ export async function POST(
     // --- Gallery images ---
     // Each entry is either { dataUrl: string } or { url: string }.
     // data URLs are uploaded to storage; plain URLs are validated and kept as-is.
+    //
+    // The form now uploads every photo up front (POST .../upload-image) and
+    // sends URLs only — inlining base64 here is what pushed the submit body
+    // past the platform request-body limit and produced an unparseable 413.
+    // The dataUrl branch stays as a compatibility path for a browser still
+    // running a cached older bundle; do not send new data URLs to it.
     const galleryUrls: string[] = []
     const rawGallery = Array.isArray(body.galleryImages) ? body.galleryImages : []
     for (let i = 0; i < rawGallery.length && i < 20; i++) {

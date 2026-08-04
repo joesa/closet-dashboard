@@ -18,6 +18,14 @@ function resolveKind(raw: unknown): ImageUploadKind {
   return 'hero'
 }
 
+/**
+ * Logo and gallery are plain intake attachments every tier collects, and the
+ * base intake form uploads them here so image bytes never ride along in the
+ * submit JSON (that is what used to blow past the platform body limit and
+ * return a bare 413). Only the AI studio kinds stay behind the premium gate.
+ */
+const OPEN_KINDS: ReadonlySet<ImageUploadKind> = new Set<ImageUploadKind>(['logo', 'gallery'])
+
 export async function POST(
   req: Request,
   { params }: { params: Promise<{ token: string }> }
@@ -32,14 +40,11 @@ export async function POST(
     if (draftErr) {
       return NextResponse.json({ error: draftErr }, { status: 410 })
     }
-    const depositErr = assertDepositPaid(row)
-    if (depositErr) {
-      return NextResponse.json({ error: depositErr }, { status: 403 })
-    }
-
+    // Generous ceiling on purpose: a prospect who re-picks photos a few times
+    // must never be rate-limited out of finishing their intake.
     const limit = await checkRateLimit(
       hashRateKey('intake_ai_upload', token),
-      40,
+      120,
       60 * 60 * 1000
     )
     if (!limit.allowed) {
@@ -59,6 +64,12 @@ export async function POST(
     }
 
     const kind = resolveKind(form.get('kind'))
+    if (!OPEN_KINDS.has(kind)) {
+      const depositErr = assertDepositPaid(row)
+      if (depositErr) {
+        return NextResponse.json({ error: depositErr }, { status: 403 })
+      }
+    }
     const stamp = Date.now()
     const bytes = new Uint8Array(await file.arrayBuffer())
     if (bytes.byteLength < 32) {
@@ -94,7 +105,12 @@ export async function POST(
       uploaded[9] === 0x45 &&
       uploaded[10] === 0x42 &&
       uploaded[11] === 0x50
-    if (!isJpeg && !isPng && !isWebp) {
+    // SVG logos are stored as-is (optimizeUserImage passes vectors through), so
+    // they have no raster signature — verify they still read as SVG markup.
+    const isSvg =
+      file.type === 'image/svg+xml' &&
+      /<svg[\s>]/i.test(uploaded.subarray(0, 1024).toString('utf8'))
+    if (!isJpeg && !isPng && !isWebp && !isSvg) {
       console.error('intake upload-image: corrupt object uploaded', {
         url,
         head: [...uploaded.subarray(0, 16)],

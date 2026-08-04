@@ -29,6 +29,8 @@ import {
 } from '@/lib/catalog/sitePages';
 import { listIndustries, resolveIndustrySlug, getIndustry, getEngagementModel, isLowConfidenceResolution } from '@/lib/catalog/serviceCatalog';
 import { getBeforeAfterCategory } from '@/lib/images/beforeAfterPrompt';
+import { fileToUploadJpegBlob } from '@/lib/images/fileToUploadBlob';
+import { readJsonResponse, describeFetchError } from '@/lib/http/readJsonResponse';
 import { detectVertical, getCraftFieldsForVertical, getMaterialsLabelAndPlaceholder } from '@/lib/ai/suggestCraftAnswers';
 
 /** Split the free-text services field into individual service/job labels. */
@@ -246,6 +248,13 @@ type IntakeDraftSnapshot = {
   form?: Partial<Form>;
   selectedGeneratedLogoUrl?: string;
   currentStep?: number;
+  /**
+   * Uploaded image URLs. Safe to keep in localStorage now that photos are
+   * uploaded on pick — they are short strings, not base64 blobs, so a prospect
+   * who reloads mid-form keeps their photos instead of re-picking them.
+   */
+  logoImageUrl?: string;
+  galleryUrls?: string[];
 };
 
 function compactPageContentsForDraft(
@@ -265,8 +274,10 @@ function compactPageContentsForDraft(
 function buildDraftSnapshot(
   form: Form,
   selectedGeneratedLogoUrl: string,
-  currentStep: number
+  currentStep: number,
+  images?: { logoImageUrl?: string; galleryUrls?: string[] }
 ): IntakeDraftSnapshot {
+  const galleryUrls = (images?.galleryUrls ?? []).filter(Boolean);
   return {
     form: {
       ...form,
@@ -274,7 +285,45 @@ function buildDraftSnapshot(
     },
     selectedGeneratedLogoUrl: selectedGeneratedLogoUrl || undefined,
     currentStep,
+    logoImageUrl: images?.logoImageUrl || undefined,
+    galleryUrls: galleryUrls.length > 0 ? galleryUrls : undefined,
   };
+}
+
+/**
+ * Photos are uploaded to storage the moment they are picked and only their URLs
+ * ride in the submit JSON. Base64 data URLs inflate a file by ~33%, so a couple
+ * of phone photos used to push the submit body past the platform's request-body
+ * limit — the edge answered with a plain-text 413 the form could not even
+ * parse, and the prospect was stuck one click from finishing. Keep it this way:
+ * the submit payload must stay text-only.
+ */
+const UPLOAD_DIRECT_MAX_BYTES = 3.5 * 1024 * 1024;
+
+/**
+ * Hard ceiling for the submit body. Well under the platform limit so a 413 is
+ * impossible in practice; if we ever trip it, the form says something useful
+ * instead of failing at the edge.
+ */
+const MAX_SUBMIT_BYTES = 3 * 1024 * 1024;
+
+/**
+ * Full-size originals go up untouched (best quality for the built site); only
+ * oversized files are downscaled client-side so a single upload always fits in
+ * one request. SVG never goes through canvas — it would rasterize.
+ */
+async function toUploadBlob(file: File): Promise<{ blob: Blob; filename: string }> {
+  if (file.size <= UPLOAD_DIRECT_MAX_BYTES || file.type === 'image/svg+xml') {
+    return { blob: file, filename: file.name || 'upload' };
+  }
+  try {
+    const blob = await fileToUploadJpegBlob(file, { maxDim: 2048, quality: 0.85 });
+    return { blob, filename: 'upload.jpg' };
+  } catch {
+    // Canvas path unavailable — send the original and let the server answer
+    // with a readable error if it is genuinely too big.
+    return { blob: file, filename: file.name || 'upload' };
+  }
 }
 
 const label = 'mb-2 block text-[11px] font-semibold uppercase tracking-widest text-zinc-500';
@@ -488,7 +537,10 @@ export default function IntakeFormClient({
       initialIncludeQuiz
     )
   );
-  const [logoDataUrl, setLogoDataUrl] = useState<string>('');
+  /** Storage URL of an uploaded logo — never image bytes (see toUploadBlob). */
+  const [logoImageUrl, setLogoImageUrl] = useState<string>('');
+  const [logoUploading, setLogoUploading] = useState(false);
+  const [logoUploadError, setLogoUploadError] = useState('');
   const [generatedLogoUrls, setGeneratedLogoUrls] = useState<string[]>([]);
   const [selectedGeneratedLogoUrl, setSelectedGeneratedLogoUrl] = useState<string>('');
   const [generatingLogos, setGeneratingLogos] = useState(false);
@@ -557,14 +609,25 @@ export default function IntakeFormClient({
   const logoInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
-  type GalleryEntry = { dataUrl: string; url: string };
+  /**
+   * `url` is always a real https URL — either uploaded to storage on pick or
+   * typed in by hand. No image bytes are ever held here (see toUploadBlob).
+   * `previewUrl` is a local object URL shown only until the upload lands.
+   */
+  type GalleryEntry = {
+    url: string;
+    uploading?: boolean;
+    uploadError?: string;
+    previewUrl?: string;
+  };
+  const GALLERY_SLOTS = 12;
   const [galleryCount, setGalleryCount] = useState(initialGalleryImages?.length ? Math.max(5, initialGalleryImages.length) : 5);
   const [galleryImages, setGalleryImages] = useState<GalleryEntry[]>(() => {
-    const defaultEntries = Array.from({ length: 10 }, () => ({ dataUrl: '', url: '' }));
+    const defaultEntries: GalleryEntry[] = Array.from({ length: GALLERY_SLOTS }, () => ({ url: '' }));
     if (initialGalleryImages && initialGalleryImages.length > 0) {
       initialGalleryImages.forEach((url, i) => {
         if (i < defaultEntries.length) {
-          defaultEntries[i] = { dataUrl: '', url };
+          defaultEntries[i] = { url };
         }
       });
     }
@@ -574,33 +637,123 @@ export default function IntakeFormClient({
   const setGalleryEntry = (i: number, patch: Partial<GalleryEntry>) =>
     setGalleryImages((prev) => prev.map((e, idx) => (idx === i ? { ...e, ...patch } : e)));
 
+  /**
+   * Upload one image and return its storage URL. Every failure path returns a
+   * sentence the prospect can act on — never a raw parse or network error.
+   */
+  const uploadIntakeImage = useCallback(
+    async (file: File, kind: 'logo' | 'gallery'): Promise<string> => {
+      const { blob, filename } = await toUploadBlob(file);
+      const fd = new FormData();
+      fd.append('file', blob, filename);
+      fd.append('kind', kind);
+      let res: Response;
+      try {
+        res = await fetch(`/api/intake/${token}/upload-image`, { method: 'POST', body: fd });
+      } catch (err) {
+        throw new Error(describeFetchError(err));
+      }
+      const { ok, data, error: message } = await readJsonResponse<{ url?: string }>(res);
+      if (!ok || !data?.url) {
+        throw new Error(message || 'Upload failed. Please try again.');
+      }
+      return data.url;
+    },
+    [token]
+  );
+
+  /**
+   * Object URLs backing the "uploading…" and failed-slot previews. Held in a
+   * ref so each one is revoked exactly once — when it stops being displayed,
+   * not while a failed slot is still showing it.
+   */
+  const galleryPreviewUrls = useRef<Record<number, string>>({});
+  const setGalleryPreview = useCallback((i: number, url?: string) => {
+    const prev = galleryPreviewUrls.current[i];
+    if (prev && prev !== url) URL.revokeObjectURL(prev);
+    if (url) galleryPreviewUrls.current[i] = url;
+    else delete galleryPreviewUrls.current[i];
+  }, []);
+
+  useEffect(
+    () => () => {
+      Object.values(galleryPreviewUrls.current).forEach((url) => URL.revokeObjectURL(url));
+      galleryPreviewUrls.current = {};
+    },
+    []
+  );
+
+  const uploadGalleryFile = useCallback(
+    async (i: number, file: File) => {
+      const previewUrl = URL.createObjectURL(file);
+      setGalleryPreview(i, previewUrl);
+      setGalleryImages((prev) =>
+        prev.map((e, idx) =>
+          idx === i ? { url: '', uploading: true, uploadError: '', previewUrl } : e
+        )
+      );
+      try {
+        const url = await uploadIntakeImage(file, 'gallery');
+        setGalleryImages((prev) =>
+          prev.map((e, idx) => (idx === i ? { url, uploading: false } : e))
+        );
+        setGalleryPreview(i, undefined);
+      } catch (err) {
+        // Keep the preview so the prospect still sees which photo failed.
+        setGalleryImages((prev) =>
+          prev.map((e, idx) =>
+            idx === i
+              ? {
+                  url: '',
+                  uploading: false,
+                  previewUrl,
+                  uploadError:
+                    err instanceof Error ? err.message : 'Upload failed. Please try again.',
+                }
+              : e
+          )
+        );
+      }
+    },
+    [uploadIntakeImage, setGalleryPreview]
+  );
+
   const onGalleryFile = (i: number, file: File | null) => {
-    if (!file) { setGalleryEntry(i, { dataUrl: '' }); return; }
-    if (file.size > 10 * 1024 * 1024) { setError('Each gallery image must be under 10MB.'); return; }
-    const reader = new FileReader();
-    reader.onload = () =>
-      setGalleryEntry(i, { dataUrl: typeof reader.result === 'string' ? reader.result : '', url: '' });
-    reader.readAsDataURL(file);
+    if (!file) {
+      setGalleryPreview(i, undefined);
+      setGalleryEntry(i, { url: '', uploading: false, uploadError: '', previewUrl: undefined });
+      return;
+    }
+    if (file.size > 25 * 1024 * 1024) {
+      setGalleryEntry(i, {
+        uploadError: 'That photo is over 25MB. Please pick a smaller one.',
+      });
+      return;
+    }
+    void uploadGalleryFile(i, file);
   };
 
   const bulkGalleryInputRef = useRef<HTMLInputElement | null>(null);
 
   const onBulkGalleryFiles = (files: FileList | null) => {
     if (!files || files.length === 0) return;
-    const picked = Array.from(files).slice(0, galleryCount);
-    const oversized = picked.filter((f) => f.size > 10 * 1024 * 1024);
-    if (oversized.length > 0) {
-      setError('Each gallery image must be under 10MB — some files were skipped.');
+    const picked = Array.from(files).slice(0, Math.min(galleryCount, GALLERY_SLOTS));
+    if (picked.some((f) => f.size > 25 * 1024 * 1024)) {
+      setError('Each gallery image must be under 25MB — larger files were skipped.');
     }
-    picked
-      .filter((f) => f.size <= 10 * 1024 * 1024)
-      .forEach((file, i) => {
-        const reader = new FileReader();
-        reader.onload = () =>
-          setGalleryEntry(i, { dataUrl: typeof reader.result === 'string' ? reader.result : '', url: '' });
-        reader.readAsDataURL(file);
-      });
+    picked.forEach((file, i) => {
+      if (file.size > 25 * 1024 * 1024) return;
+      void uploadGalleryFile(i, file);
+    });
   };
+
+  /** Slots still mid-upload or holding a failed upload block submit. */
+  const galleryUploading = galleryImages
+    .slice(0, galleryCount)
+    .some((e) => e.uploading);
+  const galleryUploadFailures = galleryImages
+    .slice(0, galleryCount)
+    .reduce<number[]>((acc, e, i) => (e.uploadError ? [...acc, i + 1] : acc), []);
 
   useEffect(() => {
     let cancelled = false;
@@ -649,6 +802,19 @@ export default function IntakeFormClient({
           setCurrentStepIndex(saved.currentStep);
           setMaxStepIndexVisited(saved.currentStep);
         }
+        if (typeof saved.logoImageUrl === 'string' && saved.logoImageUrl) {
+          setLogoImageUrl(saved.logoImageUrl);
+        }
+        if (Array.isArray(saved.galleryUrls) && saved.galleryUrls.length > 0) {
+          setGalleryImages((prev) =>
+            prev.map((entry, i) => {
+              const savedUrl = saved.galleryUrls?.[i];
+              // Never clobber an image already restored from the server row.
+              if (entry.url || typeof savedUrl !== 'string' || !savedUrl) return entry;
+              return { url: savedUrl };
+            })
+          );
+        }
       }
     } catch {
     }
@@ -660,7 +826,12 @@ export default function IntakeFormClient({
     try {
       window.localStorage.setItem(
         draftKey,
-        JSON.stringify(buildDraftSnapshot(form, selectedGeneratedLogoUrl, currentStepIndex))
+        JSON.stringify(
+          buildDraftSnapshot(form, selectedGeneratedLogoUrl, currentStepIndex, {
+            logoImageUrl,
+            galleryUrls: galleryImages.map((e) => e.url),
+          })
+        )
       );
     } catch {
       try {
@@ -675,7 +846,15 @@ export default function IntakeFormClient({
       } catch {
       }
     }
-  }, [form, logoDataUrl, selectedGeneratedLogoUrl, draftKey, submitted, currentStepIndex]);
+  }, [
+    form,
+    logoImageUrl,
+    galleryImages,
+    selectedGeneratedLogoUrl,
+    draftKey,
+    submitted,
+    currentStepIndex,
+  ]);
 
   useEffect(() => {
     if (typeof window === 'undefined' || paymentConfirmDone.current) return;
@@ -795,15 +974,29 @@ export default function IntakeFormClient({
     });
   }, [intakeTier]);
 
-  const onLogo = (file: File | null) => {
-    if (!file) { setLogoDataUrl(''); return; }
-    if (file.size > 3 * 1024 * 1024) { setError('Logo must be under 3MB.'); return; }
-    const reader = new FileReader();
-    reader.onload = () => {
-      setLogoDataUrl(typeof reader.result === 'string' ? reader.result : '');
+  const onLogo = async (file: File | null) => {
+    if (!file) {
+      setLogoImageUrl('');
+      setLogoUploadError('');
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      setLogoUploadError('Logo must be under 10MB.');
+      return;
+    }
+    setLogoUploading(true);
+    setLogoUploadError('');
+    try {
+      const url = await uploadIntakeImage(file, 'logo');
+      setLogoImageUrl(url);
       setSelectedGeneratedLogoUrl('');
-    };
-    reader.readAsDataURL(file);
+    } catch (err) {
+      setLogoUploadError(
+        err instanceof Error ? err.message : 'Logo upload failed. Please try again.'
+      );
+    } finally {
+      setLogoUploading(false);
+    }
   };
 
   const handleGenerateLogos = async () => {
@@ -830,13 +1023,14 @@ export default function IntakeFormClient({
           primaryColorHex: form.primaryColorHex,
         }),
       });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || 'Failed to generate logos');
+      const { ok, data, error: message } = await readJsonResponse<{ urls?: unknown; attemptsUsed?: number }>(res);
+      if (!ok) throw new Error(message || 'Failed to generate logos');
+      const json = data ?? {};
       const urls = Array.isArray(json.urls)
         ? json.urls.filter((u: unknown): u is string => typeof u === 'string')
         : [];
       setGeneratedLogoUrls(urls.slice(0, 3));
-      setLogoDataUrl('');
+      setLogoImageUrl('');
       setSelectedGeneratedLogoUrl(urls[0] || '');
       if (typeof json.attemptsUsed === 'number') {
         setLogoGenAttemptsUsed(json.attemptsUsed);
@@ -869,8 +1063,12 @@ export default function IntakeFormClient({
           differentiators: form.differentiators,
         }),
       });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || 'Failed to suggest ideal customers');
+      const { ok, data, error: message } = await readJsonResponse<{
+        options?: unknown;
+        source?: string;
+      }>(res);
+      if (!ok) throw new Error(message || 'Failed to suggest ideal customers');
+      const json = data ?? {};
       const options = Array.isArray(json.options)
         ? json.options.filter((o: unknown): o is string => typeof o === 'string')
         : [];
@@ -917,14 +1115,15 @@ export default function IntakeFormClient({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ slug, ...form }),
       });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || 'Failed to generate copy');
-      if (json.content) {
+      const { ok, data, error: message } = await readJsonResponse<{ content?: string }>(res);
+      if (!ok) throw new Error(message || 'Failed to generate copy');
+      const content = data?.content;
+      if (content) {
         setForm((f) => ({
           ...f,
           pageContents: {
             ...f.pageContents,
-            [slug]: json.content,
+            [slug]: content,
           },
         }));
       }
@@ -950,11 +1149,12 @@ export default function IntakeFormClient({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ slug, ...form }),
         });
-        const json = await res.json();
-        if (res.ok && json.content) {
+        const { ok, data } = await readJsonResponse<{ content?: string }>(res);
+        const content = data?.content;
+        if (ok && content) {
           setForm((f) => ({
             ...f,
-            pageContents: { ...f.pageContents, [slug]: json.content },
+            pageContents: { ...f.pageContents, [slug]: content },
           }));
         }
       } catch {
@@ -991,10 +1191,12 @@ export default function IntakeFormClient({
           existingPages: form.pages,
         }),
       });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || 'Failed to suggest pages');
-      if (Array.isArray(json.suggestions)) {
-        setSuggestedPages(json.suggestions);
+      const { ok, data, error: message } = await readJsonResponse<{
+        suggestions?: Array<{ slug: string; label: string; description: string }>;
+      }>(res);
+      if (!ok) throw new Error(message || 'Failed to suggest pages');
+      if (Array.isArray(data?.suggestions)) {
+        setSuggestedPages(data.suggestions);
       }
     } catch (err) {
       // Auto-fetch failures stay quiet — the prospect can still pick pages
@@ -1397,14 +1599,15 @@ export default function IntakeFormClient({
           otherServices: form.otherServices,
         }),
       })
-      if (!res.ok) return
-      const json = (await res.json()) as {
+      const { ok, data } = await readJsonResponse<{
         label?: string
         services?: string[]
         engagementModel?: string
         isCustom?: boolean
         source?: string
-      }
+      }>(res)
+      if (!ok || !data) return
+      const json = data
       // Catalog hits still return services — use them, but don't keep a custom override.
       if (json.isCustom) {
         applyResolvedCustomIndustry({ ...json, isCustom: true })
@@ -1528,42 +1731,73 @@ export default function IntakeFormClient({
       brandColor: form.primaryColorHex || undefined,
       businessName: form.businessName || undefined,
     };
+    // Don't submit on top of an in-flight or failed upload — the photo would be
+    // silently dropped from the site build.
+    if (galleryUploading || logoUploading) {
+      setError('Your photos are still uploading. Give it a moment and submit again.');
+      return;
+    }
+    if (galleryUploadFailures.length > 0) {
+      setError(
+        `Image ${galleryUploadFailures.join(', ')} failed to upload. Re-upload ${
+          galleryUploadFailures.length > 1 ? 'those photos' : 'that photo'
+        } or clear the slot, then submit.`
+      );
+      return;
+    }
+
     setSubmitting(true);
     setError('');
     try {
-      const res = await fetch(`/api/intake/${token}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...form,
-          industry: form.industry,
-          services: serviceList,
-          otherServices: undefined,
-          // Collected as one comma-separated line; the column is text[].
-          signatureMaterials: form.signatureMaterials
-            .split(',')
-            .map((s) => s.trim())
-            .filter(Boolean),
-          menuItems: form.menuItems
-            .filter((item) => item.name.trim().length > 0)
-            .map((item) => ({
-              name: item.name.trim(),
-              price: parseFloat(item.price) || 0,
-              category: item.category.trim() || undefined,
-            })),
-          widgetConfigHints: widgetConfigHintsPayload,
-          logoDataUrl: logoDataUrl || undefined,
-          logoUrl: selectedGeneratedLogoUrl || undefined,
-          ...(overrides ?? {}),
-          galleryImages: galleryImages.slice(0, galleryCount).map(({ dataUrl, url }) => ({
-                ...(dataUrl ? { dataUrl } : {}),
-                ...(url.trim() ? { url: url.trim() } : {}),
-              })),
-        }),
+      // Images are already in storage — this payload is text only. If it is
+      // ever large enough to risk the platform's request-body limit, say so
+      // here rather than letting the edge answer with an unparseable 413.
+      const body = JSON.stringify({
+        ...form,
+        industry: form.industry,
+        services: serviceList,
+        otherServices: undefined,
+        // Collected as one comma-separated line; the column is text[].
+        signatureMaterials: form.signatureMaterials
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean),
+        menuItems: form.menuItems
+          .filter((item) => item.name.trim().length > 0)
+          .map((item) => ({
+            name: item.name.trim(),
+            price: parseFloat(item.price) || 0,
+            category: item.category.trim() || undefined,
+          })),
+        widgetConfigHints: widgetConfigHintsPayload,
+        logoUrl: logoImageUrl || selectedGeneratedLogoUrl || undefined,
+        ...(overrides ?? {}),
+        galleryImages: galleryImages
+          .slice(0, galleryCount)
+          .filter((entry) => entry.url.trim())
+          .map((entry) => ({ url: entry.url.trim() })),
       });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || 'Failed to submit');
-      setManualBuild(!!json.manualBuild);
+
+      if (new Blob([body]).size > MAX_SUBMIT_BYTES) {
+        throw new Error(
+          'Your answers are too long to send in one go. Shorten the longest page copy sections, then submit again.'
+        );
+      }
+
+      let res: Response;
+      try {
+        res = await fetch(`/api/intake/${token}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body,
+        });
+      } catch (err) {
+        throw new Error(describeFetchError(err));
+      }
+
+      const { ok, data, error: message } = await readJsonResponse<{ manualBuild?: boolean }>(res);
+      if (!ok) throw new Error(message || 'Failed to submit');
+      setManualBuild(!!data?.manualBuild);
       setSubmitted(true);
       if (typeof window !== 'undefined') {
         try {
@@ -1602,12 +1836,19 @@ export default function IntakeFormClient({
         }),
       });
 
-      if (!res.ok) {
-        const errJson = await res.json().catch(() => ({}));
-        throw new Error(errJson.error || 'Failed to generate craft suggestions.');
+      const {
+        ok,
+        data: craftData,
+        error: craftError,
+      } = await readJsonResponse<{
+        answers?: Record<string, string>;
+        quality?: { findings?: unknown };
+      }>(res);
+      if (!ok) {
+        throw new Error(craftError || 'Failed to generate craft suggestions.');
       }
 
-      const data = await res.json();
+      const data = craftData ?? {};
       const answers = data.answers || {};
       const qualityFindings = Array.isArray(data.quality?.findings)
         ? data.quality.findings as Array<{ unitId?: string; message?: string }>
@@ -2108,24 +2349,30 @@ export default function IntakeFormClient({
                   type="file"
                   accept="image/png,image/jpeg,image/webp,image/svg+xml"
                   className="sr-only"
-                  onChange={(e) => onLogo(e.target.files?.[0] || null)}
+                  onChange={(e) => { void onLogo(e.target.files?.[0] || null); e.target.value = ''; }}
                 />
                 <button
                   type="button"
+                  disabled={logoUploading}
                   onClick={() => logoInputRef.current?.click()}
-                  className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg border-2 border-dashed border-white/[0.16] bg-white/[0.02] px-4 py-3 text-sm font-medium text-zinc-300 transition-colors hover:border-indigo-300/60 hover:bg-indigo-500/10 hover:text-indigo-100"
+                  className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg border-2 border-dashed border-white/[0.16] bg-white/[0.02] px-4 py-3 text-sm font-medium text-zinc-300 transition-colors hover:border-indigo-300/60 hover:bg-indigo-500/10 hover:text-indigo-100 disabled:opacity-60"
                 >
                   <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
-                  {logoDataUrl ? 'Change Logo' : 'Upload Logo'}
+                  {logoUploading ? 'Uploading…' : logoImageUrl ? 'Change Logo' : 'Upload Logo'}
                 </button>
-                {logoDataUrl && (
+                {logoUploadError && (
+                  <p className="mt-2 rounded-md border border-rose-300/30 bg-rose-500/10 px-2.5 py-1.5 text-xs text-rose-100">
+                    {logoUploadError}
+                  </p>
+                )}
+                {logoImageUrl && !logoUploading && (
                   <button
                     type="button"
-                    onClick={() => setLogoPreviewUrl(logoDataUrl)}
+                    onClick={() => setLogoPreviewUrl(logoImageUrl)}
                     className="group relative mt-2 inline-block"
                     title="Click to preview larger"
                   >
-                    <img src={logoDataUrl} alt="Logo preview" className="h-12 object-contain" />
+                    <img src={logoImageUrl} alt="Logo preview" className="h-12 object-contain" />
                     <span className="pointer-events-none absolute inset-0 flex items-center justify-center rounded bg-black/0 text-[10px] font-semibold text-white opacity-0 transition group-hover:bg-black/40 group-hover:opacity-100">
                       Enlarge
                     </span>
@@ -2166,7 +2413,7 @@ export default function IntakeFormClient({
                                   type="button"
                                   onClick={() => {
                                     setSelectedGeneratedLogoUrl(url);
-                                    setLogoDataUrl('');
+                                    setLogoImageUrl('');
                                   }}
                                   className={`w-full rounded-md border p-1 ${selected ? 'border-indigo-400 ring-2 ring-indigo-300/50' : 'border-white/[0.18]'}`}
                                   title="Select this logo"
@@ -2690,13 +2937,17 @@ export default function IntakeFormClient({
               <div className="space-y-4">
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3">
                   {Array.from({ length: galleryCount }).map((_, i) => {
-                    const entry = galleryImages[i] ?? { dataUrl: '', url: '' };
-                    const hasContent = !!(entry.dataUrl || entry.url.trim());
+                    const entry = galleryImages[i] ?? { url: '' };
+                    const hasContent = !!entry.url.trim();
+                    const previewSrc = entry.url || entry.previewUrl || '';
                     return (
-                      <div key={i} className={`rounded-lg border p-4 ${hasContent ? 'border-indigo-300 bg-indigo-500/10' : 'border-white/[0.14] bg-white/[0.01]'}`}>
+                      <div key={i} className={`rounded-lg border p-4 ${hasContent ? 'border-indigo-300 bg-indigo-500/10' : entry.uploadError ? 'border-rose-300/40 bg-rose-500/10' : 'border-white/[0.14] bg-white/[0.01]'}`}>
                         <p className="mb-3 text-sm font-medium text-zinc-200">
                           Image {i + 1}
-                          {hasContent && (
+                          {entry.uploading && (
+                            <span className="ml-2 text-xs font-normal text-zinc-400">Uploading…</span>
+                          )}
+                          {hasContent && !entry.uploading && (
                             <span className="ml-2 text-xs font-normal text-indigo-300">✓ Ready</span>
                           )}
                         </p>
@@ -2706,31 +2957,42 @@ export default function IntakeFormClient({
                             type="file"
                             accept="image/png,image/jpeg,image/webp"
                             className="sr-only"
-                            onChange={(e) => onGalleryFile(i, e.target.files?.[0] ?? null)}
+                            onChange={(e) => { onGalleryFile(i, e.target.files?.[0] ?? null); e.target.value = ''; }}
                           />
                           <button
                             type="button"
+                            disabled={entry.uploading}
                             onClick={() => galleryInputRefs.current[i]?.click()}
-                            className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg border-2 border-dashed border-white/[0.16] bg-white/[0.02] px-3 py-2 text-xs font-medium text-zinc-300 transition-colors hover:border-indigo-300/60 hover:bg-indigo-500/10"
+                            className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg border-2 border-dashed border-white/[0.16] bg-white/[0.02] px-3 py-2 text-xs font-medium text-zinc-300 transition-colors hover:border-indigo-300/60 hover:bg-indigo-500/10 disabled:opacity-60"
                           >
-                            Upload
+                            {entry.uploading ? 'Uploading…' : entry.uploadError ? 'Try again' : 'Upload'}
                           </button>
                           <input
                             className={input}
                             type="url"
                             placeholder="Image URL"
                             value={entry.url}
-                            disabled={!!entry.dataUrl}
-                            onChange={(e) =>
-                              setGalleryEntry(i, { url: e.target.value, dataUrl: '' })
-                            }
+                            disabled={entry.uploading}
+                            onChange={(e) => {
+                              setGalleryPreview(i, undefined);
+                              setGalleryEntry(i, {
+                                url: e.target.value,
+                                uploadError: '',
+                                previewUrl: undefined,
+                              });
+                            }}
                           />
-                          {(entry.dataUrl || entry.url) && (
+                          {entry.uploadError && (
+                            <p className="rounded-md border border-rose-300/30 bg-rose-500/10 px-2.5 py-1.5 text-xs text-rose-100">
+                              {entry.uploadError}
+                            </p>
+                          )}
+                          {previewSrc && (
                             <div className="relative h-32 w-full">
                               <img
-                                src={entry.dataUrl || entry.url}
+                                src={previewSrc}
                                 alt={`Gallery ${i + 1}`}
-                                className="h-full w-full rounded object-cover"
+                                className={`h-full w-full rounded object-cover ${entry.uploading ? 'opacity-50' : ''}`}
                               />
                             </div>
                           )}
@@ -2746,7 +3008,7 @@ export default function IntakeFormClient({
                 </p>
               )}
 
-              {galleryCount > 0 && galleryImages.slice(0, galleryCount).every((e) => !e.dataUrl && !e.url.trim()) && (
+              {galleryCount > 0 && galleryImages.slice(0, galleryCount).every((e) => !e.url.trim() && !e.uploading) && (
                 <p className="mt-4 rounded-md border border-amber-300/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
                   No gallery images added yet. If you don&apos;t upload any photos we won&apos;t be
                   able to configure your Portfolio page — it will be excluded from your site.
