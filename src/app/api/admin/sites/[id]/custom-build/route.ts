@@ -47,6 +47,11 @@ async function loadCustomBuildStatus(tenantId: string) {
   if (shouldRequeueCustomBuildJob(job) && job) {
     // Dead-letter re-enqueue if the worker never claimed a queued job.
     try {
+      // Stamp BEFORE enqueueing. shouldRequeueCustomBuildJob throttles on this
+      // timestamp, and this runs in a GET the admin page polls continuously —
+      // if the enqueue succeeded but the stamp were skipped or ordered after a
+      // throw, every subsequent poll would enqueue again.
+      await setCustomBuildJob(tenantId, { ...job, requeued_at: new Date().toISOString() })
       await enqueueFullRedesign(tenantId, job.started_at)
     } catch (err) {
       console.error('[custom-build] requeue enqueue failed:', err)

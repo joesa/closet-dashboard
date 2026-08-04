@@ -71,7 +71,7 @@ describe('assertInitialAdminPreviewReady', () => {
     )
 
     await expect(assertInitialAdminPreviewReady('tenant-1')).rejects.toThrow(
-      'did not return the rendered intake site'
+      'shows "Site Under Construction" rather than the intake site'
     )
   })
 
@@ -95,5 +95,51 @@ describe('automatic redesign worker ordering', () => {
     expect(src.indexOf('await processCustomBuildJob(tenantId)')).toBeGreaterThan(
       src.indexOf('await assertInitialAdminPreviewReady(tenantId)')
     )
+  })
+})
+describe('assertInitialAdminPreviewReady — RSC payload false positive', () => {
+  // Regression: every App Router page inlines an RSC flight payload containing
+  // Next's own notFound template ("404: This page could not be found."). Naive
+  // substring matching over the raw HTML flagged healthy tenant sites as 404s,
+  // which failed this gate for every auto-launch. Seen in production on an 87KB
+  // page whose <title> and <h1> were correct.
+  it('accepts a healthy page whose inline flight payload contains 404 boilerplate', async () => {
+    const flight =
+      '<script>self.__next_f.push([1,"{\\"notFound\\":[[[\\"$\\",\\"title\\",null,' +
+      '{\\"children\\":\\"404: This page could not be found.\\"}]]]}"])</script>'
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        new Response(
+          `<html><head><title>Gewod Pressure</title></head><body>` +
+            `<h1>Pressure washing</h1>${'real intake copy '.repeat(60)}${flight}</body></html>`,
+          { status: 200 }
+        )
+      )
+    )
+
+    await expect(assertInitialAdminPreviewReady('tenant-1')).resolves.toBeUndefined()
+  })
+
+  it('still rejects when the 404 is rendered rather than serialised', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        new Response(
+          `<html><body><h1>404: This page could not be found.</h1>${'x '.repeat(300)}</body></html>`,
+          { status: 200 }
+        )
+      )
+    )
+
+    await expect(assertInitialAdminPreviewReady('tenant-1')).rejects.toThrow(
+      'rather than the intake site'
+    )
+  })
+
+  it('reports the byte count when the body is too small to judge', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('<html>tiny</html>', { status: 200 })))
+
+    await expect(assertInitialAdminPreviewReady('tenant-1')).rejects.toThrow(/returned only \d+ bytes/)
   })
 })

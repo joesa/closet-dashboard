@@ -102,4 +102,50 @@ describe('shouldRequeueCustomBuildJob', () => {
       )
     ).toBe(false)
   })
+
+  // Regression: this predicate runs inside the admin GET the /admin/sites page
+  // polls. Measuring from started_at (which never moves) made it permanently
+  // true once the job aged past the window, so every poll enqueued another
+  // Graphile job — ~40 in 25 minutes against a single tenant.
+  it('does not requeue again inside the window after a requeue', () => {
+    const now = Date.now()
+    expect(
+      shouldRequeueCustomBuildJob(
+        job({
+          status: 'queued',
+          started_at: new Date(now - CUSTOM_BUILD_JOB_REQUEUE_MS * 20).toISOString(),
+          requeued_at: new Date(now - 1_000).toISOString(),
+        }),
+        now
+      )
+    ).toBe(false)
+  })
+
+  it('requeues again once the window has passed since the last requeue', () => {
+    const now = Date.now()
+    expect(
+      shouldRequeueCustomBuildJob(
+        job({
+          status: 'queued',
+          started_at: new Date(now - CUSTOM_BUILD_JOB_REQUEUE_MS * 20).toISOString(),
+          requeued_at: new Date(now - CUSTOM_BUILD_JOB_REQUEUE_MS - 1).toISOString(),
+        }),
+        now
+      )
+    ).toBe(true)
+  })
+
+  it('falls back to job age when requeued_at is unparseable', () => {
+    const now = Date.now()
+    expect(
+      shouldRequeueCustomBuildJob(
+        job({
+          status: 'queued',
+          started_at: new Date(now - CUSTOM_BUILD_JOB_REQUEUE_MS - 1).toISOString(),
+          requeued_at: 'not-a-date',
+        }),
+        now
+      )
+    ).toBe(true)
+  })
 })

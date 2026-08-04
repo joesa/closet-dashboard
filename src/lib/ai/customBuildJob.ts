@@ -51,6 +51,12 @@ export type CustomBuildJob = {
   ever_full?: boolean
   /** Updated while the dedicated processor is alive — used for stale checks. */
   heartbeat_at?: string | null
+  /**
+   * When the admin status poll last re-enqueued this job. Throttles that
+   * self-heal to one attempt per CUSTOM_BUILD_JOB_REQUEUE_MS; without it the
+   * poll re-enqueues on every request. See shouldRequeueCustomBuildJob.
+   */
+  requeued_at?: string | null
   /** Multi-pass Full redesign: current pass label (e.g. "/" or "/about"). */
   pass?: string | null
   /** Paths already checkpointed with usable HTML. */
@@ -244,7 +250,21 @@ export function shouldRequeueCustomBuildJob(
 ): boolean {
   if (!job || job.status !== 'queued') return false
   if (isCustomBuildJobStale(job, nowMs)) return false
-  return jobAgeMs(job, nowMs) >= CUSTOM_BUILD_JOB_REQUEUE_MS
+  // Measure from the LAST requeue, not from started_at.
+  //
+  // started_at never moves, so an age-based test is permanently true once the
+  // job is 45s old — and this runs inside the admin GET handler. An open
+  // /admin/sites page therefore enqueued a fresh Graphile job on every poll:
+  // ~40 jobs in 25 minutes against one tenant, each dying instantly on the same
+  // precondition. maxAttempts cannot help, because every poll creates a new row.
+  //
+  // Throttling rather than capping is deliberate: the point of this requeue is
+  // to self-heal when a worker is dead, and a cap would silently give up on a
+  // tenant if the worker stayed down longer than the cap.
+  const since = job.requeued_at || job.started_at
+  const sinceMs = Date.parse(since)
+  if (!Number.isFinite(sinceMs)) return jobAgeMs(job, nowMs) >= CUSTOM_BUILD_JOB_REQUEUE_MS
+  return nowMs - sinceMs >= CUSTOM_BUILD_JOB_REQUEUE_MS
 }
 
 /**
