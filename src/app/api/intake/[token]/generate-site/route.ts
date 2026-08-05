@@ -183,7 +183,9 @@ export async function POST(
         {
           jobKey: `intake_generate_site:${token}`,
           jobKeyMode: 'replace',
-          maxAttempts: 2,
+          // Two automatic retries with backoff before going terminal — the
+          // studio client can still re-enqueue a terminally failed job.
+          maxAttempts: 3,
         }
       )
 

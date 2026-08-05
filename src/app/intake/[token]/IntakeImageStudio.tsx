@@ -19,6 +19,10 @@ type SiteConfigShape = {
 const EMPTY_SITE_BRIEF: SiteConfigShape = {};
 
 /** Poll intake GET until a Graphile background_job finishes (or times out). */
+/** Worker reported a terminal `failed` status (distinct from a poll timeout,
+ * where the job may still be running and finish later). */
+class BackgroundJobFailedError extends Error {}
+
 async function pollIntakeBackgroundJob(
   token: string,
   task: string,
@@ -37,7 +41,7 @@ async function pollIntakeBackgroundJob(
     if (job && job.task === task) {
       if (job.status === 'succeeded') return { ...json, backgroundJob: job }
       if (job.status === 'failed') {
-        throw new Error(
+        throw new BackgroundJobFailedError(
           typeof job.error === 'string' ? job.error : 'Background job failed'
         )
       }
@@ -46,6 +50,10 @@ async function pollIntakeBackgroundJob(
   }
   throw new Error('Background job timed out waiting for the worker')
 }
+
+/** Worst-case brief runtime: long AI call + JSON repair pass + one Graphile
+ * retry with backoff can exceed the old 10-minute window. */
+const BRIEF_POLL_TIMEOUT_MS = 20 * 60 * 1000
 
 type Props = {
   token: string;
@@ -214,6 +222,10 @@ export default function IntakeImageStudio({
   const [genLoading, setGenLoading] = useState<string | null>(null);
   const [error, setError] = useState('');
   const briefAttemptedRef = useRef(false);
+  // One-shot automatic reprocess after a terminal worker failure.
+  const briefRequeuedRef = useRef(false);
+  // Past ~2 min, swap the spinner copy for reassuring long-run progress text.
+  const [briefSlow, setBriefSlow] = useState(false);
   const autoGenStartedRef = useRef(false);
   const selectionsRef = useRef(selections);
   const productsRef = useRef<
@@ -359,9 +371,27 @@ export default function IntakeImageStudio({
     if (!opts?.manual && briefAttemptedRef.current) return;
     briefAttemptedRef.current = true;
     setBriefLoading(true);
+    setBriefSlow(false);
     setError('');
     setBriefWarning('');
-    try {
+
+    const applyBriefResult = (polled: Record<string, unknown>) => {
+      const raw = polled.aiSiteConfig as SiteConfigShape | undefined;
+      const sc = (extractProspectSiteConfig(raw) ?? raw) as SiteConfigShape;
+      const next = sc && typeof sc === 'object' ? sc : EMPTY_SITE_BRIEF;
+      setSiteConfig(next);
+      const job = polled.backgroundJob as
+        | { beforeAfterApplicable?: boolean }
+        | undefined;
+      if (typeof job?.beforeAfterApplicable === 'boolean') {
+        setServerBeforeAfterApplicable(job.beforeAfterApplicable);
+      } else if (typeof polled.beforeAfterApplicable === 'boolean') {
+        setServerBeforeAfterApplicable(polled.beforeAfterApplicable as boolean);
+      }
+      onUpdate(selections, next);
+    };
+
+    const enqueueBriefAndWait = async () => {
       // Send only the fields generate-site reads — never gallery/logo data URLs.
       const briefBody = {
         pages,
@@ -418,19 +448,10 @@ export default function IntakeImageStudio({
       if (!res.ok) throw new Error(json.error || 'Brief generation failed');
 
       if (json.async) {
-        const polled = await pollIntakeBackgroundJob(token, 'intake_generate_site');
-        const raw = polled.aiSiteConfig as SiteConfigShape | undefined;
-        const sc = (extractProspectSiteConfig(raw) ?? raw) as SiteConfigShape;
-        setSiteConfig(sc && typeof sc === 'object' ? sc : EMPTY_SITE_BRIEF);
-        const job = polled.backgroundJob as
-          | { beforeAfterApplicable?: boolean }
-          | undefined;
-        if (typeof job?.beforeAfterApplicable === 'boolean') {
-          setServerBeforeAfterApplicable(job.beforeAfterApplicable);
-        } else if (typeof polled.beforeAfterApplicable === 'boolean') {
-          setServerBeforeAfterApplicable(polled.beforeAfterApplicable as boolean);
-        }
-        onUpdate(selections, sc && typeof sc === 'object' ? sc : EMPTY_SITE_BRIEF);
+        const polled = await pollIntakeBackgroundJob(token, 'intake_generate_site', {
+          timeoutMs: BRIEF_POLL_TIMEOUT_MS,
+        });
+        applyBriefResult(polled);
       } else {
         const raw =
           (json.data as { siteConfig?: SiteConfigShape } | undefined)?.siteConfig ??
@@ -442,12 +463,57 @@ export default function IntakeImageStudio({
         }
         onUpdate(selections, sc && typeof sc === 'object' ? sc : EMPTY_SITE_BRIEF);
       }
+    };
+
+    try {
+      // Resume-first: a refresh mid-generation must never replace the in-flight
+      // worker job (jobKeyMode 'replace' would restart the expensive AI run).
+      const snapRes = await fetch(`/api/intake/${token}`).catch(() => null);
+      const snapshot: Record<string, unknown> | null = snapRes?.ok
+        ? await snapRes.json().catch(() => null)
+        : null;
+      const snapJob =
+        snapshot?.backgroundJob && typeof snapshot.backgroundJob === 'object'
+          ? (snapshot.backgroundJob as Record<string, unknown>)
+          : null;
+      const briefJob = snapJob?.task === 'intake_generate_site' ? snapJob : null;
+
+      if (briefJob && (briefJob.status === 'queued' || briefJob.status === 'processing')) {
+        // Worker already on it (prewarm or a previous visit) — just wait.
+        const polled = await pollIntakeBackgroundJob(token, 'intake_generate_site', {
+          timeoutMs: BRIEF_POLL_TIMEOUT_MS,
+        });
+        applyBriefResult(polled);
+      } else if (
+        !opts?.manual &&
+        briefJob?.status === 'succeeded' &&
+        snapshot?.aiSiteConfig &&
+        !siteConfig
+      ) {
+        // Finished while we were away — hydrate without burning another run.
+        applyBriefResult(snapshot);
+      } else {
+        // No job, terminal failure, or explicit manual retry → fresh enqueue.
+        await enqueueBriefAndWait();
+      }
     } catch (e) {
+      let finalError: unknown = e;
+      // Terminal worker failure: reprocess automatically exactly once. Manual
+      // "Retry AI brief" stays available if this second run also fails.
+      if (e instanceof BackgroundJobFailedError && !briefRequeuedRef.current) {
+        briefRequeuedRef.current = true;
+        try {
+          await enqueueBriefAndWait();
+          return;
+        } catch (retryErr) {
+          finalError = retryErr;
+        }
+      }
       const message =
-        e instanceof Error && e.name === 'AbortError'
+        finalError instanceof Error && finalError.name === 'AbortError'
           ? 'AI brief timed out'
-          : e instanceof Error
-            ? e.message
+          : finalError instanceof Error
+            ? finalError.message
             : 'Brief generation failed';
       // Don't block the studio — default prompts still produce usable images.
       proceedWithoutBrief(
@@ -465,6 +531,12 @@ export default function IntakeImageStudio({
     void runBrief();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isActive, siteConfig, briefLoading]);
+
+  React.useEffect(() => {
+    if (!briefLoading) return;
+    const timer = setTimeout(() => setBriefSlow(true), 2 * 60 * 1000);
+    return () => clearTimeout(timer);
+  }, [briefLoading]);
 
   const generateBatch = async (
     slot: StudioSlot,
@@ -951,25 +1023,33 @@ export default function IntakeImageStudio({
       </div>
 
       {!siteConfig && (
-        <button
-          id="btn-build-ai-brief"
-          type="button"
-          disabled={briefLoading}
-          onClick={() => void runBrief({ manual: true })}
-          className="rounded-full bg-[#2438C9] px-5 py-2 text-sm font-medium text-white transition hover:opacity-85 active:scale-[0.98] disabled:opacity-50"
-        >
-          {briefLoading ? (
-            <span className="flex items-center gap-2">
-              <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-              </svg>
-              Building AI brief…
-            </span>
-          ) : (
-            'Generate AI brief from your answers'
+        <>
+          <button
+            id="btn-build-ai-brief"
+            type="button"
+            disabled={briefLoading}
+            onClick={() => void runBrief({ manual: true })}
+            className="rounded-full bg-[#2438C9] px-5 py-2 text-sm font-medium text-white transition hover:opacity-85 active:scale-[0.98] disabled:opacity-50"
+          >
+            {briefLoading ? (
+              <span className="flex items-center gap-2">
+                <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                </svg>
+                {briefSlow ? 'Still writing your brief…' : 'Building AI brief…'}
+              </span>
+            ) : (
+              'Generate AI brief from your answers'
+            )}
+          </button>
+          {briefLoading && briefSlow && (
+            <p className="text-xs text-[#8B939C]">
+              Detailed briefs can take a few minutes — keep this tab open and it
+              will update automatically. Your progress is saved either way.
+            </p>
           )}
-        </button>
+        </>
       )}
 
       {briefWarning && siteConfig && (

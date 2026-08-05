@@ -1138,9 +1138,10 @@ export default function IntakeFormClient({
     }
   };
 
-  const handleGenerateAllPageCopy = useCallback(async () => {
+  const handleGenerateAllPageCopy = useCallback(async (): Promise<Record<string, string>> => {
+    const generated: Record<string, string> = {};
     const slugsToGenerate = form.pages.filter((slug) => !form.pageContents[slug]?.trim());
-    if (slugsToGenerate.length === 0) return;
+    if (slugsToGenerate.length === 0) return generated;
     setBulkGenerating(true);
     setBulkProgress({ current: 0, total: slugsToGenerate.length });
     for (let i = 0; i < slugsToGenerate.length; i++) {
@@ -1156,6 +1157,7 @@ export default function IntakeFormClient({
         const { ok, data } = await readJsonResponse<{ content?: string }>(res);
         const content = data?.content;
         if (ok && content) {
+          generated[slug] = content;
           setForm((f) => ({
             ...f,
             pageContents: { ...f.pageContents, [slug]: content },
@@ -1167,6 +1169,7 @@ export default function IntakeFormClient({
       }
     }
     setBulkGenerating(false);
+    return generated;
   }, [form, token, handleGeneratePageCopy]);
 
   const handleSuggestPages = async (opts?: { silent?: boolean }) => {
@@ -1270,13 +1273,64 @@ export default function IntakeFormClient({
     setPagesSelectionConfirmed(false);
   };
 
+  // Prewarm the AI site brief on the background worker the moment pages are
+  // confirmed, so it's usually ready before the prospect reaches the image
+  // studio (the studio resumes this job instead of enqueueing a new one).
+  // One-shot per confirmed page selection; best-effort — errors are ignored
+  // because the studio's own enqueue path remains the source of truth.
+  const briefPrewarmKeyRef = useRef('');
+  const prewarmSiteBrief = (pageContents: Record<string, string>) => {
+    if (!canUseImageStudio || studioServices.length === 0) return;
+    if (aiSiteConfig) return; // brief already generated
+    const key = form.pages.join('|');
+    if (!key || briefPrewarmKeyRef.current === key) return;
+    briefPrewarmKeyRef.current = key;
+    void fetch(`/api/intake/${token}/generate-site`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      // Lean body: only the fields generate-site reads — never gallery/logo data URLs.
+      body: JSON.stringify({
+        pages: form.pages,
+        businessName: form.businessName,
+        industry: form.industry,
+        contactName: form.contactName,
+        contactEmail: form.contactEmail,
+        contactPhone: form.contactPhone,
+        streetAddress: form.streetAddress,
+        addressLocality: form.addressLocality,
+        addressRegion: form.addressRegion,
+        postalCode: form.postalCode,
+        serviceArea: form.serviceArea,
+        notificationEmail: form.notificationEmail,
+        notificationPhone: form.notificationPhone,
+        services: form.services,
+        otherServices: form.otherServices,
+        pricingNotes: form.pricingNotes,
+        primaryColorHex: form.primaryColorHex,
+        vibe: form.vibe,
+        tone: form.tone,
+        customers: form.customers,
+        experience: form.experience,
+        differentiators: form.differentiators,
+        primaryCta: form.primaryCta,
+        desiredDomain: form.desiredDomain,
+        domainPurchaseRequested: form.domainPurchaseRequested,
+        includeQuiz: form.includeQuiz,
+        notes: form.notes,
+        pageContents,
+      }),
+    }).catch(() => {});
+  };
+
   const handleConfirmPagesSelection = async () => {
     if (form.pages.length === 0) return;
     setPagesSelectionConfirmed(true);
     const missing = form.pages.filter((slug) => !(form.pageContents[slug] || '').trim());
+    let generated: Record<string, string> = {};
     if (missing.length > 0) {
-      await handleGenerateAllPageCopy();
+      generated = await handleGenerateAllPageCopy();
     }
+    prewarmSiteBrief({ ...form.pageContents, ...generated });
   };
 
   const handleRemovePage = (slug: string) => {
