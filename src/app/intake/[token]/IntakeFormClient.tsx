@@ -2064,7 +2064,6 @@ export default function IntakeFormClient({
   const steps = useMemo(() => {
     const arr: { key: string; title: string }[] = [
       { key: 'business', title: 'Business & contact' },
-      { key: 'domain', title: 'Website domain' },
       { key: 'services', title: 'Services & pricing' },
       { key: 'craft', title: 'Craft & proof' },
     ];
@@ -2704,80 +2703,6 @@ export default function IntakeFormClient({
               </div>
             </div>
           </section>
-          </div>
-
-          <div className={currentStepIndex === stepIdx.domain ? '' : 'hidden'}>
-            <section className={sectionClass}>
-              <h2 className={sectionTitle}>Website domain</h2>
-              <p className="mb-3 text-sm text-[#4E5761]">
-                Prefer a domain you already own (GoDaddy, Namecheap, Cloudflare, Hostinger, etc.).
-                After your site is built, you&apos;ll connect it with simple DNS records — you keep
-                ownership. Need us to buy one for you? Check the box below and pick an available
-                name.
-              </p>
-              <div className="mb-4">
-                <label className={label}>Domain you already own (recommended)</label>
-                <input
-                  className={input}
-                  placeholder="example.com"
-                  value={form.desiredDomain}
-                  onChange={(e) => {
-                    set('desiredDomain', e.target.value.trim().toLowerCase())
-                    if (form.domainPurchaseRequested) set('domainPurchaseRequested', false)
-                  }}
-                  disabled={form.domainPurchaseRequested}
-                />
-                <p className="mt-1.5 text-xs text-[#8B939C]">
-                  Leave blank to use a free subdomain for now; you can connect a custom domain later.
-                </p>
-              </div>
-
-              <label className="mb-4 flex cursor-pointer items-start gap-3 rounded-xl border border-[#E7E8E8] bg-[#F4F5F4] p-4">
-                <input
-                  type="checkbox"
-                  className="mt-1 h-4 w-4 rounded border-[#D8DADB] accent-[#2438C9]"
-                  checked={form.domainPurchaseRequested}
-                  onChange={(e) => {
-                    const on = e.target.checked
-                    set('domainPurchaseRequested', on)
-                    if (!on) {
-                      /* keep desiredDomain so BYO field still shows their pick */
-                    }
-                  }}
-                />
-                <span>
-                  <span className="block text-sm font-medium text-[#10141A]">
-                    I want you to purchase my domain and set it up for me
-                  </span>
-                  <span className="mt-1 block text-xs text-[#8B939C]">
-                    We&apos;ll register an available .com / .net / .io after your site is built
-                    (included with hosting). You won&apos;t leave this form to buy elsewhere.
-                  </span>
-                </span>
-              </label>
-
-              {form.domainPurchaseRequested && (
-                <div>
-                  <label className={label}>Find an available domain</label>
-                  <DomainSuggestPicker
-                    mode="intake"
-                    intakeToken={token}
-                    businessNameHint={form.businessName}
-                    value={form.desiredDomain}
-                    onChange={(domain) => set('desiredDomain', domain)}
-                    variant="light"
-                  />
-                </div>
-              )}
-
-              {!form.domainPurchaseRequested && form.desiredDomain && (
-                <p className="mt-3 text-xs text-sky-300/90 rounded-lg border border-sky-400/20 bg-sky-500/10 px-3 py-2">
-                  After launch you&apos;ll get step-by-step DNS instructions for GoDaddy, Namecheap,
-                  Cloudflare, Hostinger, and others to point <strong>{form.desiredDomain}</strong>{' '}
-                  at your new site.
-                </p>
-              )}
-            </section>
           </div>
 
           <div id="intake-services" className={currentStepIndex === stepIdx.services ? '' : 'hidden'}>
@@ -3748,6 +3673,84 @@ export default function IntakeFormClient({
               isActive={currentStepIndex === stepIdx.imageStudio}
             />
             </div>
+          )}
+
+          {isLastStep && (
+            <section className={`${sectionClass} mb-4`}>
+              <h2 className={sectionTitle}>
+                Domain{' '}
+                <span className="font-normal normal-case tracking-normal text-[#B3B9BF]">(optional)</span>
+              </h2>
+              <p className="mb-3 text-sm text-[#4E5761]">
+                Skip this — we&apos;ll give you a free preview link and you can add or change your
+                domain anytime after launch. Prefer a domain you already own (GoDaddy, Namecheap,
+                Cloudflare, Hostinger, etc.)? Add it below and we&apos;ll send simple DNS
+                instructions after your site is built — you keep ownership. Need us to buy one for
+                you? Check the box and pick an available name.
+              </p>
+              <div className="mb-4">
+                <label className={label}>Domain you already own</label>
+                <input
+                  className={input}
+                  placeholder="example.com"
+                  value={form.desiredDomain}
+                  onChange={(e) => {
+                    set('desiredDomain', e.target.value.trim().toLowerCase())
+                    if (form.domainPurchaseRequested) set('domainPurchaseRequested', false)
+                  }}
+                  disabled={form.domainPurchaseRequested}
+                />
+                <p className="mt-1.5 text-xs text-[#8B939C]">
+                  Leave blank to use a free subdomain for now; you can connect a custom domain later.
+                </p>
+              </div>
+
+              <label className="mb-4 flex cursor-pointer items-start gap-3 rounded-xl border border-[#E7E8E8] bg-[#F4F5F4] p-4">
+                <input
+                  type="checkbox"
+                  className="mt-1 h-4 w-4 rounded border-[#D8DADB] accent-[#2438C9]"
+                  checked={form.domainPurchaseRequested}
+                  onChange={(e) => {
+                    const on = e.target.checked
+                    set('domainPurchaseRequested', on)
+                    if (!on) {
+                      /* keep desiredDomain so BYO field still shows their pick */
+                    }
+                  }}
+                />
+                <span>
+                  <span className="block text-sm font-medium text-[#10141A]">
+                    I want you to purchase my domain and set it up for me
+                  </span>
+                  <span className="mt-1 block text-xs text-[#8B939C]">
+                    We&apos;ll register an available .com / .net / .io after your site is built
+                    (included with hosting). You won&apos;t leave this form to buy elsewhere.
+                  </span>
+                </span>
+              </label>
+
+              {form.domainPurchaseRequested && (
+                <div>
+                  <label className={label}>Find an available domain</label>
+                  <DomainSuggestPicker
+                    mode="intake"
+                    intakeToken={token}
+                    businessNameHint={form.businessName}
+                    value={form.desiredDomain}
+                    onChange={(domain) => set('desiredDomain', domain)}
+                    variant="light"
+                  />
+                </div>
+              )}
+
+              {!form.domainPurchaseRequested && form.desiredDomain && (
+                <p className="mt-3 text-xs text-sky-300/90 rounded-lg border border-sky-400/20 bg-sky-500/10 px-3 py-2">
+                  After launch you&apos;ll get step-by-step DNS instructions for GoDaddy, Namecheap,
+                  Cloudflare, Hostinger, and others to point <strong>{form.desiredDomain}</strong>{' '}
+                  at your new site.
+                </p>
+              )}
+            </section>
           )}
 
           <div className="">
