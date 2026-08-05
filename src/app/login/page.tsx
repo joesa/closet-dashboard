@@ -87,7 +87,32 @@ function LoginForm() {
 
     // Use a full reload so the server proxy sees the fresh auth cookies.
     // router.push alone may serve a cached RSC payload from before login.
-    const next = searchParams.get('next') || '/dashboard'
+    // Only ever accept a same-site, single-slash path here — "next" comes
+    // from the URL query string, so anything else (absolute URL or a
+    // protocol-relative "//host" path) must never be honored, or it becomes
+    // an open redirect after a successful login.
+    const rawNext = searchParams.get('next') || '/dashboard'
+    const next = rawNext.startsWith('/') && !rawNext.startsWith('//') ? rawNext : '/dashboard'
+
+    // If this contractor owns a live site (their own subdomain or custom
+    // domain), send them there instead of the shared dashboard host, so
+    // "https://their-site.ditchtheform.com/dashboard" stays their dashboard
+    // URL going forward. Falls back to the shared host on any error.
+    try {
+      const tenantRes = await fetch(
+        `/api/auth/tenant-redirect?next=${encodeURIComponent(next)}`
+      )
+      if (tenantRes.ok) {
+        const { url } = await tenantRes.json()
+        if (url) {
+          window.location.href = url
+          return
+        }
+      }
+    } catch {
+      /* fall through to shared-host redirect below */
+    }
+
     window.location.href = next
   }
 
