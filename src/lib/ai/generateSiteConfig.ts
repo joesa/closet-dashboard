@@ -274,6 +274,58 @@ export function repairTruncatedJson(json: string): string {
   return out
 }
 
+/**
+ * Tiered best-effort parse of AI model output into a plain JSON object.
+ * Tries progressively stronger recovery: fence/prose stripping, then
+ * truncation repair, then both combined. Returns null when nothing parses —
+ * callers decide whether to escalate (e.g. an AI self-repair pass).
+ */
+export function parseAiSiteJson(raw: string): Record<string, unknown> | null {
+  if (!raw?.trim()) return null
+  const attempts = [
+    () => JSON.parse(sanitizeJsonString(extractJson(raw))),
+    () => JSON.parse(sanitizeJsonString(repairTruncatedJson(raw))),
+    () => JSON.parse(sanitizeJsonString(repairTruncatedJson(extractJson(raw)))),
+  ]
+  for (const attempt of attempts) {
+    try {
+      const parsed = attempt()
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>
+      }
+    } catch {
+      // try next strategy
+    }
+  }
+  return null
+}
+
+/**
+ * Last-resort recovery: ask a model to rewrite broken output as valid JSON,
+ * then re-run the mechanical parse tiers on the result. Returns null on any
+ * failure so the caller can surface the original error.
+ */
+async function repairJsonWithAi(raw: string): Promise<Record<string, unknown> | null> {
+  try {
+    const { text } = await generateTextWithFallback({
+      // Cap the payload so a runaway response can't blow the repair prompt.
+      prompt: `Fix the following malformed JSON. Preserve every field and value exactly as written; only correct the syntax (unclosed strings/brackets, trailing commas, unescaped characters, surrounding prose). If the JSON is truncated, close it at the last complete field. Return ONLY the corrected JSON object — no commentary, no markdown fences.\n\n${raw.slice(0, 200_000)}`,
+      jsonMode: true,
+      temperature: 0,
+      maxOutputTokens: 32768,
+      preferredProvider: 'anthropic',
+      anthropicModel: CLAUDE_SONNET_MODEL,
+    })
+    return parseAiSiteJson(text)
+  } catch (err) {
+    console.warn(
+      '[generateSiteConfig] AI JSON repair pass failed:',
+      err instanceof Error ? err.message.slice(0, 300) : String(err)
+    )
+    return null
+  }
+}
+
 export function sanitizeJsonString(json: string): string {
   let insideString = false
   let escaped = false
@@ -512,11 +564,18 @@ ${Object.entries(pageContents)
     anthropicModel: CLAUDE_SONNET_MODEL,
   })
 
-  let aiData: Record<string, unknown>
-  try {
-    aiData = JSON.parse(sanitizeJsonString(extractJson(rawText))) as Record<string, unknown>
-  } catch {
-    console.error('RAW TEXT:', rawText);
+  // Tiered mechanical recovery first (fences/prose, truncation), then a
+  // one-shot AI repair pass, so a malformed model response never bubbles up
+  // as "AI did not return valid JSON" when the content is recoverable.
+  let aiData = parseAiSiteJson(rawText)
+  if (!aiData) {
+    console.warn(
+      '[generateSiteConfig] mechanical JSON recovery failed — attempting AI repair pass'
+    )
+    aiData = await repairJsonWithAi(rawText)
+  }
+  if (!aiData) {
+    console.error('RAW TEXT:', rawText)
     throw new Error(
       'AI did not return valid JSON.'
     )

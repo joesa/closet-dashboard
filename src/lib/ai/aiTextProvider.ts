@@ -168,6 +168,11 @@ async function generateWithClaude(opts: TextGenerationOpts): Promise<{
     if (!text) {
       throw new Error(`Claude returned no content (stop: ${message.stop_reason})`)
     }
+    if (message.stop_reason === 'max_tokens') {
+      console.warn(
+        `[aiTextProvider] Claude output truncated at max_tokens=${Math.max(opts.maxOutputTokens ?? 8192, 8192)} on ${model} — downstream JSON repair may be needed`
+      )
+    }
     return { text, model }
   } catch (err) {
     const name = err instanceof Error ? err.name : ''
@@ -243,6 +248,11 @@ async function generateWithGemini(opts: TextGenerationOpts): Promise<{
     const finishReason = result.response.candidates?.[0]?.finishReason
     throw new Error(
       `Gemini returned no content${finishReason ? ` (${finishReason})` : ''}`
+    )
+  }
+  if (result.response.candidates?.[0]?.finishReason === 'MAX_TOKENS') {
+    console.warn(
+      `[aiTextProvider] Gemini output truncated at maxOutputTokens=${opts.maxOutputTokens ?? 2048} on ${modelName} — downstream JSON repair may be needed`
     )
   }
   return { text: text.trim(), model: modelName }
