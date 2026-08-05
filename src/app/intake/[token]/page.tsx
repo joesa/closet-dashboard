@@ -3,6 +3,7 @@ import { buildIntakePublicJson } from '@/lib/intake/intakePublicResponse'
 import { healIntakeTierFromPayments } from '@/lib/intake/intakeTierGates'
 import { parseImageSelections } from '@/lib/intake/imageSelections'
 import { extractProspectSiteConfig } from '@/lib/intake/mergeProspectImages'
+import { buildServerDraftFromRow } from '@/lib/intake/draftFields'
 import { getTierCatalog } from '@/lib/intake/tiers'
 import IntakeFormClient from './IntakeFormClient'
 
@@ -48,6 +49,7 @@ export default async function IntakePage({
       imageSelections={parseImageSelections(healed.image_selections)}
       beforeAfterApplicable={pub.beforeAfterApplicable}
       pageContents={healed.page_contents ?? {}}
+      serverDraft={buildServerDraftFromRow(healed as unknown as Record<string, unknown>)}
       initialGalleryImages={healed.gallery_images ?? []}
       initialTierFromQuery={
         sp.tier === 'ai_premium' || sp.tier === 'standard' ? sp.tier : undefined

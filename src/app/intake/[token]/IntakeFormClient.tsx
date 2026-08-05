@@ -362,6 +362,8 @@ export type IntakeFormClientProps = {
   /** Server-resolved (includes custom industries). Prefer over client catalog guess. */
   beforeAfterApplicable?: boolean;
   pageContents?: Record<string, string>;
+  /** Draft form fields previously autosaved to the server (cross-device resume). */
+  serverDraft?: Record<string, unknown>;
   initialGalleryImages?: string[];
   initialTierFromQuery?: string;
   payKindFromQuery?: IntakeCheckoutKind;
@@ -518,6 +520,7 @@ export default function IntakeFormClient({
   imageSelections: initialSelections,
   beforeAfterApplicable: initialBeforeAfterApplicable,
   pageContents,
+  serverDraft,
   initialGalleryImages,
   initialTierFromQuery,
   payKindFromQuery,
@@ -531,16 +534,27 @@ export default function IntakeFormClient({
   const tierPreselectDone = useRef(false);
   const payAutoDone = useRef(false);
   const paymentConfirmDone = useRef(false);
-  const [form, setForm] = useState<Form>(() =>
-    emptyForm(
+  const [form, setForm] = useState<Form>(() => {
+    const base = emptyForm(
       businessName,
       prospectEmail,
       requestedPages.length ? sanitizePageSlugs(requestedPages) : RECOMMENDED_PAGE_SLUGS,
       pageContents,
       widgetConfigHints as WidgetHintsSnapshot | null,
       initialIncludeQuiz
-    )
-  );
+    );
+    // Server-saved draft fields restore progress across devices/browsers.
+    // The localStorage draft (restored in an effect) still wins on the same
+    // device since it is the most recent local snapshot.
+    if (!serverDraft) return base;
+    const merged: Record<string, unknown> = { ...base };
+    for (const [key, value] of Object.entries(serverDraft)) {
+      if (key in base && value !== undefined && value !== null) {
+        merged[key] = value;
+      }
+    }
+    return merged as Form;
+  });
   /** Storage URL of an uploaded logo — never image bytes (see toUploadBlob). */
   const [logoImageUrl, setLogoImageUrl] = useState<string>('');
   const [logoUploading, setLogoUploading] = useState(false);
@@ -608,6 +622,18 @@ export default function IntakeFormClient({
     [form.industry, form.services, form.otherServices]
   );
   const craftFields = useMemo(() => getCraftFieldsForVertical(craftVertical), [craftVertical]);
+  // Show only the first few craft questions by default — nine open-ended
+  // questions at once is the step most likely to make people quit. Answered
+  // questions always stay visible (e.g., after a draft restore or AI fill).
+  const [showAllCraft, setShowAllCraft] = useState(false);
+  const visibleCraftFields = useMemo(
+    () =>
+      showAllCraft
+        ? craftFields
+        : craftFields.filter((field, idx) => idx < 3 || form[field.key].trim().length > 0),
+    [craftFields, showAllCraft, form]
+  );
+  const hiddenCraftCount = craftFields.length - visibleCraftFields.length;
   const materialsMeta = useMemo(() => getMaterialsLabelAndPlaceholder(craftVertical), [craftVertical]);
 
   const logoInputRef = useRef<HTMLInputElement>(null);
@@ -859,6 +885,75 @@ export default function IntakeFormClient({
     submitted,
     currentStepIndex,
   ]);
+
+  // Server-side draft autosave (debounced). localStorage only survives on the
+  // same browser; this keeps progress when a prospect starts on their phone
+  // and finishes on a desktop. Text-only payload — never image data URLs.
+  const [serverSaveState, setServerSaveState] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const lastServerDraftRef = useRef('');
+  useEffect(() => {
+    if (typeof window === 'undefined' || !draftRestored.current) return;
+    if (notFound || submitted || alreadySubmitted) return;
+    const payload = {
+      businessName: form.businessName,
+      industry: form.industry,
+      contactName: form.contactName,
+      contactEmail: form.contactEmail,
+      contactPhone: form.contactPhone,
+      streetAddress: form.streetAddress,
+      addressLocality: form.addressLocality,
+      addressRegion: form.addressRegion,
+      postalCode: form.postalCode,
+      serviceArea: form.serviceArea,
+      notificationEmail: form.notificationEmail,
+      notificationPhone: form.notificationPhone,
+      services: form.services,
+      otherServices: form.otherServices,
+      pricingNotes: form.pricingNotes,
+      primaryColorHex: form.primaryColorHex,
+      vibe: form.vibe,
+      tone: form.tone,
+      customers: form.customers,
+      experience: form.experience,
+      differentiators: form.differentiators,
+      primaryCta: form.primaryCta,
+      desiredDomain: form.desiredDomain,
+      domainPurchaseRequested: form.domainPurchaseRequested,
+      includeQuiz: form.includeQuiz,
+      notes: form.notes,
+      pages: form.pages,
+      pageContents: form.pageContents,
+      craftSpec: form.craftSpec,
+      shopRule: form.shopRule,
+      localConditions: form.localConditions,
+      crewShape: form.crewShape,
+      clientArtifact: form.clientArtifact,
+      recentJob: form.recentJob,
+      competitorTell: form.competitorTell,
+      timelineFacts: form.timelineFacts,
+      guaranteeTerms: form.guaranteeTerms,
+      signatureMaterials: form.signatureMaterials,
+    };
+    const serialized = JSON.stringify(payload);
+    // First run just records the baseline so loading the page never burns a save.
+    if (!lastServerDraftRef.current) {
+      lastServerDraftRef.current = serialized;
+      return;
+    }
+    if (serialized === lastServerDraftRef.current) return;
+    const timer = setTimeout(() => {
+      lastServerDraftRef.current = serialized;
+      setServerSaveState('saving');
+      fetch(`/api/intake/${token}/draft`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: serialized,
+      })
+        .then((res) => setServerSaveState(res.ok ? 'saved' : 'idle'))
+        .catch(() => setServerSaveState('idle'));
+    }, 4000);
+    return () => clearTimeout(timer);
+  }, [form, token, notFound, submitted, alreadySubmitted]);
 
   useEffect(() => {
     if (typeof window === 'undefined' || paymentConfirmDone.current) return;
@@ -1857,6 +1952,12 @@ export default function IntakeFormClient({
       if (!ok) throw new Error(message || 'Failed to submit');
       setManualBuild(!!data?.manualBuild);
       setSubmitted(true);
+      // Funnel telemetry: completed intake (best-effort, never blocks).
+      void fetch(`/api/intake/${token}/event`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ stepKey: 'review', action: 'submit' }),
+      }).catch(() => {});
       if (typeof window !== 'undefined') {
         try {
           window.localStorage.removeItem(draftKey);
@@ -1872,6 +1973,8 @@ export default function IntakeFormClient({
 
   const handleSuggestCraft = async (singleField?: string) => {
     if (isGeneratingCraft) return;
+    // A full auto-fill writes every question — reveal them so the answers land visibly.
+    if (!singleField) setShowAllCraft(true);
     setIsGeneratingCraft(true);
     setGeneratingCraftField(singleField || null);
     setError('');
@@ -1984,6 +2087,21 @@ export default function IntakeFormClient({
     setMaxStepIndexVisited((m) => Math.min(m, steps.length - 1));
   }, [steps.length]);
 
+  // Best-effort funnel telemetry: record each step the prospect reaches so
+  // drop-off points are measurable. Fire-and-forget — never blocks the UI.
+  const lastStepEventRef = useRef('');
+  useEffect(() => {
+    if (notFound || alreadySubmitted) return;
+    const stepKey = steps[currentStepIndex]?.key;
+    if (!stepKey || lastStepEventRef.current === stepKey) return;
+    lastStepEventRef.current = stepKey;
+    void fetch(`/api/intake/${token}/event`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ stepKey, action: 'enter' }),
+    }).catch(() => {});
+  }, [currentStepIndex, steps, token, notFound, alreadySubmitted]);
+
   // Auto-load trade-specific page suggestions the first time the prospect lands
   // on the Page Content step (selection only — copy generation waits for confirm).
   const pageSuggestFetchedRef = useRef(false);
@@ -2093,12 +2211,51 @@ export default function IntakeFormClient({
     setCurrentStepIndex(idx);
     if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' });
   };
+  /** Scrolls to and focuses a field so a blocked Continue is never a mystery. */
+  const focusField = (id: string) => {
+    if (typeof window === 'undefined') return;
+    window.setTimeout(() => {
+      const target = document.getElementById(id);
+      target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      if (
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLSelectElement
+      ) {
+        target.focus({ preventScroll: true });
+      } else {
+        target
+          ?.querySelector<HTMLElement>('input, textarea, select, button')
+          ?.focus({ preventScroll: true });
+      }
+    }, 50);
+  };
+
   const goNext = () => {
-    if (!canAdvanceFromCurrentStep) return;
+    // Never dead-click: explain exactly what's missing and jump to it.
+    if (!canAdvanceFromCurrentStep) {
+      if (currentStepIndex === stepIdx.business) {
+        if (!form.businessName.trim()) {
+          setError('Add your business name to continue.');
+          focusField('intake-business-name');
+        } else if (!form.contactPhone.trim()) {
+          setError('Add your business phone to continue — it goes on your site and is where leads call you.');
+          focusField('intake-business-phone');
+        } else {
+          setError('Add your email to continue — we send your site preview there.');
+          focusField('intake-business-email');
+        }
+      } else if (currentStepIndex === stepIdx.pageContent) {
+        setError("Tap 'Done selecting pages — write my copy' below to confirm your pages, then continue.");
+        focusField('confirm-pages-btn');
+      }
+      return;
+    }
     if (currentStepIndex === stepIdx.services) {
       const serviceList = collectServicesForSubmit();
       if (serviceList.length === 0) {
         setError('List at least one service or job you offer.');
+        focusField('intake-services');
         return;
       }
       if (!form.otherServices.trim()) {
@@ -2219,7 +2376,12 @@ export default function IntakeFormClient({
             Ditch<span className="text-[#8B939C]">the</span>Form
           </span>
           <span className="rounded-md bg-[#F4F5F4] px-3 py-1 font-mono text-[11px] text-[#8B939C]">
-            setup · step {currentStepIndex + 1} of {steps.length}
+            {serverSaveState === 'saving'
+              ? 'saving…'
+              : serverSaveState === 'saved'
+                ? 'saved ✓'
+                : '~10 min'}{' '}
+            · step {currentStepIndex + 1} of {steps.length}
           </span>
         </div>
       </nav>
@@ -2261,7 +2423,10 @@ export default function IntakeFormClient({
             <span className="text-[#8B939C]">We&apos;ll build the rest.</span>
           </h1>
           <p className="mt-3 max-w-[52ch] text-[15px] leading-relaxed text-[#4E5761]">
-            A few details so we can build your custom website and quote calculator. We&apos;ll walk through it a few steps at a time.
+            A few details so we can build your custom website and quote calculator. We&apos;ll walk through it a few steps at a time — takes about 10 minutes.
+          </p>
+          <p className="mt-2 text-[13px] text-[#8B939C]">
+            Your progress saves automatically — you can close this page and come back anytime with the same link.
           </p>
         </div>
 
@@ -2289,22 +2454,24 @@ export default function IntakeFormClient({
             <h2 className={sectionTitle}>Business &amp; contact</h2>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
               <div className="sm:col-span-2">
-                <label className={label}>Business name *</label>
-                <input className={input} required value={form.businessName} onChange={(e) => set('businessName', e.target.value)} />
+                <label className={label} htmlFor="intake-business-name">Business name *</label>
+                <input id="intake-business-name" className={input} required value={form.businessName} onChange={(e) => set('businessName', e.target.value)} />
               </div>
               <div>
-                <label className={label}>Your name</label>
-                <input className={input} value={form.contactName} onChange={(e) => set('contactName', e.target.value)} />
+                <label className={label} htmlFor="intake-contact-name">Your name <span className="font-normal normal-case tracking-normal text-[#B3B9BF]">(optional)</span></label>
+                <input id="intake-contact-name" className={input} value={form.contactName} onChange={(e) => set('contactName', e.target.value)} />
               </div>
               <div>
-                <label className={label}>Business phone *</label>
-                <input className={input} required value={form.contactPhone} onChange={(e) => set('contactPhone', e.target.value)} placeholder="(615) 555-0123" />
+                <label className={label} htmlFor="intake-business-phone">Business phone *</label>
+                <input id="intake-business-phone" className={input} type="tel" inputMode="tel" required value={form.contactPhone} onChange={(e) => set('contactPhone', e.target.value)} placeholder="(615) 555-0123" />
               </div>
               <div className="sm:col-span-2">
-                <label className={label}>Business email *</label>
+                <label className={label} htmlFor="intake-business-email">Business email *</label>
                 <input
+                  id="intake-business-email"
                   className={`${input} ${prospectEmail ? 'cursor-not-allowed bg-[#F4F5F4] text-[#8B939C]' : ''}`}
                   type="email"
+                  inputMode="email"
                   required
                   value={form.contactEmail}
                   onChange={(e) => set('contactEmail', e.target.value)}
@@ -2383,25 +2550,25 @@ export default function IntakeFormClient({
                 </p>
               </div>
               <div className="sm:col-span-2">
-                <label className={label}>Street address</label>
+                <label className={label}>Street address <span className="font-normal normal-case tracking-normal text-[#B3B9BF]">(optional)</span></label>
                 <input className={input} value={form.streetAddress} onChange={(e) => set('streetAddress', e.target.value)} placeholder="123 Main St" />
               </div>
               <div>
-                <label className={label}>City</label>
+                <label className={label}>City <span className="font-normal normal-case tracking-normal text-[#B3B9BF]">(optional)</span></label>
                 <input className={input} value={form.addressLocality} onChange={(e) => set('addressLocality', e.target.value)} />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className={label}>State</label>
+                  <label className={label}>State <span className="font-normal normal-case tracking-normal text-[#B3B9BF]">(optional)</span></label>
                   <input className={input} value={form.addressRegion} onChange={(e) => set('addressRegion', e.target.value)} placeholder="TN" />
                 </div>
                 <div>
-                  <label className={label}>ZIP</label>
-                  <input className={input} value={form.postalCode} onChange={(e) => set('postalCode', e.target.value)} />
+                  <label className={label}>ZIP <span className="font-normal normal-case tracking-normal text-[#B3B9BF]">(optional)</span></label>
+                  <input className={input} inputMode="numeric" value={form.postalCode} onChange={(e) => set('postalCode', e.target.value)} />
                 </div>
               </div>
               <div className="sm:col-span-2">
-                <label className={label}>Areas you serve</label>
+                <label className={label}>Areas you serve <span className="font-normal normal-case tracking-normal text-[#B3B9BF]">(optional)</span></label>
                 <input className={input} value={form.serviceArea} onChange={(e) => set('serviceArea', e.target.value)} placeholder="Nashville and Middle Tennessee" />
               </div>
             </div>
@@ -2412,12 +2579,12 @@ export default function IntakeFormClient({
             <p className="mb-4 text-xs text-[#8B939C]">When a visitor requests a quote, we&apos;ll notify you here. Leave blank to use your business contact above.</p>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
               <div>
-                <label className={label}>Lead notification email</label>
+                <label className={label}>Lead notification email <span className="font-normal normal-case tracking-normal text-[#B3B9BF]">(optional)</span></label>
                 <input className={input} type="email" value={form.notificationEmail} onChange={(e) => set('notificationEmail', e.target.value)} />
               </div>
               <div>
-                <label className={label}>Mobile for text alerts</label>
-                <input className={input} value={form.notificationPhone} onChange={(e) => set('notificationPhone', e.target.value)} />
+                <label className={label}>Mobile for text alerts <span className="font-normal normal-case tracking-normal text-[#B3B9BF]">(optional)</span></label>
+                <input className={input} type="tel" inputMode="tel" value={form.notificationPhone} onChange={(e) => set('notificationPhone', e.target.value)} />
               </div>
             </div>
           </section>
@@ -3145,11 +3312,12 @@ export default function IntakeFormClient({
                 </div>
               </div>
 
-              {craftFields.map((field) => (
+              {visibleCraftFields.map((field) => (
                 <div key={field.key} className="mb-5">
                   <div className="mb-1.5 flex items-center justify-between">
                     <label className={label} htmlFor={`craft-${field.key}`}>
-                      {field.label}
+                      {field.label}{' '}
+                      <span className="font-normal normal-case tracking-normal text-[#B3B9BF]">(optional)</span>
                     </label>
                     <button
                       type="button"
@@ -3174,9 +3342,20 @@ export default function IntakeFormClient({
                 </div>
               ))}
 
+              {hiddenCraftCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setShowAllCraft(true)}
+                  className="mb-5 w-full rounded-xl border border-dashed border-[#D8DADB] bg-[#FBFBFA] px-4 py-3 text-sm font-medium text-[#2438C9] transition hover:border-[#2438C9] hover:bg-[#EDEFFB]"
+                >
+                  Show {hiddenCraftCount} more optional question{hiddenCraftCount === 1 ? '' : 's'} — each one makes your copy more yours ↓
+                </button>
+              )}
+
               <div className="mb-1.5 mt-5 flex items-center justify-between">
                 <label className={label} htmlFor="craft-materials">
-                  {materialsMeta.label}
+                  {materialsMeta.label}{' '}
+                  <span className="font-normal normal-case tracking-normal text-[#B3B9BF]">(optional)</span>
                 </label>
                 <button
                   type="button"
@@ -3348,6 +3527,7 @@ export default function IntakeFormClient({
                     AI will only start writing page copy after you confirm.
                   </p>
                   <button
+                    id="confirm-pages-btn"
                     type="button"
                     onClick={() => void handleConfirmPagesSelection()}
                     disabled={form.pages.length === 0 || bulkGenerating}
@@ -3410,6 +3590,17 @@ export default function IntakeFormClient({
                     <p className="font-semibold text-[#10141A]">AI is writing your pages...</p>
                     <p className="text-sm text-[#4E5761]">
                       Writing page {bulkProgress.current} of {bulkProgress.total}
+                    </p>
+                    <div className="h-1.5 w-48 overflow-hidden rounded-full bg-[#E7E8E8]">
+                      <div
+                        className="h-full rounded-full bg-[#2438C9] transition-all duration-500"
+                        style={{
+                          width: `${bulkProgress.total > 0 ? Math.round((Math.max(bulkProgress.current - 1, 0) / bulkProgress.total) * 100) : 0}%`,
+                        }}
+                      />
+                    </div>
+                    <p className="max-w-[36ch] text-xs text-[#8B939C]">
+                      Usually under a minute per page — hang tight. Everything saves automatically and you can edit any page after.
                     </p>
                   </div>
                 </div>
@@ -3601,7 +3792,7 @@ export default function IntakeFormClient({
                     : 'Submit →'}
               </button>
             ) : (
-              <div className="flex items-center justify-between gap-3 pt-2">
+              <div className="sticky bottom-0 z-20 -mx-4 flex items-center justify-between gap-3 border-t border-[#E7E8E8] bg-[#FBFBFA]/95 px-4 py-3 backdrop-blur sm:static sm:z-auto sm:mx-0 sm:border-0 sm:bg-transparent sm:px-0 sm:py-0 sm:pt-2 sm:backdrop-blur-none">
                 <button
                   type="button"
                   onClick={goBack}
@@ -3613,8 +3804,7 @@ export default function IntakeFormClient({
                 <button
                   type="button"
                   onClick={goNext}
-                  disabled={!canAdvanceFromCurrentStep}
-                  className="rounded-full bg-[#10141A] px-6 py-3 text-sm font-medium text-white transition hover:opacity-85 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 sm:px-7"
+                  className="rounded-full bg-[#10141A] px-6 py-3 text-sm font-medium text-white transition hover:opacity-85 active:scale-[0.98] sm:px-7"
                 >
                   Continue →
                 </button>
