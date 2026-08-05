@@ -22,7 +22,7 @@ export default function DepositCTA({
 
   if (depositStatus === 'paid' || depositRequiredCents <= 0) {
     return (
-      <div className="rounded-md border border-emerald-300/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
+      <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
         Deposit received — AI image studio is unlocked. Complete the form and submit when ready.
         The remaining {formatUsd(remainderCents)} is only due if you approve the preview before launch.
       </div>
@@ -45,28 +45,28 @@ export default function DepositCTA({
   };
 
   return (
-    <div className="rounded-xl border border-amber-300/30 bg-amber-500/10 p-5">
-      <h3 className="font-semibold text-amber-100">
+    <div className="landing-shadow-card rounded-2xl border border-[#E7E8E8] bg-white p-5">
+      <h3 className="font-semibold text-[#10141A]">
         AI Premium deposit — {formatUsd(depositRequiredCents)} today (30%)
       </h3>
-      <p className="mt-1 text-xs text-amber-200/80">
+      <p className="mt-1 text-xs text-[#4E5761]">
         Total build: {formatUsd(totalCents)}. Selecting AI Premium also opens checkout automatically —
         use the button below if you need to pay again.
       </p>
 
-      <ul className="mt-3 space-y-2 text-sm text-amber-50/95">
+      <ul className="mt-3 space-y-2 text-sm text-[#4E5761]">
         <li>
-          <span className="font-semibold text-amber-100">What this unlocks:</span> the AI image
+          <span className="font-semibold text-[#10141A]">What this unlocks:</span> the AI image
           studio (custom hero and service photos), AI page copy, and we start building your site
           from this intake.
         </li>
         <li>
-          <span className="font-semibold text-amber-100">When the balance is due:</span>{' '}
+          <span className="font-semibold text-[#10141A]">When the balance is due:</span>{' '}
           {formatUsd(remainderCents)} only after you approve the preview, before we launch the site
           and hand you dashboard access. Nothing more is charged until then.
         </li>
         <li>
-          <span className="font-semibold text-amber-100">If you&apos;re not satisfied:</span> you
+          <span className="font-semibold text-[#10141A]">If you&apos;re not satisfied:</span> you
           don&apos;t pay the balance, and we refund this deposit. No launch, no ongoing maintenance
           charge until you choose to proceed.
         </li>
@@ -76,11 +76,11 @@ export default function DepositCTA({
         type="button"
         disabled={loading}
         onClick={() => void pay()}
-        className="mt-4 rounded-lg bg-white px-5 py-2.5 text-sm font-bold text-black hover:bg-slate-200 disabled:opacity-50"
+        className="mt-4 rounded-full bg-[#2438C9] px-6 py-2.5 text-sm font-medium text-white transition hover:opacity-85 active:scale-[0.98] disabled:opacity-50"
       >
         {loading ? 'Redirecting…' : `Pay ${formatUsd(depositRequiredCents)} deposit`}
       </button>
-      {error && <p className="mt-2 text-sm text-red-400">{error}</p>}
+      {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
     </div>
   );
 }

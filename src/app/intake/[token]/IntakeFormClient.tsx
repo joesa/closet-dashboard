@@ -326,12 +326,16 @@ async function toUploadBlob(file: File): Promise<{ blob: Blob; filename: string 
   }
 }
 
-const label = 'mb-2 block text-[11px] font-semibold uppercase tracking-widest text-zinc-500';
-const input = 'w-full rounded-xl border border-white/[0.08] bg-white/[0.04] px-3.5 py-2.5 text-sm text-white placeholder:text-zinc-600 outline-none transition focus:border-white/30 focus:bg-white/[0.07] sm:px-4 sm:py-3';
-const selectInput = `${input} appearance-none [&>option]:bg-zinc-900 [&>option]:text-white`;
-const selectOption = 'bg-zinc-900 text-white';
-const sectionClass = 'rounded-xl border border-white/[0.08] bg-white/[0.03] p-4 sm:p-6';
-const sectionTitle = 'mb-4 text-[11px] font-semibold uppercase tracking-widest text-zinc-500';
+/* Landing design language (see @/lib/landingTheme + src/app/page.tsx):
+   light surfaces, ink text, hairline borders, one ultramarine accent,
+   layered .landing-shadow-* depth. Kept as class strings so the whole
+   form restyles from this one block. */
+const label = 'mb-2 block text-[11px] font-semibold uppercase tracking-widest text-[#8B939C]';
+const input = 'w-full rounded-xl border border-[#D8DADB] bg-white px-3.5 py-2.5 text-sm text-[#10141A] placeholder:text-[#8B939C] outline-none transition focus:border-[#2438C9] focus:ring-2 focus:ring-[#EDEFFB] sm:px-4 sm:py-3';
+const selectInput = `${input} appearance-none [&>option]:bg-white [&>option]:text-[#10141A]`;
+const selectOption = 'bg-white text-[#10141A]';
+const sectionClass = 'landing-shadow-card rounded-2xl border border-[#E7E8E8] bg-white p-4 sm:p-6';
+const sectionTitle = 'mb-4 text-[11px] font-semibold uppercase tracking-widest text-[#8B939C]';
 
 export type IntakeFormClientProps = {
   token: string;
@@ -456,12 +460,12 @@ function IntakeStepProgress({
 }) {
   const current = steps[currentStepIndex];
   return (
-    <div className="mb-5 sm:mb-6">
-      <div className="mb-2 flex items-center justify-between">
-        <p className="text-[11px] font-semibold uppercase tracking-widest text-zinc-500">
+    <div className="mb-6 sm:mb-8">
+      <div className="mb-2.5 flex items-baseline justify-between">
+        <p className="text-[11px] font-semibold uppercase tracking-widest text-[#4E5761]">
           Step {currentStepIndex + 1} of {steps.length} — {current?.title}
         </p>
-        <p className="text-[11px] text-zinc-600">
+        <p className="font-mono text-[11px] text-[#8B939C]">
           {Math.round(((currentStepIndex + 1) / steps.length) * 100)}%
         </p>
       </div>
@@ -480,10 +484,10 @@ function IntakeStepProgress({
               onClick={() => onSelect(i)}
               className={`h-1.5 flex-1 rounded-full transition-colors ${
                 active
-                  ? 'bg-indigo-400'
+                  ? 'bg-[#2438C9]'
                   : visited
-                    ? 'cursor-pointer bg-indigo-400/40 hover:bg-indigo-400/70'
-                    : 'cursor-not-allowed bg-white/[0.08]'
+                    ? 'cursor-pointer bg-[#2438C9]/30 hover:bg-[#2438C9]/60'
+                    : 'cursor-not-allowed bg-[#E7E8E8]'
               }`}
             />
           );
@@ -2063,29 +2067,32 @@ export default function IntakeFormClient({
 
   if (notFound) {
     return (
-      <div className="min-h-screen grid place-items-center bg-gray-50 px-6 text-center">
-        <div>
-          <h1 className="text-xl font-semibold text-gray-900">Link not found</h1>
-          <p className="mt-2 text-sm text-gray-500">This intake link is invalid or has expired. Please ask your contact for a new one.</p>
+      <div className="grid min-h-screen place-items-center bg-[#FBFBFA] px-6 text-center text-[#10141A] antialiased">
+        <div className="landing-rise">
+          <span className="inline-flex items-center rounded-full bg-[#EDEFFB] px-4 py-1.5 text-[12.5px] font-medium text-[#2438C9]">
+            DitchTheForm setup
+          </span>
+          <h1 className="mt-5 text-2xl font-medium tracking-[-0.02em]">Link not found</h1>
+          <p className="mt-2 text-sm leading-relaxed text-[#4E5761]">This intake link is invalid or has expired. Please ask your contact for a new one.</p>
         </div>
       </div>
     );
   }
   if (needsEmailVerify) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
-        <div className="mx-auto max-w-md w-full rounded-xl border border-gray-200 bg-white p-8 shadow-sm text-center">
-          <div className="mx-auto mb-4 grid h-12 w-12 place-items-center rounded-full bg-indigo-100 text-indigo-600 text-2xl">✉</div>
-          <h1 className="text-xl font-semibold text-gray-900">Check your email</h1>
-          <p className="mt-2 text-sm text-gray-600">
+      <div className="flex min-h-screen items-center justify-center bg-[#FBFBFA] px-4 text-[#10141A] antialiased">
+        <div className="landing-rise landing-shadow-panel mx-auto w-full max-w-md rounded-2xl border border-[#E7E8E8] bg-white p-8 text-center">
+          <div className="mx-auto mb-4 grid h-12 w-12 place-items-center rounded-full bg-[#EDEFFB] text-2xl text-[#2438C9]">✉</div>
+          <h1 className="text-xl font-medium tracking-[-0.02em]">Check your email</h1>
+          <p className="mt-2 text-sm leading-relaxed text-[#4E5761]">
             We sent a confirmation link to <strong>{prospectEmail || 'your email'}</strong>.
             Click that link to unlock your setup form.
           </p>
-          <p className="mt-4 text-xs text-gray-400">
+          <p className="mt-4 text-xs text-[#8B939C]">
             Didn&apos;t get it? Check your spam folder or{' '}
             <a
               href={`/api/intake/public/verify?token=${encodeURIComponent(token)}`}
-              className="text-indigo-600 hover:underline"
+              className="text-[#2438C9] underline underline-offset-4 transition hover:opacity-70"
             >
               click here to verify now
             </a>
@@ -2098,11 +2105,11 @@ export default function IntakeFormClient({
 
   if (submitted) {
     return (
-      <div className="min-h-screen bg-gray-50 py-10 px-4">
-        <div className="mx-auto max-w-md text-center">
-          <div className="mx-auto mb-4 grid h-12 w-12 place-items-center rounded-full bg-green-100 text-green-600">✓</div>
-          <h1 className="text-xl font-semibold text-gray-900">Thank you!</h1>
-          <p className="mt-2 text-sm text-gray-600">
+      <div className="min-h-screen bg-[#FBFBFA] px-4 py-16 text-[#10141A] antialiased">
+        <div className="landing-rise mx-auto max-w-md text-center">
+          <div className="mx-auto mb-5 grid h-12 w-12 place-items-center rounded-full bg-[#EDEFFB] font-semibold text-[#2438C9]">✓</div>
+          <h1 className="text-2xl font-medium tracking-[-0.02em]">Thank you!</h1>
+          <p className="mt-3 text-sm leading-relaxed text-[#4E5761]">
             {launchPaid
               ? 'Your launch payment is complete. Use the links below to view your site and sign in to the dashboard.'
               : manualBuild
@@ -2110,16 +2117,17 @@ export default function IntakeFormClient({
                 : 'Your details have been received. We are building your site and quote calculator in the background. Check your email for login credentials when provisioning completes.'}
           </p>
           {paymentSuccessMessage && (
-            <p className="mt-4 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
+            <p className="landing-shadow-card mt-5 rounded-2xl border border-[#E7E8E8] bg-white px-4 py-3 text-sm text-[#10141A]">
+              <span className="font-semibold text-[#2438C9]">✓</span>{' '}
               {paymentSuccessMessage}
             </p>
           )}
           {launchPaid && (tenantSiteUrl || loginUrl) && (
-            <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-center">
+            <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:justify-center">
               {tenantSiteUrl && (
                 <a
                   href={tenantSiteUrl}
-                  className="rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-bold text-white hover:bg-indigo-500"
+                  className="rounded-full bg-[#10141A] px-6 py-3 text-sm font-medium text-white transition hover:opacity-85 active:scale-[0.98]"
                 >
                   View your site
                 </a>
@@ -2127,7 +2135,7 @@ export default function IntakeFormClient({
               {loginUrl && (
                 <a
                   href={loginUrl}
-                  className="rounded-lg border border-indigo-300 px-5 py-2.5 text-sm font-semibold text-indigo-700 hover:bg-indigo-50"
+                  className="rounded-full border border-[#D8DADB] px-6 py-3 text-sm font-medium text-[#10141A] transition hover:border-[#8B939C]"
                 >
                   Contractor dashboard
                 </a>
@@ -2149,8 +2157,20 @@ export default function IntakeFormClient({
   }
 
   return (
-    <div className="min-h-screen bg-[#0a0a0a] px-4 py-6 text-white sm:py-10">
-      <div className="mx-auto max-w-3xl">
+    <div className="min-h-screen bg-[#FBFBFA] text-[#10141A] antialiased">
+      {/* ─── Product nav — same shell as the marketing homepage ─── */}
+      <nav className="sticky top-0 z-50 border-b border-[#E7E8E8] bg-[rgba(251,251,250,0.85)] backdrop-blur-xl">
+        <div className="mx-auto flex h-[60px] max-w-6xl items-center justify-between px-6">
+          <span className="text-[16px] font-semibold tracking-tight">
+            Ditch<span className="text-[#8B939C]">the</span>Form
+          </span>
+          <span className="rounded-md bg-[#F4F5F4] px-3 py-1 font-mono text-[11px] text-[#8B939C]">
+            setup · step {currentStepIndex + 1} of {steps.length}
+          </span>
+        </div>
+      </nav>
+
+      <div className="mx-auto max-w-3xl px-4 pb-16 pt-10 sm:pt-14">
         {currentStepIndex === stepIdx.business && tierCatalog.length > 0 && !tierAlreadySelected && (
           <div className="mb-8">
             <TierPicker
@@ -2178,9 +2198,17 @@ export default function IntakeFormClient({
           </div>
         )}
 
-        <div className="mb-5 sm:mb-6">
-          <h1 className="text-xl font-bold tracking-tight text-white sm:text-2xl">Tell us about your business</h1>
-          <p className="mt-1 text-sm leading-relaxed text-zinc-400">A few details so we can build your custom website and quote calculator. We&apos;ll walk through it a few steps at a time.</p>
+        <div className="landing-rise mb-6 sm:mb-8">
+          <span className="inline-flex items-center rounded-full bg-[#EDEFFB] px-4 py-1.5 text-[12.5px] font-medium text-[#2438C9]">
+            {form.industry.trim() ? `Your site setup · Tailored to ${form.industry.trim()}` : 'Your site setup'}
+          </span>
+          <h1 className="mt-5 text-3xl font-medium leading-[1.05] tracking-[-0.03em] sm:text-4xl">
+            Tell us about your business.{' '}
+            <span className="text-[#8B939C]">We&apos;ll build the rest.</span>
+          </h1>
+          <p className="mt-3 max-w-[52ch] text-[15px] leading-relaxed text-[#4E5761]">
+            A few details so we can build your custom website and quote calculator. We&apos;ll walk through it a few steps at a time.
+          </p>
         </div>
 
         <IntakeStepProgress
@@ -2221,7 +2249,7 @@ export default function IntakeFormClient({
               <div className="sm:col-span-2">
                 <label className={label}>Business email *</label>
                 <input
-                  className={`${input} ${prospectEmail ? 'cursor-not-allowed bg-white/[0.02] text-zinc-500' : ''}`}
+                  className={`${input} ${prospectEmail ? 'cursor-not-allowed bg-[#F4F5F4] text-[#8B939C]' : ''}`}
                   type="email"
                   required
                   value={form.contactEmail}
@@ -2230,7 +2258,7 @@ export default function IntakeFormClient({
                   disabled={!!prospectEmail}
                 />
                 {prospectEmail && (
-                  <p className="mt-1 text-xs text-zinc-500">
+                  <p className="mt-1 text-xs text-[#8B939C]">
                     This is the email your setup link was sent to and can&apos;t be changed.
                   </p>
                 )}
@@ -2291,11 +2319,11 @@ export default function IntakeFormClient({
                       placeholder="Type your industry (e.g. Auto Detailing, Mobile Mechanic)"
                     />
                     {resolvingCustomIndustry && (
-                      <p className="mt-1 text-xs text-indigo-600">Finding services for this trade…</p>
+                      <p className="mt-1 text-xs text-[#2438C9]">Finding services for this trade…</p>
                     )}
                   </>
                 )}
-                <p className="mt-1 text-xs text-zinc-500">
+                <p className="mt-1 text-xs text-[#8B939C]">
                   {listedServices.length > 0 ? 'Based on your listed services: ' : 'Examples: '}
                   {listedServices.length > 0 ? listedServices.join(' · ') : industryExamples.join(' · ')}
                 </p>
@@ -2327,7 +2355,7 @@ export default function IntakeFormClient({
 
           <section className={sectionClass}>
             <h2 className={sectionTitle}>Where should new leads go?</h2>
-            <p className="mb-4 text-xs text-zinc-500">When a visitor requests a quote, we&apos;ll notify you here. Leave blank to use your business contact above.</p>
+            <p className="mb-4 text-xs text-[#8B939C]">When a visitor requests a quote, we&apos;ll notify you here. Leave blank to use your business contact above.</p>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
               <div>
                 <label className={label}>Lead notification email</label>
@@ -2355,13 +2383,13 @@ export default function IntakeFormClient({
                   type="button"
                   disabled={logoUploading}
                   onClick={() => logoInputRef.current?.click()}
-                  className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg border-2 border-dashed border-white/[0.16] bg-white/[0.02] px-4 py-3 text-sm font-medium text-zinc-300 transition-colors hover:border-indigo-300/60 hover:bg-indigo-500/10 hover:text-indigo-100 disabled:opacity-60"
+                  className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg border-2 border-dashed border-[#D8DADB] bg-[#F4F5F4] px-4 py-3 text-sm font-medium text-[#4E5761] transition-colors hover:border-[#2438C9] hover:bg-[#EDEFFB] hover:text-[#2438C9] disabled:opacity-60"
                 >
                   <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
                   {logoUploading ? 'Uploading…' : logoImageUrl ? 'Change Logo' : 'Upload Logo'}
                 </button>
                 {logoUploadError && (
-                  <p className="mt-2 rounded-md border border-rose-300/30 bg-rose-500/10 px-2.5 py-1.5 text-xs text-rose-100">
+                  <p className="mt-2 rounded-md border border-red-200 bg-red-50 px-2.5 py-1.5 text-xs text-red-700">
                     {logoUploadError}
                   </p>
                 )}
@@ -2379,29 +2407,29 @@ export default function IntakeFormClient({
                   </button>
                 )}
                 {intakeTier === 'ai_premium' && (
-                  <div className="mt-3 rounded-xl border border-indigo-300/20 bg-indigo-500/10 p-3">
-                    <p className="text-xs text-indigo-100">
+                  <div className="mt-3 rounded-xl border border-[#2438C9]/20 bg-[#EDEFFB] p-3">
+                    <p className="text-xs text-[#10141A]">
                       Optional for AI Premium: generate 3 logo concepts inferred from your listed services.
                     </p>
-                    <p className="mt-1 text-xs text-indigo-200">
+                    <p className="mt-1 text-xs text-[#4E5761]">
                       Attempts used: {logoGenAttemptsUsed}/{logoGenMaxAttempts}
                     </p>
                     <button
                       type="button"
                       onClick={() => void handleGenerateLogos()}
                       disabled={generatingLogos || logoGenAttemptsUsed >= logoGenMaxAttempts}
-                      className="mt-2 rounded-md bg-white px-3 py-1.5 text-xs font-semibold text-black hover:bg-slate-200 disabled:opacity-50"
+                      className="mt-2 rounded-full bg-[#10141A] px-4 py-1.5 text-xs font-medium text-white transition hover:opacity-85 active:scale-[0.98] disabled:opacity-50"
                     >
                       {generatingLogos ? 'Generating 3 logos…' : 'Generate 3 AI logo options'}
                     </button>
                     {logoGenAttemptsUsed >= logoGenMaxAttempts && (
-                      <p className="mt-2 text-xs text-zinc-400">
+                      <p className="mt-2 text-xs text-[#4E5761]">
                         You&apos;ve reached the logo generation limit for this intake.
                       </p>
                     )}
                     {generatedLogoUrls.length > 0 && (
                       <>
-                        <p className="mt-3 text-xs text-indigo-200">
+                        <p className="mt-3 text-xs text-[#4E5761]">
                           AI picked its top recommendation below — click a different option to change it.
                         </p>
                         <div className="mt-1.5 grid grid-cols-3 gap-2">
@@ -2415,13 +2443,13 @@ export default function IntakeFormClient({
                                     setSelectedGeneratedLogoUrl(url);
                                     setLogoImageUrl('');
                                   }}
-                                  className={`w-full rounded-md border p-1 ${selected ? 'border-indigo-400 ring-2 ring-indigo-300/50' : 'border-white/[0.18]'}`}
+                                  className={`w-full rounded-md border p-1 ${selected ? 'border-[#2438C9] ring-2 ring-[#EDEFFB]' : 'border-[#D8DADB]'}`}
                                   title="Select this logo"
                                 >
                                   <img src={url} alt="Generated logo option" className="h-16 w-full rounded object-contain bg-white" />
                                 </button>
                                 {i === 0 && (
-                                  <span className="pointer-events-none absolute left-1.5 top-1.5 rounded-full bg-indigo-500 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-white">
+                                  <span className="pointer-events-none absolute left-1.5 top-1.5 rounded-full bg-[#2438C9] px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-white">
                                     AI pick
                                   </span>
                                 )}
@@ -2444,14 +2472,14 @@ export default function IntakeFormClient({
                       </>
                     )}
                     {selectedGeneratedLogoUrl && (
-                      <p className="mt-2 text-xs font-medium text-emerald-300">AI logo selected for submission.</p>
+                      <p className="mt-2 text-xs font-medium text-emerald-700">AI logo selected for submission.</p>
                     )}
                   </div>
                 )}
               </div>
               <div>
                 <label className={label}>Brand color</label>
-                <input className="h-10 w-20 rounded border border-white/[0.15] bg-transparent" type="color" value={form.primaryColorHex} onChange={(e) => set('primaryColorHex', e.target.value)} />
+                <input className="h-10 w-20 rounded border border-[#D8DADB] bg-white" type="color" value={form.primaryColorHex} onChange={(e) => set('primaryColorHex', e.target.value)} />
               </div>
             </div>
           </section>
@@ -2460,7 +2488,7 @@ export default function IntakeFormClient({
           <div className={currentStepIndex === stepIdx.domain ? '' : 'hidden'}>
             <section className={sectionClass}>
               <h2 className={sectionTitle}>Website domain</h2>
-              <p className="mb-3 text-sm text-zinc-400">
+              <p className="mb-3 text-sm text-[#4E5761]">
                 Prefer a domain you already own (GoDaddy, Namecheap, Cloudflare, Hostinger, etc.).
                 After your site is built, you&apos;ll connect it with simple DNS records — you keep
                 ownership. Need us to buy one for you? Check the box below and pick an available
@@ -2478,15 +2506,15 @@ export default function IntakeFormClient({
                   }}
                   disabled={form.domainPurchaseRequested}
                 />
-                <p className="mt-1.5 text-xs text-zinc-500">
+                <p className="mt-1.5 text-xs text-[#8B939C]">
                   Leave blank to use a free subdomain for now; you can connect a custom domain later.
                 </p>
               </div>
 
-              <label className="mb-4 flex cursor-pointer items-start gap-3 rounded-xl border border-white/[0.12] bg-white/[0.03] p-4">
+              <label className="mb-4 flex cursor-pointer items-start gap-3 rounded-xl border border-[#E7E8E8] bg-[#F4F5F4] p-4">
                 <input
                   type="checkbox"
-                  className="mt-1 h-4 w-4 rounded border-white/20 bg-transparent text-indigo-500"
+                  className="mt-1 h-4 w-4 rounded border-[#D8DADB] accent-[#2438C9]"
                   checked={form.domainPurchaseRequested}
                   onChange={(e) => {
                     const on = e.target.checked
@@ -2497,10 +2525,10 @@ export default function IntakeFormClient({
                   }}
                 />
                 <span>
-                  <span className="block text-sm font-medium text-zinc-100">
+                  <span className="block text-sm font-medium text-[#10141A]">
                     I want you to purchase my domain and set it up for me
                   </span>
-                  <span className="mt-1 block text-xs text-zinc-500">
+                  <span className="mt-1 block text-xs text-[#8B939C]">
                     We&apos;ll register an available .com / .net / .io after your site is built
                     (included with hosting). You won&apos;t leave this form to buy elsewhere.
                   </span>
@@ -2535,7 +2563,7 @@ export default function IntakeFormClient({
           <section className={sectionClass}>
             <h2 className={sectionTitle}>Services &amp; pricing</h2>
             <label className={label}>Services / jobs you offer</label>
-            <p className="mb-2 text-xs text-zinc-500">List the services or jobs you offer, separated by commas. These become your site&apos;s service sections and your quote calculator options.</p>
+            <p className="mb-2 text-xs text-[#8B939C]">List the services or jobs you offer, separated by commas. These become your site&apos;s service sections and your quote calculator options.</p>
             <textarea
               className={`${input} min-h-[80px] mb-4`}
               value={form.otherServices}
@@ -2548,11 +2576,11 @@ export default function IntakeFormClient({
             />
 
             {suggestedServices.length > 0 ? (
-              <div className="mb-4 rounded-xl border border-indigo-300/20 bg-indigo-500/10 p-4">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-indigo-300">
+              <div className="mb-4 rounded-xl border border-[#2438C9]/20 bg-[#EDEFFB] p-4">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-[#2438C9]">
                   Common services for {calculatorGuidance.tradeLabel}
                 </p>
-                <p className="mt-1 mb-3 text-xs text-indigo-200/80">
+                <p className="mt-1 mb-3 text-xs text-[#4E5761]">
                   Tap any service below to add it to your list — click again to remove it.
                 </p>
                 <div className="flex flex-wrap gap-2">
@@ -2565,8 +2593,8 @@ export default function IntakeFormClient({
                         onClick={() => toggleSuggestedService(svcLabel)}
                         className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
                           active
-                            ? 'border-indigo-300 bg-indigo-500/30 text-white'
-                            : 'border-white/[0.14] bg-white/[0.02] text-zinc-300 hover:border-indigo-300/50 hover:bg-indigo-500/10'
+                            ? 'border-[#2438C9] bg-[#EDEFFB] text-[#2438C9]'
+                            : 'border-[#D8DADB] bg-white text-[#4E5761] hover:border-[#8B939C] hover:bg-[#F4F5F4]'
                         }`}
                       >
                         {active ? '✓ ' : '+ '}
@@ -2577,8 +2605,8 @@ export default function IntakeFormClient({
                 </div>
               </div>
             ) : (
-              <div className="mb-4 rounded-xl border border-indigo-300/20 bg-indigo-500/10 p-4 text-sm text-indigo-100">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-indigo-300">Examples for {calculatorGuidance.tradeLabel}</p>
+              <div className="mb-4 rounded-xl border border-[#2438C9]/20 bg-[#EDEFFB] p-4 text-sm text-[#10141A]">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-[#2438C9]">Examples for {calculatorGuidance.tradeLabel}</p>
                 <p className="mt-1">Try specific quoteable services like: {calculatorGuidance.serviceExamples.join(', ')}.</p>
               </div>
             )}
@@ -2600,8 +2628,8 @@ export default function IntakeFormClient({
                 </p>
               </div>
             ) : isTicketBusiness ? (
-              <div className="mb-4 rounded-xl border border-emerald-300/20 bg-emerald-500/10 p-4 text-sm text-emerald-100">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-300">Ticketing system detected</p>
+              <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700">Ticketing system detected</p>
                 <p className="mt-1">
                   Customers of {calculatorGuidance.tradeLabel.toLowerCase()} businesses purchase tickets for events or entry.
                   Your site will be configured with a ticketing call-to-action instead of a quote calculator.
@@ -2621,31 +2649,31 @@ export default function IntakeFormClient({
                     key={opt.id}
                     type="button"
                     onClick={() => set('pricingModel', opt.id as Form['pricingModel'])}
-                    className={`rounded-xl border p-4 text-left transition-all ${active ? 'border-indigo-300 bg-indigo-500/10' : 'border-white/[0.10] bg-white/[0.02] hover:border-indigo-300/40'}`}
+                    className={`rounded-xl border p-4 text-left transition-all ${active ? 'border-[#2438C9] bg-[#EDEFFB]' : 'border-[#D8DADB] bg-white hover:border-[#8B939C]'}`}
                   >
-                    <p className="text-sm font-semibold text-white">{opt.label}</p>
-                    <p className="mt-1 text-xs text-zinc-400">{opt.sub}</p>
+                    <p className="text-sm font-semibold text-[#10141A]">{opt.label}</p>
+                    <p className="mt-1 text-xs text-[#4E5761]">{opt.sub}</p>
                   </button>
                 );
               })}
             </div>
-            <div className="mb-4 rounded-xl border border-amber-300/20 bg-amber-500/10 p-4 text-sm text-amber-100">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-amber-300">Recommended</p>
+            <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-amber-700">Recommended</p>
               <p className="mt-1">Most {calculatorGuidance.tradeLabel} businesses start with <strong>{calculatorGuidance.recommendedPricingModel === 'fixed' ? 'Flat per job' : calculatorGuidance.recommendedPricingModel === 'base_plus_distance' ? 'Base + distance' : 'Per unit / size'}</strong>.</p>
-              <p className="mt-1 text-xs text-amber-200/90">{calculatorGuidance.recommendationReason}</p>
+              <p className="mt-1 text-xs text-amber-800">{calculatorGuidance.recommendationReason}</p>
             </div>
 
             {servicesBlurGuidance && (
-              <div className="mb-4 rounded-xl border border-emerald-300/20 bg-emerald-500/10 p-4 text-sm text-emerald-100">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-300">
+              <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700">
                   Industry + services recommendation
                 </p>
                 <p className="mt-1">
                   Based on your selected industry and listed services, we recommend{' '}
                   <strong>{pricingModelLabel(servicesBlurGuidance.recommendedPricingModel)}</strong>.
                 </p>
-                <p className="mt-1 text-xs text-emerald-200/90">{servicesBlurGuidance.recommendationReason}</p>
-                <p className="mt-2 text-xs font-semibold text-emerald-200">
+                <p className="mt-1 text-xs text-emerald-800">{servicesBlurGuidance.recommendationReason}</p>
+                <p className="mt-2 text-xs font-semibold text-emerald-800">
                   Applied automatically when you left the services field.
                 </p>
               </div>
@@ -2657,11 +2685,11 @@ export default function IntakeFormClient({
               <input className={input} value={form.tierNameStandard} onChange={(e) => set('tierNameStandard', e.target.value)} placeholder="Standard" />
               <input className={input} value={form.tierNamePremium} onChange={(e) => set('tierNamePremium', e.target.value)} placeholder="Premium" />
             </div>
-            <p className="mb-4 text-xs text-zinc-500">Examples: {calculatorGuidance.tierExamples.join(' / ')}</p>
+            <p className="mb-4 text-xs text-[#8B939C]">Examples: {calculatorGuidance.tierExamples.join(' / ')}</p>
 
             {servicesBlurGuidance && servicesBlurGuidance.tierExamples.length >= 3 && (
-              <div className="mb-4 rounded-xl border border-emerald-300/20 bg-emerald-500/10 p-4 text-sm text-emerald-100">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-300">
+              <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700">
                   Suggested tier names
                 </p>
                 <p className="mt-1">
@@ -2677,7 +2705,7 @@ export default function IntakeFormClient({
                     set('tierNameStandard', servicesBlurGuidance.tierExamples[1]);
                     set('tierNamePremium', servicesBlurGuidance.tierExamples[2]);
                   }}
-                  className="mt-3 rounded-md border border-emerald-300/40 px-3 py-1.5 text-xs font-semibold text-emerald-100 transition hover:bg-emerald-400/10"
+                  className="mt-3 rounded-md border border-emerald-300 px-3 py-1.5 text-xs font-semibold text-emerald-800 transition hover:bg-emerald-100"
                 >
                   Apply suggested tier names
                 </button>
@@ -2685,7 +2713,7 @@ export default function IntakeFormClient({
             )}
 
             <label className={label}>Approximate pricing by tier</label>
-            <p className="mb-2 text-xs text-zinc-500">Optional. Leave blank if you want AI to estimate from your trade. Examples: {calculatorGuidance.pricingExamples.join(' · ')}</p>
+            <p className="mb-2 text-xs text-[#8B939C]">Optional. Leave blank if you want AI to estimate from your trade. Examples: {calculatorGuidance.pricingExamples.join(' · ')}</p>
             <div className="mb-4 grid grid-cols-1 gap-2.5 sm:grid-cols-3 sm:gap-3">
               <input className={input} type="number" min="0" value={form.seedBasic} onChange={(e) => set('seedBasic', e.target.value)} placeholder={form.pricingModel === 'fixed' ? 'e.g. 249' : 'e.g. 45'} />
               <input className={input} type="number" min="0" value={form.seedStandard} onChange={(e) => set('seedStandard', e.target.value)} placeholder={form.pricingModel === 'fixed' ? 'e.g. 899' : 'e.g. 75'} />
@@ -2702,7 +2730,7 @@ export default function IntakeFormClient({
                   key={String(opt.value)}
                   type="button"
                   onClick={() => setBool('hasFinishes', opt.value)}
-                  className={`rounded-xl border p-3 text-left text-sm transition-all ${form.hasFinishes === opt.value ? 'border-indigo-300 bg-indigo-500/10 text-white' : 'border-white/[0.10] bg-white/[0.02] text-zinc-400'}`}
+                  className={`rounded-xl border p-3 text-left text-sm transition-all ${form.hasFinishes === opt.value ? 'border-[#2438C9] bg-[#EDEFFB] text-[#10141A]' : 'border-[#D8DADB] bg-white text-[#4E5761] hover:border-[#8B939C]'}`}
                 >
                   {opt.label}
                 </button>
@@ -2717,21 +2745,21 @@ export default function IntakeFormClient({
                   { labelKey: 'finish3Label' as const, colorKey: 'finish3Color' as const },
                 ].map((entry, i) => (
                   <div key={i} className="flex items-center gap-2.5 sm:gap-3">
-                    <input type="color" className="h-10 w-11 rounded border border-white/[0.15] bg-transparent sm:w-12" value={form[entry.colorKey]} onChange={(e) => set(entry.colorKey, e.target.value)} />
+                    <input type="color" className="h-10 w-11 rounded border border-[#D8DADB] bg-white sm:w-12" value={form[entry.colorKey]} onChange={(e) => set(entry.colorKey, e.target.value)} />
                     <input className={input} value={form[entry.labelKey]} onChange={(e) => set(entry.labelKey, e.target.value)} placeholder={`Option ${i + 1} name`} />
                   </div>
                 ))}
-                <p className="text-xs text-zinc-500">Examples: {calculatorGuidance.finishExamples.join(' · ')}</p>
+                <p className="text-xs text-[#8B939C]">Examples: {calculatorGuidance.finishExamples.join(' · ')}</p>
               </div>
             )}
 
             <label className={label}>Add-ons / upgrades</label>
             {calculatorGuidance.addOnExamples.length > 0 && (
-              <div className="mb-3 rounded-xl border border-indigo-300/20 bg-indigo-500/10 p-4">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-indigo-300">
+              <div className="mb-3 rounded-xl border border-[#2438C9]/20 bg-[#EDEFFB] p-4">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-[#2438C9]">
                   AI-suggested add-ons for {calculatorGuidance.tradeLabel}
                 </p>
-                <p className="mt-1 mb-3 text-xs text-indigo-200/80">
+                <p className="mt-1 mb-3 text-xs text-[#4E5761]">
                   Common upsells customers buy in this trade. Tap any to add it to your add-ons below.
                 </p>
                 <div className="flex flex-wrap gap-2">
@@ -2746,8 +2774,8 @@ export default function IntakeFormClient({
                         onClick={() => toggleAddOn(addOn)}
                         className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
                           active
-                            ? 'border-indigo-300 bg-indigo-500/30 text-white'
-                            : 'border-white/[0.14] bg-white/[0.02] text-zinc-300 hover:border-indigo-300/50 hover:bg-indigo-500/10'
+                            ? 'border-[#2438C9] bg-[#EDEFFB] text-[#2438C9]'
+                            : 'border-[#D8DADB] bg-white text-[#4E5761] hover:border-[#8B939C] hover:bg-[#F4F5F4]'
                         }`}
                       >
                         {active ? '✓ ' : '+ '}
@@ -2759,15 +2787,15 @@ export default function IntakeFormClient({
               </div>
             )}
             <textarea className={`${input} min-h-[72px] mb-2`} value={form.addOnText} onChange={(e) => set('addOnText', e.target.value)} placeholder={calculatorGuidance.addOnExamples.join(', ')} />
-            <p className="mb-4 text-xs text-zinc-500">Tap a suggestion above or type your own, separated by commas.</p>
+            <p className="mb-4 text-xs text-[#8B939C]">Tap a suggestion above or type your own, separated by commas.</p>
 
             <label className={label}>How should the quote calculator think about these jobs?</label>
             {calculatorGuidance.quoteVariables.length > 0 && (
-              <div className="mb-3 rounded-xl border border-indigo-300/20 bg-indigo-500/10 p-4">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-indigo-300">
+              <div className="mb-3 rounded-xl border border-[#2438C9]/20 bg-[#EDEFFB] p-4">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-[#2438C9]">
                   AI-suggested quote inputs for {calculatorGuidance.tradeLabel}
                 </p>
-                <p className="mt-1 mb-3 text-xs text-indigo-200/80">
+                <p className="mt-1 mb-3 text-xs text-[#4E5761]">
                   These details usually drive the price for this trade. Tap any to add it to your notes below.
                 </p>
                 <div className="flex flex-wrap gap-2">
@@ -2780,8 +2808,8 @@ export default function IntakeFormClient({
                         onClick={() => toggleQuoteVariable(variable)}
                         className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
                           active
-                            ? 'border-indigo-300 bg-indigo-500/30 text-white'
-                            : 'border-white/[0.14] bg-white/[0.02] text-zinc-300 hover:border-indigo-300/50 hover:bg-indigo-500/10'
+                            ? 'border-[#2438C9] bg-[#EDEFFB] text-[#2438C9]'
+                            : 'border-[#D8DADB] bg-white text-[#4E5761] hover:border-[#8B939C] hover:bg-[#F4F5F4]'
                         }`}
                       >
                         {active ? '✓ ' : '+ '}
@@ -2793,19 +2821,19 @@ export default function IntakeFormClient({
               </div>
             )}
             <textarea className={`${input} min-h-[90px] mb-2`} value={form.calculatorNotes} onChange={(e) => set('calculatorNotes', e.target.value)} placeholder={calculatorGuidance.calculatorNotesExample} />
-            <p className="mb-4 text-xs text-zinc-500">{calculatorGuidance.calculatorNotesPrompt}</p>
+            <p className="mb-4 text-xs text-[#8B939C]">{calculatorGuidance.calculatorNotesPrompt}</p>
               </>
             )}
 
             {isOrderBusiness && (
               <div className="mb-4">
                 <label className={label}>Menu items</label>
-                <p className="mb-3 text-xs text-zinc-500">
+                <p className="mb-3 text-xs text-[#8B939C]">
                   Add each item customers can order, with its price. This becomes your site&apos;s menu and order form.
                 </p>
                 <div className="space-y-2.5">
                   {form.menuItems.map((item) => (
-                    <div key={item.id} className="grid grid-cols-1 gap-2 rounded-xl border border-white/[0.10] bg-white/[0.02] p-3 sm:grid-cols-[1fr_auto_1fr_auto] sm:items-center sm:gap-2.5">
+                    <div key={item.id} className="grid grid-cols-1 gap-2 rounded-xl border border-[#E7E8E8] bg-[#F4F5F4] p-3 sm:grid-cols-[1fr_auto_1fr_auto] sm:items-center sm:gap-2.5">
                       <input
                         className={input}
                         value={item.name}
@@ -2813,7 +2841,7 @@ export default function IntakeFormClient({
                         placeholder="Item name (e.g. Classic Cheeseburger)"
                       />
                       <div className="relative sm:w-28">
-                        <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-zinc-500">$</span>
+                        <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-[#8B939C]">$</span>
                         <input
                           className={`${input} pl-6`}
                           type="number"
@@ -2833,7 +2861,7 @@ export default function IntakeFormClient({
                       <button
                         type="button"
                         onClick={() => removeMenuItem(item.id)}
-                        className="justify-self-start rounded-md border border-red-400/30 px-3 py-2 text-xs font-medium text-red-300 transition hover:bg-red-500/10 sm:justify-self-center"
+                        className="justify-self-start rounded-md border border-red-200 px-3 py-2 text-xs font-medium text-red-600 transition hover:bg-red-50 sm:justify-self-center"
                       >
                         Remove
                       </button>
@@ -2843,12 +2871,12 @@ export default function IntakeFormClient({
                 <button
                   type="button"
                   onClick={addMenuItem}
-                  className="mt-3 rounded-md border border-indigo-300/40 px-4 py-2 text-sm font-semibold text-indigo-100 transition hover:bg-indigo-400/10"
+                  className="mt-3 rounded-md border border-[#2438C9]/40 px-4 py-2 text-sm font-semibold text-[#2438C9] transition hover:bg-[#EDEFFB]"
                 >
                   + Add menu item
                 </button>
                 {suggestedServices.length > 0 && form.menuItems.length === 0 && (
-                  <p className="mt-3 text-xs text-zinc-500">
+                  <p className="mt-3 text-xs text-[#8B939C]">
                     Tip: common items for {calculatorGuidance.tradeLabel.toLowerCase()} include {suggestedServices.slice(0, 4).join(', ')} — add each as its own priced menu item above.
                   </p>
                 )}
@@ -2859,18 +2887,18 @@ export default function IntakeFormClient({
             <textarea className={`${input} min-h-[80px]`} value={form.pricingNotes} onChange={(e) => set('pricingNotes', e.target.value)} placeholder="e.g. Most jobs start around $300. Larger projects run $2,000–$8,000. If unsure, leave blank and we'll estimate." />
 
             {!isOrderBusiness && !isBookingBusiness && !isTicketBusiness && (
-              <label className="mt-6 flex cursor-pointer items-start gap-3 rounded-xl border border-white/[0.12] bg-white/[0.03] p-4">
+              <label className="mt-6 flex cursor-pointer items-start gap-3 rounded-xl border border-[#E7E8E8] bg-[#F4F5F4] p-4">
                 <input
                   type="checkbox"
-                  className="mt-1 h-4 w-4 rounded border-white/20 bg-transparent text-indigo-500"
+                  className="mt-1 h-4 w-4 rounded border-[#D8DADB] accent-[#2438C9]"
                   checked={form.includeQuiz}
                   onChange={(e) => set('includeQuiz', e.target.checked)}
                 />
                 <span>
-                  <span className="block text-sm font-medium text-zinc-100">
+                  <span className="block text-sm font-medium text-[#10141A]">
                     Include a short lead quiz on my homepage
                   </span>
-                  <span className="mt-1 block text-xs text-zinc-500">
+                  <span className="mt-1 block text-xs text-[#8B939C]">
                     Optional. We&apos;ll add three trade-specific questions before the quote form so
                     visitors share what they need. Off by default — leave unchecked for a simpler site.
                   </span>
@@ -2886,7 +2914,7 @@ export default function IntakeFormClient({
               <h2 className={sectionTitle}>
                 Portfolio / Gallery images
               </h2>
-              <p className="mb-4 text-sm text-zinc-400">
+              <p className="mb-4 text-sm text-[#4E5761]">
                 Your gallery page needs real photos of work you&apos;ve done yourself — before &amp; after
                 shots, finished installs, happy clients, etc. Without your own project photos we
                 cannot configure the Portfolio page.
@@ -2921,12 +2949,12 @@ export default function IntakeFormClient({
                   <button
                     type="button"
                     onClick={() => bulkGalleryInputRef.current?.click()}
-                    className="flex items-center gap-2 rounded-lg border-2 border-dashed border-indigo-300/40 bg-indigo-500/10 px-3 py-2.5 text-sm font-medium text-indigo-100 transition-colors hover:border-indigo-300/70 hover:bg-indigo-500/20"
+                    className="flex items-center gap-2 rounded-lg border-2 border-dashed border-[#2438C9]/40 bg-[#EDEFFB] px-3 py-2.5 text-sm font-medium text-[#2438C9] transition-colors hover:border-[#2438C9]"
                   >
                     <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
                     Upload all {galleryCount} images at once
                   </button>
-                  <p className="mt-1 text-xs text-zinc-500">
+                  <p className="mt-1 text-xs text-[#8B939C]">
                     Select multiple photos in one go (hold Ctrl/Cmd or Shift while picking) — they&apos;ll fill
                     Image 1, 2, 3… in order.
                   </p>
@@ -2941,14 +2969,14 @@ export default function IntakeFormClient({
                     const hasContent = !!entry.url.trim();
                     const previewSrc = entry.url || entry.previewUrl || '';
                     return (
-                      <div key={i} className={`rounded-lg border p-4 ${hasContent ? 'border-indigo-300 bg-indigo-500/10' : entry.uploadError ? 'border-rose-300/40 bg-rose-500/10' : 'border-white/[0.14] bg-white/[0.01]'}`}>
-                        <p className="mb-3 text-sm font-medium text-zinc-200">
+                      <div key={i} className={`rounded-lg border p-4 ${hasContent ? 'border-[#2438C9] bg-[#EDEFFB]' : entry.uploadError ? 'border-red-200 bg-red-50' : 'border-[#D8DADB] bg-white'}`}>
+                        <p className="mb-3 text-sm font-medium text-[#10141A]">
                           Image {i + 1}
                           {entry.uploading && (
-                            <span className="ml-2 text-xs font-normal text-zinc-400">Uploading…</span>
+                            <span className="ml-2 text-xs font-normal text-[#4E5761]">Uploading…</span>
                           )}
                           {hasContent && !entry.uploading && (
-                            <span className="ml-2 text-xs font-normal text-indigo-300">✓ Ready</span>
+                            <span className="ml-2 text-xs font-normal text-[#2438C9]">✓ Ready</span>
                           )}
                         </p>
                         <div className="flex flex-col gap-3">
@@ -2963,7 +2991,7 @@ export default function IntakeFormClient({
                             type="button"
                             disabled={entry.uploading}
                             onClick={() => galleryInputRefs.current[i]?.click()}
-                            className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg border-2 border-dashed border-white/[0.16] bg-white/[0.02] px-3 py-2 text-xs font-medium text-zinc-300 transition-colors hover:border-indigo-300/60 hover:bg-indigo-500/10 disabled:opacity-60"
+                            className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg border-2 border-dashed border-[#D8DADB] bg-[#F4F5F4] px-3 py-2 text-xs font-medium text-[#4E5761] transition-colors hover:border-[#2438C9] hover:bg-[#EDEFFB] disabled:opacity-60"
                           >
                             {entry.uploading ? 'Uploading…' : entry.uploadError ? 'Try again' : 'Upload'}
                           </button>
@@ -2983,7 +3011,7 @@ export default function IntakeFormClient({
                             }}
                           />
                           {entry.uploadError && (
-                            <p className="rounded-md border border-rose-300/30 bg-rose-500/10 px-2.5 py-1.5 text-xs text-rose-100">
+                            <p className="rounded-md border border-red-200 bg-red-50 px-2.5 py-1.5 text-xs text-red-700">
                               {entry.uploadError}
                             </p>
                           )}
@@ -3003,13 +3031,13 @@ export default function IntakeFormClient({
                 </div>
               </div>
               ) : (
-                <p className="rounded-md border border-white/[0.14] bg-white/[0.02] px-3 py-2 text-sm text-zinc-400">
+                <p className="rounded-md border border-[#E7E8E8] bg-[#F4F5F4] px-3 py-2 text-sm text-[#4E5761]">
                   No gallery images will be included.
                 </p>
               )}
 
               {galleryCount > 0 && galleryImages.slice(0, galleryCount).every((e) => !e.url.trim() && !e.uploading) && (
-                <p className="mt-4 rounded-md border border-amber-300/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
+                <p className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
                   No gallery images added yet. If you don&apos;t upload any photos we won&apos;t be
                   able to configure your Portfolio page — it will be excluded from your site.
                 </p>
@@ -3021,11 +3049,11 @@ export default function IntakeFormClient({
           <div className={currentStepIndex === stepIdx.craft ? '' : 'hidden'}>
             <section className={sectionClass}>
               <h2 className={sectionTitle}>Craft &amp; proof</h2>
-              <p className="mb-1 text-sm text-zinc-300">
+              <p className="mb-1 text-sm text-[#4E5761]">
                 This is the step that decides whether your site reads as yours or as
                 a template with your name on it.
               </p>
-              <p className="mb-5 text-sm text-zinc-400">
+              <p className="mb-5 text-sm text-[#4E5761]">
                 We write your site only from what you tell us here. Every answer below
                 replaces a paragraph of filler with something a competitor could not
                 copy. Answer what you can in plain language — half sentences and rough
@@ -3033,13 +3061,13 @@ export default function IntakeFormClient({
                 apply; we&apos;d rather have four real answers than nine vague ones.
               </p>
 
-              <div className="mb-6 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 sm:p-5">
+              <div className="landing-shadow-float mb-6 rounded-2xl border border-[#E7E8E8] bg-white p-4 sm:p-5">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
-                    <h3 className="flex items-center gap-2 text-sm font-semibold text-amber-100">
-                      <span>✨</span> Need ideas? Let AI draft answers tailored to {form.industry?.trim() || 'your trade'}
+                    <h3 className="flex items-center gap-2 text-sm font-semibold text-[#10141A]">
+                      <span className="text-[#2438C9]">✦</span> Need ideas? Let AI draft answers tailored to {form.industry?.trim() || 'your trade'}
                     </h3>
-                    <p className="mt-1 text-xs text-amber-200/80">
+                    <p className="mt-1 text-xs text-[#4E5761]">
                       Generates realistic, specific answers based on your services and area. You can edit any answer.
                     </p>
                   </div>
@@ -3047,11 +3075,11 @@ export default function IntakeFormClient({
                     type="button"
                     onClick={() => handleSuggestCraft()}
                     disabled={isGeneratingCraft}
-                    className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-amber-500 px-4 py-2 text-sm font-semibold text-zinc-950 transition-all hover:bg-amber-400 disabled:opacity-50"
+                    className="inline-flex shrink-0 items-center justify-center gap-2 rounded-full bg-[#2438C9] px-5 py-2.5 text-sm font-medium text-white transition hover:opacity-85 active:scale-[0.98] disabled:opacity-50"
                   >
                     {isGeneratingCraft && !generatingCraftField ? (
                       <>
-                        <span className="h-4 w-4 animate-spin rounded-full border-2 border-zinc-950 border-t-transparent" />
+                        <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
                         <span>Drafting answers...</span>
                       </>
                     ) : (
@@ -3073,7 +3101,7 @@ export default function IntakeFormClient({
                       type="button"
                       onClick={() => handleSuggestCraft(field.key)}
                       disabled={isGeneratingCraft}
-                      className="flex items-center gap-1 text-xs font-medium text-amber-400 opacity-80 transition-opacity hover:text-amber-300 hover:opacity-100 disabled:opacity-40"
+                      className="flex items-center gap-1 text-xs font-medium text-[#2438C9] transition hover:opacity-70 disabled:opacity-40"
                     >
                       {generatingCraftField === field.key ? (
                         <span className="animate-pulse">Writing...</span>
@@ -3100,7 +3128,7 @@ export default function IntakeFormClient({
                   type="button"
                   onClick={() => handleSuggestCraft('signatureMaterials')}
                   disabled={isGeneratingCraft}
-                  className="flex items-center gap-1 text-xs font-medium text-amber-400 opacity-80 transition-opacity hover:text-amber-300 hover:opacity-100 disabled:opacity-40"
+                  className="flex items-center gap-1 text-xs font-medium text-[#2438C9] transition hover:opacity-70 disabled:opacity-40"
                 >
                   {generatingCraftField === 'signatureMaterials' ? (
                     <span className="animate-pulse">Writing...</span>
@@ -3116,7 +3144,7 @@ export default function IntakeFormClient({
                 onChange={(e) => set('signatureMaterials', e.target.value)}
                 placeholder={materialsMeta.placeholder}
               />
-              <p className="mt-2 text-xs text-zinc-500">
+              <p className="mt-2 text-xs text-[#8B939C]">
                 {materialsMeta.hint}
               </p>
             </section>
@@ -3126,12 +3154,12 @@ export default function IntakeFormClient({
             <div className={currentStepIndex === stepIdx.pageContent ? '' : 'hidden'}>
             <section className={sectionClass}>
               <h2 className={sectionTitle}>Choose Your Pages</h2>
-              <p className="mb-3 text-sm text-zinc-400">
+              <p className="mb-3 text-sm text-[#4E5761]">
                 Pick the pages your site should include. AI-recommended offerings are optional and
                 are added under Services — not as separate pages. Confirm when you&apos;re done;
                 AI won&apos;t write copy until then.
               </p>
-              <p className="mb-3 text-xs font-medium text-zinc-500">
+              <p className="mb-3 text-xs font-medium text-[#8B939C]">
                 {form.pages.length} of {pageCap} pages selected
               </p>
 
@@ -3148,10 +3176,10 @@ export default function IntakeFormClient({
                       title={opt.description}
                       className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
                         selected
-                          ? 'border-indigo-400 bg-indigo-500/20 text-indigo-100'
+                          ? 'border-[#2438C9] bg-[#EDEFFB] text-[#2438C9]'
                           : atCap
-                            ? 'cursor-not-allowed border-white/10 text-zinc-600'
-                            : 'border-white/15 text-zinc-300 hover:border-white/30 hover:text-white'
+                            ? 'cursor-not-allowed border-[#E7E8E8] text-[#8B939C]'
+                            : 'border-[#D8DADB] text-[#4E5761] hover:border-[#8B939C] hover:text-[#10141A]'
                       }`}
                     >
                       <span aria-hidden>{selected ? '✓' : '+'}</span>
@@ -3161,11 +3189,11 @@ export default function IntakeFormClient({
                 })}
               </div>
 
-              <div className="mt-5 rounded-lg border border-white/[0.1] bg-white/[0.02] p-4">
+              <div className="landing-shadow-float mt-5 rounded-2xl border border-[#E7E8E8] bg-white p-4">
                 <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0">
-                    <h3 className="text-sm font-semibold text-white">AI-Recommended Offerings</h3>
-                    <p className="text-xs text-zinc-500">
+                    <h3 className="text-sm font-semibold text-[#10141A]">AI-Recommended Offerings</h3>
+                    <p className="text-xs text-[#8B939C]">
                       Optional — add any you want under your Services page. Tailored to{' '}
                       {form.industry || 'your business'}.
                     </p>
@@ -3174,7 +3202,7 @@ export default function IntakeFormClient({
                     type="button"
                     onClick={() => void handleSuggestPages()}
                     disabled={suggestingPages}
-                    className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-white/15 px-3 py-2 text-xs font-semibold text-zinc-200 hover:border-white/30 hover:text-white disabled:opacity-60"
+                    className="inline-flex shrink-0 items-center gap-2 rounded-full border border-[#D8DADB] px-3.5 py-2 text-xs font-medium text-[#10141A] transition hover:border-[#8B939C] disabled:opacity-60"
                   >
                     {suggestingPages ? (
                       <>
@@ -3195,7 +3223,7 @@ export default function IntakeFormClient({
 
                 {addedAiServiceLabels.length > 0 && (
                   <div className="mt-3">
-                    <p className="mb-1.5 text-xs font-medium text-zinc-500">Added under Services</p>
+                    <p className="mb-1.5 text-xs font-medium text-[#8B939C]">Added under Services</p>
                     <div className="flex flex-wrap gap-2">
                       {addedAiServiceLabels.map((label) => (
                         <button
@@ -3203,11 +3231,11 @@ export default function IntakeFormClient({
                           type="button"
                           onClick={() => handleRemoveAiServiceOffering(label)}
                           title="Remove from Services"
-                          className="inline-flex items-center gap-1.5 rounded-full border border-emerald-400/40 bg-emerald-500/15 px-3 py-1.5 text-xs font-semibold text-emerald-100 hover:border-emerald-300/60"
+                          className="inline-flex items-center gap-1.5 rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-800 hover:border-emerald-400"
                         >
                           <span aria-hidden>✓</span>
                           {label}
-                          <span aria-hidden className="text-emerald-300/80">×</span>
+                          <span aria-hidden className="text-emerald-600">×</span>
                         </button>
                       ))}
                     </div>
@@ -3225,17 +3253,17 @@ export default function IntakeFormClient({
                       return (
                         <div
                           key={s.slug}
-                          className="flex items-start justify-between gap-3 rounded-lg border border-white/10 bg-white/[0.02] p-3"
+                          className="flex items-start justify-between gap-3 rounded-lg border border-[#E7E8E8] bg-[#F4F5F4] p-3"
                         >
                           <div className="min-w-0">
-                            <p className="text-sm font-semibold text-zinc-100">{s.label}</p>
-                            <p className="mt-0.5 text-xs text-zinc-500">{s.description}</p>
+                            <p className="text-sm font-semibold text-[#10141A]">{s.label}</p>
+                            <p className="mt-0.5 text-xs text-[#8B939C]">{s.description}</p>
                           </div>
                           <button
                             type="button"
                             onClick={() => handleAddSuggestedPage(s)}
                             disabled={alreadyAdded || servicesAtCap}
-                            className="shrink-0 rounded-md bg-white px-2.5 py-1.5 text-xs font-bold text-black hover:bg-slate-200 disabled:opacity-50"
+                            className="shrink-0 rounded-full bg-[#10141A] px-3 py-1.5 text-xs font-medium text-white transition hover:opacity-85 active:scale-[0.98] disabled:opacity-50"
                           >
                             {alreadyAdded ? 'Added' : 'Add'}
                           </button>
@@ -3245,14 +3273,14 @@ export default function IntakeFormClient({
                   </div>
                 ) : (
                   !suggestingPages && (
-                    <p className="mt-3 text-xs text-zinc-600">
+                    <p className="mt-3 text-xs text-[#8B939C]">
                       Click &quot;Suggest offerings&quot; for trade-specific ideas under Services.
                     </p>
                   )
                 )}
 
                 {form.pages.length >= pageCap && !form.pages.includes('services') && (
-                  <p className="mt-3 text-xs text-amber-400/80">
+                  <p className="mt-3 text-xs text-amber-700">
                     You&apos;ve reached the {pageCap}-page limit. Remove a page (or select Services)
                     before adding AI offerings under Services.
                   </p>
@@ -3260,8 +3288,8 @@ export default function IntakeFormClient({
               </div>
 
               {!pagesSelectionConfirmed && (
-                <div className="mt-5 rounded-lg border border-indigo-400/30 bg-indigo-500/10 p-4">
-                  <p className="text-sm text-indigo-100">
+                <div className="mt-5 rounded-2xl border border-[#2438C9]/30 bg-[#EDEFFB] p-4">
+                  <p className="text-sm text-[#10141A]">
                     When you&apos;re finished choosing pages (AI offerings are optional), confirm below.
                     AI will only start writing page copy after you confirm.
                   </p>
@@ -3269,7 +3297,7 @@ export default function IntakeFormClient({
                     type="button"
                     onClick={() => void handleConfirmPagesSelection()}
                     disabled={form.pages.length === 0 || bulkGenerating}
-                    className="mt-3 inline-flex items-center gap-2 rounded-lg bg-white px-4 py-2.5 text-sm font-bold text-black hover:bg-slate-200 disabled:opacity-60 transition-colors"
+                    className="mt-3 inline-flex items-center gap-2 rounded-full bg-[#2438C9] px-5 py-2.5 text-sm font-medium text-white transition hover:opacity-85 active:scale-[0.98] disabled:opacity-60"
                   >
                     Done selecting pages — write my copy
                   </button>
@@ -3282,7 +3310,7 @@ export default function IntakeFormClient({
               <h2 className={sectionTitle}>
                 Customize Page Content
               </h2>
-              <p className="mb-4 text-sm text-zinc-400">
+              <p className="mb-4 text-sm text-[#4E5761]">
                 Review and customize the sales copy for each of your selected pages. You can write your own or let the AI draft a bespoke version based on your intake information. Each page is limited to 1,200 words.
               </p>
 
@@ -3292,7 +3320,7 @@ export default function IntakeFormClient({
                     type="button"
                     onClick={() => void handleGenerateAllPageCopy()}
                     disabled={bulkGenerating}
-                    className="inline-flex items-center gap-2 rounded-lg bg-white px-4 py-2.5 text-sm font-bold text-black hover:bg-slate-200 disabled:opacity-60 transition-colors"
+                    className="inline-flex items-center gap-2 rounded-full bg-[#2438C9] px-5 py-2.5 text-sm font-medium text-white transition hover:opacity-85 active:scale-[0.98] disabled:opacity-60"
                   >
                     {bulkGenerating ? (
                       <>
@@ -3310,7 +3338,7 @@ export default function IntakeFormClient({
                     )}
                   </button>
                   {!bulkGenerating && (
-                    <p className="mt-1.5 text-xs text-zinc-500">
+                    <p className="mt-1.5 text-xs text-[#8B939C]">
                       Generates AI copy for all pages that are currently empty.
                     </p>
                   )}
@@ -3319,14 +3347,14 @@ export default function IntakeFormClient({
 
             <div className={`relative ${bulkGenerating ? 'pointer-events-none' : ''}`}>
               {bulkGenerating && (
-                <div className="absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-zinc-900/60 backdrop-blur-[2px]">
+                <div className="absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-white/70 backdrop-blur-[2px]">
                   <div className="flex flex-col items-center justify-center gap-3 text-center">
-                    <svg className="h-8 w-8 animate-spin text-indigo-400" fill="none" viewBox="0 0 24 24">
+                    <svg className="h-8 w-8 animate-spin text-[#2438C9]" fill="none" viewBox="0 0 24 24">
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                     </svg>
-                    <p className="font-semibold text-white">AI is writing your pages...</p>
-                    <p className="text-sm text-indigo-200">
+                    <p className="font-semibold text-[#10141A]">AI is writing your pages...</p>
+                    <p className="text-sm text-[#4E5761]">
                       Writing page {bulkProgress.current} of {bulkProgress.total}
                     </p>
                   </div>
@@ -3349,29 +3377,29 @@ export default function IntakeFormClient({
                       key={slug}
                       id={`page-content-${slug}`}
                       className={`rounded-lg border transition-all ${
-                        isExpanded ? 'border-indigo-400 ring-1 ring-indigo-400 bg-white/[0.04]' : 'border-white/[0.14] bg-white/[0.01]'
+                        isExpanded ? 'border-[#2438C9] ring-1 ring-[#2438C9] bg-white' : 'border-[#D8DADB] bg-white'
                       }`}
                     >
                       <div className="flex items-center">
                       <button
                         type="button"
                         onClick={() => setExpandedPage(isExpanded ? null : slug)}
-                        className="flex flex-1 items-center justify-between px-4 py-3 text-left font-medium text-zinc-100 focus:outline-none"
+                        className="flex flex-1 items-center justify-between px-4 py-3 text-left font-medium text-[#10141A] focus:outline-none"
                       >
                         <div className="flex items-center gap-2">
                           <span className="text-sm font-semibold">{label}</span>
                           {content && (
-                            <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-300">
+                            <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
                               Has Content
                             </span>
                           )}
                         </div>
                         <div className="flex items-center gap-3">
-                          <span className={`text-xs ${isOverLimit ? 'font-bold text-red-400' : 'text-zinc-500'}`}>
+                          <span className={`text-xs ${isOverLimit ? 'font-bold text-red-600' : 'text-[#8B939C]'}`}>
                             {wordCount} / 1,200 words
                           </span>
                           <svg
-                            className={`h-5 w-5 text-zinc-500 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                            className={`h-5 w-5 text-[#8B939C] transition-transform ${isExpanded ? 'rotate-180' : ''}`}
                             fill="none"
                             viewBox="0 0 24 24"
                             stroke="currentColor"
@@ -3388,7 +3416,7 @@ export default function IntakeFormClient({
                         }}
                         aria-label={`Remove ${label} page`}
                         title="Remove this page"
-                        className="px-3 py-3 text-zinc-500 hover:text-red-400 focus:outline-none"
+                        className="px-3 py-3 text-[#8B939C] hover:text-red-600 focus:outline-none"
                       >
                         <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                           <path strokeLinecap="round" strokeLinejoin="round" d="M18 6 6 18M6 6l12 12" />
@@ -3397,12 +3425,12 @@ export default function IntakeFormClient({
                       </div>
 
                       {isExpanded && (
-                        <div className="border-t border-white/[0.08] px-3.5 pb-3.5 pt-3 sm:px-4 sm:pb-4">
-                          <p className="mb-3 text-xs text-zinc-500">{desc}</p>
+                        <div className="border-t border-[#E7E8E8] px-3.5 pb-3.5 pt-3 sm:px-4 sm:pb-4">
+                          <p className="mb-3 text-xs text-[#8B939C]">{desc}</p>
                           <div className="relative">
                             <textarea
-                              className={`w-full min-h-[180px] rounded-xl border p-3 text-sm text-white placeholder:text-zinc-600 outline-none focus:border-white/30 sm:min-h-[200px] ${
-                                isOverLimit ? 'border-red-400/70 focus:border-red-400' : 'border-white/[0.14] bg-white/[0.02]'
+                              className={`w-full min-h-[180px] rounded-xl border p-3 text-sm text-[#10141A] placeholder:text-[#8B939C] outline-none transition focus:border-[#2438C9] sm:min-h-[200px] ${
+                                isOverLimit ? 'border-red-400 focus:border-red-400' : 'border-[#D8DADB] bg-white'
                               }`}
                               value={content}
                               onChange={(e) =>
@@ -3418,13 +3446,13 @@ export default function IntakeFormClient({
                               disabled={isGenerating}
                             />
                             {isGenerating && (
-                              <div className="absolute inset-0 flex items-center justify-center rounded-md bg-black/45">
+                              <div className="absolute inset-0 flex items-center justify-center rounded-md bg-white/70 backdrop-blur-[2px]">
                                 <div className="flex flex-col items-center gap-2">
-                                  <svg className="animate-spin h-8 w-8 text-indigo-600" fill="none" viewBox="0 0 24 24">
+                                  <svg className="animate-spin h-8 w-8 text-[#2438C9]" fill="none" viewBox="0 0 24 24">
                                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                                   </svg>
-                                  <span className="text-xs font-medium text-zinc-200">AI is drafting copy...</span>
+                                  <span className="text-xs font-medium text-[#10141A]">AI is drafting copy...</span>
                                 </div>
                               </div>
                             )}
@@ -3435,13 +3463,13 @@ export default function IntakeFormClient({
                               type="button"
                               onClick={() => void handleGeneratePageCopy(slug)}
                               disabled={isGenerating}
-                              className="inline-flex items-center gap-1.5 rounded-md bg-indigo-500/15 px-3 py-1.5 text-xs font-semibold text-indigo-200 hover:bg-indigo-500/25 disabled:opacity-50"
+                              className="inline-flex items-center gap-1.5 rounded-full bg-[#EDEFFB] px-3.5 py-1.5 text-xs font-medium text-[#2438C9] transition hover:bg-[#DDE2F9] disabled:opacity-50"
                             >
                               <span>✨</span>
                               {content ? 'AI Rewrite Copy' : 'AI Write Copy'}
                             </button>
                             {isOverLimit && (
-                              <span className="animate-pulse text-xs font-semibold text-red-400">
+                              <span className="animate-pulse text-xs font-semibold text-red-600">
                                 Exceeds 1,200-word limit. Please shorten.
                               </span>
                             )}
@@ -3510,7 +3538,7 @@ export default function IntakeFormClient({
                 type="button"
                 disabled={submitting || submitBlockers.length > 0}
                 onClick={() => void handleReviewClick()}
-                className="w-full rounded-xl bg-white px-5 py-3 font-bold text-black hover:bg-slate-200 disabled:opacity-50 sm:px-6"
+                className="w-full rounded-full bg-[#10141A] px-6 py-3.5 text-sm font-medium text-white transition hover:opacity-85 active:scale-[0.98] disabled:opacity-50 sm:px-6"
               >
                 {submitting
                   ? 'Submitting…'
@@ -3524,7 +3552,7 @@ export default function IntakeFormClient({
                   type="button"
                   onClick={goBack}
                   disabled={currentStepIndex === 0}
-                  className="rounded-xl border border-white/[0.14] px-5 py-3 text-sm font-semibold text-zinc-300 transition hover:bg-white/[0.04] disabled:cursor-not-allowed disabled:opacity-40 sm:px-6"
+                  className="rounded-full border border-[#D8DADB] px-5 py-3 text-sm font-medium text-[#10141A] transition hover:border-[#8B939C] disabled:cursor-not-allowed disabled:opacity-40 sm:px-6"
                 >
                   ← Back
                 </button>
@@ -3532,7 +3560,7 @@ export default function IntakeFormClient({
                   type="button"
                   onClick={goNext}
                   disabled={!canAdvanceFromCurrentStep}
-                  className="rounded-xl bg-white px-5 py-3 text-sm font-bold text-black transition hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-50 sm:px-6"
+                  className="rounded-full bg-[#10141A] px-6 py-3 text-sm font-medium text-white transition hover:opacity-85 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 sm:px-7"
                 >
                   Continue →
                 </button>

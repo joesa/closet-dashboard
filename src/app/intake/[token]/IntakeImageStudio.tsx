@@ -844,16 +844,16 @@ export default function IntakeImageStudio({
       (slot === 'before' && !selections.hero.selectedUrl);
 
     return (
-      <div id={targetId} className="rounded-lg border border-gray-200 bg-gray-50 p-4">
-        <h4 className="font-medium text-gray-900">{label}</h4>
-        <p className="text-xs text-gray-500 mt-1">
+      <div id={targetId} className="rounded-lg border border-[#E7E8E8] bg-[#F4F5F4] p-4">
+        <h4 className="font-medium text-[#10141A]">{label}</h4>
+        <p className="text-xs text-[#8B939C] mt-1">
           Up to {max} generations of 3 options each. Attempts used: {attemptsUsed}/{max}.
         </p>
-        <label className="block text-xs font-medium text-gray-600 mt-3 mb-1">
+        <label className="block text-xs font-medium text-[#4E5761] mt-3 mb-1">
           Image description (art direction)
         </label>
         <textarea
-          className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 min-h-[72px]"
+          className="w-full rounded-md border border-[#D8DADB] px-3 py-2 text-sm text-[#10141A] min-h-[72px]"
           value={prompt}
           onChange={(e) => onPromptChange(e.target.value)}
         />
@@ -862,7 +862,7 @@ export default function IntakeImageStudio({
             type="button"
             disabled={generateDisabled}
             onClick={() => void generateBatch(slot, prompt, productIndex)}
-            className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-500 disabled:opacity-50"
+            className="rounded-full bg-[#2438C9] px-3.5 py-1.5 text-xs font-medium text-white transition hover:opacity-85 active:scale-[0.98] disabled:opacity-50"
           >
             {genLoading === genKey
               ? 'Generating 3 options…'
@@ -870,10 +870,10 @@ export default function IntakeImageStudio({
           </button>
           
           <label
-            className={`rounded-md border border-gray-300 px-3 py-1.5 text-xs font-semibold ${
+            className={`rounded-md border border-[#D8DADB] px-3 py-1.5 text-xs font-semibold ${
               !!genLoading
-                ? 'cursor-not-allowed bg-gray-100 text-gray-400 opacity-50'
-                : 'cursor-pointer bg-white text-gray-700 hover:bg-gray-50'
+                ? 'cursor-not-allowed bg-[#F4F5F4] text-[#8B939C] opacity-50'
+                : 'cursor-pointer bg-white text-[#4E5761] hover:bg-[#F4F5F4]'
             }`}
           >
             Upload own image
@@ -887,7 +887,7 @@ export default function IntakeImageStudio({
           </label>
         </div>
         {attemptsUsed >= max && (
-          <p className="mt-2 text-xs text-gray-500">
+          <p className="mt-2 text-xs text-[#8B939C]">
             No generations remaining for this{' '}
             {slot === 'hero' ? 'hero image' : slot === 'before' ? 'before image' : 'product'}.
           </p>
@@ -918,7 +918,7 @@ export default function IntakeImageStudio({
                 }
                 title="Click to preview larger"
                 className={`group relative rounded border overflow-hidden ${
-                  slotState.selectedUrl === url ? 'ring-2 ring-indigo-600' : 'border-gray-300'
+                  slotState.selectedUrl === url ? 'ring-2 ring-[#2438C9]' : 'border-[#D8DADB]'
                 }`}
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -927,7 +927,7 @@ export default function IntakeImageStudio({
                   Preview
                 </span>
                 {slotState.selectedUrl === url && (
-                  <span className="absolute right-1 top-1 rounded-full bg-indigo-600 px-1.5 text-[10px] font-bold text-white">
+                  <span className="absolute right-1 top-1 rounded-full bg-[#2438C9] px-1.5 text-[10px] font-bold text-white">
                     ✓
                   </span>
                 )}
@@ -940,12 +940,12 @@ export default function IntakeImageStudio({
   };
 
   return (
-    <section className="rounded-xl border border-indigo-200 bg-white p-6 space-y-4">
+    <section className="landing-shadow-card rounded-2xl border border-[#E7E8E8] bg-white p-6 space-y-4">
       <div>
-        <h2 className="text-sm font-bold uppercase tracking-wide text-gray-500">
+        <h2 className="text-[11px] font-semibold uppercase tracking-widest text-[#8B939C]">
           AI image studio
         </h2>
-        <p className="text-xs text-gray-500 mt-1">
+        <p className="text-xs text-[#8B939C] mt-1">
           Generate custom hero and product photos. Pick one image from each batch of three.
         </p>
       </div>
@@ -956,7 +956,7 @@ export default function IntakeImageStudio({
           type="button"
           disabled={briefLoading}
           onClick={() => void runBrief({ manual: true })}
-          className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500 disabled:opacity-50"
+          className="rounded-full bg-[#2438C9] px-5 py-2 text-sm font-medium text-white transition hover:opacity-85 active:scale-[0.98] disabled:opacity-50"
         >
           {briefLoading ? (
             <span className="flex items-center gap-2">
@@ -1001,10 +1001,10 @@ export default function IntakeImageStudio({
           )}
 
           {beforeAfterApplicable && (
-            <div id="image-studio-before-after" className="rounded-lg border border-indigo-100 bg-indigo-50/50 p-4 space-y-4">
+            <div id="image-studio-before-after" className="rounded-xl border border-[#2438C9]/20 bg-[#EDEFFB] p-4 space-y-4">
               <div>
-                <h4 className="font-medium text-gray-900">Before / after photos</h4>
-                <p className="mt-1 text-xs text-gray-600">
+                <h4 className="font-medium text-[#10141A]">Before / after photos</h4>
+                <p className="mt-1 text-xs text-[#4E5761]">
                   Some sites include a drag-to-compare slider showing a space before and after your
                   work. Do you want that on your site?
                 </p>
@@ -1014,8 +1014,8 @@ export default function IntakeImageStudio({
                     onClick={() => void setBeforeAfterEnabled(true)}
                     className={`rounded-md px-3 py-1.5 text-sm font-semibold ${
                       beforeState.enabled === true
-                        ? 'bg-indigo-600 text-white'
-                        : 'border border-gray-300 bg-white text-gray-800 hover:bg-gray-50'
+                        ? 'bg-[#2438C9] text-white'
+                        : 'border border-[#D8DADB] bg-white text-[#10141A] hover:bg-[#F4F5F4]'
                     }`}
                   >
                     Yes, include before/after
@@ -1025,8 +1025,8 @@ export default function IntakeImageStudio({
                     onClick={() => void setBeforeAfterEnabled(false)}
                     className={`rounded-md px-3 py-1.5 text-sm font-semibold ${
                       beforeState.enabled === false
-                        ? 'bg-indigo-600 text-white'
-                        : 'border border-gray-300 bg-white text-gray-800 hover:bg-gray-50'
+                        ? 'bg-[#2438C9] text-white'
+                        : 'border border-[#D8DADB] bg-white text-[#10141A] hover:bg-[#F4F5F4]'
                     }`}
                   >
                     No, skip this
@@ -1037,19 +1037,19 @@ export default function IntakeImageStudio({
               {beforeState.enabled === true && (
                 <>
                   <div>
-                    <p className="text-sm font-medium text-gray-900">How do you want to provide the photos?</p>
+                    <p className="text-sm font-medium text-[#10141A]">How do you want to provide the photos?</p>
                     <div className="mt-2 flex flex-col gap-2 sm:flex-row">
                       <button
                         type="button"
                         onClick={() => void setBeforeAfterMode('upload_both')}
                         className={`rounded-md px-3 py-2 text-left text-sm ${
                           beforeState.mode === 'upload_both'
-                            ? 'border-2 border-indigo-600 bg-white text-gray-900'
-                            : 'border border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
+                            ? 'border-2 border-[#2438C9] bg-white text-[#10141A]'
+                            : 'border border-[#D8DADB] bg-white text-[#4E5761] hover:bg-[#F4F5F4]'
                         }`}
                       >
                         <span className="font-semibold">Upload both</span>
-                        <span className="mt-0.5 block text-xs text-gray-500">
+                        <span className="mt-0.5 block text-xs text-[#8B939C]">
                           Choose before and after images from your computer
                         </span>
                       </button>
@@ -1058,12 +1058,12 @@ export default function IntakeImageStudio({
                         onClick={() => void setBeforeAfterMode('ai_from_after')}
                         className={`rounded-md px-3 py-2 text-left text-sm ${
                           beforeState.mode === 'ai_from_after'
-                            ? 'border-2 border-indigo-600 bg-white text-gray-900'
-                            : 'border border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
+                            ? 'border-2 border-[#2438C9] bg-white text-[#10141A]'
+                            : 'border border-[#D8DADB] bg-white text-[#4E5761] hover:bg-[#F4F5F4]'
                         }`}
                       >
                         <span className="font-semibold">AI from an after photo</span>
-                        <span className="mt-0.5 block text-xs text-gray-500">
+                        <span className="mt-0.5 block text-xs text-[#8B939C]">
                           Pick a finished photo; AI creates the matching before
                         </span>
                       </button>
@@ -1072,9 +1072,9 @@ export default function IntakeImageStudio({
 
                   {beforeState.mode === 'upload_both' && (
                     <div className="grid gap-4 sm:grid-cols-2">
-                      <label className="block rounded-md border border-dashed border-gray-300 bg-white p-3">
-                        <span className="text-sm font-medium text-gray-900">Before photo</span>
-                        <span className="mt-0.5 block text-xs text-gray-500">The space before your work</span>
+                      <label className="block rounded-md border border-dashed border-[#D8DADB] bg-white p-3">
+                        <span className="text-sm font-medium text-[#10141A]">Before photo</span>
+                        <span className="mt-0.5 block text-xs text-[#8B939C]">The space before your work</span>
                         {beforeState.selectedUrl && (
                           // eslint-disable-next-line @next/next/no-img-element
                           <img
@@ -1090,9 +1090,9 @@ export default function IntakeImageStudio({
                           onChange={(e) => uploadBeforeAfterSide(e, 'before')}
                         />
                       </label>
-                      <label className="block rounded-md border border-dashed border-gray-300 bg-white p-3">
-                        <span className="text-sm font-medium text-gray-900">After photo</span>
-                        <span className="mt-0.5 block text-xs text-gray-500">The finished result</span>
+                      <label className="block rounded-md border border-dashed border-[#D8DADB] bg-white p-3">
+                        <span className="text-sm font-medium text-[#10141A]">After photo</span>
+                        <span className="mt-0.5 block text-xs text-[#8B939C]">The finished result</span>
                         {beforeState.afterSelectedUrl && (
                           // eslint-disable-next-line @next/next/no-img-element
                           <img
@@ -1113,9 +1113,9 @@ export default function IntakeImageStudio({
 
                   {beforeState.mode === 'ai_from_after' && (
                     <div className="space-y-3">
-                      <div className="rounded-md border border-dashed border-gray-300 bg-white p-3">
-                        <p className="text-sm font-medium text-gray-900">After photo for AI</p>
-                        <p className="mt-0.5 text-xs text-gray-500">
+                      <div className="rounded-md border border-dashed border-[#D8DADB] bg-white p-3">
+                        <p className="text-sm font-medium text-[#10141A]">After photo for AI</p>
+                        <p className="mt-0.5 text-xs text-[#8B939C]">
                           Upload a finished photo, or use your selected hero image below.
                         </p>
                         {(beforeState.afterSelectedUrl || selections.hero.selectedUrl) && (
@@ -1126,9 +1126,9 @@ export default function IntakeImageStudio({
                                 beforeState.afterSelectedUrl || selections.hero.selectedUrl || ''
                               }
                               alt="After source"
-                              className="h-16 w-24 rounded border border-gray-300 object-cover"
+                              className="h-16 w-24 rounded border border-[#D8DADB] object-cover"
                             />
-                            <span className="text-xs text-gray-600">
+                            <span className="text-xs text-[#4E5761]">
                               {beforeState.afterSelectedUrl
                                 ? 'Using your uploaded after photo'
                                 : 'Using your hero image as the after'}
@@ -1227,7 +1227,7 @@ export default function IntakeImageStudio({
                   setPreview(null);
                 }}
                 disabled={preview.isSelected}
-                className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500 disabled:opacity-50"
+                className="rounded-full bg-[#2438C9] px-5 py-2 text-sm font-medium text-white transition hover:opacity-85 active:scale-[0.98] disabled:opacity-50"
               >
                 {preview.isSelected ? 'Selected for your site' : 'Select this image'}
               </button>

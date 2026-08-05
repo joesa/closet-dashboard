@@ -72,27 +72,27 @@ export default function TierPicker({
   };
 
   return (
-    <section className="rounded-xl border border-white/[0.08] bg-white/[0.03] p-6">
-      <h2 className="mb-1 text-[11px] font-semibold uppercase tracking-widest text-zinc-500">
+    <section className="landing-shadow-card rounded-2xl border border-[#E7E8E8] bg-white p-6">
+      <h2 className="mb-1 text-[11px] font-semibold uppercase tracking-widest text-[#8B939C]">
         Choose your setup package
       </h2>
-      <p className="mb-4 text-xs text-zinc-400">
+      <p className="mb-4 text-xs text-[#4E5761]">
         Standard uses professional stock imagery. AI Premium generates custom hero and product photos during this form.
         Build fees are one-time; managed hosting + DitchTheForm Pro starts after launch.
       </p>
       <div className="mb-4 flex flex-wrap items-center gap-2">
-        <span className="text-xs font-medium text-zinc-300">Site maintenance:</span>
-        <div className="inline-flex rounded-full border border-white/[0.14] bg-white/[0.04] p-0.5">
+        <span className="text-xs font-medium text-[#4E5761]">Site maintenance:</span>
+        <div className="inline-flex rounded-full border border-[#D8DADB] bg-[#F4F5F4] p-0.5">
           <button
             type="button"
             onClick={() => {
               setMaintenanceBilling('monthly');
               void saveMaintenance('monthly');
             }}
-            className={`rounded-full px-3 py-1 text-xs font-medium ${
+            className={`rounded-full px-3 py-1 text-xs font-medium transition ${
               maintenanceBilling === 'monthly'
-                ? 'bg-white text-black'
-                : 'text-zinc-300'
+                ? 'bg-[#10141A] text-white'
+                : 'text-[#4E5761]'
             }`}
           >
             Monthly
@@ -103,17 +103,17 @@ export default function TierPicker({
               setMaintenanceBilling('yearly');
               void saveMaintenance('yearly');
             }}
-            className={`rounded-full px-3 py-1 text-xs font-medium ${
+            className={`rounded-full px-3 py-1 text-xs font-medium transition ${
               maintenanceBilling === 'yearly'
-                ? 'bg-white text-black'
-                : 'text-zinc-300'
+                ? 'bg-[#10141A] text-white'
+                : 'text-[#4E5761]'
             }`}
           >
             Yearly
           </button>
         </div>
         {maintenance.yearlySavingsCents > 0 && maintenanceBilling === 'yearly' && (
-          <span className="text-xs font-medium text-emerald-300">
+          <span className="text-xs font-medium text-emerald-700">
             Save {formatUsd(maintenance.yearlySavingsCents)}/yr
           </span>
         )}
@@ -127,54 +127,54 @@ export default function TierPicker({
               type="button"
               disabled={!!loading}
               onClick={() => void selectTier(t.slug)}
-              className={`rounded-lg border p-4 text-left transition ${
+              className={`rounded-2xl border p-4 text-left transition ${
                 selected
-                  ? 'border-indigo-300 bg-indigo-500/10 ring-1 ring-indigo-300'
-                  : 'border-white/[0.14] bg-white/[0.01] hover:border-indigo-300/50'
+                  ? 'landing-shadow-float border-[#2438C9] bg-white ring-1 ring-[#2438C9]'
+                  : 'border-[#D8DADB] bg-white hover:border-[#8B939C]'
               }`}
             >
-              <div className="font-semibold text-zinc-100">{t.label}</div>
-              <div className="mt-1 text-lg font-bold text-indigo-200">
+              <div className="font-semibold text-[#10141A]">{t.label}</div>
+              <div className="mt-1 text-lg font-bold text-[#2438C9]">
                 {formatUsd(t.totalCents)}
-                <span className="text-sm font-semibold text-indigo-200/90"> one-time build</span>
+                <span className="text-sm font-semibold text-[#2438C9]/80"> one-time build</span>
               </div>
-              <p className="mt-1 text-xs text-zinc-400">
+              <p className="mt-1 text-xs text-[#4E5761]">
                 Then {formatUsd(maintDisplay.perMonthCents)}/mo — {maintDisplay.billedLabel}
               </p>
               {t.slug === 'standard' && (
-                <p className="mt-2 rounded px-2 py-1.5 text-xs font-medium text-zinc-300 bg-white/[0.04]">
+                <p className="mt-2 rounded px-2 py-1.5 text-xs font-medium text-[#4E5761] bg-[#F4F5F4]">
                   No upfront deposit. Pay {formatUsd(t.totalCents)} when satisfied with the preview,
                   then we launch and give you full dashboard access.
                 </p>
               )}
               {t.slug === 'ai_premium' && t.depositCents > 0 && (
                 <>
-                  <p className="mt-2 rounded px-2 py-1.5 text-xs font-medium text-amber-100 bg-amber-500/15">
+                  <p className="mt-2 rounded px-2 py-1.5 text-xs font-medium text-[#2438C9] bg-[#EDEFFB]">
                     <strong>Today:</strong> {formatUsd(t.depositCents)} (30%) unlocks the AI studio
                     and starts your build.
                   </p>
-                  <p className="mt-1 text-xs text-zinc-400">
-                    <strong className="text-zinc-300">Balance:</strong> {formatUsd(t.remainderCents)}{' '}
+                  <p className="mt-1 text-xs text-[#4E5761]">
+                    <strong className="text-[#10141A]">Balance:</strong> {formatUsd(t.remainderCents)}{' '}
                     only after you approve the preview, before launch.
                   </p>
-                  <p className="mt-1 text-xs text-emerald-300">
+                  <p className="mt-1 text-xs text-emerald-700">
                     Not satisfied? No balance due — we refund the deposit.
                   </p>
                 </>
               )}
               {loading === t.slug && (
-                <p className="mt-2 text-xs text-zinc-500">Saving…</p>
+                <p className="mt-2 text-xs text-[#8B939C]">Saving…</p>
               )}
             </button>
           );
         })}
       </div>
       {currentTier === 'ai_premium' && depositStatus !== 'paid' && depositStatus !== 'not_required' && (
-        <p className="mt-3 text-xs text-amber-300">
+        <p className="mt-3 text-xs text-amber-700">
           AI image studio unlocks after the 30% deposit is paid.
         </p>
       )}
-      {error && <p className="mt-2 text-sm text-red-400">{error}</p>}
+      {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
     </section>
   );
 }

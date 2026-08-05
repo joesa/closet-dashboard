@@ -18,20 +18,18 @@ import {
 } from '@/lib/intake/tiers'
 import { PUBLIC_API_URL, WIDGET_CDN_URL } from '@/lib/urls'
 
-/* ─────────────────────────────────────────────────────────────────────
-   Landing palette — light, product-first. One accent (ultramarine),
-   ink buttons, hairline borders, layered shadows via .landing-shadow-*.
-   The rest of the app is dark; this page carries its own light theme.
-   ──────────────────────────────────────────────────────────────────── */
-const INK = '#10141A'
-const INK_2 = '#4E5761'
-const INK_3 = '#8B939C'
-const BG = '#FBFBFA'
-const SURFACE_2 = '#F4F5F4'
-const HAIRLINE = '#E7E8E8'
-const HAIRLINE_2 = '#D8DADB'
-const ACCENT = '#2438C9'
-const ACCENT_SOFT = '#EDEFFB'
+/* Landing palette — shared with the intake flow via @/lib/landingTheme. */
+import {
+  INK,
+  INK_2,
+  INK_3,
+  BG,
+  SURFACE_2,
+  HAIRLINE,
+  HAIRLINE_2,
+  ACCENT,
+  ACCENT_SOFT,
+} from '@/lib/landingTheme'
 
 /**
  * "Start Free" / "Start Your 30-Day Free Trial" is ambiguous on its own — the

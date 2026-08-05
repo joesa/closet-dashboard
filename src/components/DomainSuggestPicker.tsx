@@ -53,16 +53,16 @@ export default function DomainSuggestPicker({
   const isDark = variant === 'dark'
   const inputClass = isDark
     ? 'w-full bg-neutral-900 border border-neutral-700 rounded-md p-3 text-white text-sm'
-    : 'mt-1 w-full rounded-md border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-white placeholder:text-zinc-500'
+    : 'mt-1 w-full rounded-xl border border-[#D8DADB] bg-white px-3 py-2 text-sm text-[#10141A] placeholder:text-[#8B939C] outline-none transition focus:border-[#2438C9] focus:ring-2 focus:ring-[#EDEFFB]'
   const btnClass = isDark
     ? 'shrink-0 bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-md text-sm font-bold disabled:opacity-50'
-    : 'shrink-0 rounded-md bg-white px-4 py-2 text-sm font-medium text-black hover:bg-zinc-200 disabled:opacity-50'
+    : 'shrink-0 rounded-full bg-[#10141A] px-4 py-2 text-sm font-medium text-white transition hover:opacity-85 active:scale-[0.98] disabled:opacity-50'
   const hitClass = isDark
     ? 'flex flex-wrap items-center justify-between gap-2 rounded-md border border-neutral-700 px-3 py-2'
-    : 'flex flex-wrap items-center justify-between gap-2 rounded-md border border-white/10 px-3 py-2'
+    : 'flex flex-wrap items-center justify-between gap-2 rounded-md border border-[#E7E8E8] bg-white px-3 py-2'
   const pickClass = isDark
     ? 'text-xs font-bold bg-emerald-700 hover:bg-emerald-600 text-white px-3 py-1.5 rounded-md disabled:opacity-40'
-    : 'text-xs font-semibold rounded-md bg-emerald-500/20 text-emerald-200 border border-emerald-500/40 px-3 py-1.5 hover:bg-emerald-500/30 disabled:opacity-40'
+    : 'text-xs font-semibold rounded-md bg-emerald-50 text-emerald-800 border border-emerald-300 px-3 py-1.5 hover:bg-emerald-100 disabled:opacity-40'
 
   const runSearch = async () => {
     const q = query.trim() || businessNameHint.trim()
@@ -126,11 +126,11 @@ export default function DomainSuggestPicker({
       </div>
 
       {error && (
-        <p className={isDark ? 'text-xs text-red-300' : 'text-xs text-red-400'}>{error}</p>
+        <p className={isDark ? 'text-xs text-red-300' : 'text-xs text-red-600'}>{error}</p>
       )}
 
       {value && (
-        <p className={isDark ? 'text-sm text-emerald-300' : 'text-sm text-emerald-300'}>
+        <p className={isDark ? 'text-sm text-emerald-300' : 'text-sm text-emerald-700'}>
           Selected: <strong>{value}</strong>
           <button
             type="button"
@@ -143,7 +143,7 @@ export default function DomainSuggestPicker({
       )}
 
       {searched && hits.length === 0 && !busy && !error && (
-        <p className={isDark ? 'text-xs text-neutral-400' : 'text-xs text-zinc-500'}>
+        <p className={isDark ? 'text-xs text-neutral-400' : 'text-xs text-[#8B939C]'}>
           No suggestions — try a different name.
         </p>
       )}
@@ -155,10 +155,10 @@ export default function DomainSuggestPicker({
             return (
               <li key={hit.domain} className={hitClass}>
                 <div>
-                  <span className={isDark ? 'text-sm text-white font-medium' : 'text-sm text-white font-medium'}>
+                  <span className={isDark ? 'text-sm text-white font-medium' : 'text-sm text-[#10141A] font-medium'}>
                     {hit.domain}
                   </span>
-                  <span className={isDark ? 'ml-2 text-xs text-neutral-400' : 'ml-2 text-xs text-zinc-500'}>
+                  <span className={isDark ? 'ml-2 text-xs text-neutral-400' : 'ml-2 text-xs text-[#8B939C]'}>
                     {hit.available
                       ? hit.priceUsd != null
                         ? `Available`
@@ -180,7 +180,7 @@ export default function DomainSuggestPicker({
         </ul>
       )}
 
-      <p className={isDark ? 'text-[11px] text-neutral-500' : 'text-[11px] text-zinc-500'}>
+      <p className={isDark ? 'text-[11px] text-neutral-500' : 'text-[11px] text-[#8B939C]'}>
         Availability is checked live with Vercel. Choosing a domain saves it for registration —
         purchase is completed by the team after your site is set up (included with hosting).
       </p>

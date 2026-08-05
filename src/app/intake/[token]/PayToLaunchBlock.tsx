@@ -25,7 +25,7 @@ export default function PayToLaunchBlock({
 
   if (!checkoutKind && !canPay) {
     return (
-      <div className="rounded-md border border-white/[0.14] bg-white/[0.03] px-4 py-3 text-sm text-zinc-300">
+      <div className="rounded-xl border border-[#E7E8E8] bg-[#F4F5F4] px-4 py-3 text-sm text-[#4E5761]">
         {paymentDueLabel}
       </div>
     );
@@ -51,20 +51,20 @@ export default function PayToLaunchBlock({
         : 'Pay now';
 
   return (
-    <div className="rounded-xl border border-indigo-300/25 bg-indigo-500/10 p-5">
-      <h3 className="font-semibold text-indigo-100">Launch payments</h3>
-      <p className="mt-1 text-sm text-indigo-200">{paymentDueLabel}</p>
+    <div className="landing-shadow-card rounded-2xl border border-[#2438C9]/25 bg-[#EDEFFB] p-5">
+      <h3 className="font-semibold text-[#10141A]">Launch payments</h3>
+      <p className="mt-1 text-sm text-[#4E5761]">{paymentDueLabel}</p>
       {canPay && checkoutKind && (
         <button
           type="button"
           disabled={loading}
           onClick={() => void pay()}
-          className="mt-4 rounded-lg bg-white px-5 py-2.5 text-sm font-bold text-black hover:bg-slate-200 disabled:opacity-50"
+          className="mt-4 rounded-full bg-[#2438C9] px-6 py-2.5 text-sm font-medium text-white transition hover:opacity-85 active:scale-[0.98] disabled:opacity-50"
         >
           {loading ? 'Redirecting…' : buttonLabel}
         </button>
       )}
-      {error && <p className="mt-2 text-sm text-red-400">{error}</p>}
+      {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
     </div>
   );
 }
