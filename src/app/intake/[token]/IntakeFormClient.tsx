@@ -3521,11 +3521,16 @@ export default function IntakeFormClient({
                     id="confirm-pages-btn"
                     type="button"
                     onClick={() => void handleConfirmPagesSelection()}
-                    disabled={form.pages.length === 0 || bulkGenerating}
-                    className="mt-3 inline-flex items-center gap-2 rounded-full bg-[#2438C9] px-5 py-2.5 text-sm font-medium text-white transition hover:opacity-85 active:scale-[0.98] disabled:opacity-60"
+                    disabled={form.pages.length === 0 || bulkGenerating || suggestingPages}
+                    className="mt-3 inline-flex items-center gap-2 rounded-full bg-[#2438C9] px-5 py-2.5 text-sm font-medium text-white transition hover:opacity-85 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     Done selecting pages — write my copy
                   </button>
+                  {suggestingPages && (
+                    <p className="mt-2 text-xs text-[#8B939C]">
+                      Waiting for AI offering suggestions to finish…
+                    </p>
+                  )}
                 </div>
               )}
             </section>
