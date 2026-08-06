@@ -32,7 +32,7 @@ import { resolveServiceTiers } from '@/lib/catalog/servicePriceCatalog';
 import { getBeforeAfterCategory } from '@/lib/images/beforeAfterPrompt';
 import { fileToUploadJpegBlob } from '@/lib/images/fileToUploadBlob';
 import { readJsonResponse, describeFetchError } from '@/lib/http/readJsonResponse';
-import { detectVertical, getCraftFieldsForVertical, getMaterialsLabelAndPlaceholder } from '@/lib/ai/suggestCraftAnswers';
+import { detectVertical, getCraftFieldsForVertical, getMaterialsLabelAndPlaceholder } from '@/lib/ai/craftFields';
 
 /** Split the free-text services field into individual service/job labels. */
 function parseServiceList(text: string): string[] {

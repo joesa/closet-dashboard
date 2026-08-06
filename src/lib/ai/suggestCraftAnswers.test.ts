@@ -3,8 +3,10 @@ import { generateTextWithFallback } from './aiTextProvider';
 import {
   detectVertical,
   getCraftFieldsForVertical,
-  getTradeFallbackCraft,
   getMaterialsLabelAndPlaceholder,
+} from './craftFields';
+import {
+  getTradeFallbackCraft,
   suggestCraftAnswers,
 } from './suggestCraftAnswers';
 
