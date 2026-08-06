@@ -28,6 +28,7 @@ import {
   maxAdditionalPagesForTier,
 } from '@/lib/catalog/sitePages';
 import { listIndustries, resolveIndustrySlug, getIndustry, getEngagementModel, isLowConfidenceResolution } from '@/lib/catalog/serviceCatalog';
+import { resolveServiceTiers } from '@/lib/catalog/servicePriceCatalog';
 import { getBeforeAfterCategory } from '@/lib/images/beforeAfterPrompt';
 import { fileToUploadJpegBlob } from '@/lib/images/fileToUploadBlob';
 import { readJsonResponse, describeFetchError } from '@/lib/http/readJsonResponse';
@@ -1570,24 +1571,43 @@ export default function IntakeFormClient({
       setServicesBlurGuidance(null);
       return;
     }
-    if (customIndustryGuidance) {
-      setServicesBlurGuidance(customIndustryGuidance);
-      set(
-        'pricingModel',
-        customIndustryGuidance.recommendedPricingModel === 'linear_ft' ? 'linear_ft' : 'fixed'
-      );
-      return;
-    }
-    const guidance = inferQuoteCalculatorGuidance({
-      industry,
-      servicesText,
-      services,
-    });
+    const guidance =
+      customIndustryGuidance ||
+      inferQuoteCalculatorGuidance({
+        industry,
+        servicesText,
+        services,
+      });
     setServicesBlurGuidance(guidance);
     set(
       'pricingModel',
       guidance.recommendedPricingModel === 'linear_ft' ? 'linear_ft' : 'fixed'
     );
+
+    // Auto-fill starting numbers/add-ons from the static price catalog so a
+    // non-technical contractor gets a complete, editable catalog instead of
+    // blank pricing fields. Never overwrites anything already entered.
+    if (!form.seedBasic.trim() && !form.seedStandard.trim() && !form.seedPremium.trim()) {
+      const slug = resolveIndustrySlug({ industry, services });
+      const totals = services.reduce(
+        (acc, s) => {
+          const tiers = resolveServiceTiers(s, slug);
+          return {
+            basic: acc.basic + tiers.basic,
+            standard: acc.standard + tiers.standard,
+            premium: acc.premium + tiers.premium,
+          };
+        },
+        { basic: 0, standard: 0, premium: 0 }
+      );
+      const count = services.length;
+      set('seedBasic', String(Math.round(totals.basic / count)));
+      set('seedStandard', String(Math.round(totals.standard / count)));
+      set('seedPremium', String(Math.round(totals.premium / count)));
+    }
+    if (!form.addOnText.trim() && guidance.addOnExamples.length > 0) {
+      set('addOnText', guidance.addOnExamples.join(', '));
+    }
   };
   const handleServicesBlur = () => applyServicesGuidance(form.otherServices);
 
@@ -1615,18 +1635,28 @@ export default function IntakeFormClient({
     return labels;
   }, [form.industry, widgetConfigHints, customIndustryServices]);
 
-  // When a custom industry resolves with catalog services and the prospect left
-  // the free-text field empty, seed it so submit/studio stay in sync.
-  const seededCustomServicesRef = useRef<string | null>(null);
+  // When an industry resolves (a known catalog trade, or an AI-resolved custom
+  // industry) and the prospect left the free-text services field empty, seed
+  // it with the trade's common services — and immediately apply pricing/add-on
+  // guidance for it — so a non-technical contractor starts with a complete,
+  // editable catalog instead of a blank field. Never overwrites anything the
+  // prospect already typed.
+  const seededServicesRef = useRef<string | null>(null);
   useEffect(() => {
-    if (!customIndustryServices || customIndustryServices.length === 0) return;
     if (form.otherServices.trim() || (form.services || []).length > 0) return;
-    const key = `${form.industry}::${customIndustryServices.join('|')}`;
-    if (seededCustomServicesRef.current === key) return;
-    seededCustomServicesRef.current = key;
-    set('otherServices', customIndustryServices.join(', '));
+    const seedList =
+      customIndustryServices && customIndustryServices.length > 0
+        ? customIndustryServices
+        : suggestedServices;
+    if (!seedList.length) return;
+    const key = `${form.industry}::${seedList.join('|')}`;
+    if (seededServicesRef.current === key) return;
+    seededServicesRef.current = key;
+    const text = seedList.join(', ');
+    set('otherServices', text);
+    applyServicesGuidance(text);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- seed once per industry/services pair
-  }, [customIndustryServices, form.industry, form.otherServices, form.services]);
+  }, [customIndustryServices, suggestedServices, form.industry, form.otherServices, form.services]);
 
   const selectedServiceLabels = useMemo(
     () => new Set(studioServices.map((s) => s.toLowerCase())),
@@ -1689,6 +1719,10 @@ export default function IntakeFormClient({
     );
   }, [form.industry, allIndustryOptions]);
   const [customIndustryMode, setCustomIndustryMode] = useState(false);
+  // Tier names, finishes, and calculator notes are pre-filled with reasonable
+  // defaults — collapsed by default so the step feels short; the prospect can
+  // still open this to fine-tune anything.
+  const [showAdvancedPricing, setShowAdvancedPricing] = useState(false);
   const selectedIndustryValue =
     customIndustryMode || (form.industry.trim() && !matchedIndustryOption)
       ? CUSTOM_INDUSTRY_VALUE
@@ -2825,79 +2859,15 @@ export default function IntakeFormClient({
               </div>
             )}
 
-            <label className={label}>Tier / package names</label>
-            <div className="mb-2 grid grid-cols-1 gap-2.5 sm:grid-cols-3 sm:gap-3">
-              <input className={input} value={form.tierNameBasic} onChange={(e) => set('tierNameBasic', e.target.value)} placeholder="Basic" />
-              <input className={input} value={form.tierNameStandard} onChange={(e) => set('tierNameStandard', e.target.value)} placeholder="Standard" />
-              <input className={input} value={form.tierNamePremium} onChange={(e) => set('tierNamePremium', e.target.value)} placeholder="Premium" />
-            </div>
-            <p className="mb-4 text-xs text-[#8B939C]">Examples: {calculatorGuidance.tierExamples.join(' / ')}</p>
-
-            {servicesBlurGuidance && servicesBlurGuidance.tierExamples.length >= 3 && (
-              <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700">
-                  Suggested tier names
-                </p>
-                <p className="mt-1">
-                  Based on your selected industry and listed services:{' '}
-                  <strong>{servicesBlurGuidance.tierExamples[0]}</strong> /{' '}
-                  <strong>{servicesBlurGuidance.tierExamples[1]}</strong> /{' '}
-                  <strong>{servicesBlurGuidance.tierExamples[2]}</strong>
-                </p>
-                <button
-                  type="button"
-                  onClick={() => {
-                    set('tierNameBasic', servicesBlurGuidance.tierExamples[0]);
-                    set('tierNameStandard', servicesBlurGuidance.tierExamples[1]);
-                    set('tierNamePremium', servicesBlurGuidance.tierExamples[2]);
-                  }}
-                  className="mt-3 rounded-md border border-emerald-300 px-3 py-1.5 text-xs font-semibold text-emerald-800 transition hover:bg-emerald-100"
-                >
-                  Apply suggested tier names
-                </button>
-              </div>
-            )}
-
             <label className={label}>Approximate pricing by tier</label>
-            <p className="mb-2 text-xs text-[#8B939C]">Optional. Leave blank if you want AI to estimate from your trade. Examples: {calculatorGuidance.pricingExamples.join(' · ')}</p>
+            <p className="mb-2 text-xs text-[#8B939C]">
+              Pre-filled with typical {calculatorGuidance.tradeLabel} pricing — adjust the numbers, or clear them to let AI estimate instead. Examples: {calculatorGuidance.pricingExamples.join(' · ')}
+            </p>
             <div className="mb-4 grid grid-cols-1 gap-2.5 sm:grid-cols-3 sm:gap-3">
               <input className={input} type="number" min="0" value={form.seedBasic} onChange={(e) => set('seedBasic', e.target.value)} placeholder={form.pricingModel === 'fixed' ? 'e.g. 249' : 'e.g. 45'} />
               <input className={input} type="number" min="0" value={form.seedStandard} onChange={(e) => set('seedStandard', e.target.value)} placeholder={form.pricingModel === 'fixed' ? 'e.g. 899' : 'e.g. 75'} />
               <input className={input} type="number" min="0" value={form.seedPremium} onChange={(e) => set('seedPremium', e.target.value)} placeholder={form.pricingModel === 'fixed' ? 'e.g. 2200' : 'e.g. 120'} />
             </div>
-
-            <label className={label}>Do you offer different materials, packages, or upgrade levels?</label>
-            <div className="mb-3 grid grid-cols-2 gap-2.5 sm:gap-3">
-              {[
-                { label: 'Yes', value: true },
-                { label: 'No', value: false },
-              ].map((opt) => (
-                <button
-                  key={String(opt.value)}
-                  type="button"
-                  onClick={() => setBool('hasFinishes', opt.value)}
-                  className={`rounded-xl border p-3 text-left text-sm transition-all ${form.hasFinishes === opt.value ? 'border-[#2438C9] bg-[#EDEFFB] text-[#10141A]' : 'border-[#D8DADB] bg-white text-[#4E5761] hover:border-[#8B939C]'}`}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-
-            {form.hasFinishes && (
-              <div className="mb-4 space-y-3">
-                {[
-                  { labelKey: 'finish1Label' as const, colorKey: 'finish1Color' as const },
-                  { labelKey: 'finish2Label' as const, colorKey: 'finish2Color' as const },
-                  { labelKey: 'finish3Label' as const, colorKey: 'finish3Color' as const },
-                ].map((entry, i) => (
-                  <div key={i} className="flex items-center gap-2.5 sm:gap-3">
-                    <input type="color" className="h-10 w-11 rounded border border-[#D8DADB] bg-white sm:w-12" value={form[entry.colorKey]} onChange={(e) => set(entry.colorKey, e.target.value)} />
-                    <input className={input} value={form[entry.labelKey]} onChange={(e) => set(entry.labelKey, e.target.value)} placeholder={`Option ${i + 1} name`} />
-                  </div>
-                ))}
-                <p className="text-xs text-[#8B939C]">Examples: {calculatorGuidance.finishExamples.join(' · ')}</p>
-              </div>
-            )}
 
             <label className={label}>Add-ons / upgrades</label>
             {calculatorGuidance.addOnExamples.length > 0 && (
@@ -2933,41 +2903,133 @@ export default function IntakeFormClient({
               </div>
             )}
             <textarea className={`${input} min-h-[72px] mb-2`} value={form.addOnText} onChange={(e) => set('addOnText', e.target.value)} placeholder={calculatorGuidance.addOnExamples.join(', ')} />
-            <p className="mb-4 text-xs text-[#8B939C]">Tap a suggestion above or type your own, separated by commas.</p>
+            <p className="mb-4 text-xs text-[#8B939C]">Pre-filled with common add-ons for this trade — tap a suggestion, type your own, or remove any you don&apos;t offer.</p>
 
-            <label className={label}>How should the quote calculator think about these jobs?</label>
-            {calculatorGuidance.quoteVariables.length > 0 && (
-              <div className="mb-3 rounded-xl border border-[#2438C9]/20 bg-[#EDEFFB] p-4">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-[#2438C9]">
-                  AI-suggested quote inputs for {calculatorGuidance.tradeLabel}
-                </p>
-                <p className="mt-1 mb-3 text-xs text-[#4E5761]">
-                  These details usually drive the price for this trade. Tap any to add it to your notes below.
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {calculatorGuidance.quoteVariables.map((variable) => {
-                    const active = form.calculatorNotes.toLowerCase().includes(variable.toLowerCase());
-                    return (
-                      <button
-                        key={variable}
-                        type="button"
-                        onClick={() => toggleQuoteVariable(variable)}
-                        className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
-                          active
-                            ? 'border-[#2438C9] bg-[#EDEFFB] text-[#2438C9]'
-                            : 'border-[#D8DADB] bg-white text-[#4E5761] hover:border-[#8B939C] hover:bg-[#F4F5F4]'
-                        }`}
-                      >
-                        {active ? '✓ ' : '+ '}
-                        {variable}
-                      </button>
-                    );
-                  })}
+            <div className="mb-4">
+              <button
+                type="button"
+                onClick={() => setShowAdvancedPricing((v) => !v)}
+                className="flex w-full items-center justify-between rounded-xl border border-[#E7E8E8] bg-[#F4F5F4] px-4 py-3 text-left text-sm font-semibold text-[#10141A] transition hover:border-[#8B939C]"
+              >
+                <span>Customize tier names, materials &amp; notes <span className="font-normal text-[#8B939C]">(optional)</span></span>
+                <span className="text-xs text-[#8B939C]">{showAdvancedPricing ? '− Hide' : '+ Show'}</span>
+              </button>
+
+              {showAdvancedPricing && (
+                <div className="mt-3 space-y-5 rounded-xl border border-[#E7E8E8] bg-white p-4">
+                  <div>
+                    <label className={label}>Tier / package names</label>
+                    <div className="mb-2 grid grid-cols-1 gap-2.5 sm:grid-cols-3 sm:gap-3">
+                      <input className={input} value={form.tierNameBasic} onChange={(e) => set('tierNameBasic', e.target.value)} placeholder="Basic" />
+                      <input className={input} value={form.tierNameStandard} onChange={(e) => set('tierNameStandard', e.target.value)} placeholder="Standard" />
+                      <input className={input} value={form.tierNamePremium} onChange={(e) => set('tierNamePremium', e.target.value)} placeholder="Premium" />
+                    </div>
+                    <p className="text-xs text-[#8B939C]">Examples: {calculatorGuidance.tierExamples.join(' / ')}</p>
+
+                    {servicesBlurGuidance && servicesBlurGuidance.tierExamples.length >= 3 && (
+                      <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700">
+                          Suggested tier names
+                        </p>
+                        <p className="mt-1">
+                          Based on your selected industry and listed services:{' '}
+                          <strong>{servicesBlurGuidance.tierExamples[0]}</strong> /{' '}
+                          <strong>{servicesBlurGuidance.tierExamples[1]}</strong> /{' '}
+                          <strong>{servicesBlurGuidance.tierExamples[2]}</strong>
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            set('tierNameBasic', servicesBlurGuidance.tierExamples[0]);
+                            set('tierNameStandard', servicesBlurGuidance.tierExamples[1]);
+                            set('tierNamePremium', servicesBlurGuidance.tierExamples[2]);
+                          }}
+                          className="mt-3 rounded-md border border-emerald-300 px-3 py-1.5 text-xs font-semibold text-emerald-800 transition hover:bg-emerald-100"
+                        >
+                          Apply suggested tier names
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className={label}>Do you offer different materials, packages, or upgrade levels?</label>
+                    <div className="mb-3 grid grid-cols-2 gap-2.5 sm:gap-3">
+                      {[
+                        { label: 'Yes', value: true },
+                        { label: 'No', value: false },
+                      ].map((opt) => (
+                        <button
+                          key={String(opt.value)}
+                          type="button"
+                          onClick={() => setBool('hasFinishes', opt.value)}
+                          className={`rounded-xl border p-3 text-left text-sm transition-all ${form.hasFinishes === opt.value ? 'border-[#2438C9] bg-[#EDEFFB] text-[#10141A]' : 'border-[#D8DADB] bg-white text-[#4E5761] hover:border-[#8B939C]'}`}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    {form.hasFinishes && (
+                      <div className="space-y-3">
+                        {[
+                          { labelKey: 'finish1Label' as const, colorKey: 'finish1Color' as const },
+                          { labelKey: 'finish2Label' as const, colorKey: 'finish2Color' as const },
+                          { labelKey: 'finish3Label' as const, colorKey: 'finish3Color' as const },
+                        ].map((entry, i) => (
+                          <div key={i} className="flex items-center gap-2.5 sm:gap-3">
+                            <input type="color" className="h-10 w-11 rounded border border-[#D8DADB] bg-white sm:w-12" value={form[entry.colorKey]} onChange={(e) => set(entry.colorKey, e.target.value)} />
+                            <input className={input} value={form[entry.labelKey]} onChange={(e) => set(entry.labelKey, e.target.value)} placeholder={`Option ${i + 1} name`} />
+                          </div>
+                        ))}
+                        <p className="text-xs text-[#8B939C]">Examples: {calculatorGuidance.finishExamples.join(' · ')}</p>
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className={label}>How should the quote calculator think about these jobs?</label>
+                    {calculatorGuidance.quoteVariables.length > 0 && (
+                      <div className="mb-3 rounded-xl border border-[#2438C9]/20 bg-[#EDEFFB] p-4">
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-[#2438C9]">
+                          AI-suggested quote inputs for {calculatorGuidance.tradeLabel}
+                        </p>
+                        <p className="mt-1 mb-3 text-xs text-[#4E5761]">
+                          These details usually drive the price for this trade. Tap any to add it to your notes below.
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                          {calculatorGuidance.quoteVariables.map((variable) => {
+                            const active = form.calculatorNotes.toLowerCase().includes(variable.toLowerCase());
+                            return (
+                              <button
+                                key={variable}
+                                type="button"
+                                onClick={() => toggleQuoteVariable(variable)}
+                                className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+                                  active
+                                    ? 'border-[#2438C9] bg-[#EDEFFB] text-[#2438C9]'
+                                    : 'border-[#D8DADB] bg-white text-[#4E5761] hover:border-[#8B939C] hover:bg-[#F4F5F4]'
+                                }`}
+                              >
+                                {active ? '✓ ' : '+ '}
+                                {variable}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                    <textarea className={`${input} min-h-[90px] mb-2`} value={form.calculatorNotes} onChange={(e) => set('calculatorNotes', e.target.value)} placeholder={calculatorGuidance.calculatorNotesExample} />
+                    <p className="text-xs text-[#8B939C]">{calculatorGuidance.calculatorNotesPrompt}</p>
+                  </div>
+
+                  <div>
+                    <label className={label}>Pricing details (optional)</label>
+                    <textarea className={`${input} min-h-[80px]`} value={form.pricingNotes} onChange={(e) => set('pricingNotes', e.target.value)} placeholder="e.g. Most jobs start around $300. Larger projects run $2,000–$8,000. If unsure, leave blank and we'll estimate." />
+                  </div>
                 </div>
-              </div>
-            )}
-            <textarea className={`${input} min-h-[90px] mb-2`} value={form.calculatorNotes} onChange={(e) => set('calculatorNotes', e.target.value)} placeholder={calculatorGuidance.calculatorNotesExample} />
-            <p className="mb-4 text-xs text-[#8B939C]">{calculatorGuidance.calculatorNotesPrompt}</p>
+              )}
+            </div>
               </>
             )}
 
@@ -3029,8 +3091,12 @@ export default function IntakeFormClient({
               </div>
             )}
 
-            <label className={label}>Pricing details (optional)</label>
-            <textarea className={`${input} min-h-[80px]`} value={form.pricingNotes} onChange={(e) => set('pricingNotes', e.target.value)} placeholder="e.g. Most jobs start around $300. Larger projects run $2,000–$8,000. If unsure, leave blank and we'll estimate." />
+            {(isOrderBusiness || isBookingBusiness || isTicketBusiness) && (
+              <>
+                <label className={label}>Pricing details (optional)</label>
+                <textarea className={`${input} min-h-[80px]`} value={form.pricingNotes} onChange={(e) => set('pricingNotes', e.target.value)} placeholder="e.g. Most jobs start around $300. Larger projects run $2,000–$8,000. If unsure, leave blank and we'll estimate." />
+              </>
+            )}
 
             {!isOrderBusiness && !isBookingBusiness && !isTicketBusiness && (
               <label className="mt-6 flex cursor-pointer items-start gap-3 rounded-xl border border-[#E7E8E8] bg-[#F4F5F4] p-4">

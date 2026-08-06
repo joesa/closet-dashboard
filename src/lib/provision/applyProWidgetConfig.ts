@@ -18,6 +18,7 @@ import { resolveServiceTiers } from '@/lib/catalog/servicePriceCatalog'
 import { getServiceUxDefaults } from '@/lib/catalog/serviceUxDefaults'
 import { assertOfferedServicesPriced, roomIsUnpriced } from '@/lib/pricingGuard'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { mergeCustomAddOnsWithDefaults } from './provisionTenant'
 
 function defaultTierNames(hints: WidgetConfigHints, generated?: GeneratedWidgetConfig) {
   return {
@@ -248,7 +249,12 @@ export async function applyProWidgetConfig(
   await admin.from('contractor_finishes').delete().eq('contractor_id', contractorId)
   await admin.from('contractor_rooms').delete().eq('contractor_id', contractorId)
 
-  await insertGeneratedCatalog(admin, contractorId, generated)
+  const industrySlug = resolveIndustrySlug({
+    industry: enriched.industry,
+    services: enriched.services,
+    other_services: enriched.otherServices,
+  })
+  await insertGeneratedCatalog(admin, contractorId, generated, industrySlug, enriched.services)
 
   const disabledFinishes = generated.disableDefaultFinishes
     ? ['basic', 'standard', 'premium']
@@ -302,7 +308,9 @@ export async function applyProWidgetConfig(
 async function insertGeneratedCatalog(
   admin: ReturnType<typeof getSupabaseAdmin>,
   contractorId: string,
-  generated: GeneratedWidgetConfig
+  generated: GeneratedWidgetConfig,
+  industrySlug: ReturnType<typeof resolveIndustrySlug>,
+  services?: string[]
 ) {
   if (generated.customRooms?.length) {
     assertOfferedServicesPriced(generated.customRooms)
@@ -321,13 +329,25 @@ async function insertGeneratedCatalog(
     if (error) throw error
   }
 
-  if (generated.customAddOns?.length) {
+  // Guarantee a real, priced add-ons list even when the AI widget generation
+  // produced none — mirrors the same guarantee applied during initial
+  // provisioning in provisionTenant.ts.
+  const finalAddOns = mergeCustomAddOnsWithDefaults(
+    (generated.customAddOns || []).map((a) => ({
+      name: a.name,
+      roomType: a.roomType,
+      price: a.price,
+    })),
+    industrySlug,
+    services
+  )
+  if (finalAddOns.length) {
     const { error } = await admin.from('contractor_addons').insert(
-      generated.customAddOns.map((a) => ({
+      finalAddOns.map((a) => ({
         contractor_id: contractorId,
         name: a.name,
         room_type: a.roomType || 'all',
-        price: a.price || 0,
+        price: a.price,
       }))
     )
     if (error) throw error

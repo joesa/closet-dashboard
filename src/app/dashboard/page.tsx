@@ -81,6 +81,9 @@ export type ContractorSettings = {
     unitMax?: number
     baseFee?: number
   } | null
+  // When the contractor dismissed the dashboard "Getting started" guide card.
+  // Null/undefined means it should still show.
+  getting_started_dismissed_at?: string | null
 }
 
 function createInitialForm(): ContractorSettings {
@@ -134,6 +137,10 @@ export default function DashboardPage() {
   const [newFinish, setNewFinish] = useState<{ label: string; swatch_hex: string; tier: PricingTier }>({ label: '', swatch_hex: '#A78B6A', tier: 'standard' })
   const [addingFinish, setAddingFinish] = useState(false)
   const [finishesOpen, setFinishesOpen] = useState(true)
+
+  // Dashboard "Getting started" guide card. Shown by default until the
+  // contractor dismisses it (persisted); reopenable via the header link.
+  const [guideOpen, setGuideOpen] = useState(false)
 
   // Auto-dismiss the "Saved successfully" toast after 5s.
   useEffect(() => {
@@ -234,6 +241,10 @@ export default function DashboardPage() {
           ...(settingsRow as ContractorSettings),
           room_pricing: normalizeRoomPricing((settingsRow as { room_pricing?: unknown }).room_pricing),
         })
+        setGuideOpen(
+          !(settingsRow as { getting_started_dismissed_at?: string | null })
+            .getting_started_dismissed_at
+        )
         setSaved(true)
         setEmbedRevealed(true)
 
@@ -372,6 +383,19 @@ export default function DashboardPage() {
     }
 
     setSaving(false)
+  }
+
+  // Dismiss (and persist) the "Getting started" guide card without touching
+  // any pending, unsaved settings edits the contractor may already have made.
+  const handleDismissGuide = async () => {
+    setGuideOpen(false)
+    if (!form) return
+    const now = new Date().toISOString()
+    setForm((prev) => (prev ? { ...prev, getting_started_dismissed_at: now } : prev))
+    await supabaseBrowser
+      .from('contractor_settings')
+      .update({ getting_started_dismissed_at: now })
+      .eq('id', form.id)
   }
 
   const handleAddAddon = async () => {
@@ -696,6 +720,12 @@ export default function DashboardPage() {
               Admin Dashboard
             </span>
             <button
+              onClick={() => setGuideOpen(true)}
+              className="rounded-lg border border-white/[0.06] bg-white/[0.04] px-3 py-1.5 text-xs font-medium text-zinc-400 transition hover:bg-white/[0.08] hover:text-white"
+            >
+              How this works
+            </button>
+            <button
               onClick={handleSignOut}
               className="rounded-lg border border-white/[0.06] bg-white/[0.04] px-3 py-1.5 text-xs font-medium text-zinc-400 transition hover:bg-white/[0.08] hover:text-white"
             >
@@ -729,6 +759,51 @@ export default function DashboardPage() {
           trialEndsAt={form.trial_ends_at}
           isDemo={form.id === DEMO_CONTRACTOR_ID}
         />
+
+        {guideOpen && (
+          <div className="mb-6 rounded-2xl border border-white/[0.06] bg-[#12151C] p-6">
+            <div className="mb-4 flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-lg font-semibold text-white">Getting started</h2>
+                <p className="mt-1 text-sm text-zinc-400">
+                  Your site already comes with real services, prices, and add-ons filled in for your trade — here&apos;s how to make it yours.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleDismissGuide}
+                className="shrink-0 rounded-lg border border-white/[0.06] bg-white/[0.04] px-3 py-1.5 text-xs font-medium text-zinc-400 transition hover:bg-white/[0.08] hover:text-white"
+              >
+                Got it, hide this
+              </button>
+            </div>
+            <ol className="space-y-3 text-sm text-zinc-300">
+              <li className="flex gap-3">
+                <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-white/10 text-xs font-semibold">1</span>
+                <span><strong className="text-white">Services &amp; prices</strong> — In the pricing section below, edit any price, click <strong className="text-white">+ Add</strong> to add a new service, or remove one you don&apos;t offer.</span>
+              </li>
+              <li className="flex gap-3">
+                <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-white/10 text-xs font-semibold">2</span>
+                <span><strong className="text-white">Add-ons &amp; upgrades</strong> — In &quot;Manage Custom Add-ons&quot;, add optional upsells or remove any you don&apos;t offer.</span>
+              </li>
+              <li className="flex gap-3">
+                <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-white/10 text-xs font-semibold">3</span>
+                <span><strong className="text-white">Basic / Standard / Premium</strong> — These are just names for your tiers. Rename them to whatever your customers understand, like &quot;Good / Better / Best&quot;.</span>
+              </li>
+              <li className="flex gap-3">
+                <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-white/10 text-xs font-semibold">4</span>
+                <span><strong className="text-white">Preview your site</strong> — Scroll down to see the live preview of exactly what your customers see, updated whenever you save.</span>
+              </li>
+              <li className="flex gap-3">
+                <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-white/10 text-xs font-semibold">5</span>
+                <span><strong className="text-white">Custom domain</strong> — Use the domain section further down the page to connect your own domain name.</span>
+              </li>
+            </ol>
+            <p className="mt-4 text-xs text-zinc-500">
+              Don&apos;t forget to click <strong className="text-zinc-300">Save</strong> after making changes. Reopen this guide anytime from &quot;How this works&quot; at the top.
+            </p>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 gap-8 lg:grid-cols-2 lg:items-start">
           {/* ─── Left Column: Settings form & Embed code ─── */}

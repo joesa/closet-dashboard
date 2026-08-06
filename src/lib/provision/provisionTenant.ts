@@ -62,6 +62,7 @@ import {
 } from '@/lib/catalog/servicePriceCatalog'
 import { getServiceUxDefaults } from '@/lib/catalog/serviceUxDefaults'
 import { assertOfferedServicesPriced, roomIsUnpriced } from '@/lib/pricingGuard'
+import { inferQuoteCalculatorGuidance } from '@/lib/quoteCalculatorGuidance'
 import {
   DEFAULT_DOMAIN_CONFIG,
   ROOM_TYPES,
@@ -159,6 +160,36 @@ function mergeCustomRoomsWithServices(
     ...priced,
     ...missing.map((name) => withUx(name, resolveServiceTiers(name, industrySlug))),
   ]
+}
+
+// Mirrors mergeCustomRoomsWithServices above: guarantee every quote-model
+// business starts with a few real, priced add-ons in the dashboard instead of
+// an empty list when AI widget generation produced none (or failed). Never
+// overrides add-ons the AI/admin already supplied — only backfills a missing
+// price on those, and only invents industry-typical add-ons when the AI gave
+// us nothing to work with at all.
+export function mergeCustomAddOnsWithDefaults(
+  customAddOns: Array<{ name: string; roomType?: string; price?: number }>,
+  industrySlug: IndustrySlug,
+  services: string[] | null | undefined
+): Array<{ name: string; roomType?: string; price: number }> {
+  if (customAddOns.length > 0) {
+    return customAddOns.map((a) => ({
+      ...a,
+      price:
+        typeof a.price === 'number' && a.price > 0
+          ? a.price
+          : resolveServiceTiers(a.name, industrySlug).basic,
+    }))
+  }
+  const guidance = inferQuoteCalculatorGuidance({
+    industry: getIndustry(industrySlug).label,
+    services: services || undefined,
+  })
+  return guidance.addOnExamples.slice(0, 4).map((name) => ({
+    name,
+    price: resolveServiceTiers(name, industrySlug).basic,
+  }))
 }
 
 function isMissingDesignVariantColumn(error: unknown): boolean {
@@ -1245,7 +1276,26 @@ export async function provisionTenant(
       }>
     }
 
-    if (customAddOns?.length) {
+    if (!isOrderBusiness && !isBookingBusiness && !isTicketBusiness) {
+      // Quote-model businesses: guarantee a real, priced add-ons list even
+      // when the AI widget generation produced none — same guarantee
+      // mergeCustomRoomsWithServices already gives the services list above.
+      const finalAddOns = mergeCustomAddOnsWithDefaults(
+        customAddOns || [],
+        beforeAfterContext.industry,
+        services
+      )
+      if (finalAddOns.length) {
+        await supabase.from('contractor_addons').insert(
+          finalAddOns.map((a) => ({
+            contractor_id: tenantId,
+            name: a.name,
+            room_type: a.roomType,
+            price: a.price,
+          }))
+        )
+      }
+    } else if (customAddOns?.length) {
       await supabase.from('contractor_addons').insert(
         customAddOns.map((a) => ({
           contractor_id: tenantId,
