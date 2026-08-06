@@ -103,7 +103,18 @@ function LoginForm() {
         `/api/auth/tenant-redirect?next=${encodeURIComponent(next)}`
       )
       if (tenantRes.ok) {
-        const { url } = await tenantRes.json()
+        const { url, mismatch } = await tenantRes.json()
+        if (mismatch) {
+          // Signed in fine, but this isn't the account that owns the current
+          // subdomain — every tenant's /login proxies to this same form, so
+          // don't leave the session parked under a domain that isn't theirs.
+          await signOutBrowser()
+          setError(
+            "This account isn't registered to this site. Sign in at your own site's URL or at the shared dashboard login."
+          )
+          setLoading(false)
+          return
+        }
         if (url) {
           window.location.href = url
           return

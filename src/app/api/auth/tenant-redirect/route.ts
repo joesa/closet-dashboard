@@ -14,6 +14,13 @@ export const dynamic = 'force-dynamic'
  * on the shared dashboard host. Always derives the tenant from the
  * authenticated session — never from a client-supplied hostname — so a user
  * can never be redirected into someone else's site.
+ *
+ * Also guards the reverse case: this route serves dashboard-owned paths
+ * proxied onto every tenant subdomain (see custom-closets-websites/proxy.ts),
+ * so anyone's login form is reachable at any-contractor.ditchtheform.com/login.
+ * If the signed-in user isn't that subdomain's owner, `mismatch: true` tells
+ * the login page to sign them out instead of leaving them authenticated
+ * under a domain that isn't theirs.
  */
 export async function GET(req: Request) {
   const supabase = await getSupabaseServer()
@@ -32,6 +39,14 @@ export async function GET(req: Request) {
   const safeNext = next.startsWith('/') && !next.startsWith('//') ? next : '/dashboard'
 
   const hostname = await getTenantHostnameForUser(user.id)
+
+  // Set by the renderer's proxy from the real Host header — never trust a
+  // client-supplied value, since the header is always overwritten upstream.
+  const currentTenantHost = req.headers.get('x-tenant-host')?.trim().toLowerCase() || null
+  if (currentTenantHost && currentTenantHost !== hostname?.toLowerCase()) {
+    return NextResponse.json({ url: null, mismatch: true })
+  }
+
   if (!hostname || isDashboardHost(hostname)) {
     return NextResponse.json({ url: null })
   }
