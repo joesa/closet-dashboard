@@ -23,10 +23,6 @@ export async function GET(req: Request) {
       )
     }
 
-    // Entitlement gate — contractor must be in trial or on an active plan.
-    const blocked = await assertEntitled(contractorId)
-    if (blocked) return blocked
-
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
     const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
@@ -40,14 +36,40 @@ export async function GET(req: Request) {
 
     const supabase = createClient(supabaseUrl, supabaseKey)
 
-    const { data, error } = await supabase
-      .from('contractor_settings')
-      // Selecting brand fields + pricing fields so the widget has everything it needs.
-      // price_per_ft_* are DEPRECATED; kept in the response during the room_pricing
-      // rollout for older widget builds and will be removed in a follow-up.
-      .select('company_name, primary_color_hex, price_per_ft_basic, price_per_ft_standard, price_per_ft_premium, price_drawer, price_shoe_rack, room_pricing, disabled_default_rooms, disabled_default_finishes, domain_config, tier_names, tier_colors, widget_theme_id')
-      .eq('id', contractorId)
-      .maybeSingle()
+    // The widget blocks on this call before it can render, so the entitlement
+    // check and all four reads are issued together rather than serially.
+    const [blocked, settingsResult, addonsResult, roomsResult, finishesResult] =
+      await Promise.all([
+        assertEntitled(contractorId),
+        supabase
+          .from('contractor_settings')
+          // Selecting brand fields + pricing fields so the widget has everything it needs.
+          // price_per_ft_* are DEPRECATED; kept in the response during the room_pricing
+          // rollout for older widget builds and will be removed in a follow-up.
+          .select('company_name, primary_color_hex, price_per_ft_basic, price_per_ft_standard, price_per_ft_premium, price_drawer, price_shoe_rack, room_pricing, disabled_default_rooms, disabled_default_finishes, domain_config, tier_names, tier_colors, widget_theme_id')
+          .eq('id', contractorId)
+          .maybeSingle(),
+        supabase
+          .from('contractor_addons')
+          .select('id, room_type, room_types, name, price')
+          .eq('contractor_id', contractorId)
+          .order('created_at', { ascending: true }),
+        supabase
+          .from('contractor_rooms')
+          .select('id, name, price_basic, price_standard, price_premium, icon, requires_package, requires_materials')
+          .eq('contractor_id', contractorId)
+          .order('created_at', { ascending: true }),
+        supabase
+          .from('contractor_finishes')
+          .select('id, label, description, swatch_hex, tier, sort_order')
+          .eq('contractor_id', contractorId)
+          .order('sort_order', { ascending: true }),
+      ])
+
+    // Entitlement gate — contractor must be in trial or on an active plan.
+    if (blocked) return blocked
+
+    const { data, error } = settingsResult
 
     if (error) {
       console.error('Supabase error fetching settings:', error)
@@ -64,26 +86,9 @@ export async function GET(req: Request) {
       )
     }
 
-    // Fetch custom addons
-    const { data: addonsData } = await supabase
-      .from('contractor_addons')
-      .select('id, room_type, room_types, name, price')
-      .eq('contractor_id', contractorId)
-      .order('created_at', { ascending: true })
-
-    // Fetch contractor-defined custom rooms
-    const { data: roomsData } = await supabase
-      .from('contractor_rooms')
-      .select('id, name, price_basic, price_standard, price_premium, icon, requires_package, requires_materials')
-      .eq('contractor_id', contractorId)
-      .order('created_at', { ascending: true })
-
-    // Fetch contractor-defined custom finishes (material colors)
-    const { data: finishesData } = await supabase
-      .from('contractor_finishes')
-      .select('id, label, description, swatch_hex, tier, sort_order')
-      .eq('contractor_id', contractorId)
-      .order('sort_order', { ascending: true })
+    const addonsData = addonsResult.data
+    const roomsData = roomsResult.data
+    const finishesData = finishesResult.data
 
     const tierNamesRaw = data.tier_names as
       | { basic?: string; standard?: string; premium?: string }
@@ -164,7 +169,14 @@ export async function GET(req: Request) {
 
     return NextResponse.json(responsePayload, {
       status: 200,
-      headers: corsHeaders,
+      headers: {
+        ...corsHeaders,
+        // Public branding/pricing, keyed by contractorId — cache at the edge so
+        // most widget loads skip the database entirely. Contractor edits go live
+        // within a minute; stale responses serve instantly while revalidating.
+        'Cache-Control':
+          'public, max-age=0, s-maxage=60, stale-while-revalidate=300',
+      },
     })
   } catch (err) {
     console.error('Error in settings route:', err)
