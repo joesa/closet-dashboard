@@ -38,11 +38,12 @@ export async function GET(req: Request) {
   const next = new URL(req.url).searchParams.get('next') || '/dashboard'
   const safeNext = next.startsWith('/') && !next.startsWith('//') ? next : '/dashboard'
 
-  const hostname = await getTenantHostnameForUser(user.id)
-
   // Set by the renderer's proxy from the real Host header — never trust a
   // client-supplied value, since the header is always overwritten upstream.
   const currentTenantHost = req.headers.get('x-tenant-host')?.trim().toLowerCase() || null
+
+  const hostname = await getTenantHostnameForUser(user.id, currentTenantHost)
+
   if (currentTenantHost && currentTenantHost !== hostname?.toLowerCase()) {
     return NextResponse.json({ url: null, mismatch: true })
   }

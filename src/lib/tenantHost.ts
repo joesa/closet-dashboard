@@ -5,43 +5,71 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin'
  * following the same chain used by resolveTenantWidget:
  *   auth user -> contractor_settings.id -> tenants.widget_id -> domains.hostname
  *
- * Prefers the tenant's primary domain (custom domain if verified, otherwise
- * the platform subdomain). Returns null if the user has no tenant, or the
- * tenant has no domain row yet (e.g. mid-provisioning).
+ * A single auth user can legitimately own MULTIPLE contractor_settings rows
+ * (multi-site accounts via `/api/contractor/bootstrap`'s `forceNewSite`), so
+ * this can't assume exactly one row (`.maybeSingle()` used to be called here
+ * and silently returned null — swallowing its own "multiple rows" error —
+ * for any multi-site user, making every one of their tenant-subdomain logins
+ * look like a false "account not registered to this site" mismatch).
+ *
+ * When `preferredHostname` is given (the subdomain the user is actually
+ * logging in from) and it matches one of the user's own tenants, that one is
+ * returned so the "does this account own the CURRENT site" check succeeds.
+ * Otherwise falls back to the first-provisioned tenant that has a domain,
+ * preferring a verified custom domain over the platform subdomain.
  */
-export async function getTenantHostnameForUser(userId: string): Promise<string | null> {
+export async function getTenantHostnameForUser(
+  userId: string,
+  preferredHostname?: string | null
+): Promise<string | null> {
   const admin = getSupabaseAdmin()
 
-  const { data: settings } = await admin
+  const { data: settingsRows } = await admin
     .from('contractor_settings')
     .select('id')
     .eq('user_id', userId)
-    .maybeSingle()
+    .order('created_at', { ascending: true })
 
-  if (!settings?.id) return null
+  const settingsIds = (settingsRows ?? []).map((s) => s.id).filter(Boolean)
+  if (settingsIds.length === 0) return null
 
-  const { data: tenant } = await admin
+  const { data: tenants } = await admin
     .from('tenants')
-    .select('id')
-    .eq('widget_id', settings.id)
-    .maybeSingle()
+    .select('id, widget_id')
+    .in('widget_id', settingsIds)
 
-  const tenantId = tenant?.id || settings.id
+  // Every settings row maps to a tenant id (its own tenants row if one
+  // exists, else the settings id itself — same fallback provisionTenant.ts
+  // relies on).
+  const tenantIds = settingsIds.map(
+    (settingsId) => tenants?.find((t) => t.widget_id === settingsId)?.id || settingsId
+  )
 
   const { data: domains } = await admin
     .from('domains')
-    .select('hostname, is_primary, source, vercel_verified')
-    .eq('tenant_id', tenantId)
+    .select('hostname, tenant_id, is_primary, source, vercel_verified')
+    .in('tenant_id', tenantIds)
     .order('is_primary', { ascending: false })
 
   if (!domains || domains.length === 0) return null
 
-  // Prefer a verified custom domain over the platform subdomain; otherwise
-  // fall back to whatever is marked primary (or the first row).
-  const custom = domains.find(
-    (d) => d.source && d.source !== 'platform_subdomain' && d.vercel_verified
-  )
-  return (custom || domains[0]).hostname
+  if (preferredHostname) {
+    const match = domains.find((d) => d.hostname.toLowerCase() === preferredHostname.toLowerCase())
+    if (match) return match.hostname
+  }
+
+  // Fall back to the first-provisioned tenant's domains (tenantIds is in
+  // created_at order), preferring a verified custom domain over the
+  // platform subdomain.
+  for (const tenantId of tenantIds) {
+    const ownDomains = domains.filter((d) => d.tenant_id === tenantId)
+    if (ownDomains.length === 0) continue
+    const custom = ownDomains.find(
+      (d) => d.source && d.source !== 'platform_subdomain' && d.vercel_verified
+    )
+    return (custom || ownDomains[0]).hostname
+  }
+  return null
 }
 
 /**
