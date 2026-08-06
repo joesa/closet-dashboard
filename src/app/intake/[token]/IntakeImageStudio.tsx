@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { BeforeAfterMode, IntakeImageSelections } from '@/lib/intake/imageSelections';
 import { resolveBeforeAfterAfterUrl } from '@/lib/intake/imageSelections';
 import { extractProspectSiteConfig } from '@/lib/intake/mergeProspectImages';
@@ -64,6 +64,8 @@ type Props = {
   /** Server-resolved applicability; when set, wins over client catalog guess. */
   beforeAfterApplicable?: boolean;
   onUpdate: (selections: IntakeImageSelections, siteConfig: SiteConfigShape | null) => void;
+  /** Lets the wizard block Continue while the AI brief is still being built. */
+  onBriefLoadingChange?: (loading: boolean) => void;
   formState?: any;
   isActive?: boolean;
 };
@@ -209,6 +211,7 @@ export default function IntakeImageStudio({
   imageSelections: initialSelections,
   beforeAfterApplicable: initialBeforeAfterApplicable,
   onUpdate,
+  onBriefLoadingChange,
   formState,
   isActive,
 }: Props) {
@@ -226,6 +229,9 @@ export default function IntakeImageStudio({
   const briefRequeuedRef = useRef(false);
   // Past ~2 min, swap the spinner copy for reassuring long-run progress text.
   const [briefSlow, setBriefSlow] = useState(false);
+  useEffect(() => {
+    onBriefLoadingChange?.(briefLoading);
+  }, [briefLoading, onBriefLoadingChange]);
   const autoGenStartedRef = useRef(false);
   const selectionsRef = useRef(selections);
   const productsRef = useRef<

@@ -604,6 +604,8 @@ export default function IntakeFormClient({
   const [bulkGenerating, setBulkGenerating] = useState(false);
   const [bulkProgress, setBulkProgress] = useState({ current: 0, total: 0 });
   const [suggestingPages, setSuggestingPages] = useState(false);
+  /** Mirrors IntakeImageStudio's "Building AI brief…" state so Continue can wait for it. */
+  const [imageBriefLoading, setImageBriefLoading] = useState(false);
   const [suggestedPages, setSuggestedPages] = useState<Array<{ slug: string; label: string; description: string }>>([]);
   /** Gate: AI page copy must not run until the user confirms page selection is done. */
   const [pagesSelectionConfirmed, setPagesSelectionConfirmed] = useState(false);
@@ -2163,12 +2165,16 @@ export default function IntakeFormClient({
 
   const isLastStep = currentStepIndex === steps.length - 1;
 
+  const waitingOnImageBrief = imageBriefLoading && currentStepIndex === stepIdx.imageStudio;
+
   const canAdvanceFromCurrentStep =
     currentStepIndex === stepIdx.business
       ? businessStepComplete
       : currentStepIndex === stepIdx.pageContent
         ? form.pages.length === 0 || pagesSelectionConfirmed
-        : true;
+        : currentStepIndex === stepIdx.imageStudio
+          ? !imageBriefLoading
+          : true;
 
   type SubmitBlocker = {
     id: string;
@@ -2281,6 +2287,9 @@ export default function IntakeFormClient({
       } else if (currentStepIndex === stepIdx.pageContent) {
         setError("Tap 'Done selecting pages — write my copy' below to confirm your pages, then continue.");
         focusField('confirm-pages-btn');
+      } else if (currentStepIndex === stepIdx.imageStudio) {
+        setError('Your AI brief is still being built — this finishes on its own, then you can continue.');
+        focusField('btn-build-ai-brief');
       }
       return;
     }
@@ -3740,6 +3749,7 @@ export default function IntakeFormClient({
                 setImageSelections(sel);
                 if (site) setAiSiteConfig(site as Record<string, unknown>);
               }}
+              onBriefLoadingChange={setImageBriefLoading}
               formState={form}
               isActive={currentStepIndex === stepIdx.imageStudio}
             />
@@ -3878,9 +3888,10 @@ export default function IntakeFormClient({
                 <button
                   type="button"
                   onClick={goNext}
-                  className="rounded-full bg-[#10141A] px-6 py-3 text-sm font-medium text-white transition hover:opacity-85 active:scale-[0.98] sm:px-7"
+                  disabled={waitingOnImageBrief}
+                  className="rounded-full bg-[#10141A] px-6 py-3 text-sm font-medium text-white transition hover:opacity-85 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 sm:px-7"
                 >
-                  Continue →
+                  {waitingOnImageBrief ? 'Building AI brief…' : 'Continue →'}
                 </button>
               </div>
             )}
