@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { coupledEngineChanges, imagePresentationChange } from './editorChanges'
+import { coupledEngineChanges, imagePresentationChange, restoreDocumentChanges } from './editorChanges'
 import type { SiteContentDocument } from './types'
 
 function document(): SiteContentDocument {
@@ -78,5 +78,23 @@ describe('image presentation changes', () => {
         '/pages_config/0/content_blocks/0/images/1': { widthPercent: 62.5, aspectRatio: 1.333 },
       },
     })
+  })
+})
+
+describe('undo and redo snapshots', () => {
+  it('never sends custom-site content through an engine-site restore', () => {
+    const source = document()
+    source.custom_config = { pages: { '/': { html: '<main />' } } }
+    const changes = restoreDocumentChanges(source, 'engine')
+    expect(changes.some((change) => change.path === '/custom_config')).toBe(false)
+    expect(changes).toContainEqual({ op: 'set', path: '/hero_config', value: {} })
+  })
+
+  it('limits custom-site restores to fields accepted by the custom API', () => {
+    const source = document()
+    source.custom_config = { pages: { '/': { html: '<main />' } } }
+    expect(restoreDocumentChanges(source, 'custom').map((change) => change.path)).toEqual([
+      '/brand_name', '/seo_config', '/logo_url', '/custom_config',
+    ])
   })
 })

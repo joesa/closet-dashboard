@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ContentChange, SiteContentDocument, SiteContentRevisionSummary } from '@/lib/site-content/types'
-import { coupledEngineChanges, imagePresentationChange } from '@/lib/site-content/editorChanges'
+import { coupledEngineChanges, imagePresentationChange, restoreDocumentChanges } from '@/lib/site-content/editorChanges'
 
 type StudioPayload = {
   tenant: {
@@ -28,12 +28,6 @@ type Viewport = 'desktop' | 'tablet' | 'mobile'
 type MediaTarget =
   | { path: string; mode: 'set' | 'insert'; index?: number }
   | { mode: 'custom' }
-
-const EDITABLE_ROOTS = [
-  'brand_name', 'hero_config', 'about_config', 'process_config', 'products_config',
-  'before_after_config', 'quiz_config', 'nav_links', 'pages_config', 'seo_config',
-  'logo_url', 'pricing_notes', 'content_structure', 'custom_config',
-] as const
 
 const HOME_SECTIONS = [
   { id: 'hero', label: 'Hero', path: '/hero_config' },
@@ -151,11 +145,11 @@ function previewNeedsReload(changes: ContentChange[]) {
   )
 }
 
-function sendCustomEditorCommand(publicUrl: string, action: string, value?: string) {
+function sendCustomEditorCommand(action: string, value?: string) {
   const frame = window.document.querySelector('iframe[title="Live website preview"]') as HTMLIFrameElement | null
   if (!frame?.contentWindow) return
   const token = new URL(frame.src).searchParams.get('content_editor_token')
-  frame.contentWindow.postMessage({ type: 'dtf:editor-command', action, value, sessionToken: token }, new URL(publicUrl).origin)
+  frame.contentWindow.postMessage({ type: 'dtf:editor-command', action, value, sessionToken: token }, '*')
 }
 
 export default function WebsiteStudioPage() {
@@ -324,7 +318,6 @@ export default function WebsiteStudioPage() {
     if (payload?.renderMode === 'engine' && payload.publicUrl !== '#') {
       const frame = window.document.querySelector('iframe[title="Live website preview"]') as HTMLIFrameElement | null
       if (frame?.contentWindow) {
-        const targetOrigin = new URL(payload.publicUrl).origin
         for (const item of changes) {
           if (item.op === 'set') {
             frame.contentWindow.postMessage({
@@ -332,7 +325,7 @@ export default function WebsiteStudioPage() {
               path: item.path,
               value: item.value,
               sessionToken: payload.editorToken,
-            }, targetOrigin)
+            }, '*')
           }
         }
       }
@@ -349,9 +342,7 @@ export default function WebsiteStudioPage() {
     else setSessionUndo((stack) => [...stack, structuredClone(current)])
     documentRef.current = target
     setDocument(target)
-    const changes: ContentChange[] = EDITABLE_ROOTS
-      .filter((root) => payload?.renderMode === 'engine' || ['brand_name', 'seo_config', 'logo_url', 'custom_config'].includes(root))
-      .map((root) => ({ op: 'set', path: `/${root}`, value: target[root as keyof SiteContentDocument] }))
+    const changes = restoreDocumentChanges(target, payload?.renderMode || 'engine')
     pendingRef.current.push(...changes)
     setState('unsaved')
     setTimeout(() => void flush(), 0)
@@ -377,7 +368,7 @@ export default function WebsiteStudioPage() {
       try { expectedOrigin = new URL(payload.publicUrl).origin } catch { return }
       const frame = window.document.querySelector('iframe[title="Live website preview"]') as HTMLIFrameElement | null
       if (
-        event.origin !== expectedOrigin ||
+        (event.origin !== expectedOrigin && event.origin !== 'null') ||
         event.source !== frame?.contentWindow ||
         !event.data ||
         typeof event.data !== 'object' ||
@@ -561,7 +552,7 @@ export default function WebsiteStudioPage() {
                 title="Live website preview"
                 className="h-full min-h-[700px] bg-white shadow-2xl transition-[width]"
                 style={{ width: viewport === 'desktop' ? '100%' : viewport === 'tablet' ? 768 : 390 }}
-                sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
+                sandbox="allow-scripts allow-forms allow-popups allow-modals"
               />
             ) : <div className="m-auto text-sm text-zinc-500">No reachable website domain is configured.</div>}
           </div>
@@ -579,7 +570,7 @@ export default function WebsiteStudioPage() {
               onChange={queueChange}
             />
           ) : payload.renderMode === 'custom' && customArtifactMode !== 'iframe' && selectedPath.endsWith('/html') ? (
-            <CustomInspector publicUrl={payload.publicUrl} selectedPath={selectedPath} onChooseMedia={() => { setMediaTarget({ mode: 'custom' }); setMediaOpen(true) }} />
+            <CustomInspector selectedPath={selectedPath} onChooseMedia={() => { setMediaTarget({ mode: 'custom' }); setMediaOpen(true) }} />
           ) : (
             <ValueEditor
               path={selectedPath}
@@ -614,7 +605,7 @@ export default function WebsiteStudioPage() {
         onUse={(url) => {
           if (!mediaTarget) return
           if (mediaTarget.mode === 'custom') {
-            sendCustomEditorCommand(payload.publicUrl, 'setValue', url)
+            sendCustomEditorCommand('setValue', url)
           } else if (mediaTarget.mode === 'insert') {
             queueChange({ op: 'insert', path: mediaTarget.path, index: mediaTarget.index ?? 0, value: url }, true)
           } else {
@@ -742,9 +733,9 @@ function NavigationEditor({ links, pages, onChange }: {
   </div>
 }
 
-function CustomInspector({ publicUrl, selectedPath, onChooseMedia }: { publicUrl: string; selectedPath: string; onChooseMedia: () => void }) {
+function CustomInspector({ selectedPath, onChooseMedia }: { selectedPath: string; onChooseMedia: () => void }) {
   const send = (action: string, value?: string) => {
-    sendCustomEditorCommand(publicUrl, action, value)
+    sendCustomEditorCommand(action, value)
   }
   return <div className="space-y-3"><p className="text-sm leading-relaxed text-zinc-400">Click text, links, images, or sections in the preview. Changes are serialized from the custom page while its CSS remains untouched.</p><p className="rounded-lg border border-indigo-400/15 bg-indigo-500/5 px-3 py-2 text-[11px] leading-relaxed text-indigo-200">Selected images have eight draggable resize points directly in the preview.</p><textarea id="custom-editor-value" rows={6} className="w-full rounded-lg border border-white/10 bg-white/5 p-3 text-sm" placeholder="Replacement text, link, image URL, or alt text" /><button onClick={() => send('setValue', (document.getElementById('custom-editor-value') as HTMLTextAreaElement)?.value)} className="w-full rounded-lg bg-indigo-500 py-2 text-sm font-medium">Apply to selection</button><button onClick={onChooseMedia} className="w-full rounded-lg border border-indigo-400/30 py-2 text-xs text-indigo-300">Choose image from media</button><button onClick={() => send('setAlt', (document.getElementById('custom-editor-value') as HTMLTextAreaElement)?.value)} className="w-full rounded-lg border border-white/10 py-2 text-xs">Apply as image alt text</button><div className="grid grid-cols-2 gap-2"><button onClick={() => send('duplicate')} className="rounded-lg border border-white/10 py-2 text-xs">Duplicate</button><button onClick={() => send('remove')} className="rounded-lg border border-red-500/20 py-2 text-xs text-red-300">Remove</button><button onClick={() => send('moveUp')} className="rounded-lg border border-white/10 py-2 text-xs">Move up</button><button onClick={() => send('moveDown')} className="rounded-lg border border-white/10 py-2 text-xs">Move down</button></div><p className="break-all text-[10px] text-zinc-600">{selectedPath}</p></div>
 }
