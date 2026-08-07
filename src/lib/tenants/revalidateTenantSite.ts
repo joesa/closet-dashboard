@@ -23,6 +23,7 @@ export async function revalidateTenantSiteCache(
   if (!secret) return false
 
   const origins = new Set<string>()
+  const hostnames = new Set<string>()
 
   try {
     const supabase = getSupabaseAdmin()
@@ -38,7 +39,10 @@ export async function revalidateTenantSiteCache(
       // Always include platform subdomains — edit-in-place / custom-build
       // saves were silently leaving their unstable_cache stale for 60s.
       const url = getTenantPublicUrl(host)
-      if (url && url !== '#') origins.add(url.replace(/\/$/, ''))
+      if (url && url !== '#') {
+        origins.add(url.replace(/\/$/, ''))
+        hostnames.add(host.toLowerCase())
+      }
     }
   } catch (err) {
     console.warn('[revalidateTenantSite] domain lookup failed:', err)
@@ -74,7 +78,8 @@ export async function revalidateTenantSiteCache(
       try {
         const res = await fetch(`${origin}/api/revalidate`, {
           method: 'POST',
-          headers: { 'x-revalidate-secret': secret },
+          headers: { 'x-revalidate-secret': secret, 'content-type': 'application/json' },
+          body: JSON.stringify({ hostnames: [...hostnames] }),
           signal: AbortSignal.timeout(8000),
         })
         if (res.ok) anyOk = true

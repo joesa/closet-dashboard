@@ -10,7 +10,6 @@ import { WIDGET_CDN_URL } from '@/lib/urls'
 import { resolveIndustrySlug } from '@/lib/catalog/serviceCatalog'
 import { getEngineProfile } from '@/lib/catalog/engineProfiles'
 import OrderEditor from './components/OrderEditor'
-import PageManager from './components/PageManager'
 import BookingEditor from './components/BookingEditor'
 import TicketEditor from './components/TicketEditor'
 import DomainManager from '@/components/DomainManager'
@@ -719,6 +718,12 @@ export default function DashboardPage() {
             <span className="rounded-full bg-white/5 px-3 py-1 text-xs text-zinc-400">
               Admin Dashboard
             </span>
+            <Link
+              href="/dashboard/website"
+              className="rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-black transition hover:bg-zinc-200"
+            >
+              Edit Website
+            </Link>
             <button
               onClick={() => setGuideOpen(true)}
               className="rounded-lg border border-white/[0.06] bg-white/[0.04] px-3 py-1.5 text-xs font-medium text-zinc-400 transition hover:bg-white/[0.08] hover:text-white"
@@ -792,7 +797,7 @@ export default function DashboardPage() {
               </li>
               <li className="flex gap-3">
                 <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-white/10 text-xs font-semibold">4</span>
-                <span><strong className="text-white">Preview your site</strong> — Scroll down to see the live preview of exactly what your customers see, updated whenever you save.</span>
+                <span><strong className="text-white">Edit your website</strong> — Use “Edit Website” above to change every page, section, image, and SEO field with live autosave.</span>
               </li>
               <li className="flex gap-3">
                 <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-white/10 text-xs font-semibold">5</span>
@@ -1488,8 +1493,17 @@ export default function DashboardPage() {
             )
           })()}
 
-          {/* Website Pages Manager */}
-          <PageManager />
+          {/* Website content now lives in the autosaving visual studio. */}
+          <Link
+            href="/dashboard/website"
+            className="mt-10 flex items-center justify-between rounded-2xl border border-indigo-400/20 bg-indigo-500/[0.08] p-6 transition hover:border-indigo-300/40 hover:bg-indigo-500/[0.12]"
+          >
+            <span>
+              <span className="block text-lg font-semibold text-white">Website Content Studio</span>
+              <span className="mt-1 block text-sm text-zinc-400">Edit pages, sections, copy, images, navigation, and SEO with live autosave.</span>
+            </span>
+            <span className="text-sm font-medium text-indigo-200">Open editor →</span>
+          </Link>
 
           {/* Custom / purchased domains for the hosted site */}
           <DomainManager variant="dashboard" />
