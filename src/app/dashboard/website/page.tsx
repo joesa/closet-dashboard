@@ -153,6 +153,14 @@ function statusLabel(state: SaveState) {
   }[state]
 }
 
+function previewNeedsReload(changes: ContentChange[]) {
+  return changes.some((change) =>
+    change.op !== 'set' ||
+    change.path.startsWith('/content_structure/') ||
+    /\/pages_config\/\d+\/(?:slug|is_active)$/.test(change.path)
+  )
+}
+
 export default function WebsiteStudioPage() {
   const [payload, setPayload] = useState<StudioPayload | null>(null)
   const [document, setDocument] = useState<SiteContentDocument | null>(null)
@@ -252,14 +260,29 @@ export default function WebsiteStudioPage() {
       if (!res.ok) throw new Error(json.error || 'Save failed')
       versionRef.current = json.version
       if (json.document) {
-        setDocument(json.document)
-        documentRef.current = json.document
+        // Keystrokes can arrive while this request is in flight. Rebase those
+        // still-pending operations onto the acknowledged server document so a
+        // slower response never makes the input jump back to older text.
+        const rebased = pendingRef.current.reduce(applyLocal, json.document as SiteContentDocument)
+        setDocument(rebased)
+        documentRef.current = rebased
       }
       setPayload((current) => current ? { ...current, version: json.version, document: json.document || current.document } : current)
-      setPreviewNonce(json.version)
+      // Text and image edits are painted into the iframe optimistically. Only
+      // structural changes require a full navigation/remount.
+      if (previewNeedsReload(changes)) setPreviewNonce(json.version)
       setState(json.cacheInvalidated ? 'live' : 'offline')
       setMessage(json.cacheInvalidated ? 'Published to your website.' : 'Saved. Website cache invalidation is retrying.')
-      try { localStorage.removeItem(`site-content-pending:${payload.tenant.id}`) } catch { /* ignore */ }
+      try {
+        if (pendingRef.current.length > 0) {
+          localStorage.setItem(`site-content-pending:${payload.tenant.id}`, JSON.stringify({
+            version: json.version,
+            changes: pendingRef.current,
+          }))
+        } else {
+          localStorage.removeItem(`site-content-pending:${payload.tenant.id}`)
+        }
+      } catch { /* ignore */ }
       if (!json.cacheInvalidated) {
         setTimeout(async () => {
           const retry = await fetch('/api/dashboard/site-content/revalidate', { method: 'POST' }).catch(() => null)
@@ -300,6 +323,22 @@ export default function WebsiteStudioPage() {
     documentRef.current = next
     setDocument(next)
     pendingRef.current.push(...changes)
+    if (payload?.renderMode === 'engine' && payload.publicUrl !== '#') {
+      const frame = window.document.querySelector('iframe[title="Live website preview"]') as HTMLIFrameElement | null
+      if (frame?.contentWindow) {
+        const targetOrigin = new URL(payload.publicUrl).origin
+        for (const item of changes) {
+          if (item.op === 'set') {
+            frame.contentWindow.postMessage({
+              type: 'dtf:engine-content-update',
+              path: item.path,
+              value: item.value,
+              sessionToken: payload.editorToken,
+            }, targetOrigin)
+          }
+        }
+      }
+    }
     setState('unsaved')
     if (flushTimer.current) clearTimeout(flushTimer.current)
     flushTimer.current = setTimeout(() => void flush(), immediate ? 0 : 700)
@@ -338,7 +377,14 @@ export default function WebsiteStudioPage() {
       if (!payload?.publicUrl || payload.publicUrl === '#') return
       let expectedOrigin = ''
       try { expectedOrigin = new URL(payload.publicUrl).origin } catch { return }
-      if (event.origin !== expectedOrigin || !event.data || typeof event.data !== 'object') return
+      const frame = window.document.querySelector('iframe[title="Live website preview"]') as HTMLIFrameElement | null
+      if (
+        event.origin !== expectedOrigin ||
+        event.source !== frame?.contentWindow ||
+        !event.data ||
+        typeof event.data !== 'object' ||
+        event.data.sessionToken !== payload.editorToken
+      ) return
       if (event.data.type === 'dtf:content-select' && typeof event.data.path === 'string') {
         setSelectedPath(event.data.path)
       }
@@ -561,7 +607,8 @@ function CustomInspector({ publicUrl, selectedPath }: { publicUrl: string; selec
   const send = (action: string, value?: string) => {
     const frame = document.querySelector('iframe[title="Live website preview"]') as HTMLIFrameElement | null
     if (!frame?.contentWindow) return
-    frame.contentWindow.postMessage({ type: 'dtf:editor-command', action, value }, new URL(publicUrl).origin)
+    const token = new URL(frame.src).searchParams.get('content_editor_token')
+    frame.contentWindow.postMessage({ type: 'dtf:editor-command', action, value, sessionToken: token }, new URL(publicUrl).origin)
   }
   return <div className="space-y-3"><p className="text-sm leading-relaxed text-zinc-400">Click text, links, images, or sections in the preview. Changes are serialized from the custom page while its CSS remains untouched.</p><textarea id="custom-editor-value" rows={6} className="w-full rounded-lg border border-white/10 bg-white/5 p-3 text-sm" placeholder="Replacement text, link, image URL, or alt text" /><button onClick={() => send('setValue', (document.getElementById('custom-editor-value') as HTMLTextAreaElement)?.value)} className="w-full rounded-lg bg-indigo-500 py-2 text-sm font-medium">Apply to selection</button><button onClick={() => send('setAlt', (document.getElementById('custom-editor-value') as HTMLTextAreaElement)?.value)} className="w-full rounded-lg border border-white/10 py-2 text-xs">Apply as image alt text</button><div className="grid grid-cols-2 gap-2"><button onClick={() => send('duplicate')} className="rounded-lg border border-white/10 py-2 text-xs">Duplicate</button><button onClick={() => send('remove')} className="rounded-lg border border-red-500/20 py-2 text-xs text-red-300">Remove</button><button onClick={() => send('moveUp')} className="rounded-lg border border-white/10 py-2 text-xs">Move up</button><button onClick={() => send('moveDown')} className="rounded-lg border border-white/10 py-2 text-xs">Move down</button></div><p className="break-all text-[10px] text-zinc-600">{selectedPath}</p></div>
 }
