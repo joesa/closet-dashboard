@@ -84,6 +84,38 @@ function applyLocal(document: SiteContentDocument, change: ContentChange): SiteC
   return next
 }
 
+function coupledEngineChanges(document: SiteContentDocument, change: ContentChange): ContentChange[] {
+  const match = change.path.match(/^\/pages_config\/(\d+)\/(title|slug|is_active)$/)
+  const removeMatch = change.op === 'remove' ? change.path.match(/^\/pages_config\/(\d+)$/) : null
+  const pageIndex = Number(match?.[1] ?? removeMatch?.[1])
+  if (!Number.isInteger(pageIndex)) return [change]
+  const page = document.pages_config[pageIndex] as { slug?: unknown } | undefined
+  const oldSlug = typeof page?.slug === 'string' ? page.slug : ''
+  if (!oldSlug) return [change]
+  const matchingLinks = (document.nav_links as Array<{ slug?: unknown }>).flatMap((link, index) =>
+    link?.slug === oldSlug ? [index] : []
+  )
+  if (match && change.op === 'set' && match[2] === 'title' && typeof change.value === 'string') {
+    return [change, ...matchingLinks.map((index): ContentChange => ({
+      op: 'set', path: `/nav_links/${index}/label`, value: change.value,
+    }))]
+  }
+  if (match && change.op === 'set' && match[2] === 'slug' && typeof change.value === 'string') {
+    return [change, ...matchingLinks.map((index): ContentChange => ({
+      op: 'set', path: `/nav_links/${index}/slug`, value: change.value,
+    }))]
+  }
+  if ((match && change.op === 'set' && match[2] === 'is_active' && change.value === false) || removeMatch) {
+    return [
+      ...matchingLinks.sort((a, b) => b - a).map((index): ContentChange => ({
+        op: 'remove', path: `/nav_links/${index}`,
+      })),
+      change,
+    ]
+  }
+  return [change]
+}
+
 function labelFor(key: string) {
   return key.replace(/_/g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2').replace(/^./, (v) => v.toUpperCase())
 }
@@ -263,14 +295,15 @@ export default function WebsiteStudioPage() {
       setSessionUndo((stack) => [...stack.slice(-24), structuredClone(current)])
       setSessionRedo([])
     }
-    const next = applyLocal(current, change)
+    const changes = payload?.renderMode === 'engine' ? coupledEngineChanges(current, change) : [change]
+    const next = changes.reduce(applyLocal, current)
     documentRef.current = next
     setDocument(next)
-    pendingRef.current.push(change)
+    pendingRef.current.push(...changes)
     setState('unsaved')
     if (flushTimer.current) clearTimeout(flushTimer.current)
     flushTimer.current = setTimeout(() => void flush(), immediate ? 0 : 700)
-  }, [flush])
+  }, [flush, payload?.renderMode])
 
   const restoreSessionDocument = useCallback((target: SiteContentDocument, destination: 'undo' | 'redo') => {
     const current = documentRef.current

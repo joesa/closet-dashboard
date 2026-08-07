@@ -81,6 +81,39 @@ function assertChangeAllowed(change: ContentChange, renderMode: 'engine' | 'cust
   }
 }
 
+function syncPageNavigation(
+  document: SiteContentDocument,
+  parts: string[],
+  change: ContentChange
+) {
+  if (parts[0] !== 'pages_config' || parts.length < 2) return
+  const pageIndex = Number(parts[1])
+  if (!Number.isInteger(pageIndex) || pageIndex < 0) return
+  const pages = document.pages_config as Array<Record<string, unknown>>
+  const page = pages[pageIndex]
+  if (!page) return
+  const links = document.nav_links as Array<Record<string, unknown>>
+  const oldSlug = typeof page.slug === 'string' ? page.slug : ''
+
+  if (change.op === 'remove' && parts.length === 2) {
+    document.nav_links = links.filter((link) => link.slug !== oldSlug)
+    return
+  }
+  if (change.op !== 'set' || parts.length !== 3) return
+  const field = parts[2]
+  if (field === 'title' && typeof change.value === 'string') {
+    for (const link of links) {
+      if (link.slug === oldSlug) link.label = change.value
+    }
+  } else if (field === 'slug' && typeof change.value === 'string') {
+    for (const link of links) {
+      if (link.slug === oldSlug) link.slug = change.value
+    }
+  } else if (field === 'is_active' && change.value === false) {
+    document.nav_links = links.filter((link) => link.slug !== oldSlug)
+  }
+}
+
 export function applyContentChanges(
   source: SiteContentDocument,
   changes: ContentChange[],
@@ -93,6 +126,7 @@ export function applyContentChanges(
   for (const change of changes) {
     assertChangeAllowed(change, renderMode)
     const parts = decodePointer(change.path)
+    if (renderMode === 'engine') syncPageNavigation(document, parts, change)
     if (change.op === 'set') {
       const { parent, key } = parentAt(document, parts)
       if (Array.isArray(parent)) {

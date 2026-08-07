@@ -54,6 +54,52 @@ describe('site content document operations', () => {
     ], 'engine')).toThrow(/navigation target does not exist/i)
   })
 
+  it('keeps a page rename and its navigation label in sync', () => {
+    const source = engineDocument()
+    source.pages_config = [{
+      slug: '/about',
+      title: 'About Us',
+      is_active: true,
+      hero: { headline: 'About Us' },
+      content_blocks: [],
+    }]
+    source.nav_links = [
+      { label: 'Home', slug: '/' },
+      { label: 'About Us', slug: '/about' },
+    ]
+
+    const next = applyContentChanges(source, [
+      { op: 'set', path: '/pages_config/0/title', value: 'Our History' },
+    ], 'engine')
+
+    expect((next.pages_config[0] as { title: string }).title).toBe('Our History')
+    expect(next.nav_links).toContainEqual({ label: 'Our History', slug: '/about' })
+  })
+
+  it('updates or removes navigation when a page slug, visibility, or page changes', () => {
+    const source = engineDocument()
+    source.pages_config = [{
+      slug: '/about', title: 'About Us', is_active: true,
+      hero: { headline: 'About Us' }, content_blocks: [],
+    }]
+    source.nav_links = [{ label: 'About Us', slug: '/about' }]
+
+    const renamed = applyContentChanges(source, [
+      { op: 'set', path: '/pages_config/0/slug', value: '/history' },
+    ], 'engine')
+    expect(renamed.nav_links).toEqual([{ label: 'About Us', slug: '/history' }])
+
+    const hidden = applyContentChanges(source, [
+      { op: 'set', path: '/pages_config/0/is_active', value: false },
+    ], 'engine')
+    expect(hidden.nav_links).toEqual([])
+
+    const removed = applyContentChanges(source, [
+      { op: 'remove', path: '/pages_config/0' },
+    ], 'engine')
+    expect(removed.nav_links).toEqual([])
+  })
+
   it('sanitizes custom HTML and preserves the required widget placeholder', () => {
     const source = {
       ...engineDocument(),
@@ -74,4 +120,3 @@ describe('site content document operations', () => {
     expect(html).toContain('CLOSET_WIDGET')
   })
 })
-
