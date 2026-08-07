@@ -149,7 +149,10 @@ function sendCustomEditorCommand(action: string, value?: string) {
   const frame = window.document.querySelector('iframe[title="Live website preview"]') as HTMLIFrameElement | null
   if (!frame?.contentWindow) return
   const token = new URL(frame.src).searchParams.get('content_editor_token')
-  frame.contentWindow.postMessage({ type: 'dtf:editor-command', action, value, sessionToken: token }, '*')
+  frame.contentWindow.postMessage(
+    { type: 'dtf:editor-command', action, value, sessionToken: token },
+    new URL(frame.src).origin
+  )
 }
 
 export default function WebsiteStudioPage() {
@@ -318,6 +321,7 @@ export default function WebsiteStudioPage() {
     if (payload?.renderMode === 'engine' && payload.publicUrl !== '#') {
       const frame = window.document.querySelector('iframe[title="Live website preview"]') as HTMLIFrameElement | null
       if (frame?.contentWindow) {
+        const targetOrigin = new URL(frame.src).origin
         for (const item of changes) {
           if (item.op === 'set') {
             frame.contentWindow.postMessage({
@@ -325,7 +329,7 @@ export default function WebsiteStudioPage() {
               path: item.path,
               value: item.value,
               sessionToken: payload.editorToken,
-            }, '*')
+            }, targetOrigin)
           }
         }
       }
@@ -368,7 +372,7 @@ export default function WebsiteStudioPage() {
       try { expectedOrigin = new URL(payload.publicUrl).origin } catch { return }
       const frame = window.document.querySelector('iframe[title="Live website preview"]') as HTMLIFrameElement | null
       if (
-        (event.origin !== expectedOrigin && event.origin !== 'null') ||
+        event.origin !== expectedOrigin ||
         event.source !== frame?.contentWindow ||
         !event.data ||
         typeof event.data !== 'object' ||
@@ -552,7 +556,6 @@ export default function WebsiteStudioPage() {
                 title="Live website preview"
                 className="h-full min-h-[700px] bg-white shadow-2xl transition-[width]"
                 style={{ width: viewport === 'desktop' ? '100%' : viewport === 'tablet' ? 768 : 390 }}
-                sandbox="allow-scripts allow-forms allow-popups allow-modals"
               />
             ) : <div className="m-auto text-sm text-zinc-500">No reachable website domain is configured.</div>}
           </div>
