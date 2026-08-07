@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ContentChange, SiteContentDocument, SiteContentRevisionSummary } from '@/lib/site-content/types'
-import { coupledEngineChanges } from '@/lib/site-content/editorChanges'
+import { coupledEngineChanges, imagePresentationChange } from '@/lib/site-content/editorChanges'
 
 type StudioPayload = {
   tenant: {
@@ -387,6 +387,23 @@ export default function WebsiteStudioPage() {
         setSelectedPath(event.data.path)
       }
       if (
+        payload.renderMode === 'engine' &&
+        event.data.type === 'dtf:image-resize' &&
+        typeof event.data.path === 'string' &&
+        isImageContentPath(event.data.path) &&
+        event.data.presentation &&
+        typeof event.data.presentation === 'object'
+      ) {
+        const widthPercent = Number(event.data.presentation.widthPercent)
+        const aspectRatio = Number(event.data.presentation.aspectRatio)
+        if (Number.isFinite(widthPercent) && Number.isFinite(aspectRatio) && documentRef.current) {
+          queueChange(imagePresentationChange(documentRef.current, event.data.path, {
+            widthPercent,
+            aspectRatio,
+          }), true)
+        }
+      }
+      if (
         payload.renderMode === 'custom' &&
         event.data.type === 'dtf:custom-html' &&
         typeof event.data.path === 'string' &&
@@ -654,6 +671,7 @@ function ValueEditor({ path, value, rootDocument, onChange, onSelectPath, onChoo
           <label className="text-[10px] text-zinc-500">Shape<select value={imageAspect} onChange={(event) => onChange({ op: 'set', path: `${presentationBase}/imageAspect`, value: event.target.value }, true)} className="mt-1 w-full rounded border border-white/10 bg-[#171920] p-1.5 text-xs text-zinc-200"><option value="square">Square</option><option value="landscape">Landscape</option><option value="wide">Wide</option><option value="portrait">Portrait</option></select></label>
           <label className="text-[10px] text-zinc-500">Fit<select value={imageFit} onChange={(event) => onChange({ op: 'set', path: `${presentationBase}/imageFit`, value: event.target.value }, true)} className="mt-1 w-full rounded border border-white/10 bg-[#171920] p-1.5 text-xs text-zinc-200"><option value="cover">Crop</option><option value="contain">Fit</option></select></label>
         </div>}
+        <p className="rounded-lg border border-indigo-400/15 bg-indigo-500/5 px-3 py-2 text-[11px] leading-relaxed text-indigo-200">Drag any of the eight points around the selected image to resize it directly on the page.</p>
       </div>
     }
     const multiline = value.length > 80 || /description|body|quote|notes|html/i.test(path)
@@ -728,7 +746,7 @@ function CustomInspector({ publicUrl, selectedPath, onChooseMedia }: { publicUrl
   const send = (action: string, value?: string) => {
     sendCustomEditorCommand(publicUrl, action, value)
   }
-  return <div className="space-y-3"><p className="text-sm leading-relaxed text-zinc-400">Click text, links, images, or sections in the preview. Changes are serialized from the custom page while its CSS remains untouched.</p><textarea id="custom-editor-value" rows={6} className="w-full rounded-lg border border-white/10 bg-white/5 p-3 text-sm" placeholder="Replacement text, link, image URL, or alt text" /><button onClick={() => send('setValue', (document.getElementById('custom-editor-value') as HTMLTextAreaElement)?.value)} className="w-full rounded-lg bg-indigo-500 py-2 text-sm font-medium">Apply to selection</button><button onClick={onChooseMedia} className="w-full rounded-lg border border-indigo-400/30 py-2 text-xs text-indigo-300">Choose image from media</button><button onClick={() => send('setAlt', (document.getElementById('custom-editor-value') as HTMLTextAreaElement)?.value)} className="w-full rounded-lg border border-white/10 py-2 text-xs">Apply as image alt text</button><div className="grid grid-cols-2 gap-2"><button onClick={() => send('duplicate')} className="rounded-lg border border-white/10 py-2 text-xs">Duplicate</button><button onClick={() => send('remove')} className="rounded-lg border border-red-500/20 py-2 text-xs text-red-300">Remove</button><button onClick={() => send('moveUp')} className="rounded-lg border border-white/10 py-2 text-xs">Move up</button><button onClick={() => send('moveDown')} className="rounded-lg border border-white/10 py-2 text-xs">Move down</button></div><p className="break-all text-[10px] text-zinc-600">{selectedPath}</p></div>
+  return <div className="space-y-3"><p className="text-sm leading-relaxed text-zinc-400">Click text, links, images, or sections in the preview. Changes are serialized from the custom page while its CSS remains untouched.</p><p className="rounded-lg border border-indigo-400/15 bg-indigo-500/5 px-3 py-2 text-[11px] leading-relaxed text-indigo-200">Selected images have eight draggable resize points directly in the preview.</p><textarea id="custom-editor-value" rows={6} className="w-full rounded-lg border border-white/10 bg-white/5 p-3 text-sm" placeholder="Replacement text, link, image URL, or alt text" /><button onClick={() => send('setValue', (document.getElementById('custom-editor-value') as HTMLTextAreaElement)?.value)} className="w-full rounded-lg bg-indigo-500 py-2 text-sm font-medium">Apply to selection</button><button onClick={onChooseMedia} className="w-full rounded-lg border border-indigo-400/30 py-2 text-xs text-indigo-300">Choose image from media</button><button onClick={() => send('setAlt', (document.getElementById('custom-editor-value') as HTMLTextAreaElement)?.value)} className="w-full rounded-lg border border-white/10 py-2 text-xs">Apply as image alt text</button><div className="grid grid-cols-2 gap-2"><button onClick={() => send('duplicate')} className="rounded-lg border border-white/10 py-2 text-xs">Duplicate</button><button onClick={() => send('remove')} className="rounded-lg border border-red-500/20 py-2 text-xs text-red-300">Remove</button><button onClick={() => send('moveUp')} className="rounded-lg border border-white/10 py-2 text-xs">Move up</button><button onClick={() => send('moveDown')} className="rounded-lg border border-white/10 py-2 text-xs">Move down</button></div><p className="break-all text-[10px] text-zinc-600">{selectedPath}</p></div>
 }
 
 function HistoryDialog({ revisions, onClose, onRestored }: { revisions: SiteContentRevisionSummary[]; onClose: () => void; onRestored: () => void }) {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { coupledEngineChanges } from './editorChanges'
+import { coupledEngineChanges, imagePresentationChange } from './editorChanges'
 import type { SiteContentDocument } from './types'
 
 function document(): SiteContentDocument {
@@ -57,6 +57,26 @@ describe('editor page/navigation coupling', () => {
       op: 'set', path: '/pages_config/0/title', value: 'Our History',
     })).toContainEqual({
       op: 'set', path: '/nav_links/1/label', value: 'Our History',
+    })
+  })
+})
+
+describe('image presentation changes', () => {
+  it('preserves existing image dimensions while updating the selected path', () => {
+    const source = document()
+    source.content_structure.imagePresentation = {
+      '/logo_url': { widthPercent: 20, aspectRatio: 1 },
+    }
+    expect(imagePresentationChange(source, '/pages_config/0/content_blocks/0/images/1', {
+      widthPercent: 62.5,
+      aspectRatio: 1.333,
+    })).toEqual({
+      op: 'set',
+      path: '/content_structure/imagePresentation',
+      value: {
+        '/logo_url': { widthPercent: 20, aspectRatio: 1 },
+        '/pages_config/0/content_blocks/0/images/1': { widthPercent: 62.5, aspectRatio: 1.333 },
+      },
     })
   })
 })

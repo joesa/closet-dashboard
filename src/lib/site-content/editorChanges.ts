@@ -1,5 +1,23 @@
 import type { ContentChange, SiteContentDocument } from './types'
 
+export type ImagePresentation = { widthPercent: number; aspectRatio: number }
+
+export function imagePresentationChange(
+  document: SiteContentDocument,
+  imagePath: string,
+  presentation: ImagePresentation
+): ContentChange {
+  const current = document.content_structure.imagePresentation
+  const presentations = current && typeof current === 'object' && !Array.isArray(current)
+    ? current as Record<string, ImagePresentation>
+    : {}
+  return {
+    op: 'set',
+    path: '/content_structure/imagePresentation',
+    value: { ...presentations, [imagePath]: presentation },
+  }
+}
+
 /**
  * Expand a page action into the navigation updates the browser must paint and
  * persist in the same autosave. The API independently validates the resulting

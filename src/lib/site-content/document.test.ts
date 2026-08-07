@@ -125,6 +125,18 @@ describe('site content document operations', () => {
     expect(() => applyContentChanges(source, [
       { op: 'set', path: '/hero_config/imageScale', value: '500' },
     ], 'engine')).toThrow(/invalid hero image zoom/i)
+
+    const resized = applyContentChanges(source, [{
+      op: 'set',
+      path: '/content_structure/imagePresentation',
+      value: { '/pages_config/0/content_blocks/0/image': { widthPercent: 68.5, aspectRatio: 1.4 } },
+    }], 'engine')
+    expect(resized.content_structure.imagePresentation).toEqual({
+      '/pages_config/0/content_blocks/0/image': { widthPercent: 68.5, aspectRatio: 1.4 },
+    })
+    expect(() => applyContentChanges(source, [{
+      op: 'set', path: '/content_structure/imagePresentation', value: { '/logo_url': { widthPercent: 1000, aspectRatio: 1 } },
+    }], 'engine')).toThrow(/invalid image width/i)
   })
 
   it('sanitizes custom HTML and preserves the required widget placeholder', () => {

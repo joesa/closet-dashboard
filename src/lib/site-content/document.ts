@@ -41,6 +41,27 @@ function assertHeroPresentation(hero: unknown) {
   if (value.imageScale !== undefined && !IMAGE_SCALES.has(String(value.imageScale))) throw new Error('Invalid hero image zoom')
 }
 
+function assertImagePresentations(structure: Record<string, unknown>) {
+  const presentations = structure.imagePresentation
+  if (presentations === undefined) return
+  if (!presentations || typeof presentations !== 'object' || Array.isArray(presentations)) {
+    throw new Error('Invalid image presentation map')
+  }
+  const entries = Object.entries(presentations)
+  if (entries.length > 300) throw new Error('Too many resized images')
+  for (const [path, raw] of entries) {
+    if (!path.startsWith('/') || path.length > 500 || !/(?:image|logo)/i.test(path)) {
+      throw new Error('Invalid resized image path')
+    }
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('Invalid image dimensions')
+    const value = raw as Record<string, unknown>
+    const width = Number(value.widthPercent)
+    const ratio = Number(value.aspectRatio)
+    if (!Number.isFinite(width) || width < 5 || width > 100) throw new Error('Invalid image width')
+    if (!Number.isFinite(ratio) || ratio < 0.2 || ratio > 5) throw new Error('Invalid image aspect ratio')
+  }
+}
+
 function clone<T>(value: T): T {
   return structuredClone(value)
 }
@@ -229,6 +250,7 @@ export function normalizeAndValidateDocument(
       }
     }
     const structure = document.content_structure || {}
+    assertImagePresentations(structure)
     const order = Array.isArray(structure.homeSections) ? structure.homeSections.map(String) : []
     for (const required of PROTECTED_ENGINE_SECTIONS) {
       if (!order.includes(required)) throw new Error(`The ${required} section cannot be removed`)
