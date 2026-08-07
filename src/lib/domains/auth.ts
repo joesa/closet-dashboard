@@ -1,36 +1,115 @@
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { getSupabaseServer } from '@/lib/supabase-server'
 import { getCurrentAdmin } from '@/lib/admin'
+import { headers } from 'next/headers'
 import type { DomainRow } from '@/lib/domains/types'
 
 export type DomainActor =
   | { role: 'admin'; adminId: string; email: string | null }
   | { role: 'contractor'; userId: string; email: string | null; tenantId: string }
 
+type OwnedTenant = {
+  id: string
+  widget_id: string | null
+  site_status: string | null
+}
+
+type OwnedDomain = {
+  tenant_id: string
+  hostname: string
+}
+
+export function chooseOwnedTenantId(
+  settingsIdsNewestFirst: string[],
+  tenants: OwnedTenant[],
+  domains: OwnedDomain[],
+  preferredHostname?: string | null
+): string | null {
+  const hosted = tenants.filter((tenant) => tenant.site_status !== 'widget_only')
+  if (preferredHostname) {
+    const normalized = preferredHostname.toLowerCase()
+    const matchingDomain = domains.find(
+      (domain) => domain.hostname.toLowerCase() === normalized
+    )
+    if (matchingDomain && hosted.some((tenant) => tenant.id === matchingDomain.tenant_id)) {
+      return matchingDomain.tenant_id
+    }
+  }
+
+  // Preserve the previous newest-profile preference, but continue through all
+  // profiles until an actually hosted tenant is found.
+  for (const settingsId of settingsIdsNewestFirst) {
+    const tenant = hosted.find((candidate) => candidate.widget_id === settingsId)
+    if (tenant) return tenant.id
+  }
+  return hosted[0]?.id ?? null
+}
+
+function hostnameFromHeader(value: string | null): string | null {
+  const first = value?.split(',')[0]?.trim()
+  if (!first) return null
+  try {
+    return new URL(`http://${first}`).hostname.toLowerCase()
+  } catch {
+    return first.split(':')[0]?.toLowerCase() || null
+  }
+}
+
+async function currentTenantHostname(): Promise<string | null> {
+  try {
+    const requestHeaders = await headers()
+    return hostnameFromHeader(
+      requestHeaders.get('x-tenant-host') ||
+      requestHeaders.get('x-forwarded-host') ||
+      requestHeaders.get('host')
+    )
+  } catch {
+    return null
+  }
+}
+
 /**
- * Resolve the signed-in contractor's hosted tenant via widget_id linkage.
- * Returns null when the user has no full site (widget-only / not provisioned).
+ * Resolve any hosted tenant owned by the signed-in contractor. Multi-site
+ * accounts can have several contractor_settings rows, so the current tenant
+ * hostname wins and the newest hosted profile is the fallback.
  */
-export async function resolveContractorTenantId(userId: string): Promise<string | null> {
+export async function resolveContractorTenantId(
+  userId: string,
+  preferredHostname?: string | null
+): Promise<string | null> {
   const admin = getSupabaseAdmin()
-  const { data: settings } = await admin
+  const { data: settingsRows } = await admin
     .from('contractor_settings')
     .select('id')
     .eq('user_id', userId)
     .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle()
 
-  if (!settings) return null
+  const settingsIds = (settingsRows || []).map((settings) => settings.id).filter(Boolean)
+  if (settingsIds.length === 0) return null
 
-  const { data: tenant } = await admin
+  const { data: tenants } = await admin
     .from('tenants')
-    .select('id')
-    .eq('widget_id', settings.id)
-    .neq('site_status', 'widget_only')
-    .maybeSingle()
+    .select('id, widget_id, site_status')
+    .in('widget_id', settingsIds)
 
-  return tenant?.id ?? null
+  const hostedTenantIds = (tenants || [])
+    .filter((tenant) => tenant.site_status !== 'widget_only')
+    .map((tenant) => tenant.id)
+  let domains: OwnedDomain[] = []
+  if (preferredHostname && hostedTenantIds.length > 0) {
+    const { data } = await admin
+      .from('domains')
+      .select('tenant_id, hostname')
+      .in('tenant_id', hostedTenantIds)
+    domains = (data || []) as OwnedDomain[]
+  }
+
+  return chooseOwnedTenantId(
+    settingsIds,
+    (tenants || []) as OwnedTenant[],
+    domains,
+    preferredHostname
+  )
 }
 
 /**
@@ -64,7 +143,8 @@ export async function resolveDomainActor(opts?: {
     return { error: 'Unauthorized', status: 401 }
   }
 
-  const tenantId = await resolveContractorTenantId(user.id)
+  const preferredHostname = tenantIdParam ? null : await currentTenantHostname()
+  const tenantId = await resolveContractorTenantId(user.id, preferredHostname)
   if (tenantId) {
     if (tenantIdParam && tenantIdParam !== tenantId && !adminUser) {
       return { error: 'Forbidden', status: 403 }
