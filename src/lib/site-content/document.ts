@@ -1,10 +1,10 @@
 import {
   htmlHasInjectableWidget,
   isCustomSiteConfig,
-  sanitizeCustomConfig,
   stripLiveWidgetsToPlaceholder,
 } from '@/lib/customSite'
 import type { ContentChange, SiteContentDocument } from './types'
+import { assertSafeContentValue, hardenCustomConfig } from './security'
 
 export const SITE_CONTENT_COLUMNS = [
   'brand_name',
@@ -136,6 +136,7 @@ export function normalizeAndValidateDocument(
   input: SiteContentDocument,
   renderMode: 'engine' | 'custom'
 ): SiteContentDocument {
+  assertSafeContentValue(input)
   const document = clone(input)
   document.brand_name = String(document.brand_name || '').trim().slice(0, 255)
   if (!document.brand_name) throw new Error('Brand name is required')
@@ -176,7 +177,7 @@ export function normalizeAndValidateDocument(
     }
   } else {
     if (!isCustomSiteConfig(document.custom_config)) throw new Error('Custom site content is missing')
-    const sanitized = sanitizeCustomConfig({
+    const sanitized = hardenCustomConfig({
       ...document.custom_config,
       pages: Object.fromEntries(
         Object.entries(document.custom_config.pages || {}).map(([path, page]) => [
@@ -190,6 +191,7 @@ export function normalizeAndValidateDocument(
     if (!htmlHasInjectableWidget(home.html)) throw new Error('The home page engagement widget cannot be removed')
     document.custom_config = sanitized
   }
+  assertSafeContentValue(document)
   return document
 }
 

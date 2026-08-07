@@ -8,10 +8,13 @@ import {
 import {
   isCustomSiteConfig,
   normalizeCustomPath,
-  sanitizeCustomHtml,
   stripLiveWidgetsToPlaceholder,
   type CustomSiteConfig,
 } from '@/lib/customSite'
+import {
+  assertSafeContentValue,
+  sanitizeUntrustedCustomHtml,
+} from '@/lib/site-content/security'
 import { revalidateTenantSiteCache } from '@/lib/tenants/revalidateTenantSite'
 import { validateCustomSiteArtifact } from '@/lib/validation/siteArtifactValidator'
 
@@ -106,7 +109,10 @@ export async function POST(
       )
     }
 
-    const cleaned = sanitizeCustomHtml(stripLiveWidgetsToPlaceholder(rawHtml))
+    assertSafeContentValue({ html: rawHtml })
+    const cleaned = sanitizeUntrustedCustomHtml(
+      stripLiveWidgetsToPlaceholder(rawHtml)
+    )
     const published: CustomSiteConfig = {
       ...data.custom_config,
       pages: {

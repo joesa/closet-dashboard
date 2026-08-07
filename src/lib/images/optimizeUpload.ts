@@ -22,6 +22,15 @@ const PROFILES: Record<ImageUploadKind, Profile> = {
   general: { maxWidth: 1600, maxHeight: 1600, quality: 82 },
 }
 
+const MAX_INPUT_PIXELS = 40_000_000
+const FORMAT_MIME: Record<string, string> = {
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+  webp: 'image/webp',
+  gif: 'image/gif',
+  avif: 'image/avif',
+}
+
 export type OptimizedImage = {
   buffer: Buffer
   mime: string
@@ -42,11 +51,21 @@ export async function optimizeUserImage(
   }
 
   const profile = PROFILES[kind]
-  const image = sharp(input, { failOn: 'none' }).rotate()
+  const image = sharp(input, { failOn: 'error', limitInputPixels: MAX_INPUT_PIXELS }).rotate()
   const meta = await image.metadata()
 
   const width = meta.width ?? 0
   const height = meta.height ?? 0
+  const actualMime = meta.format ? FORMAT_MIME[meta.format] : undefined
+  const declaredMime = mimeHint?.toLowerCase().split(';')[0].trim()
+  if (!actualMime) throw new Error('Unsupported or corrupt image format')
+  if (declaredMime && declaredMime !== actualMime) {
+    throw new Error('File contents do not match the declared image type')
+  }
+  if (!width || !height || width * height > MAX_INPUT_PIXELS) {
+    throw new Error('Image dimensions are invalid or too large')
+  }
+  if ((meta.pages || 1) > 1) throw new Error('Animated images are not supported')
   const needsResize = width > profile.maxWidth || height > profile.maxHeight
 
   let pipeline = image

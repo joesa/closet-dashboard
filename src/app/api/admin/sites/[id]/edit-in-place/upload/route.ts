@@ -6,6 +6,7 @@ import {
   verifyEditInPlaceToken,
 } from '@/lib/editInPlaceToken'
 import { uploadCustomSiteAsset } from '@/lib/customSiteAssets'
+import { prepareContentImageUpload } from '@/lib/site-content/mediaSecurity'
 
 function corsHeaders(req: Request): HeadersInit {
   const origin = req.headers.get('origin') || '*'
@@ -64,12 +65,17 @@ export async function POST(
       )
     }
 
-    const buffer = Buffer.from(await file.arrayBuffer())
+    const prepared = await prepareContentImageUpload({
+      buffer: Buffer.from(await file.arrayBuffer()),
+      declaredMime: file.type || 'application/octet-stream',
+      fileName: file.name || 'upload.jpg',
+      allowSvg: false,
+    })
     const uploaded = await uploadCustomSiteAsset({
       tenantId,
-      buffer,
-      fileName: file.name || 'upload.jpg',
-      mime: file.type || 'application/octet-stream',
+      buffer: prepared.buffer,
+      fileName: prepared.fileName,
+      mime: prepared.mime,
       kindHint: 'image',
     })
 
