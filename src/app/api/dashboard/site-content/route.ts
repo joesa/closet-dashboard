@@ -134,6 +134,7 @@ export async function PATCH(req: Request) {
   })
   if (error) {
     const conflict = /content_version_conflict/i.test(error.message)
+    const forbidden = /site_content_actor_forbidden/i.test(error.message)
     let currentVersion: number | undefined
     if (conflict) {
       const { data: latest } = await admin
@@ -144,8 +145,15 @@ export async function PATCH(req: Request) {
       currentVersion = latest ? Number(latest.content_version) : undefined
     }
     return NextResponse.json(
-      { error: conflict ? 'Content changed in another session' : error.message, currentVersion },
-      { status: conflict ? 409 : 500 }
+      {
+        error: conflict
+          ? 'Content changed in another session'
+          : forbidden
+            ? 'You cannot edit this website'
+            : 'Website content could not be saved',
+        currentVersion,
+      },
+      { status: conflict ? 409 : forbidden ? 403 : 500 }
     )
   }
 

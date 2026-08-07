@@ -5,6 +5,21 @@ import {
   type PreviewDomainRow,
 } from '@/lib/admin-preview'
 
+export function tenantOwnedExtraOrigin(
+  value: string,
+  tenantHostnames: Iterable<string>
+): string | null {
+  try {
+    const url = new URL(value)
+    if (url.protocol !== 'https:' && url.protocol !== 'http:') return null
+    const allowed = new Set([...tenantHostnames].map((hostname) => hostname.toLowerCase()))
+    if (!allowed.has(url.hostname.toLowerCase()) || isDevHostname(url.hostname)) return null
+    return url.origin
+  } catch {
+    return null
+  }
+}
+
 /**
  * Bust the tenant site's per-hostname config cache so a just-saved
  * site_configs change is visible on the very next request instead of after
@@ -60,14 +75,8 @@ export async function revalidateTenantSiteCache(
   }
 
   for (const o of extraOrigins || []) {
-    const cleaned = (o || '').trim().replace(/\/$/, '')
-    if (cleaned && /^https?:\/\//i.test(cleaned) && !isDevHostname(cleaned)) {
-      try {
-        origins.add(new URL(cleaned).origin)
-      } catch {
-        /* ignore */
-      }
-    }
+    const ownedOrigin = tenantOwnedExtraOrigin((o || '').trim(), hostnames)
+    if (ownedOrigin) origins.add(ownedOrigin)
   }
 
   if (origins.size === 0) return false

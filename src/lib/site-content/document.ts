@@ -30,6 +30,10 @@ const IMAGE_ASPECTS = new Set(['square', 'landscape', 'wide', 'portrait'])
 const IMAGE_FITS = new Set(['cover', 'contain'])
 const IMAGE_POSITIONS = new Set(['center', 'top', 'bottom', 'left', 'right'])
 const IMAGE_SCALES = new Set(['90', '100', '110', '125'])
+const HOME_SECTION_IDS = new Set([
+  'hero', 'about', 'products', 'process', 'beforeAfter', 'socialProof', 'quiz', 'engagement',
+])
+const CUSTOM_PAGE_FIELDS = new Set(['html', 'title', 'description'])
 
 type JsonObject = Record<string, unknown>
 
@@ -110,8 +114,37 @@ function assertChangeAllowed(change: ContentChange, renderMode: 'engine' | 'cust
   if (renderMode === 'engine' && root === 'custom_config') {
     throw new Error('Custom HTML is not editable on an engine site')
   }
+  if (renderMode === 'custom') {
+    if ((root === 'brand_name' || root === 'logo_url') && parts.length !== 1) {
+      throw new Error('This custom-site field is not editable')
+    }
+    if (root === 'custom_config') {
+      const pagePath = parts[1] === 'pages'
+      const pagesCollection = pagePath && parts.length === 2 && change.op === 'set'
+      const pageEntry = pagePath && parts.length === 3 && (change.op === 'set' || change.op === 'remove')
+      const pageField = pagePath && parts.length === 4 && change.op === 'set' && CUSTOM_PAGE_FIELDS.has(parts[3])
+      if (!pagesCollection && !pageEntry && !pageField) {
+        throw new Error('Custom-site design, CSS, mode, and platform controls are not editable in Content Studio')
+      }
+    }
+  }
   if (change.op === 'remove' && parts.length === 1) {
     throw new Error('Top-level content fields cannot be removed')
+  }
+}
+
+function preserveCustomSiteDesign(source: SiteContentDocument, document: SiteContentDocument) {
+  if (!isCustomSiteConfig(source.custom_config) || !isCustomSiteConfig(document.custom_config)) return
+  const sourceConfig = source.custom_config
+  const nextConfig = document.custom_config
+  document.custom_config = {
+    mode: sourceConfig.mode,
+    globalCss: sourceConfig.globalCss,
+    pages: Object.fromEntries(Object.entries(nextConfig.pages).map(([path, page]) => {
+      const originalCss = sourceConfig.pages[path]?.css
+      const content = { html: page?.html || '', title: page?.title, description: page?.description }
+      return [path, originalCss === undefined ? content : { ...content, css: originalCss }]
+    })),
   }
 }
 
@@ -197,6 +230,7 @@ export function applyContentChanges(
       }
     }
   }
+  if (renderMode === 'custom') preserveCustomSiteDesign(source, document)
   return normalizeAndValidateDocument(document, renderMode)
 }
 
@@ -251,15 +285,22 @@ export function normalizeAndValidateDocument(
     }
     const structure = document.content_structure || {}
     assertImagePresentations(structure)
-    const order = Array.isArray(structure.homeSections) ? structure.homeSections.map(String) : []
+    const order = Array.isArray(structure.homeSections)
+      ? [...new Set(structure.homeSections.map(String).filter((section) => HOME_SECTION_IDS.has(section)))]
+      : []
     for (const required of PROTECTED_ENGINE_SECTIONS) {
       if (!order.includes(required)) throw new Error(`The ${required} section cannot be removed`)
     }
     const hidden = Array.isArray(structure.hiddenHomeSections)
-      ? structure.hiddenHomeSections.map(String)
+      ? [...new Set(structure.hiddenHomeSections.map(String).filter((section) => HOME_SECTION_IDS.has(section)))]
       : []
     if (hidden.some((section) => PROTECTED_ENGINE_SECTIONS.has(section))) {
       throw new Error('The hero and engagement sections cannot be hidden')
+    }
+    document.content_structure = {
+      homeSections: order,
+      hiddenHomeSections: hidden,
+      ...(structure.imagePresentation === undefined ? {} : { imagePresentation: structure.imagePresentation }),
     }
   } else {
     if (!isCustomSiteConfig(document.custom_config)) throw new Error('Custom site content is missing')

@@ -7,18 +7,23 @@ const ENGINE_RESTORE_ROOTS = [
   'before_after_config', 'quiz_config', 'nav_links', 'pages_config', 'seo_config',
   'logo_url', 'pricing_notes', 'content_structure',
 ] as const
-const CUSTOM_RESTORE_ROOTS = ['brand_name', 'seo_config', 'logo_url', 'custom_config'] as const
+const CUSTOM_RESTORE_ROOTS = ['brand_name', 'seo_config', 'logo_url'] as const
 
 export function restoreDocumentChanges(
   document: SiteContentDocument,
   renderMode: 'engine' | 'custom'
 ): ContentChange[] {
   const roots = renderMode === 'engine' ? ENGINE_RESTORE_ROOTS : CUSTOM_RESTORE_ROOTS
-  return roots.map((root) => ({
+  const changes: ContentChange[] = roots.map((root) => ({
     op: 'set',
     path: `/${root}`,
     value: document[root as keyof SiteContentDocument],
   }))
+  if (renderMode === 'custom') {
+    const custom = document.custom_config as { pages?: unknown } | undefined
+    changes.push({ op: 'set', path: '/custom_config/pages', value: custom?.pages || {} })
+  }
+  return changes
 }
 
 export function imagePresentationChange(

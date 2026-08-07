@@ -158,4 +158,74 @@ describe('site content document operations', () => {
     expect(html).not.toContain('<script>')
     expect(html).toContain('CLOSET_WIDGET')
   })
+
+  it('rejects all core-system roots from website content operations', () => {
+    for (const path of [
+      '/theme', '/theme_tokens', '/layout_style', '/design_variant',
+      '/engagement_model', '/engine_config_draft', '/render_mode',
+    ]) {
+      expect(() => applyContentChanges(engineDocument(), [
+        { op: 'set', path, value: 'malicious override' },
+      ], 'engine'), path).toThrow(/not editable/i)
+    }
+  })
+
+  it('canonicalizes structure and discards attempts to store design controls there', () => {
+    const next = applyContentChanges(engineDocument(), [{
+      op: 'set',
+      path: '/content_structure',
+      value: {
+        homeSections: ['hero', 'about', 'engagement'],
+        hiddenHomeSections: [],
+        theme: 'attacker-theme',
+        template: 'other-tenant-template',
+        engagementModel: 'disabled',
+      },
+    }], 'engine')
+    expect(next.content_structure).toEqual({
+      homeSections: ['hero', 'about', 'engagement'],
+      hiddenHomeSections: [],
+    })
+  })
+
+  it('preserves custom-site mode and CSS even when a direct client tries to replace them', () => {
+    const source = {
+      ...engineDocument(),
+      custom_config: {
+        mode: 'inline' as const,
+        globalCss: '.brand { color: green; }',
+        pages: {
+          '/': {
+            html: '<main><h1>Original</h1><!-- CLOSET_WIDGET --></main>',
+            css: '.hero { min-height: 80vh; }',
+          },
+        },
+      },
+    }
+    expect(() => applyContentChanges(source, [{
+      op: 'set', path: '/custom_config/globalCss', value: '* { display: none; }',
+    }], 'custom')).toThrow(/design, CSS, mode, and platform controls/i)
+
+    const next = applyContentChanges(source, [{
+      op: 'set',
+      path: '/custom_config/pages',
+      value: {
+        '/': {
+          html: '<main><h1>Updated</h1><!-- CLOSET_WIDGET --></main>',
+          css: '.hero { display: none; }',
+        },
+        '/new': { html: '<main>New page</main>', css: '* { display: none; }' },
+      },
+    }], 'custom')
+    const custom = next.custom_config as {
+      mode: string
+      globalCss?: string
+      pages: Record<string, { html: string; css?: string }>
+    }
+    expect(custom.mode).toBe('inline')
+    expect(custom.globalCss).toBe('.brand { color: green; }')
+    expect(custom.pages['/'].css).toBe('.hero { min-height: 80vh; }')
+    expect(custom.pages['/'].html).toContain('Updated')
+    expect(custom.pages['/new'].css).toBeUndefined()
+  })
 })

@@ -94,7 +94,7 @@ describe('undo and redo snapshots', () => {
     const source = document()
     source.custom_config = { pages: { '/': { html: '<main />' } } }
     expect(restoreDocumentChanges(source, 'custom').map((change) => change.path)).toEqual([
-      '/brand_name', '/seo_config', '/logo_url', '/custom_config',
+      '/brand_name', '/seo_config', '/logo_url', '/custom_config/pages',
     ])
   })
 })
