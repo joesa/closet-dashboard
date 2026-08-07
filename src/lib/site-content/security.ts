@@ -28,6 +28,7 @@ function stringLimit(path: string[]): number {
 function isUrlField(path: string[]): boolean {
   const key = path.at(-1) || ''
   if (/alt$/i.test(key)) return false
+  if (path.at(-2)?.toLowerCase() === 'images') return true
   return URL_KEY.test(key) || CAMEL_URL_KEY.test(key)
 }
 

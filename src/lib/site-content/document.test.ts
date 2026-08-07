@@ -100,6 +100,23 @@ describe('site content document operations', () => {
     expect(removed.nav_links).toEqual([])
   })
 
+  it('accepts supported image presentation settings and rejects unknown values', () => {
+    const source = engineDocument()
+    source.pages_config = [{
+      slug: '/gallery', title: 'Gallery', is_active: true, hero: { headline: 'Gallery' },
+      content_blocks: [{ type: 'gallery', heading: 'Work', body: '', images: ['https://example.com/a.jpg'] }],
+    }]
+    const next = applyContentChanges(source, [
+      { op: 'set', path: '/pages_config/0/content_blocks/0/imageSize', value: 'small' },
+      { op: 'set', path: '/pages_config/0/content_blocks/0/imageAspect', value: 'square' },
+      { op: 'set', path: '/pages_config/0/content_blocks/0/imageFit', value: 'contain' },
+    ], 'engine')
+    expect(next.pages_config).toMatchObject([{ content_blocks: [{ imageSize: 'small', imageAspect: 'square', imageFit: 'contain' }] }])
+    expect(() => applyContentChanges(source, [
+      { op: 'set', path: '/pages_config/0/content_blocks/0/imageSize', value: 'gigantic' },
+    ], 'engine')).toThrow(/invalid image size/i)
+  })
+
   it('sanitizes custom HTML and preserves the required widget placeholder', () => {
     const source = {
       ...engineDocument(),

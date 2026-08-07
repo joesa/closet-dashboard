@@ -19,6 +19,11 @@ describe('assertSafeContentValue', () => {
     expect(() => assertSafeContentValue({ heroImage: 'java\nscript:alert(1)' })).toThrow(/unsafe url scheme/i)
     expect(() => assertSafeContentValue({ logo_url: 'data:image/svg+xml,<svg onload=alert(1)>' })).toThrow(/unsafe data url/i)
   })
+
+  it('rejects executable URLs inside gallery image arrays', () => {
+    expect(() => assertSafeContentValue({ images: ['javascript:alert(1)'] })).toThrow(/unsafe url scheme/i)
+    expect(() => assertSafeContentValue({ images: ['https://example.com/photo.jpg'] })).not.toThrow()
+  })
 })
 
 describe('sanitizeUntrustedCustomHtml', () => {

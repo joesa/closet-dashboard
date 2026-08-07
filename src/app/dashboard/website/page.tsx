@@ -25,6 +25,9 @@ type StudioPayload = {
 
 type SaveState = 'loading' | 'live' | 'unsaved' | 'saving' | 'offline' | 'conflict' | 'error'
 type Viewport = 'desktop' | 'tablet' | 'mobile'
+type MediaTarget =
+  | { path: string; mode: 'set' | 'insert'; index?: number }
+  | { mode: 'custom' }
 
 const EDITABLE_ROOTS = [
   'brand_name', 'hero_config', 'about_config', 'process_config', 'products_config',
@@ -97,6 +100,17 @@ function altPathForImage(path: string) {
   return null
 }
 
+function isImageContentPath(path: string) {
+  return /(?:^|\/)(?:logo_url|backgroundImage|beforeImage|afterImage|image|images\/\d+)$/.test(path)
+}
+
+function imagePresentationBase(path: string) {
+  if (!path.includes('/content_blocks/')) return null
+  if (/\/images\/\d+$/.test(path)) return path.replace(/\/images\/\d+$/, '')
+  if (/\/image$/.test(path)) return path.replace(/\/image$/, '')
+  return null
+}
+
 function defaultArrayItem(path: string): unknown {
   if (path.endsWith('/nav_links')) return { label: 'New link', slug: '/' }
   if (path.endsWith('/pages_config')) return {
@@ -126,8 +140,17 @@ function previewNeedsReload(changes: ContentChange[]) {
   return changes.some((change) =>
     change.op !== 'set' ||
     change.path.startsWith('/content_structure/') ||
-    /\/pages_config\/\d+\/(?:slug|is_active)$/.test(change.path)
+    /\/pages_config\/\d+\/(?:slug|is_active)$/.test(change.path) ||
+    /(?:imageSize|imageAspect|imageFit)$/.test(change.path) ||
+    isImageContentPath(change.path)
   )
+}
+
+function sendCustomEditorCommand(publicUrl: string, action: string, value?: string) {
+  const frame = window.document.querySelector('iframe[title="Live website preview"]') as HTMLIFrameElement | null
+  if (!frame?.contentWindow) return
+  const token = new URL(frame.src).searchParams.get('content_editor_token')
+  frame.contentWindow.postMessage({ type: 'dtf:editor-command', action, value, sessionToken: token }, new URL(publicUrl).origin)
 }
 
 export default function WebsiteStudioPage() {
@@ -143,6 +166,7 @@ export default function WebsiteStudioPage() {
   const [previewPath, setPreviewPath] = useState('/')
   const [historyOpen, setHistoryOpen] = useState(false)
   const [mediaOpen, setMediaOpen] = useState(false)
+  const [mediaTarget, setMediaTarget] = useState<MediaTarget | null>(null)
   const [sessionUndo, setSessionUndo] = useState<SiteContentDocument[]>([])
   const [sessionRedo, setSessionRedo] = useState<SiteContentDocument[]>([])
   const pendingRef = useRef<ContentChange[]>([])
@@ -416,7 +440,7 @@ export default function WebsiteStudioPage() {
         <div className="ml-auto flex items-center gap-2">
           <button onClick={undo} disabled={!sessionUndo.length} className="rounded-lg border border-white/10 px-3 py-2 text-xs disabled:opacity-30">Undo</button>
           <button onClick={redo} disabled={!sessionRedo.length} className="rounded-lg border border-white/10 px-3 py-2 text-xs disabled:opacity-30">Redo</button>
-          <button onClick={() => setMediaOpen(true)} className="rounded-lg border border-white/10 px-3 py-2 text-xs">Media</button>
+          <button onClick={() => { setMediaTarget(null); setMediaOpen(true) }} className="rounded-lg border border-white/10 px-3 py-2 text-xs">Media</button>
           <button onClick={() => setHistoryOpen(true)} className="rounded-lg border border-white/10 px-3 py-2 text-xs">History</button>
           {state === 'conflict' && <button onClick={() => void load()} className="rounded-lg bg-amber-400 px-3 py-2 text-xs font-semibold text-black">Reload latest</button>}
           <span className={`rounded-full px-3 py-1.5 text-xs font-medium ${state === 'live' ? 'bg-emerald-500/15 text-emerald-300' : state === 'conflict' || state === 'error' ? 'bg-red-500/15 text-red-300' : 'bg-amber-500/15 text-amber-200'}`}>{statusLabel(state)}</span>
@@ -474,6 +498,16 @@ export default function WebsiteStudioPage() {
                   >
                     {inNavigation ? 'In nav ✓' : '+ Nav'}
                   </button>
+                  <button
+                    title="Delete this page"
+                    onClick={() => {
+                      if (!window.confirm(`Delete “${page.title || page.slug || 'this page'}”? You can restore it later from revision history.`)) return
+                      queueChange({ op: 'remove', path: `/pages_config/${index}` }, true)
+                      setPreviewPath('/')
+                      setSelectedPath('/hero_config')
+                    }}
+                    className="mr-2 shrink-0 rounded-md border border-red-400/15 px-2 py-1 text-[10px] text-red-300/80 hover:border-red-400/40 hover:text-red-200"
+                  >Delete</button>
                 </div>
               )
             })}
@@ -517,9 +551,16 @@ export default function WebsiteStudioPage() {
             <p className="mt-1 break-all text-xs text-zinc-600">{selectedPath}</p>
           </div>
           {payload.renderMode === 'custom' && customArtifactMode !== 'iframe' && selectedPath.endsWith('/html') ? (
-            <CustomInspector publicUrl={payload.publicUrl} selectedPath={selectedPath} />
+            <CustomInspector publicUrl={payload.publicUrl} selectedPath={selectedPath} onChooseMedia={() => { setMediaTarget({ mode: 'custom' }); setMediaOpen(true) }} />
           ) : (
-            <ValueEditor path={selectedPath} value={selectedValue} onChange={queueChange} onSelectPath={setSelectedPath} />
+            <ValueEditor
+              path={selectedPath}
+              value={selectedValue}
+              rootDocument={document}
+              onChange={queueChange}
+              onSelectPath={setSelectedPath}
+              onChooseMedia={(target) => { setMediaTarget(target); setMediaOpen(true) }}
+            />
           )}
           {customArtifactMode === 'iframe' && selectedPath.includes('/html') && (
             <p className="mt-3 text-xs leading-relaxed text-amber-200/70">This legacy page uses isolated iframe mode, so its sanitized HTML is edited here instead of by clicking inside the preview.</p>
@@ -539,16 +580,33 @@ export default function WebsiteStudioPage() {
       </div>
 
       {historyOpen && <HistoryDialog revisions={payload.revisions} onClose={() => setHistoryOpen(false)} onRestored={() => { setHistoryOpen(false); void load(); setPreviewNonce((n) => n + 1) }} />}
-      {mediaOpen && <MediaDialog onClose={() => setMediaOpen(false)} onUse={(url) => { if (typeof selectedValue === 'string') queueChange({ op: 'set', path: selectedPath, value: url }, true); setMediaOpen(false) }} />}
+      {mediaOpen && <MediaDialog
+        target={mediaTarget}
+        onClose={() => { setMediaOpen(false); setMediaTarget(null) }}
+        onUse={(url) => {
+          if (!mediaTarget) return
+          if (mediaTarget.mode === 'custom') {
+            sendCustomEditorCommand(payload.publicUrl, 'setValue', url)
+          } else if (mediaTarget.mode === 'insert') {
+            queueChange({ op: 'insert', path: mediaTarget.path, index: mediaTarget.index ?? 0, value: url }, true)
+          } else {
+            queueChange({ op: 'set', path: mediaTarget.path, value: url }, true)
+          }
+          setMediaOpen(false)
+          setMediaTarget(null)
+        }}
+      />}
     </div>
   )
 }
 
-function ValueEditor({ path, value, onChange, onSelectPath }: {
+function ValueEditor({ path, value, rootDocument, onChange, onSelectPath, onChooseMedia }: {
   path: string
   value: unknown
+  rootDocument: SiteContentDocument
   onChange: (change: ContentChange, immediate?: boolean) => void
   onSelectPath: (path: string) => void
+  onChooseMedia: (target: MediaTarget) => void
 }) {
   if (value === undefined || value === null) {
     return <div><p className="text-sm text-zinc-500">This section has no content yet.</p><button onClick={() => onChange({ op: 'set', path, value: {} }, true)} className="mt-3 rounded-lg bg-indigo-500 px-3 py-2 text-xs">Create section</button></div>
@@ -560,6 +618,27 @@ function ValueEditor({ path, value, onChange, onSelectPath }: {
     return <input type="number" value={value} onChange={(event) => onChange({ op: 'set', path, value: Number(event.target.value) })} className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none focus:border-indigo-400" />
   }
   if (typeof value === 'string') {
+    if (isImageContentPath(path)) {
+      const presentationBase = imagePresentationBase(path)
+      const imageAltPath = altPathForImage(path)
+      const imageSize = presentationBase ? String(valueAt(rootDocument, `${presentationBase}/imageSize`) || 'full') : ''
+      const imageAspect = presentationBase ? String(valueAt(rootDocument, `${presentationBase}/imageAspect`) || 'landscape') : ''
+      const imageFit = presentationBase ? String(valueAt(rootDocument, `${presentationBase}/imageFit`) || 'cover') : ''
+      return <div className="space-y-3">
+        {value ? <img src={value} alt="" className="h-36 w-full rounded-lg border border-white/10 bg-black/20 object-contain" /> : <div className="grid h-28 place-items-center rounded-lg border border-dashed border-white/15 text-xs text-zinc-600">No image selected</div>}
+        <input readOnly value={value} className="w-full truncate rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-zinc-500" aria-label="Image URL" />
+        <div className="grid grid-cols-2 gap-2">
+          <button onClick={() => onChooseMedia({ path, mode: 'set' })} className="rounded-lg bg-indigo-500 px-3 py-2 text-xs font-medium">{value ? 'Replace image' : 'Choose image'}</button>
+          <button disabled={!value} onClick={() => onChange({ op: 'set', path, value: '' }, true)} className="rounded-lg border border-red-400/20 px-3 py-2 text-xs text-red-300 disabled:opacity-30">Remove image</button>
+        </div>
+        {imageAltPath && <label className="block text-[10px] text-zinc-500">Alt text<input value={String(valueAt(rootDocument, imageAltPath) || '')} onChange={(event) => onChange({ op: 'set', path: imageAltPath, value: event.target.value })} placeholder="Describe the image for accessibility" className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-zinc-200 outline-none focus:border-indigo-400" /></label>}
+        {presentationBase && <div className="grid grid-cols-3 gap-2 rounded-lg border border-white/8 bg-white/[0.02] p-3">
+          <label className="text-[10px] text-zinc-500">Size<select value={imageSize} onChange={(event) => onChange({ op: 'set', path: `${presentationBase}/imageSize`, value: event.target.value }, true)} className="mt-1 w-full rounded border border-white/10 bg-[#171920] p-1.5 text-xs text-zinc-200"><option value="small">Small</option><option value="medium">Medium</option><option value="large">Large</option><option value="full">Full</option></select></label>
+          <label className="text-[10px] text-zinc-500">Shape<select value={imageAspect} onChange={(event) => onChange({ op: 'set', path: `${presentationBase}/imageAspect`, value: event.target.value }, true)} className="mt-1 w-full rounded border border-white/10 bg-[#171920] p-1.5 text-xs text-zinc-200"><option value="square">Square</option><option value="landscape">Landscape</option><option value="wide">Wide</option><option value="portrait">Portrait</option></select></label>
+          <label className="text-[10px] text-zinc-500">Fit<select value={imageFit} onChange={(event) => onChange({ op: 'set', path: `${presentationBase}/imageFit`, value: event.target.value }, true)} className="mt-1 w-full rounded border border-white/10 bg-[#171920] p-1.5 text-xs text-zinc-200"><option value="cover">Crop</option><option value="contain">Fit</option></select></label>
+        </div>}
+      </div>
+    }
     const multiline = value.length > 80 || /description|body|quote|notes|html/i.test(path)
     const className = "w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm leading-relaxed outline-none focus:border-indigo-400"
     return multiline
@@ -567,6 +646,7 @@ function ValueEditor({ path, value, onChange, onSelectPath }: {
       : <input value={value} onChange={(event) => onChange({ op: 'set', path, value: event.target.value })} className={className} />
   }
   if (Array.isArray(value)) {
+    const isImageGallery = /\/images$/.test(path)
     return (
       <div className="space-y-3">
         {value.map((item, index) => {
@@ -578,30 +658,31 @@ function ValueEditor({ path, value, onChange, onSelectPath }: {
               <button disabled={index === value.length - 1} onClick={() => onChange({ op: 'move', path, from: index, to: index + 1 }, true)} className="px-1 text-zinc-500 disabled:opacity-20">↓</button>
               <button onClick={() => onChange({ op: 'remove', path: itemPath }, true)} className="px-1 text-red-400/70">×</button>
             </div>
-            <ValueEditor path={itemPath} value={item} onChange={onChange} onSelectPath={onSelectPath} />
+            <ValueEditor path={itemPath} value={item} rootDocument={rootDocument} onChange={onChange} onSelectPath={onSelectPath} onChooseMedia={onChooseMedia} />
           </div>
         })}
-        <button onClick={() => onChange({ op: 'insert', path, index: value.length, value: defaultArrayItem(path) }, true)} className="w-full rounded-lg border border-dashed border-white/15 py-2 text-xs text-zinc-400">+ Add item</button>
+        {isImageGallery ? <button onClick={() => onChooseMedia({ path, mode: 'insert', index: value.length })} className="w-full rounded-lg border border-dashed border-indigo-400/30 py-2 text-xs text-indigo-300">+ Add image</button> : path.endsWith('/content_blocks') ? <div className="grid grid-cols-3 gap-2">
+          <button onClick={() => onChange({ op: 'insert', path, index: value.length, value: defaultArrayItem(path) }, true)} className="rounded-lg border border-dashed border-white/15 py-2 text-xs text-zinc-400">+ Text</button>
+          <button onClick={() => { const index = value.length; onChange({ op: 'insert', path, index, value: { type: 'image_left', heading: 'New image section', body: '', image: '', imageAlt: '', imageSize: 'full', imageAspect: 'landscape', imageFit: 'cover' } }, true); onChooseMedia({ path: `${path}/${index}/image`, mode: 'set' }) }} className="rounded-lg border border-dashed border-indigo-400/30 py-2 text-xs text-indigo-300">+ Image</button>
+          <button onClick={() => { const index = value.length; onChange({ op: 'insert', path, index, value: { type: 'gallery', heading: 'Gallery', body: '', images: [], imageSize: 'full', imageAspect: 'landscape', imageFit: 'cover' } }, true); onChooseMedia({ path: `${path}/${index}/images`, mode: 'insert', index: 0 }) }} className="rounded-lg border border-dashed border-indigo-400/30 py-2 text-xs text-indigo-300">+ Gallery</button>
+        </div> : <button onClick={() => onChange({ op: 'insert', path, index: value.length, value: defaultArrayItem(path) }, true)} className="w-full rounded-lg border border-dashed border-white/15 py-2 text-xs text-zinc-400">+ Add item</button>}
       </div>
     )
   }
   if (typeof value === 'object') {
     return <div className="space-y-4">{Object.entries(value as Record<string, unknown>).map(([key, child]) => {
       const childPath = `${path}/${encodePointer(key)}`
-      return <div key={key}><div className="mb-1.5 flex items-center justify-between"><label className="text-xs font-medium text-zinc-400">{labelFor(key)}</label>{typeof child === 'object' && child !== null && <button onClick={() => onSelectPath(childPath)} className="text-[10px] text-indigo-300">Focus</button>}</div><ValueEditor path={childPath} value={child} onChange={onChange} onSelectPath={onSelectPath} /></div>
+      return <div key={key}><div className="mb-1.5 flex items-center justify-between"><label className="text-xs font-medium text-zinc-400">{labelFor(key)}</label>{typeof child === 'object' && child !== null && <button onClick={() => onSelectPath(childPath)} className="text-[10px] text-indigo-300">Focus</button>}</div><ValueEditor path={childPath} value={child} rootDocument={rootDocument} onChange={onChange} onSelectPath={onSelectPath} onChooseMedia={onChooseMedia} /></div>
     })}</div>
   }
   return <p className="text-sm text-zinc-500">Unsupported content value.</p>
 }
 
-function CustomInspector({ publicUrl, selectedPath }: { publicUrl: string; selectedPath: string }) {
+function CustomInspector({ publicUrl, selectedPath, onChooseMedia }: { publicUrl: string; selectedPath: string; onChooseMedia: () => void }) {
   const send = (action: string, value?: string) => {
-    const frame = document.querySelector('iframe[title="Live website preview"]') as HTMLIFrameElement | null
-    if (!frame?.contentWindow) return
-    const token = new URL(frame.src).searchParams.get('content_editor_token')
-    frame.contentWindow.postMessage({ type: 'dtf:editor-command', action, value, sessionToken: token }, new URL(publicUrl).origin)
+    sendCustomEditorCommand(publicUrl, action, value)
   }
-  return <div className="space-y-3"><p className="text-sm leading-relaxed text-zinc-400">Click text, links, images, or sections in the preview. Changes are serialized from the custom page while its CSS remains untouched.</p><textarea id="custom-editor-value" rows={6} className="w-full rounded-lg border border-white/10 bg-white/5 p-3 text-sm" placeholder="Replacement text, link, image URL, or alt text" /><button onClick={() => send('setValue', (document.getElementById('custom-editor-value') as HTMLTextAreaElement)?.value)} className="w-full rounded-lg bg-indigo-500 py-2 text-sm font-medium">Apply to selection</button><button onClick={() => send('setAlt', (document.getElementById('custom-editor-value') as HTMLTextAreaElement)?.value)} className="w-full rounded-lg border border-white/10 py-2 text-xs">Apply as image alt text</button><div className="grid grid-cols-2 gap-2"><button onClick={() => send('duplicate')} className="rounded-lg border border-white/10 py-2 text-xs">Duplicate</button><button onClick={() => send('remove')} className="rounded-lg border border-red-500/20 py-2 text-xs text-red-300">Remove</button><button onClick={() => send('moveUp')} className="rounded-lg border border-white/10 py-2 text-xs">Move up</button><button onClick={() => send('moveDown')} className="rounded-lg border border-white/10 py-2 text-xs">Move down</button></div><p className="break-all text-[10px] text-zinc-600">{selectedPath}</p></div>
+  return <div className="space-y-3"><p className="text-sm leading-relaxed text-zinc-400">Click text, links, images, or sections in the preview. Changes are serialized from the custom page while its CSS remains untouched.</p><textarea id="custom-editor-value" rows={6} className="w-full rounded-lg border border-white/10 bg-white/5 p-3 text-sm" placeholder="Replacement text, link, image URL, or alt text" /><button onClick={() => send('setValue', (document.getElementById('custom-editor-value') as HTMLTextAreaElement)?.value)} className="w-full rounded-lg bg-indigo-500 py-2 text-sm font-medium">Apply to selection</button><button onClick={onChooseMedia} className="w-full rounded-lg border border-indigo-400/30 py-2 text-xs text-indigo-300">Choose image from media</button><button onClick={() => send('setAlt', (document.getElementById('custom-editor-value') as HTMLTextAreaElement)?.value)} className="w-full rounded-lg border border-white/10 py-2 text-xs">Apply as image alt text</button><div className="grid grid-cols-2 gap-2"><button onClick={() => send('duplicate')} className="rounded-lg border border-white/10 py-2 text-xs">Duplicate</button><button onClick={() => send('remove')} className="rounded-lg border border-red-500/20 py-2 text-xs text-red-300">Remove</button><button onClick={() => send('moveUp')} className="rounded-lg border border-white/10 py-2 text-xs">Move up</button><button onClick={() => send('moveDown')} className="rounded-lg border border-white/10 py-2 text-xs">Move down</button></div><p className="break-all text-[10px] text-zinc-600">{selectedPath}</p></div>
 }
 
 function HistoryDialog({ revisions, onClose, onRestored }: { revisions: SiteContentRevisionSummary[]; onClose: () => void; onRestored: () => void }) {
@@ -615,10 +696,11 @@ function HistoryDialog({ revisions, onClose, onRestored }: { revisions: SiteCont
   return <div className="fixed inset-0 z-50 grid place-items-center bg-black/75 p-6"><div className="max-h-[80vh] w-full max-w-xl overflow-y-auto rounded-2xl border border-white/10 bg-[#12151c] p-6"><div className="mb-5 flex items-center"><h2 className="text-xl font-semibold">Revision history</h2><button onClick={onClose} className="ml-auto text-zinc-400">Close</button></div><div className="space-y-2">{revisions.length ? revisions.map((revision) => <div key={revision.id} className="flex items-center gap-3 rounded-xl border border-white/8 p-3"><div className="min-w-0 flex-1"><p className="text-sm">Version {revision.version}</p><p className="truncate text-xs text-zinc-500">{revision.changedPaths.join(', ') || 'Website content'}</p><p className="text-[10px] text-zinc-600">{new Date(revision.createdAt).toLocaleString()}</p></div><button disabled={!!busy} onClick={() => void restore(revision.id)} className="rounded-lg border border-white/10 px-3 py-2 text-xs disabled:opacity-40">{busy === revision.id ? 'Restoring…' : 'Restore'}</button></div>) : <p className="text-sm text-zinc-500">Revisions appear after the first edit.</p>}</div></div></div>
 }
 
-function MediaDialog({ onClose, onUse }: { onClose: () => void; onUse: (url: string) => void }) {
+function MediaDialog({ target, onClose, onUse }: { target: MediaTarget | null; onClose: () => void; onUse: (url: string) => void }) {
   const [assets, setAssets] = useState<Array<{ path: string; url: string; name: string }>>([])
   const [references, setReferences] = useState<string[]>([])
   const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
   const loadMedia = useCallback(async () => {
     const res = await fetch('/api/dashboard/site-media', { cache: 'no-store' })
     const json = await res.json().catch(() => ({}))
@@ -630,12 +712,14 @@ function MediaDialog({ onClose, onUse }: { onClose: () => void; onUse: (url: str
   }, [loadMedia])
   const upload = async (file: File) => {
     setBusy(true)
+    setError('')
     const form = new FormData(); form.append('file', file)
     const res = await fetch('/api/dashboard/site-media', { method: 'POST', body: form })
     const json = await res.json().catch(() => ({}))
     setBusy(false)
-    if (res.ok && json.asset?.url) { await loadMedia(); onUse(json.asset.url) }
+    if (!res.ok) { setError(json.error || 'Upload failed'); return }
+    if (json.asset?.url) { await loadMedia(); if (target) onUse(json.asset.url) }
   }
   const urls = [...new Set([...assets.map((asset) => asset.url), ...references])]
-  return <div className="fixed inset-0 z-50 grid place-items-center bg-black/75 p-6"><div className="max-h-[85vh] w-full max-w-4xl overflow-y-auto rounded-2xl border border-white/10 bg-[#12151c] p-6"><div className="mb-5 flex items-center"><h2 className="text-xl font-semibold">Media library</h2><label className="ml-auto cursor-pointer rounded-lg bg-white px-4 py-2 text-xs font-medium text-black">{busy ? 'Uploading…' : 'Upload image'}<input disabled={busy} type="file" accept="image/jpeg,image/png,image/webp,image/svg+xml" className="hidden" onChange={(event) => { const file = event.target.files?.[0]; if (file) void upload(file) }} /></label><button onClick={onClose} className="ml-3 text-zinc-400">Close</button></div><div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">{urls.map((url) => <button key={url} onClick={() => onUse(url)} className="overflow-hidden rounded-xl border border-white/10 bg-black/20 text-left"><img src={url} alt="" className="h-32 w-full object-cover" /><span className="block truncate p-2 text-[10px] text-zinc-500">{url.split('/').pop()}</span></button>)}</div></div></div>
+  return <div className="fixed inset-0 z-50 grid place-items-center bg-black/75 p-6"><div className="max-h-[85vh] w-full max-w-4xl overflow-y-auto rounded-2xl border border-white/10 bg-[#12151c] p-6"><div className="mb-3 flex items-center"><div><h2 className="text-xl font-semibold">Media library</h2><p className="mt-1 text-xs text-zinc-500">{target ? 'Choose an existing image or upload a new one.' : 'Upload and review your website images. Open an image field to place one.'}</p></div><label className="ml-auto cursor-pointer rounded-lg bg-white px-4 py-2 text-xs font-medium text-black">{busy ? 'Uploading…' : 'Upload image'}<input disabled={busy} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={(event) => { const file = event.target.files?.[0]; if (file) void upload(file) }} /></label><button onClick={onClose} className="ml-3 text-zinc-400">Close</button></div>{error && <p className="mb-4 rounded-lg border border-red-400/20 bg-red-400/10 p-3 text-xs text-red-200">{error}</p>}<div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">{urls.map((url) => <button key={url} disabled={!target} onClick={() => onUse(url)} className="overflow-hidden rounded-xl border border-white/10 bg-black/20 text-left disabled:cursor-default"><img src={url} alt="" className="h-32 w-full object-cover" /><span className="block truncate p-2 text-[10px] text-zinc-500">{url.split('/').pop()}</span></button>)}</div></div></div>
 }

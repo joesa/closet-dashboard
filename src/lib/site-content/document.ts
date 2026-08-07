@@ -25,6 +25,9 @@ export const SITE_CONTENT_COLUMNS = [
 
 const ALLOWED_ROOTS = new Set<string>(SITE_CONTENT_COLUMNS)
 const PROTECTED_ENGINE_SECTIONS = new Set(['hero', 'engagement'])
+const IMAGE_SIZES = new Set(['small', 'medium', 'large', 'full'])
+const IMAGE_ASPECTS = new Set(['square', 'landscape', 'wide', 'portrait'])
+const IMAGE_FITS = new Set(['cover', 'contain'])
 
 type JsonObject = Record<string, unknown>
 
@@ -189,6 +192,21 @@ export function normalizeAndValidateDocument(
       if (activeSlugs.has(page.slug)) throw new Error(`Duplicate page slug: ${page.slug}`)
       if (page.is_active !== false) activeSlugs.add(page.slug)
       if (typeof page.title !== 'string' || !page.title.trim()) throw new Error('Every page requires a title')
+      const blocks = Array.isArray((page as Record<string, unknown>).content_blocks)
+        ? (page as Record<string, unknown>).content_blocks as Array<Record<string, unknown>>
+        : []
+      for (const block of blocks) {
+        if (!block || typeof block !== 'object') throw new Error('Every page block must be an object')
+        if (block.imageSize !== undefined && !IMAGE_SIZES.has(String(block.imageSize))) throw new Error('Invalid image size')
+        if (block.imageAspect !== undefined && !IMAGE_ASPECTS.has(String(block.imageAspect))) throw new Error('Invalid image shape')
+        if (block.imageFit !== undefined && !IMAGE_FITS.has(String(block.imageFit))) throw new Error('Invalid image fit')
+        const items = Array.isArray(block.items) ? block.items as Array<Record<string, unknown>> : []
+        for (const item of items) {
+          if (item.imageSize !== undefined && !IMAGE_SIZES.has(String(item.imageSize))) throw new Error('Invalid image size')
+          if (item.imageAspect !== undefined && !IMAGE_ASPECTS.has(String(item.imageAspect))) throw new Error('Invalid image shape')
+          if (item.imageFit !== undefined && !IMAGE_FITS.has(String(item.imageFit))) throw new Error('Invalid image fit')
+        }
+      }
     }
     for (const link of document.nav_links as Array<{ label?: unknown; slug?: unknown }>) {
       if (!link || typeof link.label !== 'string' || !link.label.trim() || typeof link.slug !== 'string') {
