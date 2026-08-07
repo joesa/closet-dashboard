@@ -75,11 +75,24 @@ export async function loadOwnedSiteContent(): Promise<
   }
 }
 
-export function assertSameOriginMutation(req: Request): boolean {
+export function assertSameOriginMutation(
+  req: Request,
+  allowedTenantHostnames: string[] = []
+): boolean {
   const origin = req.headers.get('origin')
   if (!origin) return req.headers.get('sec-fetch-site') !== 'cross-site'
   try {
-    return new URL(origin).origin === new URL(req.url).origin
+    const originUrl = new URL(origin)
+    if (originUrl.origin === new URL(req.url).origin) return true
+
+    // Tenant-host dashboard routes are externally rewritten to this app. The
+    // browser correctly retains the tenant origin while req.url reflects the
+    // internal dashboard destination. Only accept that mismatch after auth has
+    // resolved the tenant and the origin is one of that tenant's own domains.
+    const originHostname = originUrl.hostname.toLowerCase()
+    return allowedTenantHostnames.some(
+      (hostname) => hostname.toLowerCase() === originHostname
+    )
   } catch {
     return false
   }

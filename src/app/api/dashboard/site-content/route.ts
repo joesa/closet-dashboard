@@ -76,12 +76,12 @@ export async function GET() {
 }
 
 export async function PATCH(req: Request) {
-  if (!assertSameOriginMutation(req)) {
-    return NextResponse.json({ error: 'Cross-site request rejected' }, { status: 403 })
-  }
   const loaded = await loadOwnedSiteContent()
   if (!loaded.ok) return NextResponse.json({ error: loaded.error }, { status: loaded.status })
   const value = loaded.value
+  if (!assertSameOriginMutation(req, value.hostnames)) {
+    return NextResponse.json({ error: 'Cross-site request rejected' }, { status: 403 })
+  }
   const limit = await checkRateLimit(hashRateKey('site_content_save', value.actorUserId), 180, 60_000)
   if (!limit.allowed) return NextResponse.json({ error: 'Too many edits. Pause briefly and try again.' }, { status: 429 })
 

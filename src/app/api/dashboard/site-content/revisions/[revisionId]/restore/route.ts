@@ -8,9 +8,11 @@ export async function POST(
   req: Request,
   { params }: { params: Promise<{ revisionId: string }> }
 ) {
-  if (!assertSameOriginMutation(req)) return NextResponse.json({ error: 'Cross-site request rejected' }, { status: 403 })
   const loaded = await loadOwnedSiteContent()
   if (!loaded.ok) return NextResponse.json({ error: loaded.error }, { status: loaded.status })
+  if (!assertSameOriginMutation(req, loaded.value.hostnames)) {
+    return NextResponse.json({ error: 'Cross-site request rejected' }, { status: 403 })
+  }
   const { revisionId } = await params
   const admin = getSupabaseAdmin()
   const { data: revision, error } = await admin
@@ -40,4 +42,3 @@ export async function POST(
   const cacheInvalidated = await revalidateTenantSiteCache(loaded.value.tenantId)
   return NextResponse.json({ ok: true, version: Number(version), document: target, cacheInvalidated })
 }
-

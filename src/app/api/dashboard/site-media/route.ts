@@ -41,9 +41,11 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  if (!assertSameOriginMutation(req)) return NextResponse.json({ error: 'Cross-site request rejected' }, { status: 403 })
   const loaded = await loadOwnedSiteContent()
   if (!loaded.ok) return NextResponse.json({ error: loaded.error }, { status: loaded.status })
+  if (!assertSameOriginMutation(req, loaded.value.hostnames)) {
+    return NextResponse.json({ error: 'Cross-site request rejected' }, { status: 403 })
+  }
   const limit = await checkRateLimit(hashRateKey('site_media_upload', loaded.value.actorUserId), 60, 60 * 60 * 1000)
   if (!limit.allowed) return NextResponse.json({ error: 'Upload limit reached. Try again later.' }, { status: 429 })
   try {
@@ -71,9 +73,11 @@ export async function POST(req: Request) {
 }
 
 export async function DELETE(req: Request) {
-  if (!assertSameOriginMutation(req)) return NextResponse.json({ error: 'Cross-site request rejected' }, { status: 403 })
   const loaded = await loadOwnedSiteContent()
   if (!loaded.ok) return NextResponse.json({ error: loaded.error }, { status: loaded.status })
+  if (!assertSameOriginMutation(req, loaded.value.hostnames)) {
+    return NextResponse.json({ error: 'Cross-site request rejected' }, { status: 403 })
+  }
   const body = (await req.json().catch(() => null)) as { path?: string; url?: string } | null
   const path = body?.path?.trim() || ''
   const url = body?.url?.trim() || ''
