@@ -105,6 +105,9 @@ function isImageContentPath(path: string) {
 }
 
 function imagePresentationBase(path: string) {
+  if (/\/hero_config\/backgroundImage$/.test(path) || /\/hero\/backgroundImage$/.test(path)) {
+    return path.replace(/\/backgroundImage$/, '')
+  }
   if (!path.includes('/content_blocks/')) return null
   if (/\/images\/\d+$/.test(path)) return path.replace(/\/images\/\d+$/, '')
   if (/\/image$/.test(path)) return path.replace(/\/image$/, '')
@@ -142,6 +145,8 @@ function previewNeedsReload(changes: ContentChange[]) {
     change.path.startsWith('/content_structure/') ||
     /\/pages_config\/\d+\/(?:slug|is_active)$/.test(change.path) ||
     /(?:imageSize|imageAspect|imageFit)$/.test(change.path) ||
+    /(?:imagePosition|imageScale)$/.test(change.path) ||
+    /\/nav_links\/\d+\/slug$/.test(change.path) ||
     isImageContentPath(change.path)
   )
 }
@@ -550,7 +555,13 @@ export default function WebsiteStudioPage() {
             <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-500">Content inspector</p>
             <p className="mt-1 break-all text-xs text-zinc-600">{selectedPath}</p>
           </div>
-          {payload.renderMode === 'custom' && customArtifactMode !== 'iframe' && selectedPath.endsWith('/html') ? (
+          {payload.renderMode === 'engine' && selectedPath === '/nav_links' ? (
+            <NavigationEditor
+              links={document.nav_links as Array<{ label?: string; slug?: string }>}
+              pages={document.pages_config as Array<{ title?: string; slug?: string; is_active?: boolean }>}
+              onChange={queueChange}
+            />
+          ) : payload.renderMode === 'custom' && customArtifactMode !== 'iframe' && selectedPath.endsWith('/html') ? (
             <CustomInspector publicUrl={payload.publicUrl} selectedPath={selectedPath} onChooseMedia={() => { setMediaTarget({ mode: 'custom' }); setMediaOpen(true) }} />
           ) : (
             <ValueEditor
@@ -621,6 +632,7 @@ function ValueEditor({ path, value, rootDocument, onChange, onSelectPath, onChoo
     if (isImageContentPath(path)) {
       const presentationBase = imagePresentationBase(path)
       const imageAltPath = altPathForImage(path)
+      const isHeroImage = /\/backgroundImage$/.test(path)
       const imageSize = presentationBase ? String(valueAt(rootDocument, `${presentationBase}/imageSize`) || 'full') : ''
       const imageAspect = presentationBase ? String(valueAt(rootDocument, `${presentationBase}/imageAspect`) || 'landscape') : ''
       const imageFit = presentationBase ? String(valueAt(rootDocument, `${presentationBase}/imageFit`) || 'cover') : ''
@@ -632,7 +644,12 @@ function ValueEditor({ path, value, rootDocument, onChange, onSelectPath, onChoo
           <button disabled={!value} onClick={() => onChange({ op: 'set', path, value: '' }, true)} className="rounded-lg border border-red-400/20 px-3 py-2 text-xs text-red-300 disabled:opacity-30">Remove image</button>
         </div>
         {imageAltPath && <label className="block text-[10px] text-zinc-500">Alt text<input value={String(valueAt(rootDocument, imageAltPath) || '')} onChange={(event) => onChange({ op: 'set', path: imageAltPath, value: event.target.value })} placeholder="Describe the image for accessibility" className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-zinc-200 outline-none focus:border-indigo-400" /></label>}
-        {presentationBase && <div className="grid grid-cols-3 gap-2 rounded-lg border border-white/8 bg-white/[0.02] p-3">
+        {presentationBase && isHeroImage && <div className="grid grid-cols-3 gap-2 rounded-lg border border-white/8 bg-white/[0.02] p-3">
+          <label className="text-[10px] text-zinc-500">Fit<select value={String(valueAt(rootDocument, `${presentationBase}/imageFit`) || 'cover')} onChange={(event) => onChange({ op: 'set', path: `${presentationBase}/imageFit`, value: event.target.value }, true)} className="mt-1 w-full rounded border border-white/10 bg-[#171920] p-1.5 text-xs text-zinc-200"><option value="cover">Crop</option><option value="contain">Fit</option></select></label>
+          <label className="text-[10px] text-zinc-500">Position<select value={String(valueAt(rootDocument, `${presentationBase}/imagePosition`) || 'center')} onChange={(event) => onChange({ op: 'set', path: `${presentationBase}/imagePosition`, value: event.target.value }, true)} className="mt-1 w-full rounded border border-white/10 bg-[#171920] p-1.5 text-xs text-zinc-200"><option value="center">Center</option><option value="top">Top</option><option value="bottom">Bottom</option><option value="left">Left</option><option value="right">Right</option></select></label>
+          <label className="text-[10px] text-zinc-500">Zoom<select value={String(valueAt(rootDocument, `${presentationBase}/imageScale`) || '100')} onChange={(event) => onChange({ op: 'set', path: `${presentationBase}/imageScale`, value: event.target.value }, true)} className="mt-1 w-full rounded border border-white/10 bg-[#171920] p-1.5 text-xs text-zinc-200"><option value="90">90%</option><option value="100">100%</option><option value="110">110%</option><option value="125">125%</option></select></label>
+        </div>}
+        {presentationBase && !isHeroImage && <div className="grid grid-cols-3 gap-2 rounded-lg border border-white/8 bg-white/[0.02] p-3">
           <label className="text-[10px] text-zinc-500">Size<select value={imageSize} onChange={(event) => onChange({ op: 'set', path: `${presentationBase}/imageSize`, value: event.target.value }, true)} className="mt-1 w-full rounded border border-white/10 bg-[#171920] p-1.5 text-xs text-zinc-200"><option value="small">Small</option><option value="medium">Medium</option><option value="large">Large</option><option value="full">Full</option></select></label>
           <label className="text-[10px] text-zinc-500">Shape<select value={imageAspect} onChange={(event) => onChange({ op: 'set', path: `${presentationBase}/imageAspect`, value: event.target.value }, true)} className="mt-1 w-full rounded border border-white/10 bg-[#171920] p-1.5 text-xs text-zinc-200"><option value="square">Square</option><option value="landscape">Landscape</option><option value="wide">Wide</option><option value="portrait">Portrait</option></select></label>
           <label className="text-[10px] text-zinc-500">Fit<select value={imageFit} onChange={(event) => onChange({ op: 'set', path: `${presentationBase}/imageFit`, value: event.target.value }, true)} className="mt-1 w-full rounded border border-white/10 bg-[#171920] p-1.5 text-xs text-zinc-200"><option value="cover">Crop</option><option value="contain">Fit</option></select></label>
@@ -676,6 +693,35 @@ function ValueEditor({ path, value, rootDocument, onChange, onSelectPath, onChoo
     })}</div>
   }
   return <p className="text-sm text-zinc-500">Unsupported content value.</p>
+}
+
+function NavigationEditor({ links, pages, onChange }: {
+  links: Array<{ label?: string; slug?: string }>
+  pages: Array<{ title?: string; slug?: string; is_active?: boolean }>
+  onChange: (change: ContentChange, immediate?: boolean) => void
+}) {
+  const targets = [
+    { label: 'Home', slug: '/' },
+    ...pages.filter((page) => page.is_active !== false && page.slug).map((page) => ({ label: page.title || page.slug!, slug: page.slug! })),
+  ]
+  const unlinked = targets.find((target) => !links.some((link) => link.slug === target.slug))
+  return <div className="space-y-3">
+    <p className="text-xs leading-relaxed text-zinc-500">Use the arrows to control the exact left-to-right order shown in your website navigation.</p>
+    {links.map((link, index) => {
+      const knownTarget = targets.some((target) => target.slug === link.slug)
+      return <div key={`${link.slug}-${index}`} className="rounded-xl border border-white/10 bg-white/[0.02] p-3">
+        <div className="mb-3 flex items-center gap-1">
+          <span className="min-w-0 flex-1 truncate text-xs font-medium">{index + 1}. {link.label || 'Untitled link'}</span>
+          <button disabled={index === 0} onClick={() => onChange({ op: 'move', path: '/nav_links', from: index, to: index - 1 }, true)} className="rounded border border-white/10 px-2 py-1 text-xs disabled:opacity-20" title="Move left">←</button>
+          <button disabled={index === links.length - 1} onClick={() => onChange({ op: 'move', path: '/nav_links', from: index, to: index + 1 }, true)} className="rounded border border-white/10 px-2 py-1 text-xs disabled:opacity-20" title="Move right">→</button>
+          <button onClick={() => onChange({ op: 'remove', path: `/nav_links/${index}` }, true)} className="rounded border border-red-400/20 px-2 py-1 text-xs text-red-300">Remove</button>
+        </div>
+        <label className="block text-[10px] text-zinc-500">Label<input value={link.label || ''} onChange={(event) => onChange({ op: 'set', path: `/nav_links/${index}/label`, value: event.target.value })} className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none focus:border-indigo-400" /></label>
+        <label className="mt-3 block text-[10px] text-zinc-500">Page<select value={link.slug || ''} onChange={(event) => onChange({ op: 'set', path: `/nav_links/${index}/slug`, value: event.target.value }, true)} className="mt-1 w-full rounded-lg border border-white/10 bg-[#171920] px-3 py-2 text-sm">{!knownTarget && link.slug && <option value={link.slug}>{link.slug}</option>}{targets.map((target) => <option key={target.slug} value={target.slug}>{target.label} — {target.slug}</option>)}</select></label>
+      </div>
+    })}
+    <button disabled={!unlinked || links.length >= 30} onClick={() => unlinked && onChange({ op: 'insert', path: '/nav_links', index: links.length, value: unlinked }, true)} className="w-full rounded-lg border border-dashed border-indigo-400/30 py-2 text-xs text-indigo-300 disabled:opacity-30">{unlinked ? `+ Add ${unlinked.label}` : 'All active pages are in navigation'}</button>
+  </div>
 }
 
 function CustomInspector({ publicUrl, selectedPath, onChooseMedia }: { publicUrl: string; selectedPath: string; onChooseMedia: () => void }) {

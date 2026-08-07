@@ -115,6 +115,16 @@ describe('site content document operations', () => {
     expect(() => applyContentChanges(source, [
       { op: 'set', path: '/pages_config/0/content_blocks/0/imageSize', value: 'gigantic' },
     ], 'engine')).toThrow(/invalid image size/i)
+
+    const hero = applyContentChanges(source, [
+      { op: 'set', path: '/hero_config/imageFit', value: 'contain' },
+      { op: 'set', path: '/hero_config/imagePosition', value: 'top' },
+      { op: 'set', path: '/hero_config/imageScale', value: '110' },
+    ], 'engine')
+    expect(hero.hero_config).toMatchObject({ imageFit: 'contain', imagePosition: 'top', imageScale: '110' })
+    expect(() => applyContentChanges(source, [
+      { op: 'set', path: '/hero_config/imageScale', value: '500' },
+    ], 'engine')).toThrow(/invalid hero image zoom/i)
   })
 
   it('sanitizes custom HTML and preserves the required widget placeholder', () => {

@@ -28,8 +28,18 @@ const PROTECTED_ENGINE_SECTIONS = new Set(['hero', 'engagement'])
 const IMAGE_SIZES = new Set(['small', 'medium', 'large', 'full'])
 const IMAGE_ASPECTS = new Set(['square', 'landscape', 'wide', 'portrait'])
 const IMAGE_FITS = new Set(['cover', 'contain'])
+const IMAGE_POSITIONS = new Set(['center', 'top', 'bottom', 'left', 'right'])
+const IMAGE_SCALES = new Set(['90', '100', '110', '125'])
 
 type JsonObject = Record<string, unknown>
+
+function assertHeroPresentation(hero: unknown) {
+  if (!hero || typeof hero !== 'object') return
+  const value = hero as Record<string, unknown>
+  if (value.imageFit !== undefined && !IMAGE_FITS.has(String(value.imageFit))) throw new Error('Invalid hero image fit')
+  if (value.imagePosition !== undefined && !IMAGE_POSITIONS.has(String(value.imagePosition))) throw new Error('Invalid hero image position')
+  if (value.imageScale !== undefined && !IMAGE_SCALES.has(String(value.imageScale))) throw new Error('Invalid hero image zoom')
+}
 
 function clone<T>(value: T): T {
   return structuredClone(value)
@@ -182,6 +192,7 @@ export function normalizeAndValidateDocument(
   document.nav_links = Array.isArray(document.nav_links) ? document.nav_links.slice(0, 30) : []
 
   if (renderMode === 'engine') {
+    assertHeroPresentation(document.hero_config)
     const pages = document.pages_config as Array<{ slug?: unknown; title?: unknown; is_active?: unknown }>
     const activeSlugs = new Set(['/'])
     for (const page of pages) {
@@ -192,6 +203,7 @@ export function normalizeAndValidateDocument(
       if (activeSlugs.has(page.slug)) throw new Error(`Duplicate page slug: ${page.slug}`)
       if (page.is_active !== false) activeSlugs.add(page.slug)
       if (typeof page.title !== 'string' || !page.title.trim()) throw new Error('Every page requires a title')
+      assertHeroPresentation((page as Record<string, unknown>).hero)
       const blocks = Array.isArray((page as Record<string, unknown>).content_blocks)
         ? (page as Record<string, unknown>).content_blocks as Array<Record<string, unknown>>
         : []
