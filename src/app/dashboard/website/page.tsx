@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ContentChange, SiteContentDocument, SiteContentRevisionSummary } from '@/lib/site-content/types'
+import { coupledEngineChanges } from '@/lib/site-content/editorChanges'
 
 type StudioPayload = {
   tenant: {
@@ -82,38 +83,6 @@ function applyLocal(document: SiteContentDocument, change: ContentChange): SiteC
     else target[key] = structuredClone(change.value)
   }
   return next
-}
-
-function coupledEngineChanges(document: SiteContentDocument, change: ContentChange): ContentChange[] {
-  const match = change.path.match(/^\/pages_config\/(\d+)\/(title|slug|is_active)$/)
-  const removeMatch = change.op === 'remove' ? change.path.match(/^\/pages_config\/(\d+)$/) : null
-  const pageIndex = Number(match?.[1] ?? removeMatch?.[1])
-  if (!Number.isInteger(pageIndex)) return [change]
-  const page = document.pages_config[pageIndex] as { slug?: unknown } | undefined
-  const oldSlug = typeof page?.slug === 'string' ? page.slug : ''
-  if (!oldSlug) return [change]
-  const matchingLinks = (document.nav_links as Array<{ slug?: unknown }>).flatMap((link, index) =>
-    link?.slug === oldSlug ? [index] : []
-  )
-  if (match && change.op === 'set' && match[2] === 'title' && typeof change.value === 'string') {
-    return [change, ...matchingLinks.map((index): ContentChange => ({
-      op: 'set', path: `/nav_links/${index}/label`, value: change.value,
-    }))]
-  }
-  if (match && change.op === 'set' && match[2] === 'slug' && typeof change.value === 'string') {
-    return [change, ...matchingLinks.map((index): ContentChange => ({
-      op: 'set', path: `/nav_links/${index}/slug`, value: change.value,
-    }))]
-  }
-  if ((match && change.op === 'set' && match[2] === 'is_active' && change.value === false) || removeMatch) {
-    return [
-      ...matchingLinks.sort((a, b) => b - a).map((index): ContentChange => ({
-        op: 'remove', path: `/nav_links/${index}`,
-      })),
-      change,
-    ]
-  }
-  return [change]
 }
 
 function labelFor(key: string) {
@@ -457,7 +426,13 @@ export default function WebsiteStudioPage() {
       <div className="grid min-h-0 flex-1 grid-cols-[260px_minmax(420px,1fr)_360px]">
         <aside className="overflow-y-auto border-r border-white/10 bg-[#0d0f14] p-4">
           <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-500">Pages and sections</p>
-          <button onClick={() => setSelectedPath('/brand_name')} className="mb-1 w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-white/5">Brand & navigation</button>
+          <div className="mb-2 rounded-xl border border-white/8 bg-white/[0.02] p-2">
+            <p className="px-2 pb-1 pt-1 text-sm font-medium">Brand & navigation</p>
+            <div className={`grid gap-1 ${payload.renderMode === 'engine' ? 'grid-cols-2' : 'grid-cols-1'}`}>
+              <button onClick={() => setSelectedPath('/brand_name')} className={`rounded-lg px-2 py-2 text-left text-xs ${selectedPath === '/brand_name' ? 'bg-indigo-500/15 text-indigo-100' : 'hover:bg-white/5'}`}>Brand name</button>
+              {payload.renderMode === 'engine' && <button onClick={() => setSelectedPath('/nav_links')} className={`rounded-lg px-2 py-2 text-left text-xs ${selectedPath.startsWith('/nav_links') ? 'bg-indigo-500/15 text-indigo-100' : 'hover:bg-white/5'}`}>Navigation links</button>}
+            </div>
+          </div>
           {payload.renderMode === 'engine' ? <div className="rounded-xl border border-white/8 bg-white/[0.02] p-2">
             <button onClick={() => { setSelectedPath('/hero_config'); setPreviewPath('/') }} className="w-full px-2 py-2 text-left text-sm font-semibold">Home</button>
             <div className="space-y-1">
@@ -480,13 +455,29 @@ export default function WebsiteStudioPage() {
             <button onClick={() => { const slug = `/page-${Date.now().toString(36)}`; queueChange({ op: 'set', path: `/custom_config/pages/${encodePointer(slug)}`, value: { title: 'New page', description: '', html: '<main><section><h1>New page</h1><p>Add your content here.</p></section></main>' } }, true); setPreviewPath(slug); setSelectedPath(`/custom_config/pages/${encodePointer(slug)}/html`) }} className="w-full rounded-lg border border-dashed border-white/10 px-3 py-2 text-xs text-zinc-400">+ Add page</button>
           </div>}
           {payload.renderMode === 'engine' && <div className="mt-3 space-y-1">
-            {(document.pages_config as Array<{ slug?: string; title?: string; is_active?: boolean }>).map((page, index) => (
-              <button key={`${page.slug}-${index}`} onClick={() => { setSelectedPath(`/pages_config/${index}`); setPreviewPath(page.slug || '/') }} className={`w-full rounded-lg px-3 py-2 text-left text-xs ${selectedPath.startsWith(`/pages_config/${index}`) ? 'bg-indigo-500/15 text-indigo-100' : 'hover:bg-white/5'}`}>
-                <span className="block truncate">{page.title || 'Untitled page'}</span>
-                <span className="text-[10px] text-zinc-600">{page.is_active === false ? 'Hidden · ' : ''}{page.slug}</span>
-              </button>
-            ))}
-            {payload.renderMode === 'engine' && <button onClick={() => queueChange({ op: 'insert', path: '/pages_config', index: document.pages_config.length, value: defaultArrayItem('/pages_config') }, true)} className="w-full rounded-lg border border-dashed border-white/10 px-3 py-2 text-xs text-zinc-400 hover:border-white/30">+ Add page</button>}
+            {(document.pages_config as Array<{ slug?: string; title?: string; is_active?: boolean }>).map((page, index) => {
+              const navIndex = (document.nav_links as Array<{ slug?: string }>).findIndex((link) => link.slug === page.slug)
+              const inNavigation = navIndex >= 0
+              return (
+                <div key={`${page.slug}-${index}`} className={`flex items-center rounded-lg ${selectedPath.startsWith(`/pages_config/${index}`) ? 'bg-indigo-500/15 text-indigo-100' : 'hover:bg-white/5'}`}>
+                  <button onClick={() => { setSelectedPath(`/pages_config/${index}`); setPreviewPath(page.slug || '/') }} className="min-w-0 flex-1 px-3 py-2 text-left text-xs">
+                    <span className="block truncate">{page.title || 'Untitled page'}</span>
+                    <span className="text-[10px] text-zinc-600">{page.is_active === false ? 'Hidden · ' : ''}{page.slug}</span>
+                  </button>
+                  <button
+                    disabled={page.is_active === false || !page.slug}
+                    title={inNavigation ? 'Remove this page from navigation' : 'Add this page to navigation'}
+                    onClick={() => queueChange(inNavigation
+                      ? { op: 'remove', path: `/nav_links/${navIndex}` }
+                      : { op: 'insert', path: '/nav_links', index: document.nav_links.length, value: { label: page.title || 'Untitled page', slug: page.slug } }, true)}
+                    className={`mr-2 shrink-0 rounded-md border px-2 py-1 text-[10px] disabled:cursor-not-allowed disabled:opacity-30 ${inNavigation ? 'border-emerald-400/20 text-emerald-300' : 'border-white/10 text-zinc-400'}`}
+                  >
+                    {inNavigation ? 'In nav ✓' : '+ Nav'}
+                  </button>
+                </div>
+              )
+            })}
+            {payload.renderMode === 'engine' && <button onClick={() => { const page = defaultArrayItem('/pages_config'); queueChange({ op: 'insert', path: '/pages_config', index: document.pages_config.length, value: page }, true) }} className="w-full rounded-lg border border-dashed border-white/10 px-3 py-2 text-xs text-zinc-400 hover:border-white/30">+ Add page</button>}
           </div>}
           <button onClick={() => setSelectedPath('/seo_config')} className="mt-3 w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-white/5">SEO & contact details</button>
           {message && <p className="mt-5 rounded-lg bg-white/5 p-3 text-xs leading-relaxed text-zinc-400">{message}</p>}
