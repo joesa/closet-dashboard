@@ -1,4 +1,4 @@
-import DOMPurify from 'isomorphic-dompurify'
+import sanitizeHtml from 'sanitize-html'
 import {
   sanitizeCustomConfig,
   normalizeWidgetPlaceholders,
@@ -96,16 +96,71 @@ export function sanitizeUntrustedCustomHtml(html: string): string {
     WIDGET_PLACEHOLDER,
     `<${PLACEHOLDER_TAG}></${PLACEHOLDER_TAG}>`
   )
-  const purified = DOMPurify.sanitize(protectedWidget, {
-    USE_PROFILES: { html: true, svg: true, svgFilters: true },
-    ADD_TAGS: [PLACEHOLDER_TAG],
-    FORBID_TAGS: [
-      'script', 'iframe', 'object', 'embed', 'form', 'input', 'button',
-      'textarea', 'select', 'option', 'base', 'meta', 'link', 'template', 'noscript',
+  const purified = sanitizeHtml(protectedWidget, {
+    allowedTags: [
+      'main', 'section', 'article', 'header', 'footer', 'nav', 'aside',
+      'div', 'span', 'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+      'a', 'img', 'picture', 'source', 'figure', 'figcaption',
+      'ul', 'ol', 'li', 'dl', 'dt', 'dd', 'br', 'hr',
+      'strong', 'em', 'b', 'i', 'u', 's', 'small', 'sub', 'sup',
+      'blockquote', 'pre', 'code', 'time', 'address', 'details', 'summary',
+      'table', 'thead', 'tbody', 'tfoot', 'tr', 'th', 'td', 'colgroup', 'col',
+      'video', 'audio', 'track',
+      'svg', 'g', 'path', 'circle', 'ellipse', 'rect', 'line', 'polyline',
+      'polygon', 'defs', 'linearGradient', 'radialGradient', 'stop', 'clipPath',
+      'mask', 'pattern', 'symbol', 'use', 'text', 'tspan', 'title', 'desc',
+      PLACEHOLDER_TAG,
     ],
-    FORBID_ATTR: ['srcdoc', 'formaction', 'ping'],
-    ALLOW_DATA_ATTR: true,
-    ALLOW_ARIA_ATTR: true,
+    allowedAttributes: {
+      '*': [
+        'id', 'class', 'style', 'title', 'role', 'tabindex', 'hidden',
+        'aria-*', 'data-*',
+      ],
+      a: ['href', 'target', 'rel', 'download'],
+      img: ['src', 'alt', 'width', 'height', 'loading', 'decoding', 'fetchpriority'],
+      source: ['src', 'type', 'media', 'sizes'],
+      video: ['src', 'poster', 'controls', 'autoplay', 'muted', 'loop', 'playsinline', 'preload', 'width', 'height'],
+      audio: ['src', 'controls', 'autoplay', 'muted', 'loop', 'preload'],
+      track: ['src', 'kind', 'srclang', 'label', 'default'],
+      th: ['colspan', 'rowspan', 'scope'],
+      td: ['colspan', 'rowspan'],
+      col: ['span'],
+      svg: ['xmlns', 'viewBox', 'width', 'height', 'fill', 'stroke', 'preserveAspectRatio'],
+      g: ['fill', 'stroke', 'transform', 'opacity', 'clip-path', 'mask'],
+      path: ['d', 'fill', 'stroke', 'stroke-width', 'stroke-linecap', 'stroke-linejoin', 'transform', 'opacity'],
+      circle: ['cx', 'cy', 'r', 'fill', 'stroke', 'stroke-width', 'transform', 'opacity'],
+      ellipse: ['cx', 'cy', 'rx', 'ry', 'fill', 'stroke', 'stroke-width', 'transform', 'opacity'],
+      rect: ['x', 'y', 'rx', 'ry', 'width', 'height', 'fill', 'stroke', 'stroke-width', 'transform', 'opacity'],
+      line: ['x1', 'x2', 'y1', 'y2', 'stroke', 'stroke-width', 'transform', 'opacity'],
+      polyline: ['points', 'fill', 'stroke', 'stroke-width', 'transform', 'opacity'],
+      polygon: ['points', 'fill', 'stroke', 'stroke-width', 'transform', 'opacity'],
+      linearGradient: ['id', 'x1', 'x2', 'y1', 'y2', 'gradientUnits', 'gradientTransform'],
+      radialGradient: ['id', 'cx', 'cy', 'r', 'fx', 'fy', 'gradientUnits', 'gradientTransform'],
+      stop: ['offset', 'stop-color', 'stop-opacity'],
+      use: ['href', 'xlink:href', 'x', 'y', 'width', 'height'],
+      text: ['x', 'y', 'dx', 'dy', 'fill', 'stroke', 'transform', 'text-anchor'],
+      tspan: ['x', 'y', 'dx', 'dy', 'fill', 'stroke'],
+    },
+    allowedSchemes: ['http', 'https', 'mailto', 'tel'],
+    allowProtocolRelative: false,
+    disallowedTagsMode: 'discard',
+    parser: { lowerCaseAttributeNames: false },
+    transformTags: {
+      '*': (tagName, attribs) => {
+        const next = { ...attribs }
+        if (next.style && /expression\s*\(|url\s*\(\s*['"]?\s*(?:javascript|data):|-moz-binding\s*:|behavior\s*:|@import/i.test(next.style)) {
+          delete next.style
+        }
+        delete next.srcset
+        for (const key of ['href', 'xlink:href']) {
+          if (tagName === 'use' && next[key] && !next[key].startsWith('#')) delete next[key]
+        }
+        if (next.src && /^data:/i.test(next.src) && !/^data:image\/(?:png|jpeg|webp);base64,/i.test(next.src)) {
+          delete next.src
+        }
+        return { tagName, attribs: next }
+      },
+    },
   })
   return purified.replace(
     new RegExp(`<${PLACEHOLDER_TAG}(?:\\s[^>]*)?></${PLACEHOLDER_TAG}>`, 'gi'),
@@ -113,7 +168,7 @@ export function sanitizeUntrustedCustomHtml(html: string): string {
   )
 }
 
-/** Regex sanitizer remains defense-in-depth; DOMPurify is the parser-backed gate. */
+/** Regex sanitizer remains defense-in-depth; sanitize-html is the parser-backed gate. */
 export function hardenCustomConfig(config: CustomSiteConfig): CustomSiteConfig {
   const sanitized = sanitizeCustomConfig(config)
   return {
