@@ -19,12 +19,12 @@ import DomainSuggestPicker from '@/components/DomainSuggestPicker';
 
 import { guidanceFromCustomIndustry, inferQuoteCalculatorGuidance } from '@/lib/quoteCalculatorGuidance';
 import type { QuoteCalculatorGuidance } from '@/lib/quoteCalculatorGuidance';
+import type { ThemeTokenSelection } from '@/lib/catalog/themeTokenPools';
 import {
   SITE_PAGE_OPTIONS,
   RECOMMENDED_PAGE_SLUGS,
   sanitizePageSlugs,
   clampPagesForTier,
-  maxPagesForTier,
   maxAdditionalPagesForTier,
 } from '@/lib/catalog/sitePages';
 import { listIndustries, resolveIndustrySlug, getIndustry, getEngagementModel, isLowConfidenceResolution } from '@/lib/catalog/serviceCatalog';
@@ -61,15 +61,7 @@ function pricingModelLabel(model: 'linear_ft' | 'fixed' | 'base_plus_distance'):
   return 'Per unit / size';
 }
 
-const VIBE_OPTIONS = [
-  'Luxury & minimal', 'Bold & industrial', 'Warm & classic', 'Modern & clean',
-  'Playful & friendly', 'Rustic & natural', 'Elegant & refined', 'Sleek & high-tech',
-];
-const TONE_OPTIONS = ['Professional & trustworthy', 'Friendly & approachable', 'Bold & confident', 'Elegant & refined'];
 const CUSTOMER_OPTIONS = ['Luxury homeowners', 'Busy families', 'Budget-conscious homeowners', 'Builders & commercial clients', 'A mix of everyone'];
-const EXPERIENCE_OPTIONS = ['Just getting started', '1–5 years', '5–15 years', '15+ years / well established'];
-const DIFFERENTIATOR_OPTIONS = ['Lifetime warranty', 'Free in-home consultation', 'Made in USA', 'Family-owned', 'Award-winning', 'Eco-friendly materials', 'Fast turnaround', 'Financing available'];
-const CTA_OPTIONS = ['Book a free consultation', 'Request a quote', 'Call now', 'Browse the portfolio'];
 const EXTRA_INDUSTRY_OPTIONS = [
   'Auto Detailing',
   'Car Wrapping',
@@ -175,66 +167,6 @@ type Form = {
   /** Verbatim customer quotes. Testimonials are never invented — no quotes, no testimonials page. */
   customerQuotes: string;
 };
-
-/**
- * The "Craft & proof" step. Each prompt is written to return a noun, a number,
- * or a rule — never an adjective — because generated copy can only be as
- * specific as the brief it is written from. Placeholders deliberately span
- * different trades so the examples do not steer every business toward the same
- * answer shape.
- */
-const CRAFT_FIELDS: Array<{
-  key: 'craftSpec' | 'shopRule' | 'localConditions' | 'crewShape' | 'clientArtifact'
-    | 'recentJob' | 'competitorTell' | 'timelineFacts' | 'guaranteeTerms';
-  label: string;
-  placeholder: string;
-}> = [
-  {
-    key: 'craftSpec',
-    label: 'What do you measure, and how precisely?',
-    placeholder: 'e.g. We laser every wall and build to the quarter-inch — old houses rarely give us a true wall.',
-  },
-  {
-    key: 'clientArtifact',
-    label: 'What does a customer actually receive or sign off on?',
-    placeholder: 'e.g. A hand-drawn elevation of their wall. Nothing gets cut before they sign it.',
-  },
-  {
-    key: 'shopRule',
-    label: 'A rule you never break',
-    placeholder: 'e.g. If a rail is half an inch off the drawing at install, it goes back to the shop.',
-  },
-  {
-    key: 'localConditions',
-    label: 'What goes wrong on jobs in your area, and why?',
-    placeholder: 'e.g. Pre-war houses here have out-of-square corners and no insulation behind the plaster.',
-  },
-  {
-    key: 'recentJob',
-    label: 'One real recent job — what was wrong, what you did',
-    placeholder: 'e.g. Job 24-0619: one bare bulb, a water stain we chased to a flashing leak, one sagging wire shelf.',
-  },
-  {
-    key: 'timelineFacts',
-    label: 'Real timeframes',
-    placeholder: 'e.g. Quote in 48 hours, six to eight weeks from survey to install.',
-  },
-  {
-    key: 'crewShape',
-    label: 'Who does the work?',
-    placeholder: 'e.g. Two senior fitters, both on staff nine years. We never subcontract the install.',
-  },
-  {
-    key: 'competitorTell',
-    label: 'What do cheaper competitors get wrong?',
-    placeholder: 'e.g. They screw into drywall anchors instead of finding studs, so the rail sags in a year.',
-  },
-  {
-    key: 'guaranteeTerms',
-    label: 'Your guarantee, in your own words',
-    placeholder: 'e.g. Ten years on the boxes, lifetime on the soft-close runners. We come back and fix it.',
-  },
-];
 
 type WidgetHintsSnapshot = {
   industry?: string;
@@ -576,9 +508,9 @@ export default function IntakeFormClient({
   const [logoGenAttemptsUsed, setLogoGenAttemptsUsed] = useState(0);
   const [logoPreviewUrl, setLogoPreviewUrl] = useState<string | null>(null);
   const logoGenMaxAttempts = 5;
-  const [customerOptions, setCustomerOptions] = useState<string[]>(CUSTOMER_OPTIONS);
-  const [suggestingCustomers, setSuggestingCustomers] = useState(false);
-  const [customerOptionsSource, setCustomerOptionsSource] = useState<'default' | 'gemini'>('default');
+  const [_customerOptions, setCustomerOptions] = useState<string[]>(CUSTOMER_OPTIONS);
+  const [_suggestingCustomers, setSuggestingCustomers] = useState(false);
+  const [_customerOptionsSource, setCustomerOptionsSource] = useState<'default' | 'gemini'>('default');
   const [customIndustryLabels, setCustomIndustryLabels] = useState<string[]>([]);
   const [customIndustryServices, setCustomIndustryServices] = useState<string[] | null>(null);
   const [customIndustryGuidance, setCustomIndustryGuidance] = useState<QuoteCalculatorGuidance | null>(null);
@@ -600,7 +532,7 @@ export default function IntakeFormClient({
   const [paymentDueLabel, setPaymentDueLabel] = useState(initialPaymentDueLabel);
   const [paymentCheckoutKind, setPaymentCheckoutKind] = useState(initialPaymentCheckoutKind);
   const [canPayToLaunch, setCanPayToLaunch] = useState(initialCanPayToLaunch);
-  const [paymentAmountCents, setPaymentAmountCents] = useState(initialPaymentAmountCents);
+  const [paymentAmountCents, _setPaymentAmountCents] = useState(initialPaymentAmountCents);
   const [launchPaid, setLaunchPaid] = useState(false);
   const [tenantSiteUrl, setTenantSiteUrl] = useState<string | null>(null);
   const [loginUrl, setLoginUrl] = useState<string | null>(null);
@@ -638,7 +570,7 @@ export default function IntakeFormClient({
   const [suggestedCraftValues, setSuggestedCraftValues] = useState<Record<string, string>>(
     initialSuggestedCraftValues
   );
-  const isUneditedCraftSuggestion = (key: keyof Form): boolean => {
+  const isUneditedCraftSuggestion = useCallback((key: keyof Form): boolean => {
     const suggested = suggestedCraftValues[String(key)];
     const current = form[key];
     return (
@@ -647,12 +579,12 @@ export default function IntakeFormClient({
       typeof current === 'string' &&
       current.trim() === suggested
     );
-  };
-  const getCraftSuggestedFields = (): string[] =>
+  }, [form, suggestedCraftValues]);
+  const getCraftSuggestedFields = useCallback((): string[] =>
     ([
       'craftSpec', 'clientArtifact', 'shopRule', 'localConditions', 'recentJob',
       'timelineFacts', 'crewShape', 'competitorTell', 'guaranteeTerms', 'signatureMaterials',
-    ] as const).filter((key) => isUneditedCraftSuggestion(key));
+    ] as const).filter((key) => isUneditedCraftSuggestion(key)), [isUneditedCraftSuggestion]);
 
   const craftVertical = useMemo(
     () => detectVertical(form.industry, form.services, form.otherServices),
@@ -889,7 +821,7 @@ export default function IntakeFormClient({
     } catch {
     }
     draftRestored.current = true;
-  }, [draftKey]);
+  }, [draftKey, alreadySubmitted, prospectEmail]);
 
   useEffect(() => {
     if (typeof window === 'undefined' || !draftRestored.current || submitted) return;
@@ -1113,7 +1045,6 @@ export default function IntakeFormClient({
   const setBool = <K extends keyof Form>(key: K, value: boolean) =>
     setForm((f) => ({ ...f, [key]: value as Form[K] }));
 
-  const maxExtraPages = maxAdditionalPagesForTier(intakeTier);
   useEffect(() => {
     setForm((f) => {
       const clamped = clampPagesForTier(f.pages, intakeTier);
@@ -1313,7 +1244,7 @@ export default function IntakeFormClient({
     }
     setBulkGenerating(false);
     return generated;
-  }, [form, token, handleGeneratePageCopy]);
+  }, [form, token, getCraftSuggestedFields]);
 
   const handleSuggestPages = async (opts?: { silent?: boolean }) => {
     const silent = opts?.silent === true;
@@ -1905,7 +1836,7 @@ export default function IntakeFormClient({
     (imageSelectionsComplete(imageSelections, studioServices) &&
       beforeAfterSelectionComplete(imageSelections, beforeAfterRequired));
 
-  const submitForm = async (overrides?: { themeOverride: string; layoutOverride: string; themeTokensOverride?: any }) => {
+  const submitForm = async (overrides?: { themeOverride: string; layoutOverride: string; themeTokensOverride?: ThemeTokenSelection }) => {
     if (intakeTier === 'ai_premium' && depositRequiredCents > 0 && depositStatus !== 'paid') {
       setError('Pay the 30% deposit before submitting.');
       return;
@@ -4002,7 +3933,6 @@ export default function IntakeFormClient({
             onClick={(e) => e.stopPropagation()}
           >
             <div className="rounded-lg bg-white p-6 shadow-2xl">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={logoPreviewUrl}
                 alt="Logo preview (large)"
@@ -4023,4 +3953,3 @@ export default function IntakeFormClient({
     </div>
   );
 }
-

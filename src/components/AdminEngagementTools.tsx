@@ -253,7 +253,8 @@ export default function AdminEngagementTools({ tenantId }: { tenantId: string })
   }, [tenantId])
 
   useEffect(() => {
-    void refresh()
+    const timeout = window.setTimeout(() => void refresh(), 0)
+    return () => window.clearTimeout(timeout)
   }, [refresh])
 
   // Re-load when admin returns to the tab so client dashboard edits show up.

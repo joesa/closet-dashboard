@@ -66,7 +66,7 @@ type Props = {
   onUpdate: (selections: IntakeImageSelections, siteConfig: SiteConfigShape | null) => void;
   /** Lets the wizard block Continue while the AI brief is still being built. */
   onBriefLoadingChange?: (loading: boolean) => void;
-  formState?: any;
+  formState?: Record<string, unknown>;
   isActive?: boolean;
 };
 
@@ -333,9 +333,12 @@ export default function IntakeImageStudio({
 
   // Keep prop / brief response in sync (e.g. custom industry resolves after load).
   React.useEffect(() => {
-    if (typeof initialBeforeAfterApplicable === 'boolean') {
-      setServerBeforeAfterApplicable(initialBeforeAfterApplicable);
-    }
+    if (typeof initialBeforeAfterApplicable !== 'boolean') return;
+    const timeout = window.setTimeout(
+      () => setServerBeforeAfterApplicable(initialBeforeAfterApplicable),
+      0
+    );
+    return () => window.clearTimeout(timeout);
   }, [initialBeforeAfterApplicable]);
 
   const proceedWithoutBrief = (warning: string) => {
@@ -549,7 +552,7 @@ export default function IntakeImageStudio({
     return () => clearTimeout(timer);
   }, [briefLoading]);
 
-  const generateBatch = async (
+  const generateBatch = React.useCallback(async (
     slot: StudioSlot,
     prompt: string,
     productIndex?: number
@@ -611,12 +614,14 @@ export default function IntakeImageStudio({
     } finally {
       setGenLoading(null);
     }
-  };
+  }, [beforeAfterApplicable, onUpdate, services, siteConfig, token]);
 
-  selectionsRef.current = selections;
-  productsRef.current = products;
-  heroPromptRef.current = heroPrompt;
-  generateBatchRef.current = generateBatch;
+  React.useEffect(() => {
+    selectionsRef.current = selections;
+    productsRef.current = products;
+    heroPromptRef.current = heroPrompt;
+    generateBatchRef.current = generateBatch;
+  }, [selections, products, heroPrompt, generateBatch]);
 
   // Auto-trigger sequential image generation once per brief — deps must NOT
   // include selections/products or each batch completion restarts the chain.

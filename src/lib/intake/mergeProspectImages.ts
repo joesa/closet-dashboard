@@ -121,7 +121,7 @@ export function mergeProspectImageSelections(
 
   // Include any selected product images that did not map onto an AI slot so
   // the admin onboarding preview still shows everything the prospect picked.
-  selected.forEach((s, i) => {
+  selected.forEach((s) => {
     const url = s.selectedUrl!
     const alreadyShown = generatedProducts.some((g) => g.image === url)
     if (!alreadyShown) {

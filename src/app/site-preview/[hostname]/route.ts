@@ -4,6 +4,12 @@ import { publicAppOrigin } from '@/lib/urls';
 
 export const dynamic = 'force-dynamic';
 
+type PreviewTenant = {
+  business_name?: string | null;
+  site_status?: string | null;
+  site_configs?: unknown;
+};
+
 export async function GET(
   req: Request,
   { params }: { params: Promise<{ hostname: string }> }
@@ -95,7 +101,7 @@ export async function GET(
     .limit(5);
 
   const matched = (domainRows || [])[0];
-  const tenant = (matched?.tenants as any) || null;
+  const tenant = (matched?.tenants as unknown as PreviewTenant | null) || null;
   const configs = tenant?.site_configs;
   const config = Array.isArray(configs) ? configs[0] : configs;
   const businessName = tenant?.business_name || matched?.hostname || targetHost;

@@ -66,7 +66,8 @@ export default function AdminTenantMedia({ tenantId }: { tenantId: string }) {
   }, [tenantId, kind]);
 
   useEffect(() => {
-    void refresh();
+    const timeout = window.setTimeout(() => void refresh(), 0);
+    return () => window.clearTimeout(timeout);
   }, [refresh]);
 
   const copyOne = async (url: string) => {

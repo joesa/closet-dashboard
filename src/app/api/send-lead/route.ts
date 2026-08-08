@@ -30,6 +30,11 @@ interface SendLeadRequest {
   calculatedLow?: number
   calculatedHigh?: number
   spaceDetails?: string
+  quizAnswers?: {
+    frustration?: string
+    style?: string
+    timeline?: string
+  }
 }
 
 // ── Helpers ────────────────────────────────────────────────────────
@@ -193,6 +198,12 @@ function splitName(full: string): { first: string | null; last: string | null } 
   return { first, last: rest.length > 0 ? rest.join(' ') : null }
 }
 
+function cleanQuizAnswer(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const cleaned = value.replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim()
+  return cleaned ? cleaned.slice(0, 120) : null
+}
+
 // SMS delivery is handled by the shared `sendSms` helper in @/lib/twilio-sms.
 
 // ── CORS preflight ─────────────────────────────────────────────────
@@ -301,9 +312,9 @@ export async function POST(request: Request) {
         if (settings.company_name) companyName = settings.company_name
         if (settings.contact_phone) contractorPhone = settings.contact_phone
         if (settings.domain_config) {
-          const cfg = settings.domain_config as any
-          if (cfg.unitAbbrev) unitAbbrev = cfg.unitAbbrev
-          if (cfg.categoryLabel) categoryLabel = cfg.categoryLabel
+          const cfg = settings.domain_config as { unitAbbrev?: unknown; categoryLabel?: unknown }
+          if (typeof cfg.unitAbbrev === 'string') unitAbbrev = cfg.unitAbbrev
+          if (typeof cfg.categoryLabel === 'string') categoryLabel = cfg.categoryLabel
         }
       }
 
@@ -331,12 +342,21 @@ export async function POST(request: Request) {
     }
 
     // ── Build space details string from widget fields ──
+    const quizLines = [
+      ['Primary concern', cleanQuizAnswer(body.quizAnswers?.frustration)],
+      ['Priority', cleanQuizAnswer(body.quizAnswers?.style)],
+      ['Timeline', cleanQuizAnswer(body.quizAnswers?.timeline)],
+    ]
+      .filter((entry): entry is [string, string] => Boolean(entry[1]))
+      .map(([label, value]) => `${label}: ${value}`)
+
     const spaceDetails =
       body.spaceDetails ||
       [
         body.linearFeet ? `Linear Feet: ${body.linearFeet}` : null,
         body.finishType ? `Finish: ${body.finishType}` : null,
         ...addOnLines,
+        ...quizLines,
         body.estimatedTotal ? `Estimated Total: $${body.estimatedTotal.toFixed(2)}` : null,
       ]
         .filter(Boolean)
@@ -478,6 +498,7 @@ export async function POST(request: Request) {
     if (addOnLines.length > 0) {
       smsLines.push(`➕ Add-ons: ${addOnLines.join(', ')}`)
     }
+    if (quizLines.length > 0) smsLines.push(`📋 ${quizLines.join(' · ')}`)
     smsLines.push(`💰 Quoted: ${rangeStr}`)
     const smsBody = smsLines.join('\n')
 

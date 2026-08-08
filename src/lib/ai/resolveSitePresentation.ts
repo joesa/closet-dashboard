@@ -15,7 +15,7 @@ import {
 } from '@/lib/catalog/serviceCatalog'
 import { buildIntakeBrief } from '@/lib/intake/buildIntakeBrief'
 import type { ProspectIntakeRow } from '@/lib/intake/getIntakeByToken'
-import { generateTextWithFallback } from '@/lib/ai/aiTextProvider'
+import { generateTextWithFallback, type AiTextProvider } from '@/lib/ai/aiTextProvider'
 import {
   synthesizeThemeTokens,
   type ThemeTokenSelection,
@@ -81,7 +81,7 @@ export async function resolveSitePresentation(
   // be the generic top-8 fallback, since industry.defaultThemes covers most
   // real industries already).
   let themeTokens: ThemeTokenSelection | undefined
-  let themeTokensSource: 'gemini' | 'fallback' | undefined
+  let themeTokensSource: AiTextProvider | 'fallback' | undefined
   if (lowConfidence) {
     const synthesized = await synthesizeThemeTokens(
       {
@@ -129,7 +129,7 @@ ${input.other_services?.trim() ? `\nCustom services (Other): ${input.other_servi
 Rules suggestion (use unless clearly wrong): theme=${rules.theme}, layout=${rules.layoutStyle}, room=${rules.defaultRoom}`
 
   try {
-    const { text: raw, provider } = await generateTextWithFallback({
+    const { text: raw } = await generateTextWithFallback({
       prompt,
       jsonMode: true,
       temperature: 0.4,

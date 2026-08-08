@@ -24,9 +24,6 @@ function mason(
   }
 }
 
-const MASON_THEMES = ['stone-masonry', 'functional-utility', 'classic-warm', 'brutalist'] as const
-const MASON_LAYOUTS = ['portfolio-first', 'gallery-showcase', 'before-after', 'conversion-focus'] as const
-
 export const CONCRETE_MASONRY_SERVICES: ServiceDef[] = [
   mason(
     'Concrete Driveway Installation',

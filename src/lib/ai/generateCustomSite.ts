@@ -363,7 +363,7 @@ export function applyHeroImageToHomeHtml(
 
     if (/\bstyle\s*=\s*"/i.test(nextOpen)) {
       nextOpen = nextOpen.replace(/\bstyle\s*=\s*"([^"]*)"/i, (_m, style: string) => {
-        let s = style
+        const s = style
           .replace(/background-image\s*:\s*url\((['"]?)[^)]+\1\)\s*;?/gi, '')
           .replace(/background-size\s*:\s*[^;]+;?/gi, '')
           .replace(/background-position\s*:\s*[^;]+;?/gi, '')
@@ -379,7 +379,7 @@ export function applyHeroImageToHomeHtml(
       })
     } else if (/\bstyle\s*=\s*'/i.test(nextOpen)) {
       nextOpen = nextOpen.replace(/\bstyle\s*=\s*'([^']*)'/i, (_m, style: string) => {
-        let s = style
+        const s = style
           .replace(/background-image\s*:\s*url\((['"]?)[^)]+\1\)\s*;?/gi, '')
           .replace(/background-size\s*:\s*[^;]+;?/gi, '')
           .replace(/background-position\s*:\s*[^;]+;?/gi, '')
@@ -1059,7 +1059,7 @@ export async function generateCustomSiteDraft(opts: {
   const published = isCustomSiteConfig(cfg.custom_config) ? cfg.custom_config : null
   const base = existingDraft || published
 
-  let intent: CustomBuildIntent =
+  const intent: CustomBuildIntent =
     opts.intent === 'full' || opts.intent === 'surgical'
       ? opts.intent
       : opts.iterate

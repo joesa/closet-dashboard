@@ -27,7 +27,7 @@ describe('remainingFullRedesignPaths', () => {
 
 describe('mergePageIntoDraft + passesDone', () => {
   it('merges a page and reports done set', () => {
-    let draft = mergePageIntoDraft(
+    const draft = mergePageIntoDraft(
       { mode: 'inline', pages: { '/': { html: meat } } },
       '/about',
       { html: meat },

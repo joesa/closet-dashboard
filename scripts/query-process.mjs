@@ -13,7 +13,7 @@ async function main() {
 
   if (domains && domains.length > 0) {
     const tenantId = domains[0].tenant_id;
-    const { data: tenant } = await supabase
+    await supabase
       .from('tenants')
       .select('*')
       .eq('id', tenantId)

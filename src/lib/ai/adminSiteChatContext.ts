@@ -21,19 +21,28 @@ export type SiteContextPack = {
 function titlesFromProducts(products: unknown): string[] {
   if (!Array.isArray(products)) return []
   return products
-    .map((p) => (p && typeof p === 'object' && typeof (p as any).title === 'string' ? (p as any).title : ''))
+    .map((p) => {
+      if (!p || typeof p !== 'object') return ''
+      const title = (p as Record<string, unknown>).title
+      return typeof title === 'string' ? title : ''
+    })
     .filter(Boolean)
 }
 
 function slugsFromPages(pages: unknown): Array<{ slug: string; title: string; is_active?: boolean }> {
   if (!Array.isArray(pages)) return []
   return pages
-    .filter((p) => p && typeof p === 'object' && typeof (p as any).slug === 'string')
-    .map((p) => ({
-      slug: (p as any).slug as string,
-      title: typeof (p as any).title === 'string' ? (p as any).title : (p as any).slug,
-      is_active: (p as any).is_active !== false,
-    }))
+    .filter((p): p is Record<string, unknown> =>
+      Boolean(p && typeof p === 'object' && typeof (p as Record<string, unknown>).slug === 'string')
+    )
+    .map((p) => {
+      const slug = p.slug as string
+      return {
+        slug,
+        title: typeof p.title === 'string' ? p.title : slug,
+        is_active: p.is_active !== false,
+      }
+    })
 }
 
 export function buildSiteContextPack(opts: {

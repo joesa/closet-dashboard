@@ -3,8 +3,19 @@
 import React, { useState, useEffect } from 'react'
 import { supabaseBrowser } from '@/lib/supabase-browser'
 
-export default function TicketEditor({ form, onSave, saving }: any) {
-  const [events, setEvents] = useState<any[]>([])
+type EditorProps = { form: { id: string }; setForm?: unknown; onSave: () => void; saving: boolean }
+type TicketEvent = {
+  id: string
+  name: string
+  event_date: string
+  event_time: string
+  venue: string
+  capacity: number
+  price_cents: number
+}
+
+export default function TicketEditor({ form, onSave, saving }: EditorProps) {
+  const [events, setEvents] = useState<TicketEvent[]>([])
   const [loading, setLoading] = useState(true)
 
   const [newEvent, setNewEvent] = useState({ 

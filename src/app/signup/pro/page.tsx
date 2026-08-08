@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, Suspense, useRef } from 'react'
+import { useState, Suspense, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { supabaseBrowser } from '@/lib/supabase-browser'
@@ -137,7 +137,7 @@ function Step1({
           onChange={(e) => set('phone', e.target.value)}
         />
         <p className="mt-2 text-[11px] text-zinc-600">
-          We'll text you instantly when a customer submits the calculator.
+          We’ll text you instantly when a customer submits the calculator.
         </p>
       </div>
       <div>
@@ -207,11 +207,9 @@ function Step2({
 function Step3({
   form,
   set,
-  guidance,
 }: {
   form: FormState
   set: (k: keyof FormState, v: string) => void
-  guidance: ReturnType<typeof inferQuoteCalculatorGuidance>
 }) {
   return (
     <div className="space-y-7">
@@ -381,7 +379,10 @@ function ProSignupWizard() {
   const subscribePlan = searchParams.get('plan')
 
   const [step, setStep] = useState<Step>(1)
-  const [form, setForm] = useState<FormState>(INITIAL)
+  const [form, setForm] = useState<FormState>(() => ({
+    ...INITIAL,
+    email: searchParams.get('email') || INITIAL.email,
+  }))
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
   const businessNameRef = useRef<HTMLInputElement>(null)
@@ -391,16 +392,7 @@ function ProSignupWizard() {
     servicesText: form.otherServices,
   })
 
-  // Pre-fill email from query string if coming from a link
-  useEffect(() => {
-    const emailParam = searchParams.get('email')
-    if (emailParam) setForm((f) => ({ ...f, email: emailParam }))
-  }, [searchParams])
-
   const set = (k: keyof FormState, v: string) =>
-    setForm((f) => ({ ...f, [k]: v }))
-
-  const setBool = (k: keyof FormState, v: boolean) =>
     setForm((f) => ({ ...f, [k]: v }))
 
   const readStep1Values = () => {
@@ -412,12 +404,6 @@ function ProSignupWizard() {
   const canAdvanceFromStep1 = () => {
     const { businessName, email } = readStep1Values()
     return businessName.length > 0 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
-  }
-
-  const canAdvance = (): boolean => {
-    if (step === 1) return canAdvanceFromStep1()
-    if (step === 4) return form.password.length >= 8
-    return true
   }
 
   const goNextStep = () => {
@@ -474,7 +460,6 @@ function ProSignupWizard() {
       }
 
       // 3. Create the intake record with Pro widget hints
-      const origin = window.location.origin
       const res = await fetch('/api/intake/pro/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -551,7 +536,7 @@ function ProSignupWizard() {
             />
           )}
           {step === 2 && <Step2 form={form} set={set} guidance={guidance} />}
-          {step === 3 && <Step3 form={form} set={set} guidance={guidance} />}
+          {step === 3 && <Step3 form={form} set={set} />}
           {step === 4 && (
             <Step4
               form={form}
@@ -581,7 +566,6 @@ function ProSignupWizard() {
             )}
             <button
               type="button"
-              disabled={step !== 1 && !canAdvance()}
               onClick={goNextStep}
               className="rounded-xl bg-white px-6 py-2.5 text-sm font-semibold text-black transition hover:bg-slate-100 active:scale-[0.98] disabled:opacity-30"
             >

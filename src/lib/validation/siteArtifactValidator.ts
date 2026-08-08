@@ -4,7 +4,6 @@ import { analyzeSpecificity, analyzeToneBalance } from '@/lib/validation/specifi
 import { scanArtifactTells } from '@/lib/validation/designTellScanner'
 import {
   DESIGN_TELL_ENFORCEMENT,
-  tellSeverity,
   type TellEnforcement,
 } from '@/lib/validation/designGuardPolicy'
 

@@ -374,9 +374,12 @@ export default function AdminCustomBuild({
   }, [tenantId, refresh]);
 
   useEffect(() => {
-    setMounted(true);
-    void refresh();
-    void refreshAssets();
+    const timeout = window.setTimeout(() => {
+      setMounted(true);
+      void refresh();
+      void refreshAssets();
+    }, 0);
+    return () => window.clearTimeout(timeout);
   }, [refresh, refreshAssets]);
 
   // Poll while a Full redesign or surgical edit is running in the background.
@@ -384,6 +387,8 @@ export default function AdminCustomBuild({
   // re-derive from status alone or a killed `processing` job locks the UI forever.
   const jobWasActiveRef = useRef(false);
   useEffect(() => {
+    let stopPolling: (() => void) | undefined;
+    const syncTimeout = window.setTimeout(() => {
     const job = status?.job;
     const active = status?.jobActive === true;
     if (active) {
@@ -424,7 +429,8 @@ export default function AdminCustomBuild({
       const id = window.setInterval(() => {
         void refresh();
       }, 4000);
-      return () => window.clearInterval(id);
+      stopPolling = () => window.clearInterval(id);
+      return;
     }
 
     // Surface terminal state when we watched this job, or it just finished
@@ -478,6 +484,11 @@ export default function AdminCustomBuild({
       // Safety: server says inactive but no terminal status — unlock UI.
       setLoading(false);
     }
+    }, 0);
+    return () => {
+      window.clearTimeout(syncTimeout);
+      stopPolling?.();
+    };
   }, [status?.jobActive, status?.job, refresh, cancelJob]);
 
   const uploadFile = async (file: File) => {

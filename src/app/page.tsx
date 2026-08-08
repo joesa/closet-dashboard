@@ -155,7 +155,8 @@ export default function LandingPage() {
     const params = new URLSearchParams(window.location.search)
     const hash = window.location.hash.replace(/^#/, '')
     if (params.get('start') === 'free' || hash === 'start') {
-      setShowStartModal(true)
+      const timeout = window.setTimeout(() => setShowStartModal(true), 0)
+      return () => window.clearTimeout(timeout)
     }
   }, [])
 

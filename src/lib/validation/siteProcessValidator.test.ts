@@ -1,6 +1,4 @@
 import { describe, expect, it } from 'vitest'
-import { validateTenantSite } from './siteValidator'
-import { autoFixTenantSite } from './autoFixSiteIssues'
 
 // We will mock Supabase or verify structurally
 describe('Process steps validation and autofix rules', () => {

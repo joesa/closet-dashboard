@@ -252,6 +252,7 @@ export default function SandboxOnboarding() {
   // mismatch). On non-production hosts, pre-fill a fake @example.com login so
   // testers have a working username without using a real inbox.
   useEffect(() => {
+    const timeout = window.setTimeout(() => {
     const host = window.location.hostname;
     const sandbox = host === 'localhost' || host === '127.0.0.1' || host.endsWith('.vercel.app');
     setIsSandbox(sandbox);
@@ -421,6 +422,8 @@ export default function SandboxOnboarding() {
         }
       })();
     }
+    }, 0);
+    return () => window.clearTimeout(timeout);
   }, []);
 
   const availableServices = useMemo(() => {

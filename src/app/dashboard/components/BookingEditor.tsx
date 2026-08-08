@@ -3,9 +3,13 @@
 import React, { useState, useEffect } from 'react'
 import { supabaseBrowser } from '@/lib/supabase-browser'
 
-export default function BookingEditor({ form, onSave, saving }: any) {
-  const [services, setServices] = useState<any[]>([])
-  const [availability, setAvailability] = useState<any[]>([])
+type EditorProps = { form: { id: string }; setForm?: unknown; onSave: () => void; saving: boolean }
+type ServiceRow = { id: string; name: string; duration_minutes: number; price_cents: number }
+type AvailabilityRow = { id: string; day_of_week: number; start_time: string; end_time: string }
+
+export default function BookingEditor({ form, onSave, saving }: EditorProps) {
+  const [services, setServices] = useState<ServiceRow[]>([])
+  const [availability, setAvailability] = useState<AvailabilityRow[]>([])
   const [loading, setLoading] = useState(true)
 
   const [newService, setNewService] = useState({ name: '', duration_minutes: 60, price_cents: 0 })

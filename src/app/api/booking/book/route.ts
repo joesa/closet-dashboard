@@ -11,7 +11,18 @@ import { splitName } from '@/lib/nameUtils'
 
 export const runtime = 'edge'
 
-const json = (data: any, status = 200) =>
+interface BookingRequest {
+  contractorId?: string
+  serviceId?: string
+  date?: string
+  time?: string
+  name?: string
+  email?: string
+  phone?: string
+  notes?: string
+}
+
+const json = (data: unknown, status = 200) =>
   NextResponse.json(data, { status, headers: corsHeaders })
 
 export function OPTIONS() {
@@ -20,7 +31,7 @@ export function OPTIONS() {
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json()
+    const body = (await request.json()) as BookingRequest
     const {
       contractorId, serviceId,
       date, time, name, email, phone, notes
@@ -59,7 +70,6 @@ export async function POST(request: Request) {
       .single()
 
     const toEmail = settings?.contact_email
-    const companyName = settings?.company_name || 'Your Business'
     const contractorPhone = settings?.contact_phone || null
 
     if (!toEmail) {

@@ -188,10 +188,10 @@ const EDITABLE_COLUMNS: Record<
   hero_config: {
     shape: '{ headline: string (MAX 6 words), subheadline?: string, backgroundImage?: string(image url — JPG/PNG/WEBP only, never MP4/video) }',
     validate: (v) => {
-      if (!v || typeof v !== 'object' || Array.isArray(v) || typeof (v as any).headline !== 'string') {
+      if (!v || typeof v !== 'object' || Array.isArray(v) || typeof (v as Record<string, unknown>).headline !== 'string') {
         return 'must be an object with a string headline'
       }
-      const bg = (v as any).backgroundImage
+      const bg = (v as Record<string, unknown>).backgroundImage
       if (typeof bg === 'string' && /\.(mp4|webm|mov|m4v)(\?|$)/i.test(bg)) {
         return 'backgroundImage cannot be a video file — use Custom Build / chat to place an MP4 after the hero'
       }
@@ -208,7 +208,7 @@ const EDITABLE_COLUMNS: Record<
       "{ title: string, subtitle: string, steps: [{ number: '01'|'02'|'03', title: string, description: string }] } — steps MUST be exactly 3, numbered '01','02','03' in order",
     validate: (v) => {
       if (!v || typeof v !== 'object' || Array.isArray(v)) return 'must be an object'
-      const steps = (v as any).steps
+      const steps = (v as Record<string, unknown>).steps
       if (!Array.isArray(steps) || steps.length !== 3) return 'steps must be exactly 3 entries'
       const ok = ['01', '02', '03'].every((n, i) => steps[i]?.number === n)
       return ok ? null : "steps must be numbered '01','02','03' in order"
@@ -401,8 +401,9 @@ export async function loadAssistantHistory(tenantId: string): Promise<StoredChat
       (m): m is StoredChatMessage =>
         !!m &&
         typeof m === 'object' &&
-        ((m as any).role === 'admin' || (m as any).role === 'assistant') &&
-        typeof (m as any).content === 'string'
+        ((m as Record<string, unknown>).role === 'admin' ||
+          (m as Record<string, unknown>).role === 'assistant') &&
+        typeof (m as Record<string, unknown>).content === 'string'
     )
     .slice(-MAX_STORED_HISTORY)
 }
@@ -941,9 +942,10 @@ export async function runAdminSiteChat(
         let hit = false
         for (const p of products) {
           if (!p || typeof p !== 'object') continue
-          const title = typeof (p as any).title === 'string' ? (p as any).title : ''
+          const product = p as Record<string, unknown>
+          const title = typeof product.title === 'string' ? product.title : ''
           if (title.toLowerCase().includes(needle) || needle.includes(title.toLowerCase())) {
-            ;(p as any).image = first.url
+            product.image = first.url
             hit = true
             break
           }

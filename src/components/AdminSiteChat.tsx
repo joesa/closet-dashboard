@@ -83,7 +83,7 @@ export default function AdminSiteChat({
   // Restore durable per-site history so follow-ups keep full context after refresh.
   useEffect(() => {
     let cancelled = false;
-    setHistoryLoaded(false);
+    const loadingTimeout = window.setTimeout(() => setHistoryLoaded(false), 0);
     ;(async () => {
       try {
         const res = await fetch(`/api/admin/sites/${tenantId}/ai-chat`);
@@ -115,6 +115,7 @@ export default function AdminSiteChat({
     })();
     return () => {
       cancelled = true;
+      window.clearTimeout(loadingTimeout);
     };
   }, [tenantId]);
 

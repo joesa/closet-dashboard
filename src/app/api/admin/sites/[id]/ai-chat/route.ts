@@ -63,15 +63,16 @@ export async function POST(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const body = await req.json().catch(() => ({}))
+    const body = (await req.json().catch(() => ({}))) as { messages?: unknown }
     const rawMessages = Array.isArray(body.messages) ? body.messages : []
     const messages: ChatMessage[] = rawMessages
       .filter(
         (m: unknown): m is { role: string; content: string } =>
           !!m &&
           typeof m === 'object' &&
-          typeof (m as any).content === 'string' &&
-          ((m as any).role === 'admin' || (m as any).role === 'assistant')
+          typeof (m as Record<string, unknown>).content === 'string' &&
+          ((m as Record<string, unknown>).role === 'admin' ||
+            (m as Record<string, unknown>).role === 'assistant')
       )
       .map(
         (m: {
@@ -94,8 +95,8 @@ export async function POST(
                   (r): r is { column: string; reason: string } =>
                     !!r &&
                     typeof r === 'object' &&
-                    typeof (r as any).column === 'string' &&
-                    typeof (r as any).reason === 'string'
+                    typeof (r as Record<string, unknown>).column === 'string' &&
+                    typeof (r as Record<string, unknown>).reason === 'string'
                 ),
               }
             : {}),

@@ -46,7 +46,7 @@ export async function POST(
     // Prefer pages selected in the live form; fall back to what's already
     // saved. Either way, enforce the tier's page cap so the AI never builds
     // more pages than the customer's plan allows.
-    let body: any = {}
+    let body: Record<string, unknown> = {}
     try {
       body = await req.json()
     } catch {
@@ -64,7 +64,7 @@ export async function POST(
     const toStr = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : null)
     const toArr = (v: unknown) => (Array.isArray(v) ? v.filter((x) => typeof x === 'string') : [])
 
-    const update: Record<string, any> = {
+    const update: Record<string, unknown> = {
       updated_at: new Date().toISOString(),
     }
 

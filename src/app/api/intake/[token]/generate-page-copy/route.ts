@@ -3,7 +3,7 @@ import { generateTextWithFallback } from '@/lib/ai/aiTextProvider'
 import { getIntakeByToken } from '@/lib/intake/getIntakeByToken'
 import { assertDraftIntake, assertDepositPaid } from '@/lib/intake/intakeTierGates'
 import { checkRateLimit, hashRateKey } from '@/lib/rateLimit'
-import { buildIntakeBrief, hasRealCustomerQuotes, stripUneditedCraftSuggestions } from '@/lib/intake/buildIntakeBrief'
+import { buildIntakeBrief, stripUneditedCraftSuggestions } from '@/lib/intake/buildIntakeBrief'
 import { SITE_PAGE_OPTIONS, clampPagesForTier } from '@/lib/catalog/sitePages'
 import { OTHER_SERVICE_LABEL } from '@/lib/catalog/contractorServices'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
@@ -49,7 +49,6 @@ function sanitizeJsonString(json: string): string {
 export const maxDuration = 30
 export const runtime = 'nodejs'
 
-const VALID_SLUGS = new Set(SITE_PAGE_OPTIONS.map((p) => p.slug))
 const SLUG_TO_LABEL = new Map(SITE_PAGE_OPTIONS.map((p) => [p.slug, p.label]))
 const SLUG_TO_DESC = new Map(SITE_PAGE_OPTIONS.map((p) => [p.slug, p.description]))
 
@@ -183,7 +182,7 @@ export async function POST(
       )
     }
 
-    let body: any = {}
+    let body: Record<string, unknown> = {}
     try {
       body = await req.json()
     } catch {
@@ -220,7 +219,7 @@ export async function POST(
     const toStr = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : null)
     const toArr = (v: unknown) => (Array.isArray(v) ? v.filter((x) => typeof x === 'string') : [])
 
-    const update: Record<string, any> = {
+    const update: Record<string, unknown> = {
       updated_at: new Date().toISOString(),
     }
 

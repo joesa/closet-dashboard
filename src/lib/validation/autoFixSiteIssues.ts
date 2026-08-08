@@ -8,7 +8,7 @@ import {
   saveValidationReport,
   type ValidationReport,
 } from '@/lib/validation/siteValidator'
-import { THEME_LAYOUT_AFFINITY, type ThemeSlug, type LayoutSlug } from '@/lib/catalog/sitePresentationCatalog'
+import { THEME_LAYOUT_AFFINITY, type ThemeSlug } from '@/lib/catalog/sitePresentationCatalog'
 import { resolveDesignSeed } from '@/lib/provision/resolveDesignSeed'
 import { themeHeroUrl } from '@/lib/provision/buildTemplateSiteConfig'
 import { revalidateTenantSiteCache } from '@/lib/tenants/revalidateTenantSite'
@@ -571,8 +571,8 @@ export async function repairTenantCopyTells(
 async function fixProcessStepsWithAi(
   tenantId: string,
   brandName: string,
-  currentProcess: any
-): Promise<any> {
+  currentProcess: Record<string, unknown>
+): Promise<Record<string, unknown>> {
   const supabase = getSupabaseAdmin()
   const { data: intake } = await supabase
     .from('prospect_intakes')
@@ -630,13 +630,13 @@ Only output JSON.`
     console.error('Error in fixProcessStepsWithAi:', err)
   }
 
-  const steps = currentProcess?.steps || []
+  const steps = Array.isArray(currentProcess.steps) ? currentProcess.steps : []
   const primary = (services || '').split(',')[0]?.trim() || 'the work'
   const fallback = buildDefaultProcess('quote', primary, brandName || tenantId)
   if (steps.length >= 3) {
     return {
-      title: currentProcess?.title || fallback.title,
-      subtitle: currentProcess?.subtitle || fallback.subtitle,
+      title: typeof currentProcess.title === 'string' ? currentProcess.title : fallback.title,
+      subtitle: typeof currentProcess.subtitle === 'string' ? currentProcess.subtitle : fallback.subtitle,
       steps: steps.slice(0, 3).map((s: { number?: string; title?: string; description?: string }, i: number) => ({
         number: `0${i + 1}`,
         title: s.title || fallback.steps[i].title,

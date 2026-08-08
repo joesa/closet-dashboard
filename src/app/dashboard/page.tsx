@@ -681,7 +681,6 @@ export default function DashboardPage() {
 
   const disabledRoomList = form.disabled_default_rooms ?? []
   const categoryLabel = form.domain_config?.categoryLabel || 'Room'
-  const categoryLabelPlural = categoryLabel === 'Room' ? 'Rooms' : categoryLabel === 'Service' ? 'Services' : `${categoryLabel}s`
   const visibleDefaultRooms = ROOM_TYPES.filter((room) => !disabledRoomList.includes(room))
   const disabledFinishesList = form.disabled_default_finishes ?? []
   const allDefaultFinishesHidden = PRICING_TIERS.every((tier) =>
@@ -1164,7 +1163,6 @@ export default function DashboardPage() {
               standard: { label: 'Textured Wood', swatch: '#A0744A' },
               premium: { label: 'Custom Paint', swatch: '#3A4750' },
             }
-            const disabledFinishes = form.disabled_default_finishes ?? []
             return (
               <>
                 <button

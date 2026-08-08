@@ -3,8 +3,11 @@
 import React, { useState, useEffect } from 'react'
 import { supabaseBrowser } from '@/lib/supabase-browser'
 
-export default function OrderEditor({ form, setForm, onSave, saving }: any) {
-  const [items, setItems] = useState<any[]>([])
+type EditorProps = { form: { id: string }; setForm?: unknown; onSave: () => void; saving: boolean }
+type MenuItem = { id: string; name: string; description: string; price: number; category: string }
+
+export default function OrderEditor({ form, onSave, saving }: EditorProps) {
+  const [items, setItems] = useState<MenuItem[]>([])
   const [loading, setLoading] = useState(true)
   const [newItem, setNewItem] = useState({ name: '', description: '', price: 0, category: 'Menu' })
 

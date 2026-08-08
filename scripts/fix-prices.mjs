@@ -29,7 +29,7 @@ const mergedCustomRooms = mergeCustomRoomsWithServices(aiWidgetConfig?.customRoo
 await supa.from('contractor_rooms').delete().eq('contractor_id', tenantId)
 
 // Insert new rooms
-const { data, error } = await supa.from('contractor_rooms').insert(
+const { error } = await supa.from('contractor_rooms').insert(
   mergedCustomRooms.map((r) => ({
     contractor_id: tenantId,
     name: r.name,

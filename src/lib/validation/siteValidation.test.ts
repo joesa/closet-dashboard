@@ -20,7 +20,6 @@ import { resolveSitePresentationRules } from '@/lib/ai/resolveSitePresentation'
 import {
   getEngagementModel,
   listIndustries,
-  getIndustry,
 } from '@/lib/catalog/serviceCatalog'
 import { themeHeroUrl, GENERIC_HERO } from '@/lib/provision/buildTemplateSiteConfig'
 

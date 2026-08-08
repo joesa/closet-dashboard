@@ -81,7 +81,8 @@ export default function DomainManager({ tenantId, showAdminCost = false, variant
   }, [tenantId])
 
   useEffect(() => {
-    void refresh()
+    const timeout = window.setTimeout(() => void refresh(), 0)
+    return () => window.clearTimeout(timeout)
   }, [refresh])
 
   const attachByo = async () => {

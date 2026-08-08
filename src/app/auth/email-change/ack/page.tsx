@@ -21,15 +21,11 @@ export default function EmailChangeAckPage() {
 function EmailChangeAckInner() {
   const searchParams = useSearchParams()
   const token = searchParams.get('token') || ''
-  const [status, setStatus] = useState<'loading' | 'ok' | 'error'>('loading')
-  const [message, setMessage] = useState('')
+  const [status, setStatus] = useState<'loading' | 'ok' | 'error'>(token ? 'loading' : 'error')
+  const [message, setMessage] = useState(token ? '' : 'Missing confirmation token.')
 
   useEffect(() => {
-    if (!token) {
-      setStatus('error')
-      setMessage('Missing confirmation token.')
-      return
-    }
+    if (!token) return
     void (async () => {
       try {
         const res = await fetch('/api/auth/email-change/ack', {

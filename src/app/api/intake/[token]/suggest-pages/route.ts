@@ -111,7 +111,7 @@ export async function POST(
       return NextResponse.json({ error: 'Too many suggestions today. Try again tomorrow.' }, { status: 429 });
     }
 
-    let body: any = {};
+    let body: Record<string, unknown> = {};
     try {
       body = await req.json();
     } catch {

@@ -69,19 +69,6 @@ function uniqueEmailsInText(text: string): string[] {
   return out
 }
 
-function uniquePhonesInText(text: string): string[] {
-  const found = text.match(PHONE_DISPLAY_RE) || []
-  const out: string[] = []
-  const seen = new Set<string>()
-  for (const p of found) {
-    const d = digitsOnlyPhone(p)
-    if (d.length < 10 || seen.has(d)) continue
-    seen.add(d)
-    out.push(d)
-  }
-  return out
-}
-
 function mostCommonPhoneDigits(text: string): string | null {
   const counts = new Map<string, number>()
   for (const m of text.match(PHONE_DISPLAY_RE) || []) {

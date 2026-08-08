@@ -337,7 +337,7 @@ export default function WebsiteStudioPage() {
     setState('unsaved')
     if (flushTimer.current) clearTimeout(flushTimer.current)
     flushTimer.current = setTimeout(() => void flush(), immediate ? 0 : 700)
-  }, [flush, payload?.renderMode])
+  }, [flush, payload])
 
   const restoreSessionDocument = useCallback((target: SiteContentDocument, destination: 'undo' | 'redo') => {
     const current = documentRef.current

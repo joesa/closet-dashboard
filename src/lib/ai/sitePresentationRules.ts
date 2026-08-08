@@ -18,6 +18,7 @@ import {
 import type { EngagementModel, IndustrySlug } from '@/lib/catalog/types'
 import type { ThemeTokenSelection } from '@/lib/ai/synthesizeThemeTokens'
 import type { BeforeAfterCategory } from '@/lib/openai-images'
+import type { AiTextProvider } from '@/lib/ai/aiTextProvider'
 
 export type SitePresentationInput = {
   industry?: string | null
@@ -43,7 +44,7 @@ export type SitePresentationResult = {
   source: 'rules' | 'gemini'
   engagementModel: EngagementModel
   themeTokens?: ThemeTokenSelection
-  themeTokensSource?: 'gemini' | 'fallback'
+  themeTokensSource?: AiTextProvider | 'fallback'
   designVariantOverride?: string
   beforeAfterCategoryOverride?: BeforeAfterCategory
 }

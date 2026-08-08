@@ -431,8 +431,6 @@ export async function generateSiteConfigFromInput(
   const tradeNoun = trade
     ? `${trade} business`
     : `business in the exact trade shown in the "Services offered" list`
-  const tradeServices = trade ?? 'the services listed in the brief'
-
   let systemPrompt = `You write site configs for real local service businesses: honest marketing copy plus photorealistic image prompts. Sound like a good local shop — not a SaaS landing page and not a luxury-agency press release.
 
 ${DESIGN_CRAFT_PERSONA}

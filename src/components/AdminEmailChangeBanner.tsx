@@ -40,7 +40,8 @@ export default function AdminEmailChangeBanner({
   }, [tenantId])
 
   useEffect(() => {
-    void refresh()
+    const timeout = window.setTimeout(() => void refresh(), 0)
+    return () => window.clearTimeout(timeout)
   }, [refresh])
 
   if (!pending && !error && !info) return null

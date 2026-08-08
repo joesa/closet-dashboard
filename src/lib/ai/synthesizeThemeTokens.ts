@@ -1,4 +1,4 @@
-import { generateTextWithFallback } from '@/lib/ai/aiTextProvider'
+import { generateTextWithFallback, type AiTextProvider } from '@/lib/ai/aiTextProvider'
 import {
   SURFACE_TOKENS,
   SHAPE_TOKENS,
@@ -26,7 +26,7 @@ export type SynthesizeThemeTokensInput = {
 
 export type SynthesizeThemeTokensResult = {
   tokens: ThemeTokenSelection
-  source: 'gemini' | 'fallback'
+  source: AiTextProvider | 'fallback'
 }
 
 function hashSeedString(input: string): number {
@@ -104,7 +104,7 @@ Pick values that feel authentic and trustworthy for this specific trade — avoi
         voice: parsed.voice && VOICE_IDS.includes(parsed.voice) ? parsed.voice : fallback.voice,
         swatch: parsed.swatch && SWATCH_IDS.includes(parsed.swatch) ? parsed.swatch : fallback.swatch,
       },
-      source: provider as any,
+      source: provider,
     }
   } catch {
     return { tokens: fallback, source: 'fallback' }

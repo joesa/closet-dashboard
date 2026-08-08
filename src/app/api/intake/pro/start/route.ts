@@ -27,8 +27,6 @@ export async function POST(req: Request) {
     const brandColor =
       typeof body.brandColor === 'string' ? body.brandColor.trim() : null
     const widgetConfigHints = body.widgetConfigHints ?? null
-    const subscribePlan = body.subscribePlan === 'yearly' ? 'yearly' : 'monthly'
-
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return NextResponse.json({ error: 'Valid email required' }, { status: 400 })
     }

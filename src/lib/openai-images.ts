@@ -1,5 +1,4 @@
 import OpenAI, { toFile } from 'openai'
-import { getSupabaseAdmin } from './supabase-admin'
 import {
   buildBeforeImagePrompt,
   type BeforeAfterContext,
@@ -25,8 +24,6 @@ export {
  * Server-only: gpt-image-1 + the service-role storage client must never run in
  * the browser.
  */
-
-const SITE_ASSETS_BUCKET = 'site-assets'
 
 // gpt-image-1 supports 1024x1024, 1024x1536 (portrait), 1536x1024 (landscape)
 // and 'auto'. 1536x1024 is the wide landscape format we want for hero +
@@ -113,39 +110,6 @@ function shapePromptPrefix(shape: ImageShape): string {
   return shape === 'square'
     ? 'Square 1:1 composition, centered subject, balanced margins. '
     : ''
-}
-
-function parseAnyError(error: unknown): {
-  status?: number
-  code?: string
-  message?: string
-} {
-  if (error && typeof error === 'object') {
-    const e = error as {
-      status?: number
-      code?: string
-      message?: string
-      error?: { code?: string; message?: string; status?: number }
-    }
-    return {
-      status: e.status ?? e.error?.status,
-      code: e.code ?? e.error?.code,
-      message: e.message ?? e.error?.message,
-    }
-  }
-  return {}
-}
-
-function isOpenAIQuotaLike(error: unknown): boolean {
-  const e = parseAnyError(error)
-  const msg = (e.message || '').toLowerCase()
-  return (
-    e.code === 'billing_hard_limit_reached' ||
-    e.code === 'insufficient_quota' ||
-    msg.includes('billing_hard_limit_reached') ||
-    msg.includes('insufficient_quota') ||
-    (e.status === 429 && (msg.includes('quota') || msg.includes('billing') || msg.includes('rate limit')))
-  )
 }
 
 async function generateImageWithGemini(prompt: string, shape: ImageShape): Promise<Buffer> {
@@ -535,4 +499,3 @@ export async function generateBeforeImage(
   const prompt = buildBeforeImagePrompt(afterImageUrl, context)
   return editImageFromUrl(afterImageUrl, prompt, slug, 'before')
 }
-

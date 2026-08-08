@@ -1,4 +1,4 @@
-import { generateTextWithFallback } from '@/lib/ai/aiTextProvider'
+import { generateTextWithFallback, type AiTextProvider } from '@/lib/ai/aiTextProvider'
 import { HUMAN_COPY_VOICE_RULES } from '@/lib/ai/humanCopyVoice'
 import { validateGeneratedUnits } from '@/lib/validation/generatedContentQuality'
 import { THEME_SLUGS, LAYOUT_SLUGS } from '@/lib/catalog/sitePresentationCatalog'
@@ -17,7 +17,7 @@ export type GenerateCustomIndustryInput = {
 
 export type GenerateCustomIndustryResult = {
   def: Omit<CustomIndustryRecord, 'slug'>
-  source: 'gemini' | 'fallback'
+  source: AiTextProvider | 'fallback'
 }
 
 /** Generic, always-safe fallback used when Gemini is unavailable or fails. */
@@ -212,7 +212,7 @@ ${input.businessName ? `Business name: ${input.businessName}\n` : ''}${input.oth
         beforeAfterCategory,
         engagementModel,
       },
-      source: provider as any,
+      source: provider,
     }
   } catch {
     return { def: fallback, source: 'fallback' }
