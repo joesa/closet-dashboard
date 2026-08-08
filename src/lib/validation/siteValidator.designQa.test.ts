@@ -33,4 +33,27 @@ describe('analyzeRenderedDesign', () => {
       'design_empty_sections',
     ]))
   })
+
+  it('requires engine craft, focus, font, and LCP safeguards for template sites', () => {
+    const findings = analyzeRenderedDesign(validPage, { renderMode: 'engine' })
+    expect(findings.map((finding) => finding.code)).toEqual(expect.arrayContaining([
+      'design_craft_system_missing',
+      'design_focus_standard_missing',
+      'design_performance_standard_missing',
+      'design_lcp_priority_missing',
+    ]))
+  })
+
+  it('accepts the current engine quality markers and prioritized hero media', () => {
+    const html = validPage.replace(
+      '<main',
+      '<div data-engine-site="v2" data-focus-standard="visible-ring" data-performance-standard="reserved-media-next-font"><link rel="preload" as="image" href="hero.jpg" /><img src="hero.jpg" alt="Crew at work" /><main',
+    ).replace('</footer>', '</footer></div>')
+    expect(analyzeRenderedDesign(html, { renderMode: 'engine' })).toEqual([])
+  })
+
+  it('finds short, purposeless orphan sections', () => {
+    const findings = analyzeRenderedDesign(validPage.replace('</main>', '<section><p>Hi</p></section></main>'))
+    expect(findings.map((finding) => finding.code)).toContain('design_orphan_sections')
+  })
 })

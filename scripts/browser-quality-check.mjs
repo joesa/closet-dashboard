@@ -1,29 +1,16 @@
-export default async function browserQualityCheck(page) {
-  const width = Number(process.env.QA_VIEWPORT_WIDTH || 390)
-  const height = Number(process.env.QA_VIEWPORT_HEIGHT || 844)
+/** Browser-computed template QA. This complements siteValidator's SSR checks. */
+export default async function browserQualityCheck(page, options = {}) {
+  const width = Number(options.width || process.env.QA_VIEWPORT_WIDTH || 390)
+  const height = Number(options.height || process.env.QA_VIEWPORT_HEIGHT || 844)
   await page.setViewportSize({ width, height })
   await page.reload({ waitUntil: 'networkidle' })
+  await page.waitForTimeout(750)
 
-  return page.evaluate(({ expectedWidth, expectedHeight }) => {
-    const parseRgb = (value) => (value.match(/[\d.]+/g) || []).map(Number)
-    const luminance = (rgb) => {
-      const channels = rgb.slice(0, 3).map((value) => value / 255)
-        .map((value) => value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4)
-      return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2]
-    }
-    const contrast = (foreground, background) => {
-      const light = Math.max(luminance(foreground), luminance(background))
-      const dark = Math.min(luminance(foreground), luminance(background))
-      return (light + 0.05) / (dark + 0.05)
-    }
-    const solidBackground = (element) => {
-      for (let current = element; current; current = current.parentElement) {
-        const style = getComputedStyle(current)
-        if (style.backgroundImage !== 'none') return null
-        const color = parseRgb(style.backgroundColor)
-        if (color.length >= 4 && color[3] > 0) return color
-      }
-      return [255, 255, 255, 1]
+  const result = await page.evaluate(({ expectedWidth, expectedHeight }) => {
+    const visible = (element) => {
+      const style = getComputedStyle(element)
+      const rect = element.getBoundingClientRect()
+      return style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity) > 0 && rect.width > 0 && rect.height > 0
     }
     const viewport = { width: window.innerWidth, height: window.innerHeight }
     const brokenImages = [...document.images]
@@ -32,31 +19,11 @@ export default async function browserQualityCheck(page) {
     const unnamedButtons = [...document.querySelectorAll('button')]
       .filter((button) => !(button.innerText || button.getAttribute('aria-label') || '').trim())
       .length
-    const contrastFailures = [...document.querySelectorAll('body *')]
-      .filter((element) => element.children.length === 0 && (element.textContent || '').trim())
-      .flatMap((element) => {
-        const style = getComputedStyle(element)
-        if (style.visibility === 'hidden' || Number(style.opacity) === 0) return []
-        const foreground = parseRgb(style.color)
-        const background = solidBackground(element)
-        if (foreground.length < 3 || !background) return []
-        const ratio = contrast(foreground, background)
-        const fontSize = Number.parseFloat(style.fontSize)
-        const large = fontSize >= 24 || (fontSize >= 18.66 && Number(style.fontWeight) >= 700)
-        if (ratio >= (large ? 3 : 4.5)) return []
-        return [{
-          tag: element.tagName,
-          text: (element.textContent || '').trim().slice(0, 80),
-          ratio: Number(ratio.toFixed(2)),
-        }]
-      })
-      .slice(0, 20)
     const smallTargets = [...document.querySelectorAll('button, a[href], input, select, textarea')]
+      .filter(visible)
       .filter((element) => {
         const rect = element.getBoundingClientRect()
-        const style = getComputedStyle(element)
-        return style.display !== 'none' && style.visibility !== 'hidden' &&
-          (rect.width < 24 || rect.height < 24) && style.display !== 'inline'
+        return (rect.width < 24 || rect.height < 24) && getComputedStyle(element).display !== 'inline'
       })
       .map((element) => ({
         tag: element.tagName,
@@ -66,18 +33,85 @@ export default async function browserQualityCheck(page) {
       }))
       .slice(0, 20)
 
+    const sections = [...document.querySelectorAll('main section')].filter(visible)
+    const spacingFailures = sections.flatMap((section, index) => {
+      const rect = section.getBoundingClientRect()
+      const style = getComputedStyle(section)
+      const previous = sections[index - 1]?.getBoundingClientRect()
+      const failures = []
+      if (rect.height < 48) failures.push({ index, reason: 'section-under-48px', height: Math.round(rect.height) })
+      if (previous && rect.top < previous.bottom - 1) failures.push({ index, reason: 'section-overlap', overlap: Math.round(previous.bottom - rect.top) })
+      const textLength = (section.textContent || '').replace(/\s+/g, ' ').trim().length
+      const hasMedia = !!section.querySelector('img, video, canvas, iframe, form, [role="dialog"], closet-quote-widget, closet-order-widget, closet-booking-widget, closet-ticket-widget')
+      const isHero = Boolean(section.querySelector('h1'))
+      if (!isHero && textLength > 80 && Number.parseFloat(style.paddingTop) < 24 && Number.parseFloat(style.paddingBottom) < 24) {
+        failures.push({ index, reason: 'content-section-under-padded' })
+      }
+      if (textLength < 12 && !hasMedia) failures.push({ index, reason: 'orphan-section' })
+      return failures
+    }).slice(0, 20)
+
+    const longLines = [...document.querySelectorAll('main p')].filter(visible).flatMap((element) => {
+      const style = getComputedStyle(element)
+      const averageCharacterWidth = Number.parseFloat(style.fontSize) * 0.52
+      const estimatedCharacters = element.getBoundingClientRect().width / Math.max(averageCharacterWidth, 1)
+      return estimatedCharacters > 82
+        ? [{ text: (element.textContent || '').trim().slice(0, 70), estimatedCharacters: Math.round(estimatedCharacters) }]
+        : []
+    }).slice(0, 20)
+
+    const lcpImage = document.querySelector('main img[fetchpriority="high"], main img[fetchPriority="high"], link[rel="preload"][as="image"]')
+    const engineRoot = document.querySelector('[data-engine-site]')
+    const vitals = window.__templateVitals || { cls: 0, lcp: 0 }
     return {
       viewport,
       viewportMatches: viewport.width === expectedWidth && viewport.height === expectedHeight,
-      horizontalOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      horizontalOverflow: Math.max(0, document.documentElement.scrollWidth - document.documentElement.clientWidth),
       h1Count: document.querySelectorAll('h1').length,
       mainCount: document.querySelectorAll('main').length,
       footerCount: document.querySelectorAll('footer').length,
       brokenImages,
       unnamedButtons,
-      contrastFailures,
       smallTargets,
+      spacingFailures,
+      longLines,
+      lcpImagePriority: Boolean(lcpImage),
+      imageLayoutFailures: [...document.images].filter(visible).filter((image) => {
+        const rect = image.getBoundingClientRect()
+        return rect.width <= 0 || rect.height <= 0
+      }).length,
+      nextFontOnly: ![...document.styleSheets].some((sheet) => (sheet.href || '').includes('fonts.googleapis.com')),
+      designSystemVersion: engineRoot?.getAttribute('data-engine-site') || null,
+      focusStandard: engineRoot?.getAttribute('data-focus-standard') || null,
+      cls: Number(vitals.cls || 0),
+      lcp: Number(vitals.lcp || 0),
       title: document.title,
     }
   }, { expectedWidth: width, expectedHeight: height })
+
+  const focusFailures = []
+  await page.locator('body').click({ position: { x: 1, y: 1 } })
+  for (let index = 0; index < 20; index += 1) {
+    await page.keyboard.press('Tab')
+    const focus = await page.evaluate(() => {
+      let element = document.activeElement
+      while (element?.shadowRoot?.activeElement) element = element.shadowRoot.activeElement
+      if (!element || element === document.body) return null
+      const rootHost = element.getRootNode()?.host
+      if (element.closest?.('nextjs-portal') || rootHost?.tagName === 'NEXTJS-PORTAL' || element.textContent?.includes('Open Next.js Dev Tools')) {
+        return { skip: true }
+      }
+      const style = getComputedStyle(element)
+      const rect = element.getBoundingClientRect()
+      return {
+        tag: element.tagName,
+        text: (element.textContent || element.getAttribute('aria-label') || '').trim().slice(0, 60),
+        visible: rect.width > 0 && rect.height > 0,
+        hasIndicator: style.outlineStyle !== 'none' || style.boxShadow !== 'none',
+      }
+    })
+    if (focus?.visible && !focus.hasIndicator && !focus.skip) focusFailures.push(focus)
+  }
+
+  return { ...result, focusFailures }
 }

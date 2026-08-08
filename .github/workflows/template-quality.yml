@@ -1,0 +1,36 @@
+name: Template browser quality
+
+on:
+  workflow_dispatch:
+    inputs:
+      urls:
+        description: Comma-separated public test-tenant URLs
+        required: true
+        type: string
+  schedule:
+    - cron: '23 8 * * 2'
+
+jobs:
+  browser-quality:
+    runs-on: ubuntu-latest
+    env:
+      QA_URLS: ${{ inputs.urls || vars.TEMPLATE_QA_URLS }}
+      CHROME_PATH: /usr/bin/google-chrome
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      - name: Require QA tenants
+        run: test -n "$QA_URLS"
+      - name: Run axe, Lighthouse, layout, focus, and motion gates
+        run: npm run audit:template-quality
+      - name: Upload browser QA report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: template-quality-report
+          path: audit-output/template-quality.json
+          if-no-files-found: warn

@@ -120,16 +120,42 @@ claim removals with match-count guards. It must be dry-run before `--apply`.
 
 `autoFixTenantSite` copy repair uses `generateWithQualityRetry` (same retry wrapper as gated generation surfaces).
 
-### Still open (Phase 6 craft excellence)
+### Phase 6 craft excellence
 
-Core Phase 0–5 enforcement is implemented. Phase 6 work remains:
+The code and automated gates for Phase 6 are implemented:
 
-- Deeper template craft pass (modular type/line-length system, per-theme image art-direction beyond hero variants)
-- Full browser-backed WCAG AA enumeration for every custom artifact; the shared
-  theme matrix and representative 390x844 browser probes pass, but no Lighthouse/
-  axe CLI is installed in this environment
-- Full design-QA rubric (spacing rhythm, focus states, orphan sections) beyond landmarks/h1/alts/footer
-- Owner fact collection for the 14 `copy_uniform_positivity` blockers
+- Engine pages use a bounded fluid modular type scale, 68-character prose
+  measure, site-seeded and theme-constrained photographic grading, consistent
+  image framing, visible global keyboard focus, and a hard reduced-motion mode.
+- `themeContrast.test.ts` enumerates every runtime `ThemeType`, plus every
+  synthesized accent swatch, and requires WCAG AA for primary/secondary text
+  and controls.
+- `analyzeRenderedDesign` blocks new engine provisions that omit the craft,
+  focus, reserved-media/next-font, or high-priority LCP-image standards. It also
+  detects purposeless orphan sections in addition to landmarks, headings,
+  labels, image alternatives, duplicate IDs, and empty sections.
+- `npm run audit:template-quality -- --url <url>` runs real Chrome at mobile
+  and desktop sizes, axe WCAG 2.2 AA, Lighthouse accessibility/performance,
+  computed focus indicators, target size, overflow, spacing/overlap, orphan
+  sections, line length, LCP/CLS, hero priority, next/font, and reduced motion.
+  It fails below accessibility 95 or at CLS 0.1+. Public-URL runs also fail
+  above four-second LCP; local dev runs report LCP without gating on compilation
+  and proxy cold-start time.
+  For a gated local tenant, load the environment and add `--admin-bypass`; the
+  secret is appended in memory and removed from console/report output.
+- `.github/workflows/template-quality.yml` runs the same gates on demand and
+  weekly against the comma-separated `TEMPLATE_QA_URLS` Actions variable.
+
+Local verification on 2026-08-08 passed the complete Chrome suite for three
+distinct engine tenants: painting, pressure washing, and healthcare/booking.
+The fail-first passes found and corrected real button/footer/widget contrast,
+keyboard target-size, hero-priority, spacing-classification, and shadow-DOM
+reduced-motion defects before the final green runs.
+
+The 14 legacy `copy_uniform_positivity` findings are intentionally not
+machine-completable. They require truthful limitations or corrected-job facts
+from each owner; inventing those facts would violate the core proof policy.
+They remain an operational content-collection queue, not an implementation gap.
 
 The Full Redesign capacity exercise used two reviewed localhost-only fixtures
 with the same queue timestamp. It exposed an exhausted 14-pair typography pool;

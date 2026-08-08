@@ -184,7 +184,10 @@ export function analyzeDirectCopyTells(input: string): DirectCopyFinding[] {
 }
 
 /** Cheap structural checks over server-rendered HTML; browser QA covers computed styles. */
-export function analyzeRenderedDesign(html: string): RenderedDesignFinding[] {
+export function analyzeRenderedDesign(
+  html: string,
+  options: { renderMode?: string | null } = {},
+): RenderedDesignFinding[] {
   const findings: RenderedDesignFinding[] = []
   const h1Count = (html.match(/<h1[\s>]/gi) || []).length
   if (h1Count === 0) {
@@ -236,6 +239,34 @@ export function analyzeRenderedDesign(html: string): RenderedDesignFinding[] {
   }).length
   if (emptySections > 0) {
     findings.push({ code: 'design_empty_sections', message: `${emptySections} empty section${emptySections === 1 ? '' : 's'} render on the homepage.`, meta: { count: emptySections } })
+  }
+
+  const orphanSections = [...html.matchAll(/<section\b[^>]*>([\s\S]*?)<\/section>/gi)].filter((match) => {
+    const body = match[1]
+    const text = body.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/gi, ' ').replace(/\s+/g, ' ').trim()
+    const hasPurpose = /<(?:h[1-6]|img|video|canvas|iframe|form|closet-[a-z-]+)\b/i.test(body)
+    return text.length > 0 && text.length < 12 && !hasPurpose
+  }).length
+  if (orphanSections > 0) {
+    findings.push({ code: 'design_orphan_sections', message: `${orphanSections} section${orphanSections === 1 ? '' : 's'} contain too little content to establish a clear purpose.`, meta: { count: orphanSections } })
+  }
+
+  if (options.renderMode === 'engine') {
+    if (!/data-engine-site=["']v2["']/i.test(html)) {
+      findings.push({ code: 'design_craft_system_missing', message: 'Template page is missing the current modular type, spacing, and image craft system marker.' })
+    }
+    if (!/data-focus-standard=["']visible-ring["']/i.test(html)) {
+      findings.push({ code: 'design_focus_standard_missing', message: 'Template page does not declare the platform keyboard-focus standard.' })
+    }
+    if (!/data-performance-standard=["']reserved-media-next-font["']/i.test(html)) {
+      findings.push({ code: 'design_performance_standard_missing', message: 'Template page does not declare reserved media geometry and self-hosted font safeguards.' })
+    }
+    if (!/<img\b[^>]*\bfetchpriority=["']high["']/i.test(html) && !/<link\b[^>]*\brel=["']preload["'][^>]*\bas=["']image["']/i.test(html)) {
+      findings.push({ code: 'design_lcp_priority_missing', message: 'Template page has no high-priority hero image candidate for Largest Contentful Paint.' })
+    }
+    if (/fonts\.(?:googleapis|gstatic)\.com/i.test(html)) {
+      findings.push({ code: 'design_external_font_runtime', message: 'Template page loads a runtime Google font resource instead of the self-hosted next/font output.' })
+    }
   }
 
   return findings
@@ -569,7 +600,9 @@ export async function validateTenantSite(tenantId: string): Promise<ValidationRe
           )
             ? 'error'
             : 'warning'
-          for (const finding of analyzeRenderedDesign(html)) {
+          for (const finding of analyzeRenderedDesign(html, {
+            renderMode: config.render_mode === 'custom' ? 'custom' : 'engine',
+          })) {
             issues.push({ ...finding, severity: designSeverity, fixable: false })
           }
         }
