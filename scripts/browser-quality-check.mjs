@@ -53,8 +53,11 @@ export default async function browserQualityCheck(page, options = {}) {
 
     const longLines = [...document.querySelectorAll('main p')].filter(visible).flatMap((element) => {
       const style = getComputedStyle(element)
-      const averageCharacterWidth = Number.parseFloat(style.fontSize) * 0.52
-      const estimatedCharacters = element.getBoundingClientRect().width / Math.max(averageCharacterWidth, 1)
+      const canvas = document.createElement('canvas')
+      const context = canvas.getContext('2d')
+      if (context) context.font = style.font
+      const cssCharacterWidth = context?.measureText('0').width || Number.parseFloat(style.fontSize) * 0.52
+      const estimatedCharacters = element.getBoundingClientRect().width / Math.max(cssCharacterWidth, 1)
       const text = (element.textContent || '').replace(/\s+/g, ' ').trim()
       // A short label in a wide grid cell is not a long line. Gate only prose
       // that actually contains enough characters to exceed the reading measure.
