@@ -5,25 +5,41 @@ import { optimizeUserImage } from './optimizeUpload'
 import { guessImageUploadKind } from '@/lib/customSiteAssets'
 
 describe('optimizeUserImage', () => {
-  it('shrinks a large synthetic JPEG under hero bounds', async () => {
+  it('preserves a 4K hero at high-quality UHD dimensions', async () => {
     const sharp = (await import('sharp')).default
-    // Noise so mozjpeg cannot crush the buffer to a few KB.
-    const noise = Buffer.alloc(3000 * 2000 * 3)
-    for (let i = 0; i < noise.length; i++) noise[i] = (i * 17 + (i % 251)) & 255
-    const big = await sharp(noise, {
-      raw: { width: 3000, height: 2000, channels: 3 },
-    })
-      .jpeg({ quality: 95 })
+    const source = await sharp({
+      create: {
+        width: 3840,
+        height: 2160,
+        channels: 3,
+        background: { r: 42, g: 96, b: 118 },
+      },
+    }).jpeg({ quality: 95 })
       .toBuffer()
 
-    expect(big.length).toBeGreaterThan(200_000)
-    const out = await optimizeUserImage(big, 'hero', 'image/jpeg')
+    const out = await optimizeUserImage(source, 'hero', 'image/jpeg')
     expect(out.mime).toBe('image/jpeg')
     expect(out.ext).toBe('jpg')
-    expect(out.buffer.length).toBeLessThan(big.length)
     const meta = await sharp(out.buffer).metadata()
-    expect(meta.width || 0).toBeLessThanOrEqual(1920)
-    expect(meta.height || 0).toBeLessThanOrEqual(1080)
+    expect(meta.width).toBe(3840)
+    expect(meta.height).toBe(2160)
+  })
+
+  it('upscales and sharpens a smaller generated hero to a 4K long edge', async () => {
+    const sharp = (await import('sharp')).default
+    const source = await sharp({
+      create: {
+        width: 1536,
+        height: 1024,
+        channels: 3,
+        background: { r: 116, g: 88, b: 64 },
+      },
+    }).png().toBuffer()
+
+    const out = await optimizeUserImage(source, 'hero', 'image/png')
+    const meta = await sharp(out.buffer).metadata()
+    expect(meta.width).toBe(3840)
+    expect(meta.height).toBe(2560)
   })
 })
 

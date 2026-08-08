@@ -7,7 +7,7 @@ in the public `site-assets` bucket.
 
 | Kind | Max size | Quality |
 |------|----------|---------|
-| hero | 1920×1080 | 85 |
+| hero | 3840px long edge (Lanczos3 upscale + restrained sharpening when smaller) | 92 |
 | gallery / general | 1600×1600 | 82 |
 | product | 1400×1400 | 82 |
 | logo | 800×800 (PNG if alpha) | 90 |

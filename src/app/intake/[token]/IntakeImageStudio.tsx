@@ -348,7 +348,12 @@ export default function IntakeImageStudio({
     file: File,
     kind: 'hero' | 'product' | 'before' | 'after'
   ): Promise<string> => {
-    const blob = await fileToUploadJpegBlob(file);
+    const isWideImage = kind === 'hero' || kind === 'before' || kind === 'after';
+    const blob = await fileToUploadJpegBlob(file, {
+      maxDim: isWideImage ? 3840 : 2048,
+      quality: isWideImage ? 0.92 : 0.86,
+      maxBytes: 3.5 * 1024 * 1024,
+    });
     const fd = new FormData();
     fd.append('file', blob, 'upload.jpg');
     fd.append('kind', kind === 'after' ? 'hero' : kind);

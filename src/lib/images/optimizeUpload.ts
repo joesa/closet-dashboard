@@ -6,6 +6,7 @@ type Profile = {
   maxWidth: number
   maxHeight: number
   quality: number
+  upscaleLongEdge?: number
 }
 
 /**
@@ -14,10 +15,12 @@ type Profile = {
  * still look premium on the live site.
  */
 const PROFILES: Record<ImageUploadKind, Profile> = {
-  // Tuned for web: enough pixels for retina heroes/cards, mozjpeg keeps quality.
+  // Heroes are full-bleed and often viewed on high-DPI displays. Preserve a
+  // genuine 4K source and bring smaller generated/uploaded heroes to a 3840px
+  // long edge before high-quality encoding.
   logo: { maxWidth: 800, maxHeight: 800, quality: 90 },
   gallery: { maxWidth: 1600, maxHeight: 1600, quality: 82 },
-  hero: { maxWidth: 1920, maxHeight: 1080, quality: 85 },
+  hero: { maxWidth: 3840, maxHeight: 3840, quality: 92, upscaleLongEdge: 3840 },
   product: { maxWidth: 1400, maxHeight: 1400, quality: 82 },
   general: { maxWidth: 1600, maxHeight: 1600, quality: 82 },
 }
@@ -66,16 +69,28 @@ export async function optimizeUserImage(
     throw new Error('Image dimensions are invalid or too large')
   }
   if ((meta.pages || 1) > 1) throw new Error('Animated images are not supported')
-  const needsResize = width > profile.maxWidth || height > profile.maxHeight
+  const longEdge = Math.max(width, height)
+  const needsResize =
+    width > profile.maxWidth ||
+    height > profile.maxHeight ||
+    (profile.upscaleLongEdge !== undefined && longEdge < profile.upscaleLongEdge)
+  const enlarging =
+    profile.upscaleLongEdge !== undefined && longEdge < profile.upscaleLongEdge
 
   let pipeline = image
   if (needsResize) {
+    const landscape = width >= height
     pipeline = pipeline.resize({
-      width: profile.maxWidth,
-      height: profile.maxHeight,
+      width: landscape ? profile.maxWidth : undefined,
+      height: landscape ? undefined : profile.maxHeight,
       fit: 'inside',
-      withoutEnlargement: true,
+      withoutEnlargement: !enlarging,
+      kernel: sharp.kernel.lanczos3,
     })
+  }
+
+  if (enlarging) {
+    pipeline = pipeline.sharpen({ sigma: 0.8, m1: 0.5, m2: 1.5 })
   }
 
   // Logos often need transparency — keep PNG at high quality.
