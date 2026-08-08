@@ -6,7 +6,8 @@ export const dynamic = 'force-dynamic'
 
 function csvEscape(value: unknown): string {
   if (value === null || value === undefined) return ''
-  const raw = typeof value === 'string' ? value : JSON.stringify(value)
+  const input = typeof value === 'string' ? value : JSON.stringify(value)
+  const raw = /^[=+\-@]/.test(input.trimStart()) ? `'${input}` : input
   if (/[",\n\r]/.test(raw)) {
     return `"${raw.replace(/"/g, '""')}"`
   }
@@ -21,7 +22,14 @@ function asString(value: unknown): string {
 function leadsToCsv(leads: Record<string, unknown>[]): string {
   const headers = [
     'businessName',
+    'businessCategory',
+    'additionalCategories',
+    'servicesProvided',
+    'servicesSource',
+    'businessDescription',
+    'hasOwnWebsite',
     'websiteUrl',
+    'socialProfileUrl',
     'phoneNumber',
     'address',
     'ratingText',
@@ -56,7 +64,14 @@ function leadsToCsv(leads: Record<string, unknown>[]): string {
 
     const row = [
       asString(lead.businessName),
+      asString(lead.businessCategory),
+      Array.isArray(lead.additionalCategories) ? lead.additionalCategories.map(String).join(';') : '',
+      Array.isArray(lead.servicesProvided) ? lead.servicesProvided.map(String).join(';') : '',
+      asString(lead.servicesSource),
+      asString(lead.businessDescription),
+      asString(lead.hasOwnWebsite),
       asString(lead.websiteUrl),
+      asString(lead.socialProfileUrl),
       asString(lead.phoneNumber),
       asString(lead.address),
       asString(lead.ratingText),
@@ -109,7 +124,7 @@ export async function GET(
   const { data, error } = await admin
     .from('scraper_run_results')
     .select(
-      'run_id, phase, lead_count, stats, leads, webhooks, artifacts, target_locations, selected_cities, created_at, updated_at'
+      'run_id, phase, lead_count, stats, leads, webhooks, artifacts, filters, target_locations, selected_cities, created_at, updated_at'
     )
     .eq('run_id', requestedRunId)
     .maybeSingle()

@@ -80,6 +80,7 @@ export async function POST(req: Request) {
       const leads = Array.isArray(payload.leads) ? payload.leads : []
       const stats = asObject(payload.stats)
       const artifacts = asObject(payload.artifacts)
+      const filters = asObject(payload.filters)
       const webhooks = Array.isArray(payload.webhooks) ? payload.webhooks : []
       const targetLocations = toStringArray(payload.targetLocations)
       const selectedCities = toStringArray(payload.selectedCities)
@@ -93,6 +94,7 @@ export async function POST(req: Request) {
           leads,
           webhooks,
           artifacts,
+          filters,
           target_locations: targetLocations,
           selected_cities: selectedCities,
           updated_at: new Date().toISOString(),
@@ -106,6 +108,13 @@ export async function POST(req: Request) {
       if (leads.length > 0) {
         const leadsToInsert = leads.map((lead: {
           businessName?: string
+          businessCategory?: string
+          additionalCategories?: unknown[]
+          servicesProvided?: unknown[]
+          servicesSource?: string
+          businessDescription?: string
+          socialProfileUrl?: string
+          hasOwnWebsite?: boolean
           phoneNumber?: string
           websiteUrl?: string
           address?: string
@@ -118,9 +127,16 @@ export async function POST(req: Request) {
         }) => ({
           run_id: runId,
           business_name: lead.businessName,
+          business_category: lead.businessCategory,
+          additional_categories: toStringArray(lead.additionalCategories),
+          services_provided: toStringArray(lead.servicesProvided),
+          services_source: lead.servicesSource,
+          business_description: lead.businessDescription,
           email: lead.enrichment?.decisionMakerEmail || lead.enrichment?.primaryEmail,
           phone: lead.phoneNumber,
           website: lead.websiteUrl,
+          social_profile_url: lead.socialProfileUrl,
+          has_own_website: lead.hasOwnWebsite === true,
           address: lead.address,
           pipeline: lead.enrichment?.pipeline,
           outreach_rank: lead.enrichment?.outreachRank,

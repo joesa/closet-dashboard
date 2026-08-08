@@ -8,6 +8,9 @@ export const runtime = 'nodejs'
 
 type IncomingLead = {
   businessName?: string | null
+  businessCategory?: string | null
+  servicesProvided?: string[] | null
+  socialProfileUrl?: string | null
   websiteUrl?: string | null
   sourceLocation?: string | null
   enrichment?: {
@@ -189,6 +192,11 @@ function toLeadImportRows(payload: IncomingPayload) {
         outreachRank: String(lead.enrichment?.outreachRank || ''),
         reason: String(lead.enrichment?.reason || ''),
         confidenceScore: String(lead.enrichment?.confidenceScore ?? ''),
+        businessCategory: String(lead.businessCategory || ''),
+        servicesProvided: Array.isArray(lead.servicesProvided)
+          ? lead.servicesProvided.map((service) => String(service || '').trim()).filter(Boolean).join(', ')
+          : '',
+        socialProfileUrl: String(lead.socialProfileUrl || ''),
       },
     })
   }

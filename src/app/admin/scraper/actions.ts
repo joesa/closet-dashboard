@@ -52,11 +52,19 @@ export async function updateScraperConfigAction(formData: FormData) {
     headless: formData.get('headless') === 'on',
     maxConcurrency: Number.parseInt(String(formData.get('maxConcurrency') || ''), 10),
     maxResultsPerQuery: Number.parseInt(String(formData.get('maxResultsPerQuery') || ''), 10),
+    noWebsiteOnly: formData.get('noWebsiteOnly') === 'on',
+    phoneRequired: formData.get('phoneRequired') === 'on',
+    requireCategoryMatch: formData.get('requireCategoryMatch') === 'on',
+    minRating: Number.parseFloat(String(formData.get('minRating') || '')),
+    minReviewCount: Number.parseInt(String(formData.get('minReviewCount') || ''), 10),
+    searchRadiusMiles: Number.parseInt(String(formData.get('searchRadiusMiles') || ''), 10),
     maxRequestsPerCrawl: Number.parseInt(String(formData.get('maxRequestsPerCrawl') || ''), 10),
     webhookBatchSize: Number.parseInt(String(formData.get('webhookBatchSize') || ''), 10),
     pipelineAWebhookUrl: String(formData.get('pipelineAWebhookUrl') || '').trim(),
     pipelineBWebhookUrl: String(formData.get('pipelineBWebhookUrl') || '').trim(),
     webhookAuthHeader: String(formData.get('webhookAuthHeader') || 'Authorization').trim(),
+    enableOmniFallback: formData.get('enableOmniFallback') === 'on',
+    enableLumpyMailExport: formData.get('enableLumpyMailExport') === 'on',
   }
 
   const config = normalizeScraperControlConfig(raw)

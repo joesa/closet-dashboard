@@ -249,12 +249,12 @@ export default async function AdminScraperConfigPage() {
           </label>
 
           <label className="block text-sm md:col-span-2">
-            <span className="font-medium text-gray-800">Target Locations</span>
+            <span className="font-medium text-gray-800">Target Cities, States, ZIP Codes, or Areas</span>
             <textarea
               name="targetLocations"
               defaultValue={listToTextarea(cfg.targetLocations)}
               rows={4}
-              placeholder="One city per line"
+              placeholder={'One location per line, e.g.\nClarksville TN\n37040\nDavidson County TN'}
               className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
             />
           </label>
@@ -280,6 +280,43 @@ export default async function AdminScraperConfigPage() {
               min={1}
               max={20}
               defaultValue={cfg.maxConcurrency}
+              className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+            />
+          </label>
+
+          <label className="block text-sm">
+            <span className="font-medium text-gray-800">Search Radius (miles)</span>
+            <input
+              name="searchRadiusMiles"
+              type="number"
+              min={0}
+              max={100}
+              defaultValue={cfg.searchRadiusMiles}
+              className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+            />
+          </label>
+
+          <label className="block text-sm">
+            <span className="font-medium text-gray-800">Minimum Rating</span>
+            <input
+              name="minRating"
+              type="number"
+              min={0}
+              max={5}
+              step={0.1}
+              defaultValue={cfg.minRating}
+              className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+            />
+          </label>
+
+          <label className="block text-sm">
+            <span className="font-medium text-gray-800">Minimum Review Count</span>
+            <input
+              name="minReviewCount"
+              type="number"
+              min={0}
+              max={1000000}
+              defaultValue={cfg.minReviewCount}
               className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
             />
           </label>
@@ -391,6 +428,26 @@ export default async function AdminScraperConfigPage() {
           <label className="inline-flex items-center gap-2">
             <input type="checkbox" name="headless" defaultChecked={cfg.headless} />
             Headless mode
+          </label>
+          <label className="inline-flex items-center gap-2">
+            <input type="checkbox" name="noWebsiteOnly" defaultChecked={cfg.noWebsiteOnly} />
+            Only businesses without an owned website
+          </label>
+          <label className="inline-flex items-center gap-2">
+            <input type="checkbox" name="phoneRequired" defaultChecked={cfg.phoneRequired} />
+            Require a phone number
+          </label>
+          <label className="inline-flex items-center gap-2">
+            <input type="checkbox" name="requireCategoryMatch" defaultChecked={cfg.requireCategoryMatch} />
+            Require Maps category match
+          </label>
+          <label className="inline-flex items-center gap-2">
+            <input type="checkbox" name="enableOmniFallback" defaultChecked={cfg.enableOmniFallback} />
+            Enrich missing websites from social profiles
+          </label>
+          <label className="inline-flex items-center gap-2">
+            <input type="checkbox" name="enableLumpyMailExport" defaultChecked={cfg.enableLumpyMailExport} />
+            Generate direct-mail export
           </label>
         </div>
 

@@ -13,6 +13,12 @@ export type ScraperControlConfig = {
   headless: boolean
   maxConcurrency: number
   maxResultsPerQuery: number
+  noWebsiteOnly: boolean
+  phoneRequired: boolean
+  requireCategoryMatch: boolean
+  minRating: number
+  minReviewCount: number
+  searchRadiusMiles: number
   maxRequestsPerCrawl: number
   webhookBatchSize: number
   pipelineAWebhookUrl: string
@@ -37,6 +43,12 @@ const DEFAULT_CONFIG: ScraperControlConfig = {
   headless: true,
   maxConcurrency: 2,
   maxResultsPerQuery: 25,
+  noWebsiteOnly: false,
+  phoneRequired: false,
+  requireCategoryMatch: false,
+  minRating: 0,
+  minReviewCount: 0,
+  searchRadiusMiles: 0,
   maxRequestsPerCrawl: 200,
   webhookBatchSize: 50,
   pipelineAWebhookUrl: '',
@@ -80,6 +92,12 @@ function asInt(value: unknown, fallback: number, min: number, max: number): numb
   return Math.min(max, Math.max(min, parsed))
 }
 
+function asFloat(value: unknown, fallback: number, min: number, max: number): number {
+  const parsed = Number.parseFloat(String(value ?? ''))
+  if (!Number.isFinite(parsed)) return fallback
+  return Math.min(max, Math.max(min, parsed))
+}
+
 function asString(value: unknown, fallback: string): string {
   const s = String(value ?? '').trim()
   return s || fallback
@@ -105,6 +123,12 @@ export function normalizeScraperControlConfig(input: unknown): ScraperControlCon
     headless: asBool(raw.headless, DEFAULT_CONFIG.headless),
     maxConcurrency: asInt(raw.maxConcurrency, DEFAULT_CONFIG.maxConcurrency, 1, 20),
     maxResultsPerQuery: asInt(raw.maxResultsPerQuery, DEFAULT_CONFIG.maxResultsPerQuery, 1, 500),
+    noWebsiteOnly: asBool(raw.noWebsiteOnly, DEFAULT_CONFIG.noWebsiteOnly),
+    phoneRequired: asBool(raw.phoneRequired, DEFAULT_CONFIG.phoneRequired),
+    requireCategoryMatch: asBool(raw.requireCategoryMatch, DEFAULT_CONFIG.requireCategoryMatch),
+    minRating: asFloat(raw.minRating, DEFAULT_CONFIG.minRating, 0, 5),
+    minReviewCount: asInt(raw.minReviewCount, DEFAULT_CONFIG.minReviewCount, 0, 1000000),
+    searchRadiusMiles: asInt(raw.searchRadiusMiles, DEFAULT_CONFIG.searchRadiusMiles, 0, 100),
     maxRequestsPerCrawl: asInt(raw.maxRequestsPerCrawl, DEFAULT_CONFIG.maxRequestsPerCrawl, 1, 5000),
     webhookBatchSize: asInt(raw.webhookBatchSize, DEFAULT_CONFIG.webhookBatchSize, 1, 500),
     pipelineAWebhookUrl: asString(raw.pipelineAWebhookUrl, ''),
