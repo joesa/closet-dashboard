@@ -13,8 +13,8 @@ All detectors are deterministic (no model calls) and live in
 
 | Class | Examples | Detector |
 |---|---|---|
-| Banned marketing phrases | "seamless", "elevate", "comprehensive", "we are committed to", "transform your", "look no further" (~50 rules, some context-aware: "seamless gutters" is legitimate trade language) | `findAiTellPhrases` |
-| Placeholder slots | "Jane Doe", "jane@example.com", "lorem", "TODO", "Offering 3" | `findPlaceholderTells` |
+| Banned marketing phrases | "seamless", "elevate", "comprehensive", "bespoke", "uncompromising", "vision into reality" (context-aware where needed: "seamless gutters" is legitimate trade language) | `findAiTellPhrases` |
+| Placeholder slots | "Jane Doe", "jane@example.com", "123-456-7890", "MyCity, MS", "lorem", "TODO", "Offering 3" | `findPlaceholderTells` |
 | Em dash in short copy | headlines, CTAs, labels under 24 words containing "—" | `hasEmDashInShortCopy` |
 | Formulaic titles | "The {Brand} Method / Approach / Way / Process / Promise" | `findFormulaicTitles` |
 | Structurally generic copy | no measurement, no named material/brand/place once business name + city are removed | `analyzeSpecificity` → `copy_no_proprietary_detail` |
@@ -46,7 +46,7 @@ mirrored list plus renderer-only extras.
 | Craft suggestions (`suggestCraftAnswers`) | invented "facts" laundered into briefs if accepted unedited | unedited suggestions tagged client-side and stripped server-side before the brief; UI shows a "replace with your real details" hint |
 | Hardcoded fallback copy (catalogs, defaultCopy, siteSignature) | never scanned | de-telled + CI guard test scans every constant on each build |
 | Renderer chrome | identical literals fleet-wide | seeded, engagement-model-aware pools (`chromeCopy.ts`) + CI guard |
-| Existing live tenants | nothing | fleet audit report (below); remediation is a separate, reviewed follow-up |
+| Existing live tenants | nothing | dry-run-first fleet remediation covers structured copy, custom HTML, and custom-page metadata; unsupported claims use reviewed exact replacements |
 
 ### The cutoff
 
@@ -58,10 +58,12 @@ constant, not a schema flag, by design (see plan "open items").
 
 ### Auto-repair
 
-`autoFixTenantSite` handles `copy_ai_tell_phrase`: it locates the offending
-strings inside the tenant's `site_configs` copy columns, rewrites them in one
-model call (voice rules embedded, concrete facts preserved), re-checks every
-rewrite with `findAiTellPhrases`, and only persists clean ones.
+`autoFixTenantSite` handles banned phrases, placeholders, formulaic titles, and
+short-copy em dashes. It locates offending strings across structured copy,
+secondary pages, quiz copy, custom HTML text nodes, and custom-page title/
+description metadata. Punctuation-only repairs are deterministic. Contextual
+rewrites use an object-shaped JSON contract, preserve concrete facts, and are
+re-checked before any write. Invalid or unchanged output fails closed.
 `copy_no_proprietary_detail` is deliberately **not** auto-fixable — the missing
 fact is something only the owner can supply.
 
@@ -80,9 +82,13 @@ data). Read-only: it never writes to the database. Each finding carries
 the exact config path (e.g. `products_config[1].description`) and the matched
 sample, so remediation can be surgical.
 
-Baseline run 2026-08-08 (config-only): 88 tenants audited, 22 clean, 66 with
-findings; dominant classes were `ai_tell_phrase` and `copy_no_proprietary_detail`
-on legacy provisions predating the Craft & proof intake step.
+Active-fleet baseline on 2026-08-08: 32 tenants, 3 clean, 29 with findings.
+After reviewed remediation and a live crawl, all active configs and reachable
+sites have zero banned phrases, placeholders, formulaic titles, short-copy em
+dashes, and unsupported decorative statistics. Eighteen tenants are fully
+clean. The remaining 14 each have only `copy_uniform_positivity`; they need a
+real owner-supplied limitation, exception, or corrected-job detail. The system
+does not invent one to force a green report.
 
 ### Remediation paths, in order of preference
 
@@ -91,6 +97,17 @@ on legacy provisions predating the Craft & proof intake step.
 3. Regeneration via intake page-copy (now gated) when a whole page is generic.
 4. Manual edit for `copy_no_proprietary_detail` — requires a real fact from
    the owner (measurement, material, named place, admitted constraint).
+
+Fleet operations are dry-run-first:
+
+```bash
+npm run remediate:ai-tells -- --audit audit-output/<report>.json
+npm run remediate:ai-tells -- --audit audit-output/<report>.json --phrases-only --apply
+npm run remediate:ai-tells -- --audit audit-output/<report>.json --mechanical-only --apply
+```
+
+`scripts/remediate-unverified-legacy-claims.ts` contains exact, reviewed legacy
+claim removals with match-count guards. It must be dry-run before `--apply`.
 
 ## 4. CI guards (fail the build, not the tenant)
 
@@ -105,14 +122,22 @@ on legacy provisions predating the Craft & proof intake step.
 
 ### Still open (Phase 6 craft excellence)
 
-Core Phase 0–5 enforcement is implemented. Remaining hardening work includes
-persisted Craft-suggestion provenance, broader fallback/chrome coverage, and
-unsupported copy finding repair paths. Phase 6 work remains:
+Core Phase 0–5 enforcement is implemented. Phase 6 work remains:
 
 - Deeper template craft pass (modular type/line-length system, per-theme image art-direction beyond hero variants)
-- Theme-token WCAG AA CI for all template themes; CWV budget checks in siteValidator
+- Full browser-backed WCAG AA enumeration for every custom artifact; the shared
+  theme matrix and representative 390x844 browser probes pass, but no Lighthouse/
+  axe CLI is installed in this environment
 - Full design-QA rubric (spacing rhythm, focus states, orphan sections) beyond landmarks/h1/alts/footer
-- Admin batch full-redesign for selected standard sites + cost/latency budget doc
+- Owner fact collection for the 14 `copy_uniform_positivity` blockers
+
+The Full Redesign capacity exercise used two reviewed localhost-only fixtures
+with the same queue timestamp. It exposed an exhausted 14-pair typography pool;
+the curated pool now has 30 pairs and a probe-capacity regression test. A local
+worker on the corrected revision completed all four Alpha draft pages in 189
+seconds without publishing. A remote worker on the previously deployed revision
+claimed Beta and failed the old uniqueness preflight, confirming that production
+workers need the corrected revision before the added capacity is operational.
 
 Fail-first convention: when touching these lists, temporarily add a banned
 phrase (e.g. "seamless") to a guarded constant and confirm the test fails

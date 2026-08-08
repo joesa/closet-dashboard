@@ -19,7 +19,7 @@ import {
  * either repo edits its table without mirroring the change, that repo's test
  * fails — same drift-guard pattern as designFingerprint.
  */
-const AI_TELL_CANON_HASH = 'a2d010856f7c4834'
+const AI_TELL_CANON_HASH = '75cd4707fcd9c9b3'
 
 describe('humanCopyVoice', () => {
   it('bans common AI marketing tells', () => {
@@ -68,6 +68,10 @@ describe('humanCopyVoice', () => {
       'jane@example.com',
     ])
     expect(findPlaceholderTells('Offering 3 — lorem body')).toContain('Offering 3')
+    expect(findPlaceholderTells('Call 123-456-7890 in MyCity, MS')).toEqual([
+      '123-456-7890',
+      'MyCity, MS',
+    ])
     expect(findPlaceholderTells('We have plenty to do this week')).toEqual([])
   })
 

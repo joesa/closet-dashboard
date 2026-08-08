@@ -2,7 +2,12 @@ import { generateTextWithFallback } from '@/lib/ai/aiTextProvider'
 import { generateWithQualityRetry } from '@/lib/ai/generateWithQualityRetry'
 import { findAiTellPhrases, HUMAN_COPY_VOICE_RULES } from '@/lib/ai/humanCopyVoice'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
-import { validateTenantSite, saveValidationReport, type ValidationReport } from '@/lib/validation/siteValidator'
+import {
+  analyzeDirectCopyTells,
+  validateTenantSite,
+  saveValidationReport,
+  type ValidationReport,
+} from '@/lib/validation/siteValidator'
 import { THEME_LAYOUT_AFFINITY, type ThemeSlug, type LayoutSlug } from '@/lib/catalog/sitePresentationCatalog'
 import { resolveDesignSeed } from '@/lib/provision/resolveDesignSeed'
 import { themeHeroUrl } from '@/lib/provision/buildTemplateSiteConfig'
@@ -158,7 +163,10 @@ export async function autoFixTenantSite(
         break
       }
 
-      case 'copy_ai_tell_phrase': {
+      case 'copy_ai_tell_phrase':
+      case 'copy_placeholder':
+      case 'copy_em_dash_short':
+      case 'copy_formulaic_title': {
         // Collect samples across pages; repaired once, after the loop, so a
         // phrase appearing on three pages triggers one rewrite pass, not three.
         const samples = Array.isArray(issue.meta?.samples) ? issue.meta.samples : []
@@ -264,7 +272,11 @@ const COPY_COLUMNS = [
   'products_config',
   'before_after_config',
   'seo_config',
+  'pages_config',
+  'quiz_config',
 ] as const
+
+const CUSTOM_COPY_COLUMNS = ['custom_config', 'custom_config_draft'] as const
 
 /** Keys whose string values are machine config, never visible copy. */
 const NON_COPY_KEY_RE =
@@ -300,6 +312,36 @@ function walkStrings(
   }
 }
 
+type HtmlTextSegment = {
+  text: string
+  replace: (next: string) => void
+}
+
+/** Mutable visible-text adapter for custom HTML; tags and script/style bodies are preserved. */
+export function htmlTextSegments(page: { html: string }): HtmlTextSegment[] {
+  const parts = page.html.split(/(<[^>]+>)/g)
+  const segments: HtmlTextSegment[] = []
+  let hiddenDepth = 0
+  for (let index = 0; index < parts.length; index++) {
+    const part = parts[index]
+    if (/^<(script|style)\b/i.test(part)) hiddenDepth += 1
+    if (/^<\/(script|style)\b/i.test(part)) hiddenDepth = Math.max(0, hiddenDepth - 1)
+    if (hiddenDepth > 0 || !part || part.startsWith('<') || !/[a-z]/i.test(part)) continue
+    const leading = part.match(/^\s*/)?.[0] || ''
+    const trailing = part.match(/\s*$/)?.[0] || ''
+    const text = part.trim()
+    if (!text) continue
+    segments.push({
+      text,
+      replace: (next) => {
+        parts[index] = `${leading}${next}${trailing}`
+        page.html = parts.join('')
+      },
+    })
+  }
+  return segments
+}
+
 /**
  * Rewrites config copy strings that contain banned AI-tell phrases via
  * `generateWithQualityRetry` (same retry wrapper as other gated surfaces).
@@ -313,15 +355,29 @@ async function repairCopyTells(
   const supabase = getSupabaseAdmin()
   const { data } = await supabase
     .from('site_configs')
-    .select(COPY_COLUMNS.join(', '))
+    .select([...COPY_COLUMNS, ...CUSTOM_COPY_COLUMNS].join(', '))
     .eq('tenant_id', tenantId)
     .maybeSingle()
   const row = data as unknown as Record<string, unknown> | null
   if (!row) return { fixed: [], unfixed: samples }
 
   const lowerSamples = samples.map((s) => s.toLowerCase())
+  const repairEmDashes = lowerSamples.includes('—')
   type Offender = { text: string; replace: (next: string) => void }
   const offenders: Offender[] = []
+  const deterministicFixed: string[] = []
+  const collectOffender = (text: string, replace: (next: string) => void) => {
+    let candidate = text
+    if (repairEmDashes && analyzeDirectCopyTells(candidate).some((finding) => finding.code === 'copy_em_dash_short')) {
+      candidate = candidate.replace(/\s*—\s*/g, ': ')
+      replace(candidate)
+      deterministicFixed.push(text)
+    }
+    const lower = candidate.toLowerCase()
+    if (lowerSamples.some((sample) => sample !== '—' && lower.includes(sample))) {
+      offenders.push({ text: candidate, replace })
+    }
+  }
   const configs: Record<string, unknown> = {}
   for (const column of COPY_COLUMNS) {
     const value = (row as Record<string, unknown>)[column]
@@ -329,14 +385,42 @@ async function repairCopyTells(
     // Deep clone so we can mutate freely and only persist columns that changed.
     const clone = JSON.parse(JSON.stringify(value))
     configs[column] = clone
-    walkStrings(clone, (text, replace) => {
-      const lower = text.toLowerCase()
-      if (lowerSamples.some((s) => lower.includes(s))) {
-        offenders.push({ text, replace })
-      }
-    })
+    walkStrings(clone, collectOffender)
   }
-  if (offenders.length === 0) return { fixed: [], unfixed: samples }
+  for (const column of CUSTOM_COPY_COLUMNS) {
+    const value = row[column]
+    if (!value || typeof value !== 'object') continue
+    const clone = JSON.parse(JSON.stringify(value)) as {
+      pages?: Record<string, { html?: string; title?: string; description?: string }>
+    }
+    configs[column] = clone
+    for (const page of Object.values(clone.pages || {})) {
+      if (!page) continue
+      for (const key of ['title', 'description'] as const) {
+        if (typeof page[key] !== 'string') continue
+        collectOffender(page[key], (next) => {
+          page[key] = next
+        })
+      }
+      if (typeof page.html === 'string') {
+        for (const segment of htmlTextSegments(page as { html: string })) {
+          collectOffender(segment.text, segment.replace)
+        }
+      }
+    }
+  }
+  if (offenders.length === 0 && deterministicFixed.length === 0) {
+    return { fixed: [], unfixed: samples }
+  }
+  if (offenders.length === 0) {
+    for (const column of Object.keys(configs)) {
+      const original = row[column]
+      if (JSON.stringify(original) !== JSON.stringify(configs[column])) {
+        updates[column] = configs[column]
+      }
+    }
+    return { fixed: deterministicFixed, unfixed: [] }
+  }
 
   const unitIds = offenders.map((_, i) => `copy_${i}`)
   const initial = Object.fromEntries(
@@ -346,13 +430,17 @@ async function repairCopyTells(
   const validate = (output: Record<string, string>) => {
     const findings = unitIds.flatMap((id) => {
       const text = output[id] || ''
-      const hits = findAiTellPhrases(text)
+      const direct = analyzeDirectCopyTells(text)
+      const hits = [
+        ...findAiTellPhrases(text),
+        ...direct.flatMap((finding) => finding.samples),
+      ]
       if (hits.length === 0) return []
       return [
         {
           unitId: id,
           code: 'copy_ai_tell_phrase',
-          message: `Still contains AI-tell phrasing: ${hits.join(', ')}`,
+          message: `Still contains disallowed copy: ${hits.join(', ')}`,
           samples: hits,
         },
       ]
@@ -365,27 +453,28 @@ async function repairCopyTells(
   }
 
   const rewriteBatch = async (texts: string[], findingsNote: string) => {
-    const prompt = `You are rewriting short pieces of website copy for a local service business so they stop using banned generic marketing phrases.
+    const prompt = `You are rewriting short pieces of website copy for a local service business so they stop using banned generic marketing phrases, placeholders, formulaic titles, and em dashes in short copy.
 
-Banned phrases found: ${samples.join('; ')}
+  Disallowed copy found: ${samples.join('; ')}
 ${findingsNote}
 
 ${HUMAN_COPY_VOICE_RULES}
 
-Rewrite each string below. Keep the same meaning, roughly the same length, and any concrete facts (numbers, materials, place names) exactly as they are. Remove or replace the banned phrasing with plain, specific language. Never invent statistics, awards, or testimonials.
+Every input below contains prohibited copy. Rewrite every string, even when the phrase sounds technically plausible. Each output must differ from its input and must remove every listed disallowed phrase. Keep the same meaning, roughly the same length, and any concrete facts (numbers, materials, place names) exactly as they are. Use plain, specific language. Never invent statistics, awards, or testimonials.
 
 Input strings (JSON array):
 ${JSON.stringify(texts)}
 
-Output ONLY a JSON array of the same length with the rewritten strings, in the same order.`
+Output ONLY a JSON object shaped as {"rewrites":["..."]}. The rewrites array must have the same length and order as the input array.`
     const { text } = await generateTextWithFallback({
       prompt,
       jsonMode: true,
       temperature: 0.4,
-      maxOutputTokens: 1500,
+      maxOutputTokens: 8192,
+      preferredProvider: 'openai',
     })
-    const parsed = JSON.parse(text)
-    return Array.isArray(parsed) ? parsed : []
+    const parsed = JSON.parse(text) as { rewrites?: unknown }
+    return Array.isArray(parsed.rewrites) ? parsed.rewrites : []
   }
 
   let result
@@ -419,7 +508,7 @@ Output ONLY a JSON array of the same length with the rewritten strings, in the s
     return { fixed: [], unfixed: offenders.map((o) => o.text) }
   }
 
-  const fixed: string[] = []
+  const fixed: string[] = [...deterministicFixed]
   const unfixed: string[] = []
   offenders.forEach((offender, i) => {
     const id = unitIds[i]
@@ -427,11 +516,21 @@ Output ONLY a JSON array of the same length with the rewritten strings, in the s
     if (
       rewrite &&
       rewrite !== offender.text &&
-      findAiTellPhrases(rewrite).length === 0
+      findAiTellPhrases(rewrite).length === 0 &&
+      analyzeDirectCopyTells(rewrite).length === 0
     ) {
       offender.replace(rewrite)
       fixed.push(offender.text)
     } else {
+      const remaining = rewrite
+        ? [
+            ...findAiTellPhrases(rewrite),
+            ...analyzeDirectCopyTells(rewrite).flatMap((finding) => finding.samples),
+          ]
+        : []
+      console.warn(
+        `[copy-repair] Rejected ${id}: ${!rewrite ? 'empty output' : rewrite === offender.text ? 'unchanged output' : `remaining tells: ${remaining.join(', ')}`}`
+      )
       unfixed.push(offender.text)
     }
   })
@@ -445,6 +544,28 @@ Output ONLY a JSON array of the same length with the rewritten strings, in the s
     }
   }
   return { fixed, unfixed }
+}
+
+export async function repairTenantCopyTells(
+  tenantId: string,
+  samples: string[]
+): Promise<{ fixed: string[]; unfixed: string[] }> {
+  const cleanSamples = Array.from(
+    new Set(samples.map((sample) => sample.trim()).filter(Boolean))
+  )
+  if (cleanSamples.length === 0) return { fixed: [], unfixed: [] }
+
+  const updates: Record<string, unknown> = {}
+  const result = await repairCopyTells(tenantId, cleanSamples, updates)
+  if (Object.keys(updates).length > 0) {
+    const { error } = await getSupabaseAdmin()
+      .from('site_configs')
+      .update(updates)
+      .eq('tenant_id', tenantId)
+    if (error) throw new Error(`Failed to persist copy repairs: ${error.message}`)
+    await revalidateTenantSiteCache(tenantId)
+  }
+  return result
 }
 
 async function fixProcessStepsWithAi(

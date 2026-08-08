@@ -22,6 +22,11 @@ import {
   validateCustomConfig,
 } from '@/lib/customSite'
 import { analyzeSpecificity, analyzeToneBalance } from '@/lib/validation/specificityGate'
+import {
+  findFormulaicTitles,
+  findPlaceholderTells,
+  hasEmDashInShortCopy,
+} from '@/lib/ai/humanCopyVoice'
 
 export type ValidationSeverity = 'error' | 'warning'
 
@@ -121,6 +126,61 @@ export type RenderedDesignFinding = {
   code: string
   message: string
   meta?: Record<string, unknown>
+}
+
+export type DirectCopyFinding = {
+  code: 'copy_placeholder' | 'copy_em_dash_short' | 'copy_formulaic_title'
+  message: string
+  samples: string[]
+}
+
+function visibleTextSegments(input: string): string[] {
+  const withoutHiddenContent = input
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, ' ')
+  const segments = withoutHiddenContent.includes('<')
+    ? withoutHiddenContent.split(/<[^>]+>/g)
+    : [withoutHiddenContent]
+  return segments
+    .map((text) => text.replace(/&(?:nbsp|amp|quot|#39);/gi, ' ').replace(/\s+/g, ' ').trim())
+    .filter(Boolean)
+}
+
+/** Direct copy tells that complement the broader specificity/tone analysis. */
+export function analyzeDirectCopyTells(input: string): DirectCopyFinding[] {
+  const placeholders = new Set<string>()
+  const emDashSegments = new Set<string>()
+  const formulaicTitles = new Set<string>()
+
+  for (const segment of visibleTextSegments(input)) {
+    for (const tell of findPlaceholderTells(segment)) placeholders.add(tell)
+    if (hasEmDashInShortCopy(segment)) emDashSegments.add(segment)
+    for (const title of findFormulaicTitles(segment)) formulaicTitles.add(title)
+  }
+
+  const findings: DirectCopyFinding[] = []
+  if (placeholders.size > 0) {
+    findings.push({
+      code: 'copy_placeholder',
+      message: `Customer-visible copy contains unfilled placeholder text: ${[...placeholders].join(', ')}.`,
+      samples: [...placeholders],
+    })
+  }
+  if (emDashSegments.size > 0) {
+    findings.push({
+      code: 'copy_em_dash_short',
+      message: 'Short customer-visible copy uses an em dash, a repeated template fingerprint.',
+      samples: [...emDashSegments],
+    })
+  }
+  if (formulaicTitles.size > 0) {
+    findings.push({
+      code: 'copy_formulaic_title',
+      message: `Customer-visible copy contains a formulaic title: ${[...formulaicTitles].join(', ')}.`,
+      samples: [...formulaicTitles],
+    })
+  }
+  return findings
 }
 
 /** Cheap structural checks over server-rendered HTML; browser QA covers computed styles. */
@@ -588,6 +648,18 @@ export async function validateTenantSite(tenantId: string): Promise<ValidationRe
               : finding.message,
           fixable: finding.code === 'copy_ai_tell_phrase',
           meta: finding.samples.length > 0 ? { samples: finding.samples } : undefined,
+        })
+      }
+      for (const finding of analyzeDirectCopyTells(pageHtml)) {
+        issues.push({
+          code: finding.code,
+          severity: copySeverity,
+          message:
+            copyPages.length > 1
+              ? `Page ${index + 1} of ${copyPages.length}: ${finding.message}`
+              : finding.message,
+          fixable: true,
+          meta: { samples: finding.samples },
         })
       }
     }

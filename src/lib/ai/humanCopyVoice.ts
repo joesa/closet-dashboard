@@ -68,6 +68,27 @@ export const AI_TELL_RULES: readonly AiTellRule[] = [
   'we are committed to',
   'our team of experienced professionals',
   'whether you need',
+  'unrivaled',
+  'uncompromising',
+  'bespoke',
+  'top-tier',
+  'not just',
+  'ultimate',
+  'vision into reality',
+  'unforgettable',
+  'of your dreams',
+  'just a call away',
+  'the finest',
+  'we would be honored',
+  'immense pride',
+  'memories that will last a lifetime',
+  'entertainment sanctuary',
+  'personalized consultation',
+  'private consultation',
+  'cinematic perfection',
+  'bring your vision to life',
+  'passion for',
+  'passionate about',
 ].map((rule) => (typeof rule === 'string' ? { phrase: rule } : rule))
 
 /** Backwards-compatible phrase list used to render the generation prompts. */
@@ -110,6 +131,8 @@ export const PLACEHOLDER_TELL_RES: readonly RegExp[] = [
   /\boffering\s+\d+\b/gi, // "Offering 1", "Offering 2" slot names
   /\byour\s+(?:text|copy|content|headline)\s+here\b/gi,
   /\bplaceholder\b/gi,
+  /\b123[-.\s]456[-.\s]7890\b/g,
+  /\bmycity\s*,\s*[a-z]{2}\b/gi,
 ]
 
 /** Unfilled-slot text (Jane Doe, lorem, TODO, "Offering 3", …). */

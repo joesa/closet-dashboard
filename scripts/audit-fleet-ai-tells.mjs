@@ -108,8 +108,8 @@ function pickCrawlHostname(domains) {
   return (usable.find((d) => d.isPrimary) || usable[0])?.hostname || null
 }
 
-function addDirectTellFindings(findings, path, text) {
-  for (const phrase of findAiTellPhrases(text)) {
+function addDirectTellFindings(findings, path, text, sourceText = '') {
+  for (const phrase of findAiTellPhrases(text, sourceText)) {
     findings.push({ check: 'ai_tell_phrase', path, sample: phrase, text: text.slice(0, 140) })
   }
   for (const tell of findPlaceholderTells(text)) {
@@ -149,15 +149,27 @@ async function auditTenant(tenant) {
   }
   // Custom-build sites carry their copy as page HTML in the artifact.
   const customPages = []
-  const artifact = config?.custom_config || config?.custom_config_draft
+  const artifactColumn = config?.custom_config ? 'custom_config' : 'custom_config_draft'
+  const artifact = config?.[artifactColumn]
   if (artifact && typeof artifact === 'object' && artifact.pages) {
     for (const [route, page] of Object.entries(artifact.pages)) {
-      if (page?.html) customPages.push({ route, text: stripToText(page.html) })
+      if (typeof page?.title === 'string') {
+        strings.push({ path: `${artifactColumn}.pages[${JSON.stringify(route)}].title`, text: page.title })
+      }
+      if (typeof page?.description === 'string') {
+        strings.push({ path: `${artifactColumn}.pages[${JSON.stringify(route)}].description`, text: page.description })
+      }
+      if (page?.html) {
+        customPages.push({
+          route,
+          text: [page.title, page.description, stripToText(page.html)].filter(Boolean).join(' '),
+        })
+      }
     }
   }
 
   for (const { path, text } of strings) {
-    addDirectTellFindings(findings, path, text)
+    addDirectTellFindings(findings, path, text, businessName)
   }
 
   // 2. Page-level specificity gate over config text, custom pages, and
@@ -181,9 +193,9 @@ async function auditTenant(tenant) {
 
   for (const page of pages) {
     if (page.label.startsWith('live homepage') || page.label.startsWith('custom page')) {
-      addDirectTellFindings(findings, page.label, page.text)
+      addDirectTellFindings(findings, page.label, page.text, businessName)
     }
-    for (const finding of analyzeSpecificity({ text: page.text, businessName })) {
+    for (const finding of analyzeSpecificity({ text: page.text, businessName, sourceText: businessName })) {
       findings.push({
         check: finding.code,
         path: page.label,
@@ -243,7 +255,8 @@ async function main() {
   const outDir = resolve(root, 'audit-output')
   mkdirSync(outDir, { recursive: true })
 
-  const jsonPath = resolve(outDir, `ai-tell-audit-${date}.json`)
+  const scopeSuffix = onlyTenant ? `-tenant-${onlyTenant}` : includeAll ? '-all' : ''
+  const jsonPath = resolve(outDir, `ai-tell-audit-${date}${scopeSuffix}.json`)
   writeFileSync(jsonPath, JSON.stringify({ generatedAt: new Date().toISOString(), crawl, results }, null, 2))
 
   const md = []
@@ -282,7 +295,7 @@ async function main() {
     }
     md.push('')
   }
-  const mdPath = resolve(outDir, `ai-tell-audit-${date}.md`)
+  const mdPath = resolve(outDir, `ai-tell-audit-${date}${scopeSuffix}.md`)
   writeFileSync(mdPath, md.join('\n'))
 
   console.log(`\nClean: ${clean.length} / ${results.length}`)

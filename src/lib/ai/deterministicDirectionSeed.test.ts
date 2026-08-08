@@ -108,6 +108,16 @@ describe('pickDeterministicDirection', () => {
     expect(d.palette).toHaveLength(5)
     expect(d.typography.display).toBeTruthy()
   })
+
+  it('has enough curated type capacity to probe past the original fleet pool', () => {
+    const originalPool = TYPE_PAIR_POOL.slice(0, 14)
+      .map((pair) => `${pair.display}+${pair.body}`.toLowerCase())
+    const direction = pickDeterministicDirection({
+      brandName: 'Concurrency Fixture',
+      takenFontKeys: originalPool,
+    })
+    expect(originalPool).not.toContain(directionKeys(direction).fontKey)
+  })
 })
 
 describe('the pools cannot produce what the design system bans', () => {

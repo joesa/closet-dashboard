@@ -118,6 +118,22 @@ export const TYPE_PAIR_POOL: readonly TypePair[] = [
   { display: 'Vollkorn', body: 'Jost', why: 'a bookish serif with a geometric companion' },
   { display: 'Chivo', body: 'Literata', why: 'grotesque headings over a reading serif' },
   { display: 'Rokkitt', body: 'Nunito Sans', why: 'a narrow slab over a rounded body' },
+  { display: 'Cormorant Garamond', body: 'IBM Plex Sans', why: 'fine editorial display over technical body copy' },
+  { display: 'DM Serif Display', body: 'Source Sans 3', why: 'compact display serif over an open utility sans' },
+  { display: 'Bodoni Moda', body: 'Figtree', why: 'high-contrast display with a contemporary reading face' },
+  { display: 'Alegreya', body: 'Atkinson Hyperlegible', why: 'lively serif headings with highly legible body copy' },
+  { display: 'Prata', body: 'Noto Sans', why: 'engraved display character over a broad neutral sans' },
+  { display: 'Young Serif', body: 'Rubik', why: 'soft display shapes over a compact practical body' },
+  { display: 'Crimson Pro', body: 'Urbanist', why: 'book typography paired with a clean geometric sans' },
+  { display: 'Frank Ruhl Libre', body: 'Barlow', why: 'strong newspaper display over condensed utility text' },
+  { display: 'Gloock', body: 'Albert Sans', why: 'dramatic editorial headings with restrained body copy' },
+  { display: 'Bricolage Grotesque', body: 'EB Garamond', why: 'expressive grotesque display over literary reading text' },
+  { display: 'Unbounded', body: 'Merriweather', why: 'wide technical display balanced by a durable text serif' },
+  { display: 'Cormorant Infant', body: 'DM Sans', why: 'calligraphic display details over direct body copy' },
+  { display: 'Cardo', body: 'Lexend', why: 'classical headings paired with generous, accessible body forms' },
+  { display: 'Bree Serif', body: 'Fira Sans', why: 'friendly slab display over a workmanlike humanist sans' },
+  { display: 'Yeseva One', body: 'PT Sans', why: 'ornamental display used sparingly over plain body text' },
+  { display: 'Noto Serif', body: 'IBM Plex Sans', why: 'broad-language serif headings over engineered body copy' },
 ]
 
 /** Distinct devices spanning spatial, photographic, typographic and tactile ideas. */
