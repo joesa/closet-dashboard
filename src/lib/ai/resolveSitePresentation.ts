@@ -2,134 +2,36 @@ import {
   coerceLayoutSlug,
   coerceThemeSlug,
   CTA_TO_LAYOUT,
-  DEFAULT_LAYOUT,
-  DEFAULT_THEME,
   type LayoutSlug,
   type ThemeSlug,
   VIBE_TO_THEME,
 } from '@/lib/catalog/sitePresentationCatalog'
 import {
   collectThemeLayoutPools,
-  inferWidgetCategory,
   isLowConfidenceResolution,
   layoutsForTheme,
-  matchServiceDef,
   pickBestLayout,
   pickBestTheme,
-  getEngagementModel,
 } from '@/lib/catalog/serviceCatalog'
-import type { IndustrySlug, EngagementModel } from '@/lib/catalog/types'
 import { buildIntakeBrief } from '@/lib/intake/buildIntakeBrief'
 import type { ProspectIntakeRow } from '@/lib/intake/getIntakeByToken'
 import { generateTextWithFallback } from '@/lib/ai/aiTextProvider'
-import { synthesizeThemeTokens, type ThemeTokenSelection } from '@/lib/ai/synthesizeThemeTokens'
+import {
+  synthesizeThemeTokens,
+  type ThemeTokenSelection,
+} from '@/lib/ai/synthesizeThemeTokens'
 import { findCustomIndustryByLabel } from '@/lib/catalog/customIndustries'
-import type { BeforeAfterCategory } from '@/lib/openai-images'
+import {
+  resolveSitePresentationRules,
+  type SitePresentationInput,
+  type SitePresentationResult,
+} from '@/lib/ai/sitePresentationRules'
 
-export type SitePresentationInput = {
-  industry?: string | null
-  business_name?: string | null
-  services?: string[] | null
-  other_services?: string | null
-  vibe?: string | null
-  tone?: string | null
-  customers?: string | null
-  experience?: string | null
-  primary_cta?: string | null
-  differentiators?: string[] | null
-  notes?: string | null
-  service_area?: string | null
-}
-
-export type SitePresentationResult = {
-  industry: IndustrySlug
-  theme: ThemeSlug
-  layoutStyle: LayoutSlug
-  defaultRoom: string
-  rationale: string
-  source: 'rules' | 'gemini'
-  /**
-   * Deterministic quote-vs-order detection (see EngagementModel in
-   * catalog/types.ts) — a catalog lookup, never re-guessed by Gemini (theme/
-   * layout refinement never changes which interaction model the business
-   * needs).
-   */
-  engagementModel: EngagementModel
-  /**
-   * Last-resort synthesized "look" (surface/shape/voice/swatch), populated
-   * only when isLowConfidenceResolution() found no real industry/service
-   * match — i.e. `theme` above fell back to the generic top-8 pool. When
-   * present, the renderer composes styling from these tokens instead of
-   * `theme`'s hand-tuned definition (see ThemeTokenSelection in
-   * custom-closets-websites/src/lib/theme.ts).
-   */
-  themeTokens?: ThemeTokenSelection
-  themeTokensSource?: 'gemini' | 'fallback'
-  /**
-   * Optional override for the design variant (structural composition),
-   * determined by AI when the business heavily relies on visual showcase.
-   */
-  designVariantOverride?: string
-  /**
-   * Before/after image subject category from a matching contractor-created
-   * custom industry (see @/lib/catalog/customIndustries), when one was found.
-   * Overrides the static INDUSTRY_BEFORE_AFTER_CATEGORY guess in
-   * openai-images.ts, which has no entry for industries that only exist in
-   * the DB rather than the compiled catalog.
-   */
-  beforeAfterCategoryOverride?: BeforeAfterCategory
-}
-
-function primaryServiceLabel(services: string[]): string {
-  const filtered = services.filter((s) => s && !s.startsWith('Other'))
-  return filtered[0] || 'Walk-In Closets'
-}
-
-/** Deterministic presentation from industry, services, vibe, and CTA. */
-export function resolveSitePresentationRules(
-  input: SitePresentationInput
-): SitePresentationResult {
-  const services =
-    input.services?.length && input.services.length > 0
-      ? input.services
-      : ['Walk-In Closets']
-
-  const { industry, themes, layouts } = collectThemeLayoutPools({
-    services,
-    other_services: input.other_services,
-    industry: input.industry,
-  })
-
-  // Stable per-business seed so two businesses in the same vertical (and even
-  // with the same vibe/CTA absent) diverge to different theme/layout looks
-  // instead of always landing on the first pool entry.
-  const seed = (input.business_name || input.service_area || '').trim() || null
-  const bestTheme = pickBestTheme(themes, input.vibe, VIBE_TO_THEME, seed)
-  const themeLayouts = layoutsForTheme(bestTheme, layouts)
-  const bestLayout = pickBestLayout(themeLayouts, bestTheme, input.primary_cta, CTA_TO_LAYOUT, seed)
-
-  const primary = primaryServiceLabel(services)
-  const other = (input.other_services || '').trim()
-  const hasCatalogService = services.some((s) => !!matchServiceDef(s, industry))
-  const matched = matchServiceDef(primary, industry) ?? matchServiceDef(primary)
-
-  let defaultRoom =
-    matched?.widgetCategory ?? inferWidgetCategory(services, input.other_services, industry)
-
-  if (other && (!hasCatalogService || !matched)) {
-    defaultRoom = inferWidgetCategory([], other, industry)
-  }
-
-  return {
-    industry,
-    theme: themes.includes(bestTheme) ? bestTheme : themes[0] ?? DEFAULT_THEME,
-    layoutStyle: themeLayouts.includes(bestLayout) ? bestLayout : themeLayouts[0] ?? DEFAULT_LAYOUT,
-    defaultRoom,
-    rationale: `Rules: industry=${industry}, primary="${primary}", pools ${themes.length} themes / ${themeLayouts.length} layouts.`,
-    source: 'rules',
-    engagementModel: getEngagementModel(industry),
-  }
-}
+export {
+  resolveSitePresentationRules,
+  type SitePresentationInput,
+  type SitePresentationResult,
+} from '@/lib/ai/sitePresentationRules'
 
 export async function resolveSitePresentation(
   input: SitePresentationInput,

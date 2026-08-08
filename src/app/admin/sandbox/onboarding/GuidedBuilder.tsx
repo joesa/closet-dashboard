@@ -9,7 +9,7 @@ import {
   resolveIndustrySlug,
   servicesForIndustry,
 } from '@/lib/catalog/serviceCatalog';
-import { resolveSitePresentationRules } from '@/lib/ai/resolveSitePresentation';
+import { resolveSitePresentationRules } from '@/lib/ai/sitePresentationRules';
 import { CTA_TO_LAYOUT, VIBE_TO_THEME } from '@/lib/catalog/sitePresentationCatalog';
 import type { LayoutSlug, ThemeSlug } from '@/lib/catalog/sitePresentationCatalog';
 import type { EngagementModel } from '@/lib/catalog/types';
