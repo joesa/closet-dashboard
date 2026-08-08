@@ -50,6 +50,7 @@ export default async function IntakePage({
       beforeAfterApplicable={pub.beforeAfterApplicable}
       pageContents={healed.page_contents ?? {}}
       serverDraft={buildServerDraftFromRow(healed as unknown as Record<string, unknown>)}
+      initialSuggestedCraftValues={healed.craft_suggested_values ?? {}}
       initialGalleryImages={healed.gallery_images ?? []}
       initialTierFromQuery={
         sp.tier === 'ai_premium' || sp.tier === 'standard' ? sp.tier : undefined

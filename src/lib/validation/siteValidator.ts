@@ -117,6 +117,70 @@ function extractImageUrls(html: string): string[] {
   return [...urls]
 }
 
+export type RenderedDesignFinding = {
+  code: string
+  message: string
+  meta?: Record<string, unknown>
+}
+
+/** Cheap structural checks over server-rendered HTML; browser QA covers computed styles. */
+export function analyzeRenderedDesign(html: string): RenderedDesignFinding[] {
+  const findings: RenderedDesignFinding[] = []
+  const h1Count = (html.match(/<h1[\s>]/gi) || []).length
+  if (h1Count === 0) {
+    findings.push({ code: 'design_missing_h1', message: 'Live homepage renders no <h1>. Every page needs exactly one top-level heading for hierarchy and SEO.' })
+  } else if (h1Count > 1) {
+    findings.push({ code: 'design_multiple_h1', message: `Live homepage renders ${h1Count} <h1> elements. Keep exactly one.`, meta: { count: h1Count } })
+  }
+  if (!/<main[\s>]/i.test(html)) {
+    findings.push({ code: 'design_missing_main_landmark', message: 'Live homepage has no <main> landmark. Screen readers need it to skip to content.' })
+  }
+  if (!/<footer[\s>]/i.test(html)) {
+    findings.push({ code: 'design_missing_footer', message: 'Live homepage has no <footer>. A complete local-business site needs contact and ownership information.' })
+  }
+
+  const imgsWithoutAlt = (html.match(/<img\s(?![^>]*\balt=)[^>]*>/gi) || []).length
+  if (imgsWithoutAlt > 0) {
+    findings.push({ code: 'design_img_missing_alt', message: `${imgsWithoutAlt} image${imgsWithoutAlt === 1 ? '' : 's'} on the live homepage have no alt attribute.`, meta: { count: imgsWithoutAlt } })
+  }
+
+  const ids = [...html.matchAll(/\sid=["']([^"']+)["']/gi)].map((match) => match[1])
+  const duplicateIds = [...new Set(ids.filter((id, index) => ids.indexOf(id) !== index))]
+  if (duplicateIds.length > 0) {
+    findings.push({ code: 'design_duplicate_ids', message: `Live homepage repeats ${duplicateIds.length} HTML id${duplicateIds.length === 1 ? '' : 's'}, which breaks label, anchor, and assistive-technology targeting.`, meta: { ids: duplicateIds.slice(0, 10) } })
+  }
+
+  const headingLevels = [...html.matchAll(/<h([1-6])[\s>]/gi)].map((match) => Number(match[1]))
+  const headingJump = headingLevels.findIndex((level, index) => index > 0 && level > headingLevels[index - 1] + 1)
+  if (headingJump >= 0) {
+    findings.push({ code: 'design_heading_order', message: `Heading hierarchy jumps from h${headingLevels[headingJump - 1]} to h${headingLevels[headingJump]}.`, meta: { levels: headingLevels } })
+  }
+
+  let unlabeledControls = 0
+  for (const match of html.matchAll(/<(input|select|textarea)\b([^>]*)>/gi)) {
+    const attrs = match[2]
+    if (/\btype=["']hidden["']/i.test(attrs)) continue
+    if (/\baria-label(?:ledby)?=["'][^"']+["']/i.test(attrs)) continue
+    const id = attrs.match(/\bid=["']([^"']+)["']/i)?.[1]
+    if (id && new RegExp(`<label\\b[^>]*\\bfor=["']${id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["']`, 'i').test(html)) continue
+    unlabeledControls += 1
+  }
+  if (unlabeledControls > 0) {
+    findings.push({ code: 'design_unlabeled_controls', message: `${unlabeledControls} form control${unlabeledControls === 1 ? '' : 's'} have no associated label.`, meta: { count: unlabeledControls } })
+  }
+
+  const emptySections = [...html.matchAll(/<section\b[^>]*>([\s\S]*?)<\/section>/gi)].filter((match) => {
+    const body = match[1]
+    if (/<(?:img|video|canvas|iframe|closet-[a-z-]+)\b/i.test(body)) return false
+    return body.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/gi, ' ').trim().length === 0
+  }).length
+  if (emptySections > 0) {
+    findings.push({ code: 'design_empty_sections', message: `${emptySections} empty section${emptySections === 1 ? '' : 's'} render on the homepage.`, meta: { count: emptySections } })
+  }
+
+  return findings
+}
+
 /**
  * Runs the full "is this site safe to show an admin for preview/approval"
  * battery against a freshly (or previously) provisioned tenant:
@@ -445,47 +509,8 @@ export async function validateTenantSite(tenantId: string): Promise<ValidationRe
           )
             ? 'error'
             : 'warning'
-          const h1Count = (html.match(/<h1[\s>]/gi) || []).length
-          if (h1Count === 0) {
-            issues.push({
-              code: 'design_missing_h1',
-              severity: designSeverity,
-              message: 'Live homepage renders no <h1>. Every page needs exactly one top-level heading for hierarchy and SEO.',
-              fixable: false,
-            })
-          } else if (h1Count > 1) {
-            issues.push({
-              code: 'design_multiple_h1',
-              severity: 'warning',
-              message: `Live homepage renders ${h1Count} <h1> elements. Keep exactly one.`,
-              fixable: false,
-            })
-          }
-          if (!/<main[\s>]/i.test(html)) {
-            issues.push({
-              code: 'design_missing_main_landmark',
-              severity: designSeverity,
-              message: 'Live homepage has no <main> landmark. Screen readers need it to skip to content.',
-              fixable: false,
-            })
-          }
-          if (!/<footer[\s>]/i.test(html)) {
-            issues.push({
-              code: 'design_missing_footer',
-              severity: designSeverity,
-              message: 'Live homepage has no <footer>. Real local businesses carry NAP/copyright footers; the engine renders one by default, so its absence means a rendering regression or a custom build that dropped it.',
-              fixable: false,
-            })
-          }
-          const imgsWithoutAlt = (html.match(/<img\s(?![^>]*\balt=)[^>]*>/gi) || []).length
-          if (imgsWithoutAlt > 0) {
-            issues.push({
-              code: 'design_img_missing_alt',
-              severity: designSeverity,
-              message: `${imgsWithoutAlt} image${imgsWithoutAlt === 1 ? '' : 's'} on the live homepage have no alt attribute.`,
-              fixable: false,
-              meta: { count: imgsWithoutAlt },
-            })
+          for (const finding of analyzeRenderedDesign(html)) {
+            issues.push({ ...finding, severity: designSeverity, fixable: false })
           }
         }
 

@@ -818,6 +818,7 @@ export async function provisionTenant(
         addressLocality: setup.addressLocality || setup.serviceArea || '',
         addressRegion: setup.addressRegion || '',
         postalCode: setup.postalCode || '',
+        serviceArea: setup.serviceArea || '',
         geo: { latitude: '', longitude: '' },
       },
       before_after_config: (() => {

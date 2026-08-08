@@ -77,6 +77,8 @@ export type ProspectIntakeRow = {
   timeline_facts: string | null
   guarantee_terms: string | null
   signature_materials: string[]
+  /** Original AI values, retained so unchanged examples stay untrusted after reload. */
+  craft_suggested_values: Record<string, string>
   /**
    * Verbatim customer quotes supplied by the contractor. The ONLY sanctioned
    * source for testimonial copy — when empty, the testimonials page is omitted
@@ -103,7 +105,7 @@ const INTAKE_SELECT = `
   requested_pages, gallery_images, page_contents, menu_items,
   craft_spec, shop_rule, local_conditions, crew_shape, client_artifact,
   recent_job, competitor_tell, timeline_facts, guarantee_terms,
-  signature_materials, customer_quotes
+  signature_materials, craft_suggested_values, customer_quotes
 `
 
 export async function getIntakeByToken(token: string): Promise<ProspectIntakeRow | null> {

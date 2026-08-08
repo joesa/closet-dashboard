@@ -29,6 +29,19 @@ Heartbeats cannot revive a dead isolate. Graphile has no execution time limit.
 | `admin_generate_images` | `/api/ai/generate-images` (with `tenantId`) | `site_configs.background_job` |
 | `admin_generate_before` | `/api/ai/generate-before` | `site_configs.background_job` |
 
+### Full Redesign routing policy
+
+The automatic policy is `all-full-sites`: every newly provisioned marketing
+site receives one Full Redesign regardless of intake tier. `widget_only`
+tenants are excluded. `site_configs.auto_launch_redesign_at` makes the run
+one-time, active-job reconciliation prevents overlap, and
+`AUTO_LAUNCH_REDESIGN=false` is the emergency kill switch.
+
+For existing sites, admins can select up to 20 tenants on `/admin/sites` and
+queue a bounded batch. The endpoint skips widget-only tenants and sites with an
+active custom-build job, uses the same Graphile `jobKey` idempotency as the
+single-site action, and reports queued/skipped/failed status per tenant.
+
 ## DATABASE_URL (critical)
 
 Use a **session-mode** Postgres URI (port **5432**):
@@ -146,6 +159,44 @@ Measured on 2026-08-02: the Supabase instance reports `max_connections = 60`
 default 3 the worker takes 5 of the ~35 spare, so the headroom is real but not
 unlimited — re-measure before going past ~10, and remember every Vercel
 serverless instance opens its own pool against the same 60.
+
+### Capacity check
+
+Before raising concurrency, queue exactly two non-production test tenants from
+the admin batch control and follow the structured worker logs. Confirm both
+emit `custom_build_start`, both finish without process restart or OOM, and the
+health endpoint remains 200. Record peak container memory with:
+
+```bash
+docker stats --no-stream
+docker compose -f worker/docker-compose.prod.yml logs | grep 'custom_build_\|ai_text_call'
+```
+
+Do not use live tenants for this check: successful auto-launch jobs may publish.
+
+### Cost and latency telemetry
+
+Every provider call emits one JSON `ai_text_call` event with `provider`,
+`model`, `durationMs`, and the SDK-reported `inputTokens`, `outputTokens`, and
+`totalTokens`. Full jobs separately emit `custom_build_done` or
+`custom_build_failed` with end-to-end `durationMs`, page count, and HTML sizes.
+Fallback failures include elapsed milliseconds in the warning log.
+
+Cost is deliberately rate-configured rather than hard-coded because vendor and
+contract pricing changes. Set both variables for each provider you use:
+
+```bash
+AI_COST_ANTHROPIC_INPUT_PER_MILLION_USD=
+AI_COST_ANTHROPIC_OUTPUT_PER_MILLION_USD=
+AI_COST_GEMINI_INPUT_PER_MILLION_USD=
+AI_COST_GEMINI_OUTPUT_PER_MILLION_USD=
+AI_COST_OPENAI_INPUT_PER_MILLION_USD=
+AI_COST_OPENAI_OUTPUT_PER_MILLION_USD=
+```
+
+When both rates are valid numbers, `ai_text_call` includes
+`estimatedCostUsd`; otherwise that field is omitted. Add costs for all calls
+sharing the same worker job window to estimate a Full Redesign run.
 
 ### arm64 verification (done — 2026-08-02)
 

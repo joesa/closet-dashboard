@@ -16,6 +16,9 @@ import { revalidateTenantSiteCache } from '@/lib/tenants/revalidateTenantSite'
 import { publicAppOrigin } from '@/lib/urls'
 import type { ProspectIntakeRow } from '@/lib/intake/getIntakeByToken'
 
+/** Product policy: every new marketing site gets bespoke treatment, regardless of intake tier. */
+export const AUTO_LAUNCH_REDESIGN_POLICY = 'all-full-sites' as const
+
 /**
  * Auto-launch — a submitted intake becomes a live, bespoke site with no admin click.
  *
@@ -163,11 +166,16 @@ export async function startAutoLaunchRedesign(tenantId: string): Promise<boolean
     action: 'site.auto_launch_redesign_queued',
     targetType: 'tenant',
     targetId: tenantId,
-    metadata: { startedAt, queue: 'graphile' },
+    metadata: { startedAt, queue: 'graphile', policy: AUTO_LAUNCH_REDESIGN_POLICY },
   })
 
   console.info(
-    JSON.stringify({ event: 'auto_launch_queued', tenantId, startedAt })
+    JSON.stringify({
+      event: 'auto_launch_queued',
+      tenantId,
+      startedAt,
+      policy: AUTO_LAUNCH_REDESIGN_POLICY,
+    })
   )
   return true
 }

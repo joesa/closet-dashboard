@@ -15,7 +15,7 @@ All detectors are deterministic (no model calls) and live in
 |---|---|---|
 | Banned marketing phrases | "seamless", "elevate", "comprehensive", "we are committed to", "transform your", "look no further" (~50 rules, some context-aware: "seamless gutters" is legitimate trade language) | `findAiTellPhrases` |
 | Placeholder slots | "Jane Doe", "jane@example.com", "lorem", "TODO", "Offering 3" | `findPlaceholderTells` |
-| Em dash in short copy | headlines, CTAs, labels under 14 words containing "—" | `hasEmDashInShortCopy` |
+| Em dash in short copy | headlines, CTAs, labels under 24 words containing "—" | `hasEmDashInShortCopy` |
 | Formulaic titles | "The {Brand} Method / Approach / Way / Process / Promise" | `findFormulaicTitles` |
 | Structurally generic copy | no measurement, no named material/brand/place once business name + city are removed | `analyzeSpecificity` → `copy_no_proprietary_detail` |
 | Decorative stats | "100%", "24/7", "5-star", "#1" used as filler | `analyzeSpecificity` → `copy_decorative_stat` |
@@ -71,10 +71,12 @@ fact is something only the owner can supply.
 npm run audit:ai-tells              # full audit incl. live homepage crawl
 npm run audit:ai-tells -- --no-crawl   # config copy only (fast, offline)
 npm run audit:ai-tells -- --tenant <id>
+npm run audit:ai-tells -- --all        # include draft/pending/archived tenants
 ```
 
-Writes `audit-output/ai-tell-audit-<date>.{json,md}` (gitignored — contains
-tenant data). Read-only: it never writes to the database. Each finding carries
+By default the audit covers live (`site_status='active'`) tenants only. Writes
+`audit-output/ai-tell-audit-<date>.{json,md}` (gitignored — contains tenant
+data). Read-only: it never writes to the database. Each finding carries
 the exact config path (e.g. `products_config[1].description`) and the matched
 sample, so remediation can be surgical.
 
@@ -103,7 +105,9 @@ on legacy provisions predating the Craft & proof intake step.
 
 ### Still open (Phase 6 craft excellence)
 
-Phases 0–5 are implemented. Remaining Phase 6 work is intentional follow-up, not blocking AI-tell enforcement:
+Core Phase 0–5 enforcement is implemented. Remaining hardening work includes
+persisted Craft-suggestion provenance, broader fallback/chrome coverage, and
+unsupported copy finding repair paths. Phase 6 work remains:
 
 - Deeper template craft pass (modular type/line-length system, per-theme image art-direction beyond hero variants)
 - Theme-token WCAG AA CI for all template themes; CWV budget checks in siteValidator

@@ -5,6 +5,7 @@ import {
   getTenantLaunchSiteUrl,
 } from '@/lib/admin-preview';
 import DeleteTenantDialog from '@/components/DeleteTenantDialog';
+import BatchFullRedesign from '@/components/BatchFullRedesign';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,6 +35,14 @@ export default async function AdminSitesPage() {
       <div className="max-w-6xl mx-auto">
         <h1 className="text-3xl font-bold mb-2">Sites</h1>
         <p className="text-neutral-400 mb-8">Manage tenant websites, approve pending deployments, and review active sites.</p>
+
+        <BatchFullRedesign
+          sites={(tenants ?? []).map((tenant) => ({
+            id: tenant.id,
+            businessName: tenant.business_name || tenant.id,
+            status: tenant.site_status || 'unknown',
+          }))}
+        />
 
         <div className="bg-neutral-900 border border-neutral-800 rounded-xl overflow-hidden shadow-2xl">
           <table className="w-full text-left text-sm">

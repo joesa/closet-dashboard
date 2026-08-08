@@ -56,6 +56,23 @@ export type TextGenerationResult = {
   text: string
   provider: AiTextProvider
   model?: string
+  telemetry?: AiTextTelemetry
+}
+
+export type AiTextTelemetry = {
+  durationMs: number
+  inputTokens?: number
+  outputTokens?: number
+  totalTokens?: number
+  estimatedCostUsd?: number
+}
+
+type ProviderGenerationResult = {
+  text: string
+  model: string
+  inputTokens?: number
+  outputTokens?: number
+  totalTokens?: number
 }
 
 /** Fast production default — finishes Full redesign inside the 5m budget. */
@@ -110,10 +127,7 @@ function providerConfigured(provider: AiTextProvider): boolean {
   return !!process.env.ANTHROPIC_API_KEY
 }
 
-async function generateWithClaude(opts: TextGenerationOpts): Promise<{
-  text: string
-  model: string
-}> {
+async function generateWithClaude(opts: TextGenerationOpts): Promise<ProviderGenerationResult> {
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) {
     throw new Error('Missing ANTHROPIC_API_KEY for text generation')
@@ -173,7 +187,13 @@ async function generateWithClaude(opts: TextGenerationOpts): Promise<{
         `[aiTextProvider] Claude output truncated at max_tokens=${Math.max(opts.maxOutputTokens ?? 8192, 8192)} on ${model} — downstream JSON repair may be needed`
       )
     }
-    return { text, model }
+    return {
+      text,
+      model,
+      inputTokens: message.usage.input_tokens,
+      outputTokens: message.usage.output_tokens,
+      totalTokens: message.usage.input_tokens + message.usage.output_tokens,
+    }
   } catch (err) {
     const name = err instanceof Error ? err.name : ''
     const msg = err instanceof Error ? err.message : String(err)
@@ -193,10 +213,7 @@ async function generateWithClaude(opts: TextGenerationOpts): Promise<{
   }
 }
 
-async function generateWithGemini(opts: TextGenerationOpts): Promise<{
-  text: string
-  model: string
-}> {
+async function generateWithGemini(opts: TextGenerationOpts): Promise<ProviderGenerationResult> {
   const apiKey = process.env.GEMINI_API_KEY
   if (!apiKey) {
     throw new Error('Missing GEMINI_API_KEY for text generation')
@@ -255,13 +272,17 @@ async function generateWithGemini(opts: TextGenerationOpts): Promise<{
       `[aiTextProvider] Gemini output truncated at maxOutputTokens=${opts.maxOutputTokens ?? 2048} on ${modelName} — downstream JSON repair may be needed`
     )
   }
-  return { text: text.trim(), model: modelName }
+  const usage = result.response.usageMetadata
+  return {
+    text: text.trim(),
+    model: modelName,
+    inputTokens: usage?.promptTokenCount,
+    outputTokens: usage?.candidatesTokenCount,
+    totalTokens: usage?.totalTokenCount,
+  }
 }
 
-async function generateWithOpenAI(opts: TextGenerationOpts): Promise<{
-  text: string
-  model: string
-}> {
+async function generateWithOpenAI(opts: TextGenerationOpts): Promise<ProviderGenerationResult> {
   const apiKey = process.env.OPENAI_API_KEY
   if (!apiKey) {
     throw new Error('Missing OPENAI_API_KEY for text generation')
@@ -310,23 +331,57 @@ async function generateWithOpenAI(opts: TextGenerationOpts): Promise<{
       `OpenAI returned no content (finish: ${completion.choices[0]?.finish_reason ?? 'unknown'})`
     )
   }
-  return { text, model }
+  return {
+    text,
+    model,
+    inputTokens: completion.usage?.prompt_tokens,
+    outputTokens: completion.usage?.completion_tokens,
+    totalTokens: completion.usage?.total_tokens,
+  }
+}
+
+export function estimateAiTextCostUsd(
+  provider: AiTextProvider,
+  inputTokens?: number,
+  outputTokens?: number
+): number | undefined {
+  const prefix = `AI_COST_${provider.toUpperCase()}_`
+  const inputRaw = process.env[`${prefix}INPUT_PER_MILLION_USD`]?.trim()
+  const outputRaw = process.env[`${prefix}OUTPUT_PER_MILLION_USD`]?.trim()
+  if (!inputRaw || !outputRaw) return undefined
+  const inputRate = Number(inputRaw)
+  const outputRate = Number(outputRaw)
+  if (!Number.isFinite(inputRate) || !Number.isFinite(outputRate)) return undefined
+  return (((inputTokens ?? 0) * inputRate) + ((outputTokens ?? 0) * outputRate)) / 1_000_000
 }
 
 async function generateWithProvider(
   provider: AiTextProvider,
   opts: TextGenerationOpts
 ): Promise<TextGenerationResult> {
+  const startedAt = Date.now()
+  let result: ProviderGenerationResult
   if (provider === 'anthropic') {
-    const { text, model } = await generateWithClaude(opts)
-    return { text, provider: 'anthropic', model }
+    result = await generateWithClaude(opts)
+  } else if (provider === 'openai') {
+    result = await generateWithOpenAI(opts)
+  } else {
+    result = await generateWithGemini(opts)
   }
-  if (provider === 'openai') {
-    const { text, model } = await generateWithOpenAI(opts)
-    return { text, provider: 'openai', model }
+  const telemetry: AiTextTelemetry = {
+    durationMs: Date.now() - startedAt,
+    inputTokens: result.inputTokens,
+    outputTokens: result.outputTokens,
+    totalTokens: result.totalTokens,
+    estimatedCostUsd: estimateAiTextCostUsd(provider, result.inputTokens, result.outputTokens),
   }
-  const { text, model } = await generateWithGemini(opts)
-  return { text, provider: 'gemini', model }
+  console.info(JSON.stringify({
+    event: 'ai_text_call',
+    provider,
+    model: result.model,
+    ...telemetry,
+  }))
+  return { text: result.text, provider, model: result.model, telemetry }
 }
 
 /**
@@ -356,6 +411,7 @@ export async function generateTextWithFallback(
   let lastErr: unknown = null;
   for (let i = 0; i < chain.length; i++) {
     const provider = chain[i]!;
+    const startedAt = Date.now();
     try {
       const result = await generateWithProvider(provider, opts);
       if (i > 0) {
@@ -369,7 +425,7 @@ export async function generateTextWithFallback(
       const msg = err instanceof Error ? err.message : String(err);
       const next = chain[i + 1];
       console.warn(
-        `[aiTextProvider] ${provider} failed${next ? ` — falling back to ${next}` : ''}: ${msg.slice(0, 300)}`
+        `[aiTextProvider] ${provider} failed after ${Date.now() - startedAt}ms${next ? ` — falling back to ${next}` : ''}: ${msg.slice(0, 300)}`
       );
     }
   }

@@ -8,6 +8,7 @@ import {
   resolveClaudeModel,
   resolveGeminiModel,
   resolveOpenAiModel,
+  estimateAiTextCostUsd,
 } from './aiTextProvider'
 
 describe('resolveClaudeModel', () => {
@@ -62,5 +63,19 @@ describe('surgical model defaults', () => {
     expect(resolveOpenAiModel()).toBe('gpt-5')
     expect(resolveGeminiModel()).toBe('gemini-2.5-pro')
     expect(resolveOpenAiModel('gpt-4.1')).toBe('gpt-4.1')
+  })
+})
+
+describe('estimateAiTextCostUsd', () => {
+  it('omits estimates until both current rates are configured', () => {
+    delete process.env.AI_COST_ANTHROPIC_INPUT_PER_MILLION_USD
+    process.env.AI_COST_ANTHROPIC_OUTPUT_PER_MILLION_USD = ''
+    expect(estimateAiTextCostUsd('anthropic', 1_000, 2_000)).toBeUndefined()
+  })
+
+  it('calculates input and output cost from per-million-token rates', () => {
+    process.env.AI_COST_ANTHROPIC_INPUT_PER_MILLION_USD = '3'
+    process.env.AI_COST_ANTHROPIC_OUTPUT_PER_MILLION_USD = '15'
+    expect(estimateAiTextCostUsd('anthropic', 1_000, 2_000)).toBeCloseTo(0.033)
   })
 })

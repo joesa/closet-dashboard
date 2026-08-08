@@ -249,6 +249,7 @@ type WidgetHintsSnapshot = {
 
 type IntakeDraftSnapshot = {
   form?: Partial<Form>;
+  suggestedCraftValues?: Record<string, string>;
   selectedGeneratedLogoUrl?: string;
   currentStep?: number;
   /**
@@ -278,6 +279,7 @@ function buildDraftSnapshot(
   form: Form,
   selectedGeneratedLogoUrl: string,
   currentStep: number,
+  suggestedCraftValues: Record<string, string>,
   images?: { logoImageUrl?: string; galleryUrls?: string[] }
 ): IntakeDraftSnapshot {
   const galleryUrls = (images?.galleryUrls ?? []).filter(Boolean);
@@ -286,6 +288,8 @@ function buildDraftSnapshot(
       ...form,
       pageContents: compactPageContentsForDraft(form.pageContents),
     },
+    suggestedCraftValues:
+      Object.keys(suggestedCraftValues).length > 0 ? suggestedCraftValues : undefined,
     selectedGeneratedLogoUrl: selectedGeneratedLogoUrl || undefined,
     currentStep,
     logoImageUrl: images?.logoImageUrl || undefined,
@@ -367,6 +371,8 @@ export type IntakeFormClientProps = {
   pageContents?: Record<string, string>;
   /** Draft form fields previously autosaved to the server (cross-device resume). */
   serverDraft?: Record<string, unknown>;
+  /** Original AI craft values restored from persisted provenance. */
+  initialSuggestedCraftValues?: Record<string, string>;
   initialGalleryImages?: string[];
   initialTierFromQuery?: string;
   payKindFromQuery?: IntakeCheckoutKind;
@@ -525,6 +531,7 @@ export default function IntakeFormClient({
   beforeAfterApplicable: initialBeforeAfterApplicable,
   pageContents,
   serverDraft,
+  initialSuggestedCraftValues = {},
   initialGalleryImages,
   initialTierFromQuery,
   payKindFromQuery,
@@ -628,7 +635,9 @@ export default function IntakeFormClient({
    * unedited, the server drops it so invented specifics never become "proof"
    * in the generation brief. Edited answers count as the prospect's own.
    */
-  const [suggestedCraftValues, setSuggestedCraftValues] = useState<Record<string, string>>({});
+  const [suggestedCraftValues, setSuggestedCraftValues] = useState<Record<string, string>>(
+    initialSuggestedCraftValues
+  );
   const isUneditedCraftSuggestion = (key: keyof Form): boolean => {
     const suggested = suggestedCraftValues[String(key)];
     const current = form[key];
@@ -850,6 +859,9 @@ export default function IntakeFormClient({
             },
           }));
         }
+        if (saved.suggestedCraftValues) {
+          setSuggestedCraftValues((current) => ({ ...current, ...saved.suggestedCraftValues }));
+        }
         if (
           typeof saved.selectedGeneratedLogoUrl === 'string' &&
           saved.selectedGeneratedLogoUrl
@@ -885,7 +897,7 @@ export default function IntakeFormClient({
       window.localStorage.setItem(
         draftKey,
         JSON.stringify(
-          buildDraftSnapshot(form, selectedGeneratedLogoUrl, currentStepIndex, {
+          buildDraftSnapshot(form, selectedGeneratedLogoUrl, currentStepIndex, suggestedCraftValues, {
             logoImageUrl,
             galleryUrls: galleryImages.map((e) => e.url),
           })
@@ -899,13 +911,19 @@ export default function IntakeFormClient({
         };
         window.localStorage.setItem(
           draftKey,
-          JSON.stringify({ form: minimal, selectedGeneratedLogoUrl, currentStep: currentStepIndex })
+          JSON.stringify({
+            form: minimal,
+            suggestedCraftValues,
+            selectedGeneratedLogoUrl,
+            currentStep: currentStepIndex,
+          })
         );
       } catch {
       }
     }
   }, [
     form,
+    suggestedCraftValues,
     logoImageUrl,
     galleryImages,
     selectedGeneratedLogoUrl,
@@ -961,6 +979,7 @@ export default function IntakeFormClient({
       timelineFacts: form.timelineFacts,
       guaranteeTerms: form.guaranteeTerms,
       signatureMaterials: form.signatureMaterials,
+      craftSuggestedValues: suggestedCraftValues,
       customerQuotes: form.customerQuotes,
     };
     const serialized = JSON.stringify(payload);
@@ -982,7 +1001,7 @@ export default function IntakeFormClient({
         .catch(() => setServerSaveState('idle'));
     }, 4000);
     return () => clearTimeout(timer);
-  }, [form, token, notFound, submitted, alreadySubmitted]);
+  }, [form, suggestedCraftValues, token, notFound, submitted, alreadySubmitted]);
 
   useEffect(() => {
     if (typeof window === 'undefined' || paymentConfirmDone.current) return;
@@ -1443,6 +1462,7 @@ export default function IntakeFormClient({
         notes: form.notes,
         customerQuotes: form.customerQuotes,
         craftSuggestedFields: getCraftSuggestedFields(),
+        craftSuggestedValues: suggestedCraftValues,
         pageContents,
       }),
     }).catch(() => {});
@@ -1979,6 +1999,7 @@ export default function IntakeFormClient({
         services: serviceList,
         otherServices: undefined,
         craftSuggestedFields,
+        craftSuggestedValues: suggestedCraftValues,
         // Collected as one comma-separated line; the column is text[].
         signatureMaterials: form.signatureMaterials
           .split(',')

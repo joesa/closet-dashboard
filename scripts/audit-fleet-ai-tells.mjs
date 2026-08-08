@@ -17,6 +17,7 @@
  *   npx tsx scripts/audit-fleet-ai-tells.mjs             # full audit + crawl
  *   npx tsx scripts/audit-fleet-ai-tells.mjs --no-crawl  # config copy only
  *   npx tsx scripts/audit-fleet-ai-tells.mjs --tenant <id>  # single tenant
+ *   npx tsx scripts/audit-fleet-ai-tells.mjs --all       # include non-live tenants
  *
  * Output: audit-output/ai-tell-audit-<date>.{json,md}
  */
@@ -62,6 +63,7 @@ const supabase = createClient(supabaseUrl, supabaseKey)
 
 const args = process.argv.slice(2)
 const crawl = !args.includes('--no-crawl')
+const includeAll = args.includes('--all')
 const onlyTenant = args.includes('--tenant') ? args[args.indexOf('--tenant') + 1] : null
 
 /** Keys whose string values are machine config, never customer-visible copy. */
@@ -106,6 +108,21 @@ function pickCrawlHostname(domains) {
   return (usable.find((d) => d.isPrimary) || usable[0])?.hostname || null
 }
 
+function addDirectTellFindings(findings, path, text) {
+  for (const phrase of findAiTellPhrases(text)) {
+    findings.push({ check: 'ai_tell_phrase', path, sample: phrase, text: text.slice(0, 140) })
+  }
+  for (const tell of findPlaceholderTells(text)) {
+    findings.push({ check: 'placeholder', path, sample: tell, text: text.slice(0, 140) })
+  }
+  if (hasEmDashInShortCopy(text)) {
+    findings.push({ check: 'em_dash_short_copy', path, sample: '—', text: text.slice(0, 140) })
+  }
+  for (const title of findFormulaicTitles(text)) {
+    findings.push({ check: 'formulaic_title', path, sample: title, text: text.slice(0, 140) })
+  }
+}
+
 async function fetchHomepage(hostname) {
   try {
     const res = await fetch(`https://${hostname}`, {
@@ -140,18 +157,7 @@ async function auditTenant(tenant) {
   }
 
   for (const { path, text } of strings) {
-    for (const phrase of findAiTellPhrases(text)) {
-      findings.push({ check: 'ai_tell_phrase', path, sample: phrase, text: text.slice(0, 140) })
-    }
-    for (const tell of findPlaceholderTells(text)) {
-      findings.push({ check: 'placeholder', path, sample: tell, text: text.slice(0, 140) })
-    }
-    if (hasEmDashInShortCopy(text)) {
-      findings.push({ check: 'em_dash_short_copy', path, sample: '—', text: text.slice(0, 140) })
-    }
-    for (const title of findFormulaicTitles(text)) {
-      findings.push({ check: 'formulaic_title', path, sample: title, text: text.slice(0, 140) })
-    }
+    addDirectTellFindings(findings, path, text)
   }
 
   // 2. Page-level specificity gate over config text, custom pages, and
@@ -169,11 +175,14 @@ async function auditTenant(tenant) {
     } else {
       const { html, note } = await fetchHomepage(hostname)
       crawlNote = note
-      if (html) pages.push({ label: `live homepage (${hostname})`, text: html })
+      if (html) pages.push({ label: `live homepage (${hostname})`, text: stripToText(html) })
     }
   }
 
   for (const page of pages) {
+    if (page.label.startsWith('live homepage') || page.label.startsWith('custom page')) {
+      addDirectTellFindings(findings, page.label, page.text)
+    }
     for (const finding of analyzeSpecificity({ text: page.text, businessName })) {
       findings.push({
         check: finding.code,
@@ -209,6 +218,7 @@ async function main() {
     )
     .order('created_at', { ascending: true })
   if (onlyTenant) query = query.eq('id', onlyTenant)
+  else if (!includeAll) query = query.eq('site_status', 'active')
 
   const { data: tenants, error } = await query
   if (error) {

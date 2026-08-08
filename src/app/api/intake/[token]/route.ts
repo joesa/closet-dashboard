@@ -251,6 +251,10 @@ export async function POST(
       timeline_facts: toStr(body.timelineFacts),
       guarantee_terms: toStr(body.guaranteeTerms),
       signature_materials: toArr(body.signatureMaterials),
+      craft_suggested_values:
+        body.craftSuggestedValues && typeof body.craftSuggestedValues === 'object'
+          ? body.craftSuggestedValues
+          : existing.craft_suggested_values,
       customer_quotes: toStr(body.customerQuotes),
       requested_pages: clampPagesForTier(
         body.pages,

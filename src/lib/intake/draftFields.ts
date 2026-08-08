@@ -46,6 +46,20 @@ function toPageContents(v: unknown): Record<string, string> | undefined {
   return Object.keys(out).length > 0 ? out : undefined
 }
 
+function toCraftSuggestedValues(v: unknown): Record<string, string> | undefined {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return undefined
+  const allowed = new Set([
+    'craftSpec', 'clientArtifact', 'shopRule', 'localConditions', 'recentJob',
+    'timelineFacts', 'crewShape', 'competitorTell', 'guaranteeTerms', 'signatureMaterials',
+  ])
+  const out: Record<string, string> = {}
+  for (const [key, value] of Object.entries(v as Record<string, unknown>)) {
+    if (!allowed.has(key) || typeof value !== 'string' || !value.trim()) continue
+    out[key] = value.slice(0, MAX_TEXT)
+  }
+  return out
+}
+
 /**
  * Builds the prospect_intakes update for a draft autosave. Only fields present
  * in the body (with the right type) are included, so partial saves never blank
@@ -98,6 +112,7 @@ export function buildIntakeDraftUpdate(
   setIf('timeline_facts', toStr(body.timelineFacts))
   setIf('guarantee_terms', toStr(body.guaranteeTerms))
   setIf('signature_materials', toMaterials(body.signatureMaterials))
+  setIf('craft_suggested_values', toCraftSuggestedValues(body.craftSuggestedValues))
   // Verbatim customer quotes — only real quotes belong here, never invented.
   setIf('customer_quotes', toStr(body.customerQuotes))
 
