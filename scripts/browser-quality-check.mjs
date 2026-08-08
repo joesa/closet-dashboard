@@ -1,4 +1,6 @@
 /** Browser-computed template QA. This complements siteValidator's SSR checks. */
+import { READING_MEASURE_RULE } from './browser-quality-rules.mjs'
+
 export default async function browserQualityCheck(page, options = {}) {
   const width = Number(options.width || process.env.QA_VIEWPORT_WIDTH || 390)
   const height = Number(options.height || process.env.QA_VIEWPORT_HEIGHT || 844)
@@ -6,7 +8,7 @@ export default async function browserQualityCheck(page, options = {}) {
   await page.reload({ waitUntil: 'networkidle' })
   await page.waitForTimeout(750)
 
-  const result = await page.evaluate(({ expectedWidth, expectedHeight }) => {
+  const result = await page.evaluate(({ expectedWidth, expectedHeight, readingMeasureRule }) => {
     const visible = (element) => {
       const style = getComputedStyle(element)
       const rect = element.getBoundingClientRect()
@@ -61,7 +63,7 @@ export default async function browserQualityCheck(page, options = {}) {
       const text = (element.textContent || '').replace(/\s+/g, ' ').trim()
       // A short label in a wide grid cell is not a long line. Gate only prose
       // that actually contains enough characters to exceed the reading measure.
-      return text.length > 82 && estimatedCharacters > 82
+      return text.length > readingMeasureRule.minimumProseCharacters && estimatedCharacters > readingMeasureRule.maximumCharactersPerLine
         ? [{ text: text.slice(0, 70), estimatedCharacters: Math.round(estimatedCharacters) }]
         : []
     }).slice(0, 20)
@@ -69,6 +71,8 @@ export default async function browserQualityCheck(page, options = {}) {
     const priorityImage = document.querySelector('main img[fetchpriority="high"], main img[fetchPriority="high"]')
     const preloadedImage = document.querySelector('link[rel="preload"][as="image"]')
     const engineRoot = document.querySelector('[data-engine-site]')
+    const widgetReleaseScript = document.querySelector('script[data-widget-release]')
+    const widgetElement = document.querySelector('closet-quote-widget, closet-order-widget, closet-booking-widget, closet-ticket-widget')
     const vitals = window.__templateVitals || { cls: 0, lcp: 0 }
     return {
       viewport,
@@ -91,12 +95,14 @@ export default async function browserQualityCheck(page, options = {}) {
       }).length,
       nextFontOnly: ![...document.styleSheets].some((sheet) => (sheet.href || '').includes('fonts.googleapis.com')),
       designSystemVersion: engineRoot?.getAttribute('data-engine-site') || null,
+      widgetRelease: widgetReleaseScript?.getAttribute('data-widget-release') || null,
+      widgetDefined: widgetElement ? Boolean(customElements.get(widgetElement.tagName.toLowerCase())) : null,
       focusStandard: engineRoot?.getAttribute('data-focus-standard') || null,
       cls: Number(vitals.cls || 0),
       lcp: Number(vitals.lcp || 0),
       title: document.title,
     }
-  }, { expectedWidth: width, expectedHeight: height })
+  }, { expectedWidth: width, expectedHeight: height, readingMeasureRule: READING_MEASURE_RULE })
 
   const focusFailures = []
   await page.locator('body').click({ position: { x: 1, y: 1 } })

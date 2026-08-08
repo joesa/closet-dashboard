@@ -7,12 +7,23 @@ import { launch as launchChrome } from 'chrome-launcher'
 import lighthouse from 'lighthouse'
 import { chromium } from 'playwright'
 import browserQualityCheck from './browser-quality-check.mjs'
+import { summarizeLighthouse } from './template-quality-metrics.mjs'
 
 const args = process.argv.slice(2)
 const argValues = (flag) => args.flatMap((value, index) => value === flag && args[index + 1] ? [args[index + 1]] : [])
-const requestedUrls = [...argValues('--url'), ...(process.env.QA_URLS || '').split(',')]
+let requestedUrls = [...argValues('--url'), ...(process.env.QA_URLS || '').split(',')]
   .map((url) => url.trim())
   .filter(Boolean)
+if (requestedUrls.length === 0) {
+  const discoveryUrl = process.env.QA_DISCOVERY_URL || 'https://www.ditchtheform.com/api/quality/template-canaries'
+  const response = await fetch(discoveryUrl, { headers: { accept: 'application/json' } })
+  if (!response.ok) throw new Error(`QA canary discovery failed with HTTP ${response.status}`)
+  const payload = await response.json()
+  requestedUrls = (Array.isArray(payload.canaries) ? payload.canaries : [])
+    .map((canary) => String(canary?.url || '').trim())
+    .filter(Boolean)
+  console.log(`Discovered ${requestedUrls.length} engine canaries from ${discoveryUrl}`)
+}
 const useAdminBypass = args.includes('--admin-bypass')
 const urls = requestedUrls.map((value) => {
   const url = new URL(value)
@@ -26,7 +37,7 @@ const outputPath = path.resolve(process.cwd(), args.includes('--output') ? args[
 const chromePath = process.env.CHROME_PATH || '/usr/bin/google-chrome'
 
 if (urls.length === 0) {
-  console.error('Provide at least one --url <site> or comma-separated QA_URLS.')
+  console.error('No eligible engine-site QA canaries were discovered.')
   process.exit(2)
 }
 
@@ -55,6 +66,17 @@ try {
     const page = await browser.newPage()
     await page.addInitScript(initVitals)
     await page.goto(url, { waitUntil: 'networkidle', timeout: 45_000 })
+    const engineVersion = await page.locator('[data-engine-site]').first().getAttribute('data-engine-site').catch(() => null)
+    if (engineVersion !== 'v2') {
+      reports.push({
+        url: displayUrl,
+        passed: false,
+        failures: ['not-engine-site'],
+        detail: `Expected data-engine-site=v2, received ${engineVersion || 'no engine marker'}`,
+      })
+      await page.close()
+      continue
+    }
     await page.addScriptTag({ content: axe.source })
     const axeResult = await page.evaluate(async () => window.axe.run(document, {
       runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'] },
@@ -89,26 +111,36 @@ try {
       }),
     )
 
-    const lighthouseResult = await lighthouse(url, {
-      port: chrome.port,
-      output: 'json',
-      logLevel: 'error',
-      onlyCategories: ['accessibility', 'performance'],
-      formFactor: 'mobile',
-      screenEmulation: { mobile: true, width: 390, height: 844, deviceScaleFactor: 1, disabled: false },
-    })
-    const lhr = lighthouseResult?.lhr
-    const accessibilityScore = Number(lhr?.categories.accessibility?.score || 0)
-    const lighthouseCls = Number(lhr?.audits['cumulative-layout-shift']?.numericValue || 0)
-    const lighthouseLcp = Number(lhr?.audits['largest-contentful-paint']?.numericValue || 0)
-    const failures = []
     const isLocalAudit = ['localhost', '127.0.0.1'].some((host) => new URL(url).hostname.endsWith(host))
+    const lighthouseRuns = Math.max(1, Number(process.env.QA_LIGHTHOUSE_RUNS || (isLocalAudit ? 1 : 3)))
+    const lighthouseSamples = []
+    for (let run = 0; run < lighthouseRuns; run += 1) {
+      const lighthouseResult = await lighthouse(url, {
+        port: chrome.port,
+        output: 'json',
+        logLevel: 'error',
+        onlyCategories: ['accessibility', 'performance'],
+        formFactor: 'mobile',
+        screenEmulation: { mobile: true, width: 390, height: 844, deviceScaleFactor: 1, disabled: false },
+      })
+      const lhr = lighthouseResult?.lhr
+      lighthouseSamples.push({
+        accessibilityScore: Number(lhr?.categories.accessibility?.score || 0),
+        cls: Number(lhr?.audits['cumulative-layout-shift']?.numericValue || 0),
+        lcp: Number(lhr?.audits['largest-contentful-paint']?.numericValue || 0),
+      })
+    }
+    const lighthouseSummary = summarizeLighthouse(lighthouseSamples)
+    const { accessibilityScore, cls: lighthouseCls, lcp: lighthouseLcp } = lighthouseSummary
+    const failures = []
     if (axeResult.violations.length) failures.push(`axe:${axeResult.violations.length}`)
     if (accessibilityScore < 0.95) failures.push(`lighthouse-a11y:${accessibilityScore}`)
     if (lighthouseCls >= 0.1) failures.push(`cls:${lighthouseCls}`)
     // Dev compilation and local image-proxy cold starts are not production LCP.
     // Still report the measurement locally; enforce the time budget on public URLs.
     if (!isLocalAudit && lighthouseLcp > 4000) failures.push(`lcp:${Math.round(lighthouseLcp)}ms`)
+    if (!isLocalAudit && (!mobile.widgetRelease || !desktop.widgetRelease)) failures.push('widget-release-unverified')
+    if (mobile.widgetDefined === false || desktop.widgetDefined === false) failures.push('widget-not-defined')
     if (!mobile.lcpImagePriority || !desktop.lcpImagePriority) failures.push('lcp-image-not-prioritized')
     if (mobile.horizontalOverflow || desktop.horizontalOverflow) failures.push('horizontal-overflow')
     if (mobile.focusFailures.length || desktop.focusFailures.length) failures.push('missing-focus-indicator')
@@ -131,7 +163,7 @@ try {
           summary: node.failureSummary,
         })),
       })),
-      lighthouse: { accessibilityScore, cls: lighthouseCls, lcp: lighthouseLcp },
+      lighthouse: lighthouseSummary,
       mobile,
       desktop,
       reducedMotionFailures,

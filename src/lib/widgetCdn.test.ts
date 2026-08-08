@@ -1,26 +1,18 @@
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_WIDGET_VERSION, withWidgetCacheBust } from './widgetCdn'
+import { DEFAULT_WIDGET_CDN_BASE, normalizeWidgetCdnUrl } from './widgetCdn'
 
-describe('withWidgetCacheBust', () => {
+describe('normalizeWidgetCdnUrl', () => {
   it('leaves local paths alone', () => {
-    expect(withWidgetCacheBust('/widget.js')).toBe('/widget.js')
+    expect(normalizeWidgetCdnUrl('/widget.js')).toBe('/widget.js')
   })
 
-  it('appends ?v= when missing', () => {
-    expect(withWidgetCacheBust('https://closet-widget.vercel.app/widget.js')).toBe(
-      `https://closet-widget.vercel.app/widget.js?v=${DEFAULT_WIDGET_VERSION}`
+  it('uses the release loader by default', () => {
+    expect(DEFAULT_WIDGET_CDN_BASE).toBe('https://closet-widget.vercel.app/loader.js')
+  })
+
+  it('does not add mutable version state to an absolute URL', () => {
+    expect(normalizeWidgetCdnUrl('https://cdn.example/loader.js')).toBe(
+      'https://cdn.example/loader.js'
     )
-  })
-
-  it('preserves an existing v param', () => {
-    expect(
-      withWidgetCacheBust('https://closet-widget.vercel.app/widget.js?v=9.9.9')
-    ).toBe('https://closet-widget.vercel.app/widget.js?v=9.9.9')
-  })
-
-  it('accepts an explicit version override', () => {
-    expect(
-      withWidgetCacheBust('https://closet-widget.vercel.app/widget.js', '1.2.3')
-    ).toBe('https://closet-widget.vercel.app/widget.js?v=1.2.3')
   })
 })

@@ -1,30 +1,18 @@
 /**
- * Canonical embed URL for closet-widget. Keep in sync with
+ * Canonical widget loader URL. Keep in sync with
  * custom-closets-websites/src/lib/widgetCdn.ts (separate packages).
  *
- * Bump DEFAULT_WIDGET_VERSION when shipping a widget release that must
- * invalidate cached <script src> tags immediately (also bump closet-widget
- * package.json version and optionally set NEXT_PUBLIC_WIDGET_VERSION on Vercel).
+ * The loader is always revalidated and resolves a content-addressed,
+ * SRI-protected release, so consumers never pin a manual package version.
  */
-export const DEFAULT_WIDGET_CDN_BASE = 'https://closet-widget.vercel.app/widget.js'
+export const DEFAULT_WIDGET_CDN_BASE = 'https://closet-widget.vercel.app/loader.js'
 
-/** Matches closet-widget/package.json version for hard cache-bust. */
-export const DEFAULT_WIDGET_VERSION = '0.1.10'
-
-export function withWidgetCacheBust(url: string, version?: string): string {
+export function normalizeWidgetCdnUrl(url: string): string {
   const raw = (url || '').trim()
   if (!raw) return raw
-  // Local /public/widget.js — no bust needed (copied on predev).
-  if (raw.startsWith('/')) return raw
-  const v =
-    (version || process.env.NEXT_PUBLIC_WIDGET_VERSION || DEFAULT_WIDGET_VERSION).trim() ||
-    DEFAULT_WIDGET_VERSION
   try {
-    const u = new URL(raw)
-    if (!u.searchParams.has('v')) u.searchParams.set('v', v)
-    return u.toString()
+    return raw.startsWith('/') ? raw : new URL(raw).toString()
   } catch {
-    const sep = raw.includes('?') ? '&' : '?'
-    return raw.includes('v=') ? raw : `${raw}${sep}v=${encodeURIComponent(v)}`
+    return raw
   }
 }

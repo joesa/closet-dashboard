@@ -1,7 +1,7 @@
 /**
  * Fail if shared libs drift between dashboard and websites:
  *   - src/lib/customSite.ts (widget mount / sanitize core)
- *   - src/lib/widgetCdn.ts (CDN URL + cache-bust version)
+ *   - src/lib/widgetCdn.ts (content-addressed release loader URL)
  *
  * Usage (from closet-dashboard):
  *   node scripts/check-custom-site-core-sync.mjs
@@ -47,8 +47,8 @@ const CHECKS = [
   {
     label: 'widgetCdn',
     relativePath: 'src/lib/widgetCdn.ts',
-    consts: ['DEFAULT_WIDGET_CDN_BASE', 'DEFAULT_WIDGET_VERSION'],
-    functions: ['withWidgetCacheBust'],
+    consts: ['DEFAULT_WIDGET_CDN_BASE'],
+    functions: ['normalizeWidgetCdnUrl'],
   },
 ]
 

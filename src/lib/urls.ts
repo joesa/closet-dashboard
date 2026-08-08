@@ -1,4 +1,4 @@
-import { DEFAULT_WIDGET_CDN_BASE, withWidgetCacheBust } from '@/lib/widgetCdn'
+import { DEFAULT_WIDGET_CDN_BASE, normalizeWidgetCdnUrl } from '@/lib/widgetCdn'
 
 /** Canonical production dashboard origin (emails, redirects, embeds). */
 export const DEFAULT_PUBLIC_ORIGIN = 'https://www.ditchtheform.com'
@@ -54,10 +54,10 @@ function defaultWidgetScriptUrl(): string {
   if (/localhost|127\.0\.0\.1/.test(site)) return '/widget.js'
   const base =
     process.env.NEXT_PUBLIC_WIDGET_CDN_URL?.trim() || DEFAULT_WIDGET_CDN_BASE
-  return withWidgetCacheBust(base)
+  return normalizeWidgetCdnUrl(base)
 }
 
-/** CDN URL for the embeddable closet-quote-widget IIFE bundle (cache-busted). */
+/** CDN loader for the content-addressed closet widget release. */
 export const WIDGET_CDN_URL = defaultWidgetScriptUrl()
 
 /** Public dashboard / widget API origin (no trailing slash). */
