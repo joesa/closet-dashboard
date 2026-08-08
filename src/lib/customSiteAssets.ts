@@ -4,6 +4,7 @@ import {
   sanitizeCustomConfig,
   type CustomSiteConfig,
 } from '@/lib/customSite'
+import type { ImageUploadKind } from '@/lib/images/optimizeUpload'
 
 const SITE_ASSETS_BUCKET = 'site-assets'
 
@@ -190,6 +191,7 @@ export async function uploadCustomSiteAsset(opts: {
   fileName: string
   mime: string
   kindHint?: CustomAssetKind
+  imageUploadKind?: ImageUploadKind
 }): Promise<CustomAssetRecord> {
   const kind = assertAllowedUpload({
     mime: opts.mime,
@@ -200,7 +202,7 @@ export async function uploadCustomSiteAsset(opts: {
   if (kind === 'image' && opts.mime !== 'image/svg+xml') {
     const { optimizeUserImage } = await import('@/lib/images/optimizeUpload')
     const { uploadPreparedImage } = await import('@/lib/images/uploadOptimized')
-    const imageKind = guessImageUploadKind(opts.fileName)
+    const imageKind = opts.imageUploadKind ?? guessImageUploadKind(opts.fileName)
     const optimized = await optimizeUserImage(opts.buffer, imageKind, opts.mime)
     const { path, name } = buildStoragePath({
       tenantId: opts.tenantId,

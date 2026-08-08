@@ -772,6 +772,9 @@ function MediaDialog({ target, onClose, onUse }: { target: MediaTarget | null; o
     setBusy(true)
     setError('')
     const form = new FormData(); form.append('file', file)
+    if (target && target.mode !== 'custom' && /\/backgroundImage$/.test(target.path)) {
+      form.append('imageUploadKind', 'hero')
+    }
     const res = await fetch('/api/dashboard/site-media', { method: 'POST', body: form })
     const json = await res.json().catch(() => ({}))
     setBusy(false)

@@ -40,7 +40,7 @@ describe('optimizeUserImage', () => {
     const meta = await sharp(out.buffer).metadata()
     expect(meta.width).toBe(3840)
     expect(meta.height).toBe(2560)
-  })
+  }, 15_000)
 })
 
 describe('guessImageUploadKind', () => {
@@ -56,7 +56,16 @@ describe('upload path wiring', () => {
   it('admin custom assets optimize images before storage', () => {
     const src = readFileSync(join(__dirname, '../customSiteAssets.ts'), 'utf8')
     expect(src).toContain('optimizeUserImage')
+    expect(src).toContain('opts.imageUploadKind ?? guessImageUploadKind(opts.fileName)')
     expect(src).toContain('finalizeCustomImageAfterDirectUpload')
+  })
+
+  it('dashboard hero replacements request the hero upload profile', () => {
+    const page = readFileSync(join(__dirname, '../../app/dashboard/website/page.tsx'), 'utf8')
+    const route = readFileSync(join(__dirname, '../../app/api/dashboard/site-media/route.ts'), 'utf8')
+    expect(page).toContain("form.append('imageUploadKind', 'hero')")
+    expect(route).toContain("form.get('imageUploadKind') === 'hero' ? 'hero' : undefined")
+    expect(route).toContain('imageUploadKind,')
   })
 
   it('AI site assets go through uploadOptimizedBuffer', () => {

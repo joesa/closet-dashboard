@@ -38,6 +38,7 @@ export async function POST(req: Request) {
     const form = await req.formData()
     const file = form.get('file')
     const kind = form.get('kind') === 'logo' ? 'logo' : 'image'
+    const imageUploadKind = form.get('imageUploadKind') === 'hero' ? 'hero' : undefined
     if (!(file instanceof File) || file.size <= 0) return NextResponse.json({ error: 'file is required' }, { status: 400 })
     if (file.size > MAX_UPLOAD_BYTES) return NextResponse.json({ error: 'Images must be under 4MB' }, { status: 413 })
     const prepared = await prepareContentImageUpload({
@@ -52,6 +53,7 @@ export async function POST(req: Request) {
       fileName: prepared.fileName,
       mime: prepared.mime,
       kindHint: 'image',
+      imageUploadKind,
     })
     return NextResponse.json({ asset })
   } catch (error) {
