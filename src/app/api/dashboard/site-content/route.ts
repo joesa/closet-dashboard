@@ -3,6 +3,8 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { checkRateLimit, hashRateKey } from '@/lib/rateLimit'
 import { revalidateTenantSiteCache } from '@/lib/tenants/revalidateTenantSite'
 import { applyContentChanges } from '@/lib/site-content/document'
+import { engineEditorPages } from '@/lib/site-content/editorChanges'
+import type { SiteContentDocument } from '@/lib/site-content/types'
 import { assertSameOriginMutation, loadOwnedSiteContent } from '@/lib/site-content/server'
 import type { ContentChange } from '@/lib/site-content/types'
 import { mintContentEditorToken } from '@/lib/contentEditorToken'
@@ -22,19 +24,12 @@ function pageTree(document: Record<string, unknown>, renderMode: 'engine' | 'cus
       protected: slug === '/',
     }))
   }
-  const pages = Array.isArray(document.pages_config) ? document.pages_config : []
-  return [
-    { slug: '/', title: 'Home', isActive: true, protected: true },
-    ...pages.map((page) => {
-      const value = (page || {}) as Record<string, unknown>
-      return {
-        slug: String(value.slug || ''),
-        title: String(value.title || 'Untitled page'),
-        isActive: value.is_active !== false,
-        protected: false,
-      }
-    }),
-  ]
+  return engineEditorPages(document as unknown as SiteContentDocument).map((page) => ({
+    slug: page.slug,
+    title: page.title,
+    isActive: page.isActive,
+    protected: page.protected,
+  }))
 }
 
 async function recentRevisions(tenantId: string) {

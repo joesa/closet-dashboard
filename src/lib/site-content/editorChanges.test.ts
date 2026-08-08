@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { coupledEngineChanges, imagePresentationChange, restoreDocumentChanges } from './editorChanges'
+import { coupledEngineChanges, engineEditorPages, imagePresentationChange, restoreDocumentChanges } from './editorChanges'
 import type { SiteContentDocument } from './types'
 
 function document(): SiteContentDocument {
@@ -21,6 +21,49 @@ function document(): SiteContentDocument {
 }
 
 describe('editor page/navigation coupling', () => {
+  it('always exposes Home and every configured page in the editor page list', () => {
+    const source = document()
+    source.pages_config = [
+      { slug: '/about', title: 'About Us', is_active: true },
+      { slug: '/services', title: 'Services', is_active: true },
+    ]
+    source.nav_links = [
+      { label: 'Start', slug: '/' },
+      { label: 'About Us', slug: '/about' },
+      { label: 'Services', slug: '/services' },
+    ]
+
+    expect(engineEditorPages(source).map(({ slug, title }) => ({ slug, title }))).toEqual([
+      { slug: '/', title: 'Start' },
+      { slug: '/about', title: 'About Us' },
+      { slug: '/services', title: 'Services' },
+    ])
+  })
+
+  it('keeps legacy navigation destinations visible even without a page record', () => {
+    const source = document()
+    source.nav_links.push({ label: 'Legacy landing page', slug: '/landing' })
+
+    expect(engineEditorPages(source)).toContainEqual(expect.objectContaining({
+      slug: '/landing',
+      title: 'Legacy landing page',
+      navIndex: 1,
+      navigationOnly: true,
+    }))
+  })
+
+  it('shows pages omitted from navigation so users can add them back', () => {
+    const source = document()
+    source.pages_config = [{ slug: '/contact', title: 'Contact', is_active: true }]
+
+    expect(engineEditorPages(source)).toContainEqual(expect.objectContaining({
+      slug: '/contact',
+      pageIndex: 0,
+      navIndex: null,
+      navigationOnly: false,
+    }))
+  })
+
   it('adds a new active page to navigation in the same save', () => {
     const changes = coupledEngineChanges(document(), {
       op: 'insert',

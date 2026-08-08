@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ContentChange, SiteContentDocument, SiteContentRevisionSummary } from '@/lib/site-content/types'
-import { coupledEngineChanges, imagePresentationChange, restoreDocumentChanges } from '@/lib/site-content/editorChanges'
+import { coupledEngineChanges, engineEditorPages, imagePresentationChange, restoreDocumentChanges } from '@/lib/site-content/editorChanges'
 
 type StudioPayload = {
   tenant: {
@@ -437,6 +437,7 @@ export default function WebsiteStudioPage() {
   const hiddenSections = Array.isArray(document.content_structure?.hiddenHomeSections)
     ? document.content_structure.hiddenHomeSections.map(String)
     : []
+  const enginePages = payload.renderMode === 'engine' ? engineEditorPages(document) : []
   const customPages = payload.renderMode === 'custom'
     ? Object.entries(((document.custom_config as { pages?: Record<string, { title?: string }> } | undefined)?.pages || {}))
       .map(([slug, page]) => ({ slug, title: page.title || (slug === '/' ? 'Home' : slug.split('/').filter(Boolean).at(-1) || 'Page'), protected: slug === '/' }))
@@ -474,8 +475,54 @@ export default function WebsiteStudioPage() {
               {payload.renderMode === 'engine' && <button onClick={() => setSelectedPath('/nav_links')} className={`rounded-lg px-2 py-2 text-left text-xs ${selectedPath.startsWith('/nav_links') ? 'bg-indigo-500/15 text-indigo-100' : 'hover:bg-white/5'}`}>Navigation links</button>}
             </div>
           </div>
-          {payload.renderMode === 'engine' ? <div className="rounded-xl border border-white/8 bg-white/[0.02] p-2">
-            <button onClick={() => { setSelectedPath('/hero_config'); setPreviewPath('/') }} className="w-full px-2 py-2 text-left text-sm font-semibold">Home</button>
+          {payload.renderMode === 'engine' && <div className="space-y-1 rounded-xl border border-white/8 bg-white/[0.02] p-2">
+            <p className="px-2 pb-1 pt-1 text-sm font-medium">Website pages</p>
+            {enginePages.map((page) => {
+              const selected = page.pageIndex === null
+                ? previewPath === page.slug
+                : selectedPath.startsWith(`/pages_config/${page.pageIndex}`)
+              const inNavigation = page.navIndex !== null
+              return (
+                <div key={`${page.slug}-${page.pageIndex ?? 'platform'}`} className={`flex items-center rounded-lg ${selected ? 'bg-indigo-500/15 text-indigo-100' : 'hover:bg-white/5'}`}>
+                  <button
+                    onClick={() => {
+                      setPreviewPath(page.slug || '/')
+                      setSelectedPath(page.pageIndex === null
+                        ? page.slug === '/' ? '/hero_config' : `/nav_links/${page.navIndex}`
+                        : `/pages_config/${page.pageIndex}`)
+                    }}
+                    className="min-w-0 flex-1 px-3 py-2 text-left text-xs"
+                  >
+                    <span className="block truncate">{page.title}</span>
+                    <span className="text-[10px] text-zinc-600">{page.isActive ? '' : 'Hidden · '}{page.slug}{page.navigationOnly ? ' · Navigation link' : ''}</span>
+                  </button>
+                  <button
+                    disabled={!page.isActive || !page.slug || page.navigationOnly}
+                    title={inNavigation ? 'Remove this page from navigation' : 'Add this page to navigation'}
+                    onClick={() => queueChange(inNavigation
+                      ? { op: 'remove', path: `/nav_links/${page.navIndex}` }
+                      : { op: 'insert', path: '/nav_links', index: document.nav_links.length, value: { label: page.title, slug: page.slug } }, true)}
+                    className={`mr-2 shrink-0 rounded-md border px-2 py-1 text-[10px] disabled:cursor-not-allowed disabled:opacity-30 ${inNavigation ? 'border-emerald-400/20 text-emerald-300' : 'border-white/10 text-zinc-400'}`}
+                  >
+                    {inNavigation ? 'In nav ✓' : '+ Nav'}
+                  </button>
+                  {page.pageIndex !== null && <button
+                    title="Delete this page"
+                    onClick={() => {
+                      if (!window.confirm(`Delete “${page.title}”? You can restore it later from revision history.`)) return
+                      queueChange({ op: 'remove', path: `/pages_config/${page.pageIndex}` }, true)
+                      setPreviewPath('/')
+                      setSelectedPath('/hero_config')
+                    }}
+                    className="mr-2 shrink-0 rounded-md border border-red-400/15 px-2 py-1 text-[10px] text-red-300/80 hover:border-red-400/40 hover:text-red-200"
+                  >Delete</button>}
+                </div>
+              )
+            })}
+            <button onClick={() => { const page = defaultArrayItem('/pages_config'); queueChange({ op: 'insert', path: '/pages_config', index: document.pages_config.length, value: page }, true) }} className="w-full rounded-lg border border-dashed border-white/10 px-3 py-2 text-xs text-zinc-400 hover:border-white/30">+ Add page</button>
+          </div>}
+          {payload.renderMode === 'engine' ? <div className="mt-3 rounded-xl border border-white/8 bg-white/[0.02] p-2">
+            <button onClick={() => { setSelectedPath('/hero_config'); setPreviewPath('/') }} className="w-full px-2 py-2 text-left text-sm font-semibold">Home sections</button>
             <div className="space-y-1">
               {orderedSections.map((id, index) => {
                 const section = HOME_SECTIONS.find((entry) => entry.id === id)
@@ -494,41 +541,6 @@ export default function WebsiteStudioPage() {
           </div> : <div className="space-y-1 rounded-xl border border-white/8 bg-white/[0.02] p-2">
             {customPages.map((page) => <div key={page.slug} className={`flex items-center rounded-lg ${previewPath === page.slug ? 'bg-indigo-500/15' : 'hover:bg-white/5'}`}><button onClick={() => { setPreviewPath(page.slug); setSelectedPath(`/custom_config/pages/${encodePointer(page.slug)}/html`) }} className="min-w-0 flex-1 truncate px-2 py-2 text-left text-xs">{page.title}</button><button title="Page title and description" onClick={() => setSelectedPath(`/custom_config/pages/${encodePointer(page.slug)}`)} className="px-1 text-zinc-500">⚙</button>{!page.protected && <button onClick={() => { queueChange({ op: 'remove', path: `/custom_config/pages/${encodePointer(page.slug)}` }, true); setPreviewPath('/') }} className="px-2 text-red-400/70">×</button>}</div>)}
             <button onClick={() => { const slug = `/page-${Date.now().toString(36)}`; queueChange({ op: 'set', path: `/custom_config/pages/${encodePointer(slug)}`, value: { title: 'New page', description: '', html: '<main><section><h1>New page</h1><p>Add your content here.</p></section></main>' } }, true); setPreviewPath(slug); setSelectedPath(`/custom_config/pages/${encodePointer(slug)}/html`) }} className="w-full rounded-lg border border-dashed border-white/10 px-3 py-2 text-xs text-zinc-400">+ Add page</button>
-          </div>}
-          {payload.renderMode === 'engine' && <div className="mt-3 space-y-1">
-            {(document.pages_config as Array<{ slug?: string; title?: string; is_active?: boolean }>).map((page, index) => {
-              const navIndex = (document.nav_links as Array<{ slug?: string }>).findIndex((link) => link.slug === page.slug)
-              const inNavigation = navIndex >= 0
-              return (
-                <div key={`${page.slug}-${index}`} className={`flex items-center rounded-lg ${selectedPath.startsWith(`/pages_config/${index}`) ? 'bg-indigo-500/15 text-indigo-100' : 'hover:bg-white/5'}`}>
-                  <button onClick={() => { setSelectedPath(`/pages_config/${index}`); setPreviewPath(page.slug || '/') }} className="min-w-0 flex-1 px-3 py-2 text-left text-xs">
-                    <span className="block truncate">{page.title || 'Untitled page'}</span>
-                    <span className="text-[10px] text-zinc-600">{page.is_active === false ? 'Hidden · ' : ''}{page.slug}</span>
-                  </button>
-                  <button
-                    disabled={page.is_active === false || !page.slug}
-                    title={inNavigation ? 'Remove this page from navigation' : 'Add this page to navigation'}
-                    onClick={() => queueChange(inNavigation
-                      ? { op: 'remove', path: `/nav_links/${navIndex}` }
-                      : { op: 'insert', path: '/nav_links', index: document.nav_links.length, value: { label: page.title || 'Untitled page', slug: page.slug } }, true)}
-                    className={`mr-2 shrink-0 rounded-md border px-2 py-1 text-[10px] disabled:cursor-not-allowed disabled:opacity-30 ${inNavigation ? 'border-emerald-400/20 text-emerald-300' : 'border-white/10 text-zinc-400'}`}
-                  >
-                    {inNavigation ? 'In nav ✓' : '+ Nav'}
-                  </button>
-                  <button
-                    title="Delete this page"
-                    onClick={() => {
-                      if (!window.confirm(`Delete “${page.title || page.slug || 'this page'}”? You can restore it later from revision history.`)) return
-                      queueChange({ op: 'remove', path: `/pages_config/${index}` }, true)
-                      setPreviewPath('/')
-                      setSelectedPath('/hero_config')
-                    }}
-                    className="mr-2 shrink-0 rounded-md border border-red-400/15 px-2 py-1 text-[10px] text-red-300/80 hover:border-red-400/40 hover:text-red-200"
-                  >Delete</button>
-                </div>
-              )
-            })}
-            {payload.renderMode === 'engine' && <button onClick={() => { const page = defaultArrayItem('/pages_config'); queueChange({ op: 'insert', path: '/pages_config', index: document.pages_config.length, value: page }, true) }} className="w-full rounded-lg border border-dashed border-white/10 px-3 py-2 text-xs text-zinc-400 hover:border-white/30">+ Add page</button>}
           </div>}
           <button onClick={() => setSelectedPath('/seo_config')} className="mt-3 w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-white/5">SEO & contact details</button>
           {message && <p className="mt-5 rounded-lg bg-white/5 p-3 text-xs leading-relaxed text-zinc-400">{message}</p>}
