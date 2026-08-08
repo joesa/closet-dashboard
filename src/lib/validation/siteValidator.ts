@@ -261,7 +261,10 @@ export function analyzeRenderedDesign(
     if (!/data-performance-standard=["']reserved-media-next-font["']/i.test(html)) {
       findings.push({ code: 'design_performance_standard_missing', message: 'Template page does not declare reserved media geometry and self-hosted font safeguards.' })
     }
-    if (!/<img\b[^>]*\bfetchpriority=["']high["']/i.test(html) && !/<link\b[^>]*\brel=["']preload["'][^>]*\bas=["']image["']/i.test(html)) {
+    const hasEagerPriorityImage = [...html.matchAll(/<img\b[^>]*>/gi)].some((match) =>
+      /\bfetchpriority=["']high["']/i.test(match[0]) && /\bloading=["']eager["']/i.test(match[0])
+    )
+    if (!hasEagerPriorityImage && !/<link\b[^>]*\brel=["']preload["'][^>]*\bas=["']image["']/i.test(html)) {
       findings.push({ code: 'design_lcp_priority_missing', message: 'Template page has no high-priority hero image candidate for Largest Contentful Paint.' })
     }
     if (/fonts\.(?:googleapis|gstatic)\.com/i.test(html)) {

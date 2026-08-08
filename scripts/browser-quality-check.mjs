@@ -63,7 +63,8 @@ export default async function browserQualityCheck(page, options = {}) {
         : []
     }).slice(0, 20)
 
-    const lcpImage = document.querySelector('main img[fetchpriority="high"], main img[fetchPriority="high"], link[rel="preload"][as="image"]')
+    const priorityImage = document.querySelector('main img[fetchpriority="high"], main img[fetchPriority="high"]')
+    const preloadedImage = document.querySelector('link[rel="preload"][as="image"]')
     const engineRoot = document.querySelector('[data-engine-site]')
     const vitals = window.__templateVitals || { cls: 0, lcp: 0 }
     return {
@@ -78,7 +79,9 @@ export default async function browserQualityCheck(page, options = {}) {
       smallTargets,
       spacingFailures,
       longLines,
-      lcpImagePriority: Boolean(lcpImage),
+      lcpImagePriority: Boolean(
+        preloadedImage || (priorityImage && priorityImage.getAttribute('loading') !== 'lazy')
+      ),
       imageLayoutFailures: [...document.images].filter(visible).filter((image) => {
         const rect = image.getBoundingClientRect()
         return rect.width <= 0 || rect.height <= 0

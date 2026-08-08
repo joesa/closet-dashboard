@@ -52,6 +52,15 @@ describe('analyzeRenderedDesign', () => {
     expect(analyzeRenderedDesign(html, { renderMode: 'engine' })).toEqual([])
   })
 
+  it('rejects a high-priority hero that is still lazy-loaded', () => {
+    const html = validPage.replace(
+      '<main',
+      '<div data-engine-site="v2" data-focus-standard="visible-ring" data-performance-standard="reserved-media-next-font"><img src="hero.jpg" alt="Crew at work" fetchpriority="high" loading="lazy" /><main',
+    ).replace('</footer>', '</footer></div>')
+    expect(analyzeRenderedDesign(html, { renderMode: 'engine' }).map((finding) => finding.code))
+      .toContain('design_lcp_priority_missing')
+  })
+
   it('finds short, purposeless orphan sections', () => {
     const findings = analyzeRenderedDesign(validPage.replace('</main>', '<section><p>Hi</p></section></main>'))
     expect(findings.map((finding) => finding.code)).toContain('design_orphan_sections')
