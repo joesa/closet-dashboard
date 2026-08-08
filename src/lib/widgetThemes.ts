@@ -25,6 +25,18 @@ export type WidgetThemeTokens = {
 
 export const DEFAULT_WIDGET_THEME_ID = 'alabaster'
 
+function readableBrandText(background: string): '#0a0a0a' | '#ffffff' {
+  const rgb = /^#([0-9a-f]{6})$/i.exec(background)?.[1]
+  if (!rgb) return '#ffffff'
+  const luminance = [0, 2, 4]
+    .map((offset) => Number.parseInt(rgb.slice(offset, offset + 2), 16) / 255)
+    .map((value) => value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4)
+    .reduce((sum, value, index) => sum + value * [0.2126, 0.7152, 0.0722][index], 0)
+  const whiteContrast = 1.05 / (luminance + 0.05)
+  const darkContrast = (luminance + 0.05) / 0.053
+  return darkContrast >= whiteContrast ? '#0a0a0a' : '#ffffff'
+}
+
 function t(
   partial: Omit<
     WidgetThemeTokens,
@@ -49,12 +61,12 @@ function t(
 ): WidgetThemeTokens {
   const isDark = partial.mode === 'dark'
   return {
-    brandText: partial.brandText || (isDark ? '#0a0a0a' : '#ffffff'),
+    brandText: partial.brandText || readableBrandText(partial.brand),
     surfaceHover: partial.surfaceHover || (isDark ? '#222222' : '#f0eeea'),
     surfaceMuted: partial.surfaceMuted || (isDark ? '#2a2a2a' : '#ebe8e2'),
     surfaceBorderStrong: partial.surfaceBorderStrong || (isDark ? '#555555' : '#b0aaa0'),
-    textSecondary: partial.textSecondary || (isDark ? '#a0a0a0' : '#6b6b63'),
-    textMuted: partial.textMuted || (isDark ? '#6e6e6e' : '#a8a8a0'),
+    textSecondary: partial.textSecondary || (isDark ? '#b8b8b8' : '#5f5f58'),
+    textMuted: partial.textMuted || (isDark ? '#b8b8b8' : '#5f5f58'),
     ...partial,
   } as WidgetThemeTokens
 }
@@ -75,7 +87,7 @@ export const WIDGET_THEMES: WidgetThemeTokens[] = [
     surfaceBorderStrong: '#bbb7ae',
     textPrimary: '#2d2d2d',
     textSecondary: '#6b6b63',
-    textMuted: '#a8a8a0',
+    textMuted: '#5f5f58',
   }),
   t({
     id: 'gallery-white',

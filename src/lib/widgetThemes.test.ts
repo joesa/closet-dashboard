@@ -5,11 +5,39 @@ import {
   WIDGET_THEMES,
 } from './widgetThemes'
 
+function luminance(hex: string): number {
+  const channels = [1, 3, 5]
+    .map((offset) => Number.parseInt(hex.slice(offset, offset + 2), 16) / 255)
+    .map((value) => value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4)
+  return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2]
+}
+
+function contrast(a: string, b: string): number {
+  const lighter = Math.max(luminance(a), luminance(b))
+  const darker = Math.min(luminance(a), luminance(b))
+  return (lighter + 0.05) / (darker + 0.05)
+}
+
 describe('widgetThemes catalog', () => {
   it('has 50 unique theme ids', () => {
     expect(WIDGET_THEMES).toHaveLength(50)
     const ids = new Set(WIDGET_THEMES.map((t) => t.id))
     expect(ids.size).toBe(50)
+  })
+
+  it('keeps all persisted widget text tokens at WCAG AA contrast', () => {
+    const failures: string[] = []
+    for (const theme of WIDGET_THEMES) {
+      for (const text of [theme.textPrimary, theme.textSecondary, theme.textMuted]) {
+        for (const surface of [theme.surfaceBase, theme.surfaceElevated, theme.surfaceMuted]) {
+          const ratio = contrast(text, surface)
+          if (ratio < 4.5) failures.push(`${theme.id}: ${text} on ${surface} (${ratio.toFixed(2)})`)
+        }
+      }
+      const brandRatio = contrast(theme.brandText, theme.brand)
+      if (brandRatio < 4.5) failures.push(`${theme.id}: brand text (${brandRatio.toFixed(2)})`)
+    }
+    expect(failures).toEqual([])
   })
 })
 
