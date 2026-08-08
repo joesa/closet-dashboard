@@ -132,6 +132,7 @@ import {
 import {
   MAX_REPAIR_ATTEMPTS_PER_UNIT,
   REPAIR_CUTOFF_MS,
+  TYPOGRAPHY_PROBE_ALERT_THRESHOLD,
   UNIQUENESS_ENFORCEMENT,
   tellSeverity,
 } from '@/lib/validation/designGuardPolicy'
@@ -150,7 +151,16 @@ import {
   recordCustomDesignFingerprint,
   type DesignAvoidList,
 } from '@/lib/design/designAvoidList'
-import { extractCustomDesignFingerprint } from '@/lib/design/customDesignFingerprint'
+import {
+  extractCustomDesignFingerprint,
+  fingerprintKeys,
+} from '@/lib/design/customDesignFingerprint'
+import {
+  consumeDesignDirectionReservation,
+  plannedDirectionKeys,
+  reserveDesignDirection,
+  type DirectionReservation,
+} from '@/lib/design/directionReservation'
 import { adminWantsAttachmentsOnSite } from '@/lib/ai/persistAssistantAttachments'
 
 export type CustomBuildIntent = 'full' | 'surgical'
@@ -1005,6 +1015,8 @@ export async function generateCustomSiteDraft(opts: {
     serviceUpdates?: ServiceUpdates | null
     foundationReply?: string | null
   }
+  /** Stable Graphile run identity; reservations are idempotent across retries. */
+  jobKey?: string
 }): Promise<GenerateCustomSiteResult> {
   const supabase = getSupabaseAdmin()
   const { data: tenant, error } = await supabase
@@ -1024,6 +1036,7 @@ export async function generateCustomSiteDraft(opts: {
         seo_config,
         pages_config,
         nav_links,
+        industry,
         custom_config_draft,
         custom_config,
         custom_build_notes
@@ -1205,6 +1218,14 @@ export async function generateCustomSiteDraft(opts: {
   const pagesConfig = Array.isArray(cfg.pages_config) ? cfg.pages_config : []
   const seo = (cfg.seo_config || {}) as Record<string, unknown>
   const brandName = (cfg.brand_name || tenant.business_name || 'Business') as string
+  const industryKey =
+    typeof cfg.industry === 'string'
+      ? cfg.industry.trim().toLowerCase()
+      : null
+  const marketKey = [seo.addressLocality, seo.addressRegion]
+    .filter((value): value is string => typeof value === 'string' && !!value.trim())
+    .map((value) => value.trim().toLowerCase())
+    .join('|') || null
 
   // Full redesigns must ship EVERY intake page (including inactive rows that
   // nav often still links to — we reactivate drafted paths on save).
@@ -1309,12 +1330,15 @@ export async function generateCustomSiteDraft(opts: {
       : await runFullGenerate({
           brandName,
           tenantId: opts.tenantId,
+          jobKey: opts.jobKey,
           // Designs already shipped, so the model steers away from taken
           // directions up front rather than being rejected afterwards. Loaded
           // here because runFullGenerate has no Supabase access of its own.
           avoidList: await loadDesignAvoidList({
             supabase,
             tenantId: opts.tenantId,
+            industryKey,
+            marketKey,
           }),
           prompt: opts.prompt,
           mode,
@@ -1326,6 +1350,8 @@ export async function generateCustomSiteDraft(opts: {
           onCheckpoint: opts.onCheckpoint,
           context: {
             ...context,
+            designIndustryKey: industryKey,
+            designMarketKey: marketKey,
             /** Every intake page with its full section content — build them all. */
             intakePages,
             navLinks: Array.isArray(cfg.nav_links) ? cfg.nav_links : undefined,
@@ -1787,6 +1813,7 @@ export function assessFullRedesignCraft(opts: {
 async function runFullGenerate(opts: {
   brandName: string
   tenantId: string
+  jobKey?: string
   /** Designs already on the platform — drives the avoid-list and the collision gate. */
   avoidList: DesignAvoidList
   prompt: string
@@ -1874,7 +1901,7 @@ async function runFullGenerate(opts: {
         : 'Crafting a new design system from intake, business context, and platform uniqueness history…',
     })
   }
-  const enhanced: EnhancedFullRedesignBrief =
+  let enhanced: EnhancedFullRedesignBrief =
     resumeLocked &&
     typeof resumeLocked.optimizedBrief === 'string' &&
     resumeLocked.optimizedBrief.trim().length > 40
@@ -1927,6 +1954,95 @@ async function runFullGenerate(opts: {
           avoid: opts.avoidList,
         })
 
+  let directionReservation: DirectionReservation | null = null
+  let reservationStatus: 'not_requested' | 'reserved' | 'unavailable' | 'conflict_exhausted' =
+    opts.jobKey ? 'conflict_exhausted' : 'not_requested'
+  const reservationDirection = (brief: EnhancedFullRedesignBrief) => ({
+    typography: brief.typography,
+    palette: brief.palette,
+    composition: brief.designSystem.composition,
+    signatureElement: brief.signatureElement,
+  })
+  if (opts.jobKey) {
+    const rejectedFontKeys: string[] = []
+    const rejectedPaletteKeys: string[] = []
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      const result = await reserveDesignDirection({
+        supabase: getSupabaseAdmin(),
+        tenantId: opts.tenantId,
+        jobKey: opts.jobKey,
+        direction: reservationDirection(enhanced),
+        industryKey:
+          typeof opts.context.designIndustryKey === 'string'
+            ? opts.context.designIndustryKey
+            : null,
+        marketKey:
+          typeof opts.context.designMarketKey === 'string'
+            ? opts.context.designMarketKey
+            : null,
+      })
+      if (result.status === 'reserved') {
+        directionReservation = result.reservation
+        reservationStatus = 'reserved'
+        break
+      }
+      if (result.status === 'unavailable') {
+        reservationStatus = 'unavailable'
+        break
+      }
+
+      const keys = plannedDirectionKeys(reservationDirection(enhanced))
+      rejectedFontKeys.push(keys.fontKey)
+      rejectedPaletteKeys.push(keys.paletteKey)
+      enhanced = fallbackEnhancedBrief({
+        brandName: opts.brandName,
+        adminBrief,
+        hasImages: hasImages || attachedAssetUrls.length > 0,
+        engagementLabel,
+        services,
+        city: typeof seoCtx.city === 'string' ? seoCtx.city : undefined,
+        region: typeof seoCtx.region === 'string' ? seoCtx.region : undefined,
+        themeHint:
+          typeof opts.context.themeHint === 'string' ? opts.context.themeHint : undefined,
+        intakeHints: buildIntakeHintsForBrief(opts.context),
+        avoid: {
+          ...opts.avoidList,
+          takenFontKeys: [...opts.avoidList.takenFontKeys, ...rejectedFontKeys],
+          takenPaletteKeys: [...opts.avoidList.takenPaletteKeys, ...rejectedPaletteKeys],
+        },
+      })
+    }
+    if (!directionReservation && resumeLocked?.directionReservationId) {
+      directionReservation = {
+        id: resumeLocked.directionReservationId,
+        directionKey:
+          resumeLocked.directionKey || plannedDirectionKeys(reservationDirection(enhanced)).directionKey,
+        expiresAt: '',
+      }
+    }
+    if (!directionReservation) {
+      throw new Error(
+        reservationStatus === 'unavailable'
+          ? 'Full redesign direction reservation service is unavailable; retry when the database is reachable.'
+          : 'Full redesign could not reserve a distinct direction after eight attempts; retry with refreshed design history.'
+      )
+    }
+  }
+
+  const directionMetrics = enhanced.directionMetrics
+  console.info(JSON.stringify({
+    event: 'design_candidate_pool',
+    tenantId: opts.tenantId,
+    candidateCount: directionMetrics?.candidateCount ?? null,
+    probeCount: directionMetrics?.probeCount ?? null,
+    reuseScore: directionMetrics?.reuseScore ?? null,
+    usedPreferredPair: directionMetrics?.usedPreferredPair ?? null,
+    probeAlert:
+      typeof directionMetrics?.probeCount === 'number' &&
+      directionMetrics.probeCount > TYPOGRAPHY_PROBE_ALERT_THRESHOLD,
+    reservationStatus,
+  }))
+
   await opts.onProgress?.({
     pass: 'design-system:validating',
     passesDone: passesDoneFromDraft(opts.requiredPaths, opts.existingDraft || emptyFullRedesignDraft(opts.mode)),
@@ -1945,6 +2061,8 @@ async function runFullGenerate(opts: {
       designSystem: enhanced.designSystem,
       inventedFromIntake: enhanced.inventedFromIntake,
       source: enhanced.source,
+      directionReservationId: directionReservation?.id,
+      directionKey: directionReservation?.directionKey,
     },
   })
 
@@ -1974,6 +2092,8 @@ async function runFullGenerate(opts: {
     designSystem: enhanced.designSystem,
     inventedFromIntake: enhanced.inventedFromIntake,
     source: enhanced.source,
+    directionReservationId: directionReservation?.id,
+    directionKey: directionReservation?.directionKey,
   }
 
   const systemPrompt = `You produce production-ready marketing sites as raw HTML + CSS for real local businesses on this platform. The complete design language below was created, independently reviewed, deterministically validated, and locked before this build began. Execute it precisely; do not fall back to a familiar house style.
@@ -2648,7 +2768,21 @@ Output JSON for ${path} only.`
     status: 'draft',
     config: draft,
     signatureConcept: enhanced.signatureConcept,
+    industryKey:
+      typeof opts.context.designIndustryKey === 'string'
+        ? opts.context.designIndustryKey
+        : null,
+    marketKey:
+      typeof opts.context.designMarketKey === 'string'
+        ? opts.context.designMarketKey
+        : null,
   })
+  if (directionReservation) {
+    await consumeDesignDirectionReservation(
+      getSupabaseAdmin(),
+      directionReservation.id
+    )
+  }
 
   const configOut = finalizeFullRedesignDraft(draft, opts.requiredPaths)
   await checkpoint(configOut)
@@ -3312,29 +3446,30 @@ export async function publishCustomSiteDraft(tenantId: string): Promise<{
     throw new Error(`Cannot publish: ${summary}`)
   }
 
-  const { error: updateErr } = await supabase
-    .from('site_configs')
-    .update({
-      custom_config: sanitized,
-      render_mode: 'custom',
-      draft_artifact_kind: 'custom',
-      draft_validation_status: draftReport.status,
-      draft_validation_report: draftReport.issues,
-      draft_validated_at: draftReport.checkedAt,
-      draft_artifact_hash: draftReport.artifactHash,
-      custom_updated_at: new Date().toISOString(),
-    })
-    .eq('tenant_id', tenantId)
+  const keys = fingerprintKeys(fingerprint)
+  const { error: publishError } = await supabase.rpc(
+    'publish_custom_site_with_fingerprint',
+    {
+      p_tenant_id: tenantId,
+      p_custom_config: sanitized,
+      p_validation_status: draftReport.status,
+      p_validation_report: draftReport.issues,
+      p_validated_at: draftReport.checkedAt,
+      p_artifact_hash: draftReport.artifactHash,
+      p_fingerprint_version: fingerprint.version,
+      p_skeleton_key: keys.skeletonKey,
+      p_palette_key: keys.paletteKey,
+      p_font_key: keys.fontKey,
+      p_shape_key: keys.shapeKey,
+      p_motif_key: keys.motifKey,
+      p_fingerprint_artifact_hash: fingerprint.hash,
+      p_fingerprint: fingerprint,
+    }
+  )
 
-  if (updateErr) throw new Error(`Failed to publish: ${updateErr.message}`)
-
-  // This design is live now, so it outranks drafts in every future avoid-list.
-  await recordCustomDesignFingerprint({
-    supabase,
-    tenantId,
-    status: 'published',
-    config: sanitized,
-  })
+  if (publishError) {
+    throw new Error(`Failed to publish site and fingerprint atomically: ${publishError.message}`)
+  }
 
   const siteStatus =
     typeof tenant?.site_status === 'string' ? tenant.site_status : null

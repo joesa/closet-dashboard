@@ -31,6 +31,9 @@ function taken(tenantId: string, sections: string[], concept?: string): TakenDes
     tenantId,
     fingerprint: extractCustomDesignFingerprint(artifact(sections)),
     signatureConcept: concept ?? null,
+    industryKey: null,
+    marketKey: null,
+    updatedAt: null,
   }
 }
 
@@ -124,6 +127,32 @@ describe('loadDesignAvoidList', () => {
     const { client, builder } = stubSupabase({ data: [] })
     await loadDesignAvoidList({ supabase: client, tenantId: 'me' })
     expect(builder.eq).toHaveBeenCalledWith('version', CUSTOM_FINGERPRINT_VERSION)
+  })
+
+  it('classifies font usage by the target industry and market', async () => {
+    const fp = extractCustomDesignFingerprint(artifact([HERO, GRID, BAND]))
+    const { client } = stubSupabase({
+      data: [{
+        tenant_id: 'other',
+        fingerprint: fp,
+        signature_concept: null,
+        status: 'published',
+        industry_key: 'plumbing',
+        market_key: 'nashville|tn',
+        updated_at: '2026-08-08T00:00:00.000Z',
+      }],
+    })
+    const avoid = await loadDesignAvoidList({
+      supabase: client,
+      tenantId: 'me',
+      industryKey: 'plumbing',
+      marketKey: 'nashville|tn',
+    })
+    expect(avoid.fontUsage).toEqual([expect.objectContaining({
+      fontKey: 'fraunces+karla',
+      sameIndustry: true,
+      sameMarket: true,
+    })])
   })
 })
 
@@ -228,6 +257,7 @@ describe('describeTakenSkeletons', () => {
       takenSkeletonKeys: [],
       takenPaletteKeys: [],
       takenFontKeys: [],
+      fontUsage: [],
       promptBlock: '',
     }
     expect(describeTakenSkeletons(avoid)).toBe('hero→grid3 · hero→band')

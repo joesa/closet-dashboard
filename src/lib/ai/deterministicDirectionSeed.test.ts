@@ -3,6 +3,7 @@ import {
   ACCENT_POOL,
   GROUND_POOL,
   TYPE_PAIR_POOL,
+  compatibleTypePairs,
   directionKeys,
   pickDeterministicDirection,
 } from './deterministicDirectionSeed'
@@ -35,9 +36,8 @@ describe('pickDeterministicDirection', () => {
     const paletteKeys = new Set(keys.map((k) => k.paletteKey))
     // The old fallback returned one palette for every business on the platform.
     expect(paletteKeys.size).toBe(BRANDS.length)
-    // Fonts draw from a 14-pair pool, so ~7 distinct from 10 draws is the
-    // expected birthday-collision result, not a distribution bug. Runtime
-    // collisions are handled by probing against takenFontKeys, not by the hash.
+    // Candidate selection should spread stable seeds rather than converge on a
+    // single fallback pair.
     expect(new Set(keys.map((k) => k.fontKey)).size).toBeGreaterThanOrEqual(7)
   })
 
@@ -117,6 +117,57 @@ describe('pickDeterministicDirection', () => {
       takenFontKeys: originalPool,
     })
     expect(originalPool).not.toContain(directionKeys(direction).fontKey)
+  })
+
+  it('builds hundreds of compatible pairs without duplicate or same-family keys', () => {
+    const candidates = compatibleTypePairs()
+    const keys = candidates.map((pair) => `${pair.display}+${pair.body}`.toLowerCase())
+    expect(candidates.length).toBeGreaterThanOrEqual(500)
+    expect(new Set(keys).size).toBe(keys.length)
+    expect(candidates.every((pair) => pair.display.toLowerCase() !== pair.body.toLowerCase())).toBe(true)
+    expect(candidates.every((pair) => pair.moods.length > 0)).toBe(true)
+  })
+
+  it('chooses the least-used candidate instead of exhausting the pool', () => {
+    const candidates = compatibleTypePairs()
+    const fontUsage = candidates.slice(0, -1).map((pair, index) => ({
+      fontKey: `${pair.display}+${pair.body}`.toLowerCase(),
+      updatedAt: new Date(Date.UTC(2026, 0, 1, 0, 0, index % 60)).toISOString(),
+      sameIndustry: true,
+      sameMarket: true,
+    }))
+    const direction = pickDeterministicDirection({ brandName: 'Capacity Test', fontUsage })
+    expect(directionKeys(direction).fontKey).toBe(
+      `${candidates.at(-1)!.display}+${candidates.at(-1)!.body}`.toLowerCase()
+    )
+  })
+
+  it('reports every evaluated probe when all compatible pairs have history', () => {
+    const candidates = compatibleTypePairs()
+    const direction = pickDeterministicDirection({
+      brandName: 'Fully Used Capacity',
+      fontUsage: candidates.map((pair) => ({
+        fontKey: `${pair.display}+${pair.body}`.toLowerCase(),
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      })),
+    })
+    expect(direction.fontProbeCount).toBe(candidates.length)
+    expect(direction.fontReuseScore).toBeGreaterThan(0)
+  })
+
+  it('returns valid compatible directions across ten thousand deterministic seeds', () => {
+    const compatibleKeys = new Set(
+      compatibleTypePairs().map((pair) => `${pair.display}+${pair.body}`.toLowerCase())
+    )
+    for (let index = 0; index < 10_000; index += 1) {
+      const direction = pickDeterministicDirection({
+        brandName: `Capacity Brand ${index}`,
+        city: `Market ${index % 97}`,
+        services: [`Service ${index % 31}`],
+      })
+      expect(compatibleKeys.has(directionKeys(direction).fontKey)).toBe(true)
+      expect(direction.fontCandidateCount).toBeGreaterThanOrEqual(500)
+    }
   })
 })
 

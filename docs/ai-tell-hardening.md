@@ -133,11 +133,31 @@ Core Phase 0–5 enforcement is implemented. Phase 6 work remains:
 
 The Full Redesign capacity exercise used two reviewed localhost-only fixtures
 with the same queue timestamp. It exposed an exhausted 14-pair typography pool;
-the curated pool now has 30 pairs and a probe-capacity regression test. A local
-worker on the corrected revision completed all four Alpha draft pages in 189
-seconds without publishing. A remote worker on the previously deployed revision
-claimed Beta and failed the old uniqueness preflight, confirming that production
-workers need the corrected revision before the added capacity is operational.
+the fixed global-ban model has now been removed rather than merely enlarged.
+Thirty hand-curated pairs remain preferred, while shared compatibility moods
+produce 870 deterministic display/body combinations. Selection scores recent,
+same-industry, and same-market reuse and falls back to the least-used valid pair;
+typography history alone can no longer fail preflight.
+
+Before generation, Graphile jobs atomically reserve the complete planned
+direction (type, palette, composition, and signature element). The reservation
+ID is checkpointed in the locked brief, reused on retry, consumed after draft
+fingerprinting, and released on cancellation or failure. A real two-tenant race
+for one direction produced exactly one reservation and one conflict. Publishing
+now updates `site_configs.custom_config` and inserts the published artifact
+fingerprint in one database transaction.
+
+Capacity is observable through structured `design_candidate_*` and
+`design_reservation_*` events plus:
+
+```bash
+npm run audit:design-capacity
+```
+
+The audit reports compatible candidate count, preferred-pool utilization,
+recent diversity, active/expired reservations, and historical pairs outside the
+current pool. Legacy unknown pairs are advisory; complete artifact similarity
+remains blocking.
 
 Fail-first convention: when touching these lists, temporarily add a banned
 phrase (e.g. "seamless") to a guarded constant and confirm the test fails

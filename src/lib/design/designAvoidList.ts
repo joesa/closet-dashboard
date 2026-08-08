@@ -42,6 +42,16 @@ export type TakenDesign = {
   tenantId: string
   fingerprint: CustomDesignFingerprint
   signatureConcept: string | null
+  industryKey?: string | null
+  marketKey?: string | null
+  updatedAt?: string | null
+}
+
+export type FontUsage = {
+  fontKey: string
+  updatedAt: string | null
+  sameIndustry: boolean
+  sameMarket: boolean
 }
 
 export type DesignAvoidList = {
@@ -49,6 +59,7 @@ export type DesignAvoidList = {
   takenSkeletonKeys: string[]
   takenPaletteKeys: string[]
   takenFontKeys: string[]
+  fontUsage?: FontUsage[]
   /** Ready-to-paste prompt section, capped at AVOID_LIST_MAX_CHARS. Empty when nothing is taken. */
   promptBlock: string
 }
@@ -58,6 +69,7 @@ export const EMPTY_AVOID_LIST: DesignAvoidList = {
   takenSkeletonKeys: [],
   takenPaletteKeys: [],
   takenFontKeys: [],
+  fontUsage: [],
   promptBlock: '',
 }
 
@@ -123,12 +135,14 @@ export async function loadDesignAvoidList(opts: {
   tenantId: string
   /** Publish validation excludes only the exact candidate draft already recorded. */
   excludeFingerprintHash?: string
+  industryKey?: string | null
+  marketKey?: string | null
   limit?: number
 }): Promise<DesignAvoidList> {
   try {
     const { data, error } = await opts.supabase
       .from(TABLE)
-      .select('tenant_id, fingerprint, signature_concept, status, updated_at')
+      .select('tenant_id, fingerprint, signature_concept, status, industry_key, market_key, updated_at')
       .eq('version', CUSTOM_FINGERPRINT_VERSION)
       .order('status', { ascending: false }) // 'published' before 'draft'
       .order('updated_at', { ascending: false })
@@ -161,6 +175,9 @@ export async function loadDesignAvoidList(opts: {
         fingerprint: row.fingerprint,
         signatureConcept:
           typeof row.signature_concept === 'string' ? row.signature_concept : null,
+        industryKey: typeof row.industry_key === 'string' ? row.industry_key : null,
+        marketKey: typeof row.market_key === 'string' ? row.market_key : null,
+        updatedAt: typeof row.updated_at === 'string' ? row.updated_at : null,
       })
     }
 
@@ -169,6 +186,12 @@ export async function loadDesignAvoidList(opts: {
       takenSkeletonKeys: taken.map((t) => fingerprintKeys(t.fingerprint).skeletonKey),
       takenPaletteKeys: taken.map((t) => fingerprintKeys(t.fingerprint).paletteKey),
       takenFontKeys: taken.map((t) => fingerprintKeys(t.fingerprint).fontKey),
+      fontUsage: taken.map((t) => ({
+        fontKey: fingerprintKeys(t.fingerprint).fontKey,
+        updatedAt: t.updatedAt || null,
+        sameIndustry: !!opts.industryKey && t.industryKey === opts.industryKey,
+        sameMarket: !!opts.marketKey && t.marketKey === opts.marketKey,
+      })),
       promptBlock: buildAvoidPromptBlock(taken),
     }
   } catch (err) {
@@ -211,6 +234,8 @@ export async function recordCustomDesignFingerprint(opts: {
   status: 'draft' | 'published'
   config: CustomSiteConfig
   signatureConcept?: string | null
+  industryKey?: string | null
+  marketKey?: string | null
 }): Promise<CustomDesignFingerprint> {
   const fingerprint = extractCustomDesignFingerprint(opts.config)
   const keys = fingerprintKeys(fingerprint)
@@ -228,6 +253,8 @@ export async function recordCustomDesignFingerprint(opts: {
         artifact_hash: fingerprint.hash,
         fingerprint,
         signature_concept: opts.signatureConcept ?? null,
+        industry_key: opts.industryKey ?? null,
+        market_key: opts.marketKey ?? null,
         updated_at: new Date().toISOString(),
       },
       { onConflict: 'tenant_id,status,artifact_hash' }

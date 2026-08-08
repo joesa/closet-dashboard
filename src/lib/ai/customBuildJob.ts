@@ -21,6 +21,8 @@ export type CustomBuildLockedBrief = {
   designSystem?: FullRedesignPreflight
   inventedFromIntake?: boolean
   source?: string
+  directionReservationId?: string
+  directionKey?: string
 }
 
 export type CustomBuildErrorKind =

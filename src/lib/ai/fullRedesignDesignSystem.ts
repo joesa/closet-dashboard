@@ -56,7 +56,7 @@ function luminance(hex: string): number | null {
 /** Pure gate that must pass before the first Full redesign HTML/CSS model call. */
 export function validateFullRedesignPreflight(
   candidate: FullRedesignPreflightCandidate,
-  takenFontKeys: string[] = [],
+  _takenFontKeys: string[] = [],
   takenConcepts: string[] = []
 ): string[] {
   const failures: string[] = []
@@ -83,10 +83,6 @@ export function validateFullRedesignPreflight(
   if (/\b(?:inter|poppins|roboto|system-ui|space grotesk|syne|big shoulders)\b/i.test(fontKey)) {
     failures.push('type system uses a banned habitual AI font')
   }
-  if (new Set(takenFontKeys.map((key) => key.toLowerCase())).has(fontKey)) {
-    failures.push('type pairing has already been used on the platform')
-  }
-
   const requiredText: Array<[string, string]> = [
     ['signature concept', candidate.signatureConcept],
     ['material world', candidate.materialWorld],

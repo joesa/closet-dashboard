@@ -118,3 +118,9 @@ export const REPAIR_CUTOFF_MS = 30 * 60 * 1000
 
 export const AVOID_LIST_MAX_ROWS = 2000
 export const AVOID_LIST_MAX_CHARS = 1400
+
+/** Capacity telemetry thresholds; these warn operators but never reject a job. */
+export const TYPOGRAPHY_RECENT_WINDOW = 50
+export const TYPOGRAPHY_PROBE_ALERT_THRESHOLD = 20
+export const TYPOGRAPHY_PREFERRED_POOL_ALERT_RATIO = 0.7
+export const DIRECTION_RESERVATION_TTL_MINUTES = 60

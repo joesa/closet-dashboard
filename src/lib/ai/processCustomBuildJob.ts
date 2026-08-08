@@ -7,6 +7,7 @@ import {
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { sanitizeCustomConfig } from '@/lib/customSite'
 import { parseServiceUpdates } from '@/lib/ai/mergeBriefServices'
+import { releaseDesignDirectionReservation } from '@/lib/design/directionReservation'
 
 const HEARTBEAT_MS = 45_000
 
@@ -88,6 +89,7 @@ export async function processCustomBuildJob(tenantId: string): Promise<void> {
       prompt: current.prompt || '',
       mode: current.mode,
       intent,
+      jobKey: current.started_at,
       images: Array.isArray(current.images) ? current.images : undefined,
       resumeState:
         intent === 'full'
@@ -188,6 +190,10 @@ export async function processCustomBuildJob(tenantId: string): Promise<void> {
     const message = err instanceof Error ? err.message : String(err)
     console.error('[processCustomBuildJob] failed', tenantId, message)
     const live = await getCustomBuildJob(tenantId)
+    const reservationId = live?.locked_brief?.directionReservationId
+    if (reservationId) {
+      await releaseDesignDirectionReservation(getSupabaseAdmin(), reservationId)
+    }
     await setCustomBuildJob(tenantId, {
       ...(live && live.status === 'processing' ? live : claimed),
       status: 'failed',
@@ -216,6 +222,12 @@ export async function cancelCustomBuildJob(
     finished_at: new Date().toISOString(),
     ever_full: current.ever_full || current.intent === 'full' || undefined,
     dead_lettered: false,
+  }
+  if (current.locked_brief?.directionReservationId) {
+    await releaseDesignDirectionReservation(
+      getSupabaseAdmin(),
+      current.locked_brief.directionReservationId
+    )
   }
   await setCustomBuildJob(tenantId, cancelled)
   return cancelled

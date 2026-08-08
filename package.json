@@ -15,6 +15,7 @@
     "test:custom-site-sync": "node scripts/check-custom-site-core-sync.mjs",
     "check:worker-env": "node scripts/check-worker-env-checklist.mjs",
     "audit:ai-tells": "tsx scripts/audit-fleet-ai-tells.mjs",
+    "audit:design-capacity": "tsx scripts/audit-design-capacity.ts",
     "remediate:ai-tells": "tsx scripts/remediate-fleet-ai-tells.ts",
     "stripe:verify": "node scripts/stripe-verify.mjs",
     "stripe:catalog": "node scripts/stripe-setup-catalog.mjs",

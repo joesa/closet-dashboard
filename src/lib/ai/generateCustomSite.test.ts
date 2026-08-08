@@ -262,6 +262,16 @@ describe('full redesign design guard', () => {
     expect(src).toContain('design_duplicate_visual')
     expect(src).toContain('Cannot publish:')
   })
+
+  it('publishes the live config and fingerprint in one database transaction', () => {
+    expect(src).toContain("'publish_custom_site_with_fingerprint'")
+    expect(src).toContain('Failed to publish site and fingerprint atomically')
+  })
+
+  it('fails closed when a new worker job cannot reserve a direction', () => {
+    expect(src).toContain('Full redesign direction reservation service is unavailable')
+    expect(src).toContain('could not reserve a distinct direction after eight attempts')
+  })
 })
 
 describe('full redesign brief enhancement', () => {

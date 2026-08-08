@@ -21,6 +21,7 @@
 
 import { hashSeed } from '@/lib/catalog/designFingerprint'
 import { paletteFingerprintKey } from '@/lib/design/customDesignFingerprint'
+import { TYPOGRAPHY_RECENT_WINDOW } from '@/lib/validation/designGuardPolicy'
 
 export type DirectionPaletteRole = { role: string; hex: string; use: string }
 
@@ -31,6 +32,10 @@ export type DeterministicDirection = {
   composition: string
   /** How many probes it took to miss the taken lists — 0 on a clean first pick. */
   seedIndex: number
+  fontCandidateCount: number
+  fontReuseScore: number
+  fontProbeCount: number
+  usedPreferredPair: boolean
 }
 
 export type DirectionSeedInput = {
@@ -43,6 +48,15 @@ export type DirectionSeedInput = {
   takenPaletteKeys?: string[]
   /** `display+body` keys already in use, lowercased. */
   takenFontKeys?: string[]
+  /** Recency/context-aware usage; lower scores are preferred. */
+  fontUsage?: DirectionFontUsage[]
+}
+
+export type DirectionFontUsage = {
+  fontKey: string
+  updatedAt?: string | null
+  sameIndustry?: boolean
+  sameMarket?: boolean
 }
 
 type Ground = {
@@ -100,41 +114,82 @@ export const ACCENT_POOL: readonly Accent[] = [
   { id: 'copper-patina', hex: '#3f6f66', note: 'copper patina' },
 ]
 
-type TypePair = { display: string; body: string; why: string }
+type FontMood = 'editorial' | 'industrial' | 'formal' | 'friendly' | 'technical'
+type TypePair = {
+  display: string
+  body: string
+  why: string
+  moods: readonly FontMood[]
+}
 
 /** Google Font pairings. None of these is on the banned-by-habit list. */
 export const TYPE_PAIR_POOL: readonly TypePair[] = [
-  { display: 'Fraunces', body: 'Karla', why: 'a worked serif over a plain grotesque — craft without preciousness' },
-  { display: 'Bitter', body: 'Public Sans', why: 'slab headings with a civic-register body' },
-  { display: 'Archivo', body: 'Lora', why: 'condensed signage over a readable serif' },
-  { display: 'Newsreader', body: 'Work Sans', why: 'editorial serif, neutral body' },
-  { display: 'Instrument Serif', body: 'Manrope', why: 'a high-contrast serif with a quiet companion' },
-  { display: 'Sora', body: 'Source Serif 4', why: 'engineered sans over a warm serif' },
-  { display: 'Libre Franklin', body: 'Spectral', why: 'a newspaper pairing, plain then literary' },
-  { display: 'Zilla Slab', body: 'Cabin', why: 'slab with a practical humanist body' },
-  { display: 'Playfair Display', body: 'Mulish', why: 'a formal display with an unfussy body' },
-  { display: 'Oswald', body: 'Lato', why: 'depot signage over a neutral body' },
-  { display: 'Domine', body: 'Assistant', why: 'sturdy serif headings, light body' },
-  { display: 'Vollkorn', body: 'Jost', why: 'a bookish serif with a geometric companion' },
-  { display: 'Chivo', body: 'Literata', why: 'grotesque headings over a reading serif' },
-  { display: 'Rokkitt', body: 'Nunito Sans', why: 'a narrow slab over a rounded body' },
-  { display: 'Cormorant Garamond', body: 'IBM Plex Sans', why: 'fine editorial display over technical body copy' },
-  { display: 'DM Serif Display', body: 'Source Sans 3', why: 'compact display serif over an open utility sans' },
-  { display: 'Bodoni Moda', body: 'Figtree', why: 'high-contrast display with a contemporary reading face' },
-  { display: 'Alegreya', body: 'Atkinson Hyperlegible', why: 'lively serif headings with highly legible body copy' },
-  { display: 'Prata', body: 'Noto Sans', why: 'engraved display character over a broad neutral sans' },
-  { display: 'Young Serif', body: 'Rubik', why: 'soft display shapes over a compact practical body' },
-  { display: 'Crimson Pro', body: 'Urbanist', why: 'book typography paired with a clean geometric sans' },
-  { display: 'Frank Ruhl Libre', body: 'Barlow', why: 'strong newspaper display over condensed utility text' },
-  { display: 'Gloock', body: 'Albert Sans', why: 'dramatic editorial headings with restrained body copy' },
-  { display: 'Bricolage Grotesque', body: 'EB Garamond', why: 'expressive grotesque display over literary reading text' },
-  { display: 'Unbounded', body: 'Merriweather', why: 'wide technical display balanced by a durable text serif' },
-  { display: 'Cormorant Infant', body: 'DM Sans', why: 'calligraphic display details over direct body copy' },
-  { display: 'Cardo', body: 'Lexend', why: 'classical headings paired with generous, accessible body forms' },
-  { display: 'Bree Serif', body: 'Fira Sans', why: 'friendly slab display over a workmanlike humanist sans' },
-  { display: 'Yeseva One', body: 'PT Sans', why: 'ornamental display used sparingly over plain body text' },
-  { display: 'Noto Serif', body: 'IBM Plex Sans', why: 'broad-language serif headings over engineered body copy' },
+  { display: 'Fraunces', body: 'Karla', why: 'a worked serif over a plain grotesque — craft without preciousness', moods: ['editorial', 'friendly', 'formal'] },
+  { display: 'Bitter', body: 'Public Sans', why: 'slab headings with a civic-register body', moods: ['industrial', 'friendly', 'editorial'] },
+  { display: 'Archivo', body: 'Lora', why: 'condensed signage over a readable serif', moods: ['industrial', 'technical', 'editorial'] },
+  { display: 'Newsreader', body: 'Work Sans', why: 'editorial serif, neutral body', moods: ['editorial', 'formal', 'friendly'] },
+  { display: 'Instrument Serif', body: 'Manrope', why: 'a high-contrast serif with a quiet companion', moods: ['formal', 'editorial', 'technical'] },
+  { display: 'Sora', body: 'Source Serif 4', why: 'engineered sans over a warm serif', moods: ['technical', 'editorial', 'industrial'] },
+  { display: 'Libre Franklin', body: 'Spectral', why: 'a newspaper pairing, plain then literary', moods: ['editorial', 'formal', 'industrial'] },
+  { display: 'Zilla Slab', body: 'Cabin', why: 'slab with a practical humanist body', moods: ['industrial', 'friendly', 'technical'] },
+  { display: 'Playfair Display', body: 'Mulish', why: 'a formal display with an unfussy body', moods: ['formal', 'editorial', 'friendly'] },
+  { display: 'Oswald', body: 'Lato', why: 'depot signage over a neutral body', moods: ['industrial', 'technical', 'friendly'] },
+  { display: 'Domine', body: 'Assistant', why: 'sturdy serif headings, light body', moods: ['editorial', 'formal', 'technical'] },
+  { display: 'Vollkorn', body: 'Jost', why: 'a bookish serif with a geometric companion', moods: ['editorial', 'friendly', 'formal'] },
+  { display: 'Chivo', body: 'Literata', why: 'grotesque headings over a reading serif', moods: ['industrial', 'editorial', 'technical'] },
+  { display: 'Rokkitt', body: 'Nunito Sans', why: 'a narrow slab over a rounded body', moods: ['friendly', 'industrial', 'editorial'] },
+  { display: 'Cormorant Garamond', body: 'IBM Plex Sans', why: 'fine editorial display over technical body copy', moods: ['formal', 'editorial', 'technical'] },
+  { display: 'DM Serif Display', body: 'Source Sans 3', why: 'compact display serif over an open utility sans', moods: ['editorial', 'formal', 'friendly'] },
+  { display: 'Bodoni Moda', body: 'Figtree', why: 'high-contrast display with a contemporary reading face', moods: ['formal', 'editorial', 'technical'] },
+  { display: 'Alegreya', body: 'Atkinson Hyperlegible', why: 'lively serif headings with highly legible body copy', moods: ['friendly', 'editorial', 'formal'] },
+  { display: 'Prata', body: 'Noto Sans', why: 'engraved display character over a broad neutral sans', moods: ['formal', 'editorial', 'technical'] },
+  { display: 'Young Serif', body: 'Rubik', why: 'soft display shapes over a compact practical body', moods: ['friendly', 'editorial', 'industrial'] },
+  { display: 'Crimson Pro', body: 'Urbanist', why: 'book typography paired with a clean geometric sans', moods: ['editorial', 'formal', 'technical'] },
+  { display: 'Frank Ruhl Libre', body: 'Barlow', why: 'strong newspaper display over condensed utility text', moods: ['editorial', 'industrial', 'formal'] },
+  { display: 'Gloock', body: 'Albert Sans', why: 'dramatic editorial headings with restrained body copy', moods: ['formal', 'editorial', 'friendly'] },
+  { display: 'Bricolage Grotesque', body: 'EB Garamond', why: 'expressive grotesque display over literary reading text', moods: ['friendly', 'editorial', 'industrial'] },
+  { display: 'Unbounded', body: 'Merriweather', why: 'wide technical display balanced by a durable text serif', moods: ['technical', 'industrial', 'editorial'] },
+  { display: 'Cormorant Infant', body: 'DM Sans', why: 'calligraphic display details over direct body copy', moods: ['formal', 'friendly', 'editorial'] },
+  { display: 'Cardo', body: 'Lexend', why: 'classical headings paired with generous, accessible body forms', moods: ['formal', 'editorial', 'friendly'] },
+  { display: 'Bree Serif', body: 'Fira Sans', why: 'friendly slab display over a workmanlike humanist sans', moods: ['friendly', 'industrial', 'technical'] },
+  { display: 'Yeseva One', body: 'PT Sans', why: 'ornamental display used sparingly over plain body text', moods: ['formal', 'friendly', 'editorial'] },
+  { display: 'Noto Serif', body: 'IBM Plex Sans', why: 'broad-language serif headings over engineered body copy', moods: ['technical', 'formal', 'editorial'] },
 ]
+
+type FontCandidate = TypePair & { preferred: boolean }
+let compatiblePairCache: readonly FontCandidate[] | null = null
+
+/**
+ * Preferred pairs lead the list, followed by compatible cross-pairs. Keeping
+ * each face in its proven display/body role yields hundreds of useful choices
+ * without admitting arbitrary fonts or making global history finite capacity.
+ */
+export function compatibleTypePairs(): readonly FontCandidate[] {
+  if (compatiblePairCache) return compatiblePairCache
+  const candidates: FontCandidate[] = []
+  const seen = new Set<string>()
+  const add = (pair: FontCandidate) => {
+    const key = fontKeyOf(pair)
+    if (pair.display.toLowerCase() === pair.body.toLowerCase() || seen.has(key)) return
+    seen.add(key)
+    candidates.push(pair)
+  }
+  for (const pair of TYPE_PAIR_POOL) add({ ...pair, preferred: true })
+  for (const display of TYPE_PAIR_POOL) {
+    for (const body of TYPE_PAIR_POOL) {
+      if (!display.moods.some((mood) => body.moods.includes(mood))) continue
+      add({
+        display: display.display,
+        body: body.body,
+        why: `${display.display} provides the display character while ${body.body} keeps long copy readable`,
+        preferred: false,
+        moods: display.moods.filter((mood) => body.moods.includes(mood)),
+      })
+    }
+  }
+  compatiblePairCache = candidates
+  return compatiblePairCache
+}
 
 /** Distinct devices spanning spatial, photographic, typographic and tactile ideas. */
 export const SIGNATURE_POOL: readonly string[] = [
@@ -183,8 +238,24 @@ function fontKeyOf(pair: TypePair): string {
   return `${pair.display}+${pair.body}`.toLowerCase()
 }
 
-/** Probe ceiling — matches resolveDesignSeed's shape. */
-const MAX_PROBES = 250
+function fontReuseScore(fontKey: string, input: DirectionSeedInput): number {
+  const usages = input.fontUsage || []
+  if (usages.length === 0) {
+    return (input.takenFontKeys || []).some((key) => key.toLowerCase() === fontKey) ? 3 : 0
+  }
+  const ordered = [...usages].sort((a, b) =>
+    String(b.updatedAt || '').localeCompare(String(a.updatedAt || ''))
+  )
+  let score = 0
+  for (const [index, usage] of ordered.entries()) {
+    if (usage.fontKey.toLowerCase() !== fontKey) continue
+    if (usage.sameIndustry) score += 5
+    if (usage.sameMarket) score += 4
+    if (index < TYPOGRAPHY_RECENT_WINDOW) score += 3
+    score += 1
+  }
+  return score
+}
 
 /**
  * Pick a direction from the seed, stepping past combinations already in use.
@@ -206,22 +277,28 @@ export function pickDeterministicDirection(
   const seed = hashSeed(seedString)
 
   const takenPalettes = new Set((input.takenPaletteKeys || []).map((k) => k.toLowerCase()))
-  const takenFonts = new Set((input.takenFontKeys || []).map((k) => k.toLowerCase()))
+  const fontCandidates = compatibleTypePairs()
 
   let ground = GROUND_POOL[seed % GROUND_POOL.length]
   let accent = ACCENT_POOL[(seed >>> 3) % ACCENT_POOL.length]
-  let pair = TYPE_PAIR_POOL[(seed >>> 7) % TYPE_PAIR_POOL.length]
+  let pair = fontCandidates[(seed >>> 7) % fontCandidates.length]
   let seedIndex = 0
+  let bestScore = Number.POSITIVE_INFINITY
+  let probesEvaluated = 0
 
-  for (let probe = 0; probe < MAX_PROBES; probe += 1) {
+  for (let probe = 0; probe < fontCandidates.length; probe += 1) {
+    probesEvaluated += 1
     ground = GROUND_POOL[(seed + probe) % GROUND_POOL.length]
     accent = ACCENT_POOL[((seed >>> 3) + probe * 3) % ACCENT_POOL.length]
-    pair = TYPE_PAIR_POOL[((seed >>> 7) + probe * 5) % TYPE_PAIR_POOL.length]
-    seedIndex = probe
-    if (
-      !takenPalettes.has(paletteKeyOf(ground, accent)) &&
-      !takenFonts.has(fontKeyOf(pair))
-    ) {
+    const candidate = fontCandidates[((seed >>> 7) + probe * 31) % fontCandidates.length]
+    const palettePenalty = takenPalettes.has(paletteKeyOf(ground, accent)) ? 2 : 0
+    const score = fontReuseScore(fontKeyOf(candidate), input) + palettePenalty
+    if (score < bestScore) {
+      bestScore = score
+      pair = candidate
+      seedIndex = probe
+    }
+    if (score === 0) {
       break
     }
   }
@@ -244,6 +321,10 @@ export function pickDeterministicDirection(
     composition:
       COMPOSITION_POOL[((seed >>> 15) + seedIndex * 3) % COMPOSITION_POOL.length],
     seedIndex,
+    fontCandidateCount: fontCandidates.length,
+    fontReuseScore: bestScore,
+    fontProbeCount: probesEvaluated,
+    usedPreferredPair: pair.preferred,
   }
 }
 

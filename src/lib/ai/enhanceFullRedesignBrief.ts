@@ -34,6 +34,12 @@ export type EnhancedFullRedesignBrief = {
   /** True when admin left the seed empty and we invented the full direction. */
   inventedFromIntake: boolean
   source: 'gemini' | 'anthropic' | 'fallback'
+  directionMetrics?: {
+    candidateCount: number
+    reuseScore: number
+    probeCount: number
+    usedPreferredPair: boolean
+  }
 }
 
 type EnhanceOpts = {
@@ -142,6 +148,7 @@ export function fallbackEnhancedBrief(opts: EnhanceOpts): EnhancedFullRedesignBr
     themeHint: opts.themeHint,
     takenPaletteKeys: opts.avoid?.takenPaletteKeys,
     takenFontKeys: opts.avoid?.takenFontKeys,
+    fontUsage: opts.avoid?.fontUsage,
   })
   const palette = direction.palette
   const baseSignatureConcept = seed
@@ -241,6 +248,12 @@ export function fallbackEnhancedBrief(opts: EnhanceOpts): EnhancedFullRedesignBr
       optimizedBrief,
       inventedFromIntake,
       source: 'fallback',
+      directionMetrics: {
+        candidateCount: direction.fontCandidateCount,
+        reuseScore: direction.fontReuseScore,
+        probeCount: direction.fontProbeCount,
+        usedPreferredPair: direction.usedPreferredPair,
+      },
     },
     opts
   ), opts.adminBrief)
