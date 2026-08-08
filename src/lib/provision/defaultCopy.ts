@@ -15,7 +15,7 @@ export function buildFallbackHeadline(opts: {
   const service = (opts.primaryService || '').trim()
   const place = (opts.serviceArea || opts.locality || '').trim()
   if (service && place) return `${service} in ${place}`
-  if (service) return `${brand} — ${service}`
+  if (service) return `${service} by ${brand}`
   if (place) return `${brand} in ${place}`
   return brand
 }
@@ -33,10 +33,16 @@ export function defaultRoomForEngagement(engagementModel: string): string {
   }
 }
 
+/**
+ * Fallback spec lists when intake provided no differentiators. Seeded variants
+ * of two or four items — never three, because the identical rule-of-three trio
+ * on every card is itself a template tell.
+ */
 export function defaultProductSpecs(
   engagementModel: string,
   serviceName: string,
-  differentiators?: string[] | null
+  differentiators?: string[] | null,
+  seed = ''
 ): string[] {
   const fromIntake = (differentiators || [])
     .map((d) => d.trim())
@@ -44,18 +50,32 @@ export function defaultProductSpecs(
     .slice(0, 4)
   if (fromIntake.length > 0) return fromIntake
 
-  const eng = (engagementModel || 'quote').toLowerCase()
-  if (eng === 'order') {
-    return ['Made to order', 'Fresh preparation', 'Clear pricing']
-  }
-  if (eng === 'booking') {
-    return ['Easy scheduling', 'On-time arrival', 'Clear next steps']
-  }
-  if (eng === 'ticket') {
-    return ['Fast response', 'Clear diagnosis', 'Confirmed resolution']
-  }
   const svc = serviceName.trim() || 'this service'
-  return [`Focused on ${svc}`, 'Upfront communication', 'Done right the first time']
+  const eng = (engagementModel || 'quote').toLowerCase()
+  const pools: Record<string, string[][]> = {
+    order: [
+      ['Made when you order', 'Priced on the menu, no surprises'],
+      ['Prepared in-house', 'Order ahead for pickup', 'Substitutions welcome', 'Same price online as in person'],
+      ['Portioned to order', 'Ready-time quoted at checkout'],
+    ],
+    booking: [
+      ['Pick your own time slot', 'Reminder before your appointment'],
+      ['Booked to the half hour', 'Confirmation by text', 'Reschedule up to a day ahead', 'Same person start to finish'],
+      ['Arrival window confirmed in advance', 'No charge to rebook'],
+    ],
+    ticket: [
+      ['Diagnosis before any charge', 'You approve the fix first'],
+      ['Same-week response', 'Written findings', 'Repair options priced separately', 'Follow-up included'],
+      ['One point of contact per request', 'Status updates until closed'],
+    ],
+    quote: [
+      [`Scope for ${svc} in writing first`, 'Price fixed before work starts'],
+      ['Walkthrough before quoting', 'Itemized pricing', 'Start date set at signing', 'Punch-list check at the end'],
+      [`${svc} measured on site, not guessed`, 'Change orders priced before proceeding'],
+    ],
+  }
+  const pool = pools[eng] || pools.quote
+  return pool[hashSeed(`${seed}:${svc}:specs:${eng}`) % pool.length]
 }
 
 // ── Lightweight vertical hint for copy selection ────────────────────────────
@@ -80,9 +100,9 @@ export function buildDefaultAbout(
 
   if (vertical === 'medical') {
     const medicalVariants = [
-      `${businessName} provides compassionate, dedicated ${svc} across ${area}. Our team ensures every patient receives personalized attention in a warm, welcoming environment.`,
-      `Across ${area}, ${businessName} is trusted for attentive ${svc}. You get clear communication, coordinated care, and a team that listens.`,
-      `${businessName} is committed to reliable ${svc} with honest communication from the first visit through every follow-up.`,
+      `${businessName} sees patients across ${area}. Appointments run on schedule, your questions get answered in plain language, and follow-up instructions leave with you in writing.`,
+      `Across ${area}, ${businessName} handles ${svc} with the same clinician from intake through follow-up, so nothing gets repeated or lost between visits.`,
+      `${businessName} keeps ${svc} straightforward: clear scheduling, direct answers about treatment and cost, and a real person on the phone for follow-ups.`,
     ]
     return { description: medicalVariants[hashSeed(`${seed}:about`) % medicalVariants.length] }
   }
@@ -93,6 +113,27 @@ export function buildDefaultAbout(
     `${businessName} focuses on reliable ${svc} with honest communication from the first call through the final walkthrough.`,
   ]
   return { description: variants[hashSeed(`${seed}:about`) % variants.length] }
+}
+
+/** Seeded before/after slider copy. No brand-name formula, no em dash. */
+export function buildDefaultBeforeAfterCopy(seed: string): { title: string; subtitle: string } {
+  const titles = [
+    'Before and after',
+    'The same space, before and after',
+    'Same room, different layout',
+    'What changed here',
+    'Side by side',
+  ]
+  const subtitles = [
+    'Slide to compare',
+    'Drag the handle to compare',
+    'Move the slider to see the change',
+    'Pull the divider across',
+  ]
+  return {
+    title: titles[hashSeed(`${seed}:ba:title`) % titles.length],
+    subtitle: subtitles[hashSeed(`${seed}:ba:subtitle`) % subtitles.length],
+  }
 }
 
 type ProcessConfig = {
@@ -117,18 +158,18 @@ export function buildDefaultProcess(
         title: 'How It Works',
         subtitle: 'From appointment to care',
         steps: [
-          { number: '01', title: 'Schedule', description: `Request an appointment online or by phone at a time that works for your family.` },
-          { number: '02', title: 'Visit', description: 'Our care team provides thorough, attentive treatment in a welcoming clinical setting.' },
-          { number: '03', title: 'Follow-Up', description: 'Receive personalized care instructions and easy access for any follow-up needs.' },
+          { number: '01', title: 'Schedule', description: 'Request an appointment online or by phone. New patients get intake forms ahead of time.' },
+          { number: '02', title: 'Visit', description: 'The clinician reviews your history before you arrive, so visit time goes to the exam, not paperwork.' },
+          { number: '03', title: 'Follow-Up', description: 'You leave with written instructions and a direct number for questions between visits.' },
         ],
       },
       {
         title: 'Your Visit',
-        subtitle: 'Patient-centered care',
+        subtitle: 'What to expect',
         steps: [
-          { number: '01', title: 'Book', description: 'Choose a convenient appointment time for your visit.' },
-          { number: '02', title: 'Evaluation', description: 'Our team provides a thorough evaluation with personalized attention.' },
-          { number: '03', title: 'Care Plan', description: 'Leave with a clear care plan, prescriptions routed, and direct follow-up access.' },
+          { number: '01', title: 'Book', description: 'Choose an appointment time online; same-week slots are held for acute needs.' },
+          { number: '02', title: 'Evaluation', description: 'The exam covers what you booked for, and anything found gets explained before you leave.' },
+          { number: '03', title: 'Care Plan', description: 'Leave with a written care plan, prescriptions routed, and a scheduled follow-up if one is needed.' },
         ],
       },
     ]

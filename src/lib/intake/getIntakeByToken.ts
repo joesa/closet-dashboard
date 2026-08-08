@@ -77,6 +77,12 @@ export type ProspectIntakeRow = {
   timeline_facts: string | null
   guarantee_terms: string | null
   signature_materials: string[]
+  /**
+   * Verbatim customer quotes supplied by the contractor. The ONLY sanctioned
+   * source for testimonial copy — when empty, the testimonials page is omitted
+   * rather than fabricated. See 20260808010000_intake_customer_quotes.sql.
+   */
+  customer_quotes: string | null
 }
 
 const INTAKE_SELECT = `
@@ -97,7 +103,7 @@ const INTAKE_SELECT = `
   requested_pages, gallery_images, page_contents, menu_items,
   craft_spec, shop_rule, local_conditions, crew_shape, client_artifact,
   recent_job, competitor_tell, timeline_facts, guarantee_terms,
-  signature_materials
+  signature_materials, customer_quotes
 `
 
 export async function getIntakeByToken(token: string): Promise<ProspectIntakeRow | null> {

@@ -48,6 +48,26 @@ const FETCH_TIMEOUT_MS = 8000
 const MAX_LINKS_CHECKED = 20
 const MAX_IMAGES_CHECKED = 20
 
+/**
+ * Copy-quality enforcement cutoff. Tenants created on/after this instant get
+ * copy findings (AI tells, no proprietary detail, decorative stats, uniform
+ * positivity) at severity 'error' — which fails validation and blocks the
+ * approve gate. Tenants created before it keep 'warning' so legacy sites,
+ * provisioned before the Craft & proof intake step existed, are not broken
+ * retroactively; those are handled by the Phase-5 fleet audit instead.
+ * Deliberately a deploy-date constant (overridable via env) rather than a
+ * schema flag — see plan-eliminateAiTells "open items".
+ */
+const COPY_ENFORCEMENT_CUTOFF_ISO =
+  process.env.COPY_GATE_CUTOFF_ISO || '2026-08-08T00:00:00Z'
+
+export function copyGateEnforcedFor(createdAt?: string | null): boolean {
+  if (!createdAt) return false
+  const created = Date.parse(createdAt)
+  const cutoff = Date.parse(COPY_ENFORCEMENT_CUTOFF_ISO)
+  return Number.isFinite(created) && Number.isFinite(cutoff) && created >= cutoff
+}
+
 function withTimeout(ms: number): AbortSignal {
   return AbortSignal.timeout(ms)
 }
@@ -125,7 +145,7 @@ export async function validateTenantSite(tenantId: string): Promise<ValidationRe
     .from('tenants')
     .select(
       `
-      id, business_name, owner_email, widget_id,
+      id, business_name, owner_email, widget_id, created_at,
       domains ( hostname, source, is_primary ),
       site_configs ( theme, layout_style, design_variant, nav_links, hero_config, before_after_config, products_config, logo_url, brand_name, process_config, default_room, render_mode, custom_config, custom_config_draft )
     `
@@ -415,6 +435,60 @@ export async function validateTenantSite(tenantId: string): Promise<ValidationRe
           })
         }
 
+        // ── Design QA rubric (deterministic, Phase 6) ──
+        // Same cutoff semantics as the copy gate: errors for new provisions,
+        // warnings for legacy tenants. All checks are cheap string scans of
+        // the already-fetched homepage HTML.
+        {
+          const designSeverity: ValidationSeverity = copyGateEnforcedFor(
+            (tenant as { created_at?: string | null }).created_at
+          )
+            ? 'error'
+            : 'warning'
+          const h1Count = (html.match(/<h1[\s>]/gi) || []).length
+          if (h1Count === 0) {
+            issues.push({
+              code: 'design_missing_h1',
+              severity: designSeverity,
+              message: 'Live homepage renders no <h1>. Every page needs exactly one top-level heading for hierarchy and SEO.',
+              fixable: false,
+            })
+          } else if (h1Count > 1) {
+            issues.push({
+              code: 'design_multiple_h1',
+              severity: 'warning',
+              message: `Live homepage renders ${h1Count} <h1> elements. Keep exactly one.`,
+              fixable: false,
+            })
+          }
+          if (!/<main[\s>]/i.test(html)) {
+            issues.push({
+              code: 'design_missing_main_landmark',
+              severity: designSeverity,
+              message: 'Live homepage has no <main> landmark. Screen readers need it to skip to content.',
+              fixable: false,
+            })
+          }
+          if (!/<footer[\s>]/i.test(html)) {
+            issues.push({
+              code: 'design_missing_footer',
+              severity: designSeverity,
+              message: 'Live homepage has no <footer>. Real local businesses carry NAP/copyright footers; the engine renders one by default, so its absence means a rendering regression or a custom build that dropped it.',
+              fixable: false,
+            })
+          }
+          const imgsWithoutAlt = (html.match(/<img\s(?![^>]*\balt=)[^>]*>/gi) || []).length
+          if (imgsWithoutAlt > 0) {
+            issues.push({
+              code: 'design_img_missing_alt',
+              severity: designSeverity,
+              message: `${imgsWithoutAlt} image${imgsWithoutAlt === 1 ? '' : 's'} on the live homepage have no alt attribute.`,
+              fixable: false,
+              meta: { count: imgsWithoutAlt },
+            })
+          }
+        }
+
         const origin = new URL(crawlUrl).origin
         const internalLinks = extractInternalLinks(html).slice(0, MAX_LINKS_CHECKED)
         for (const link of internalLinks) {
@@ -462,13 +536,18 @@ export async function validateTenantSite(tenantId: string): Promise<ValidationRe
 
   // ── Specificity gate: the mechanical half of the swap test ──
   //
-  // Reported as warnings, deliberately. These findings are about whether copy is
-  // generic, and the honest fix is a fact the prospect has to supply — not
-  // something the validator or the auto-fixer can invent, so `fixable` is false
-  // throughout. Raising them to 'error' would fail launches for every tenant
-  // provisioned before the Craft & proof intake step existed. Once back-filled,
-  // flipping `severity` here is the whole change needed to start enforcing.
+  // Severity depends on when the tenant was provisioned. New tenants (created
+  // after COPY_ENFORCEMENT_CUTOFF_ISO) fail validation on copy findings, which
+  // blocks the approve gate until the copy is fixed or auto-repaired. Legacy
+  // tenants keep 'warning' so they are not broken retroactively; the fleet
+  // audit script covers them. Only 'copy_ai_tell_phrase' is fixable: banned
+  // phrases can be mechanically rewritten, whereas a missing proprietary
+  // detail is a fact only the owner can supply.
   {
+    const enforceCopyErrors = copyGateEnforcedFor(
+      (tenant as { created_at?: string | null }).created_at
+    )
+    const copySeverity: ValidationSeverity = enforceCopyErrors ? 'error' : 'warning'
     const businessName = (config.brand_name || tenant.business_name || '').trim()
     for (const [index, pageHtml] of copyPages.entries()) {
       // Locality is not joined in here, so a city name still counts as a named
@@ -477,12 +556,12 @@ export async function validateTenantSite(tenantId: string): Promise<ValidationRe
       for (const finding of analyzeSpecificity({ text: pageHtml, businessName })) {
         issues.push({
           code: finding.code,
-          severity: 'warning',
+          severity: copySeverity,
           message:
             copyPages.length > 1
               ? `Page ${index + 1} of ${copyPages.length}: ${finding.message}`
               : finding.message,
-          fixable: false,
+          fixable: finding.code === 'copy_ai_tell_phrase',
           meta: finding.samples.length > 0 ? { samples: finding.samples } : undefined,
         })
       }
@@ -490,7 +569,7 @@ export async function validateTenantSite(tenantId: string): Promise<ValidationRe
     for (const finding of analyzeToneBalance(copyPages)) {
       issues.push({
         code: finding.code,
-        severity: 'warning',
+        severity: copySeverity,
         message: finding.message,
         fixable: false,
       })

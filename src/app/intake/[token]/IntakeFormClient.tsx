@@ -172,6 +172,8 @@ type Form = {
   timelineFacts: string;
   guaranteeTerms: string;
   signatureMaterials: string;
+  /** Verbatim customer quotes. Testimonials are never invented — no quotes, no testimonials page. */
+  customerQuotes: string;
 };
 
 /**
@@ -444,6 +446,7 @@ function emptyForm(
     timelineFacts: '',
     guaranteeTerms: '',
     signatureMaterials: '',
+    customerQuotes: '',
   };
 }
 
@@ -619,6 +622,28 @@ export default function IntakeFormClient({
   const [maxStepIndexVisited, setMaxStepIndexVisited] = useState(0);
   const [isGeneratingCraft, setIsGeneratingCraft] = useState(false);
   const [generatingCraftField, setGeneratingCraftField] = useState<string | null>(null);
+  /**
+   * Craft answers applied verbatim from AI suggestions. Suggestions are
+   * examples, not facts about this business — if the prospect submits one
+   * unedited, the server drops it so invented specifics never become "proof"
+   * in the generation brief. Edited answers count as the prospect's own.
+   */
+  const [suggestedCraftValues, setSuggestedCraftValues] = useState<Record<string, string>>({});
+  const isUneditedCraftSuggestion = (key: keyof Form): boolean => {
+    const suggested = suggestedCraftValues[String(key)];
+    const current = form[key];
+    return (
+      typeof suggested === 'string' &&
+      suggested.length > 0 &&
+      typeof current === 'string' &&
+      current.trim() === suggested
+    );
+  };
+  const getCraftSuggestedFields = (): string[] =>
+    ([
+      'craftSpec', 'clientArtifact', 'shopRule', 'localConditions', 'recentJob',
+      'timelineFacts', 'crewShape', 'competitorTell', 'guaranteeTerms', 'signatureMaterials',
+    ] as const).filter((key) => isUneditedCraftSuggestion(key));
 
   const craftVertical = useMemo(
     () => detectVertical(form.industry, form.services, form.otherServices),
@@ -936,6 +961,7 @@ export default function IntakeFormClient({
       timelineFacts: form.timelineFacts,
       guaranteeTerms: form.guaranteeTerms,
       signatureMaterials: form.signatureMaterials,
+      customerQuotes: form.customerQuotes,
     };
     const serialized = JSON.stringify(payload);
     // First run just records the baseline so loading the page never burns a save.
@@ -1215,7 +1241,7 @@ export default function IntakeFormClient({
       const res = await fetch(`/api/intake/${token}/generate-page-copy`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ slug, ...form }),
+        body: JSON.stringify({ slug, ...form, craftSuggestedFields: getCraftSuggestedFields() }),
       });
       const { ok, data, error: message } = await readJsonResponse<{ content?: string }>(res);
       if (!ok) throw new Error(message || 'Failed to generate copy');
@@ -1250,7 +1276,7 @@ export default function IntakeFormClient({
         const res = await fetch(`/api/intake/${token}/generate-page-copy`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ slug, ...form }),
+          body: JSON.stringify({ slug, ...form, craftSuggestedFields: getCraftSuggestedFields() }),
         });
         const { ok, data } = await readJsonResponse<{ content?: string }>(res);
         const content = data?.content;
@@ -1415,6 +1441,8 @@ export default function IntakeFormClient({
         domainPurchaseRequested: form.domainPurchaseRequested,
         includeQuiz: form.includeQuiz,
         notes: form.notes,
+        customerQuotes: form.customerQuotes,
+        craftSuggestedFields: getCraftSuggestedFields(),
         pageContents,
       }),
     }).catch(() => {});
@@ -1941,11 +1969,16 @@ export default function IntakeFormClient({
       // Images are already in storage — this payload is text only. If it is
       // ever large enough to risk the platform's request-body limit, say so
       // here rather than letting the edge answer with an unparseable 413.
+      // Craft answers still equal to the verbatim AI suggestion are examples,
+      // not proof — the server drops them so they never enter the brief.
+      const craftSuggestedFields = getCraftSuggestedFields();
+
       const body = JSON.stringify({
         ...form,
         industry: form.industry,
         services: serviceList,
         otherServices: undefined,
+        craftSuggestedFields,
         // Collected as one comma-separated line; the column is text[].
         signatureMaterials: form.signatureMaterials
           .split(',')
@@ -2056,10 +2089,12 @@ export default function IntakeFormClient({
           .filter((unitId): unitId is string => typeof unitId === 'string')
       );
 
+      const appliedSuggestions: Record<string, string> = {};
       if (singleField) {
         const val = answers[singleField as keyof typeof answers];
         if (!failedUnitIds.has(singleField) && typeof val === 'string' && val.trim()) {
           set(singleField as keyof Form, val.trim());
+          appliedSuggestions[singleField] = val.trim();
         }
       } else {
         // Master suggest: fill all fields
@@ -2079,8 +2114,12 @@ export default function IntakeFormClient({
           const val = answers[k];
           if (!failedUnitIds.has(String(k)) && typeof val === 'string' && val.trim()) {
             set(k as keyof Form, val.trim());
+            appliedSuggestions[String(k)] = val.trim();
           }
         }
+      }
+      if (Object.keys(appliedSuggestions).length > 0) {
+        setSuggestedCraftValues((prev) => ({ ...prev, ...appliedSuggestions }));
       }
       if (failedUnitIds.size > 0) {
         const affected = Array.from(failedUnitIds).join(', ');
@@ -3339,6 +3378,12 @@ export default function IntakeFormClient({
                     onChange={(e) => set(field.key, e.target.value)}
                     placeholder={field.placeholder}
                   />
+                  {isUneditedCraftSuggestion(field.key) && (
+                    <p className="mt-1.5 text-xs font-medium text-amber-700">
+                      This is an AI example, not a fact about your business. Edit it to your real
+                      numbers and rules, or it will be left out of your site copy.
+                    </p>
+                  )}
                 </div>
               ))}
 
@@ -3377,6 +3422,12 @@ export default function IntakeFormClient({
                 onChange={(e) => set('signatureMaterials', e.target.value)}
                 placeholder={materialsMeta.placeholder}
               />
+              {isUneditedCraftSuggestion('signatureMaterials') && (
+                <p className="mt-1.5 text-xs font-medium text-amber-700">
+                  This is an AI example, not a fact about your business. Edit it to what you
+                  actually use, or it will be left out of your site copy.
+                </p>
+              )}
               <p className="mt-2 text-xs text-[#8B939C]">
                 {materialsMeta.hint}
               </p>
@@ -3421,6 +3472,27 @@ export default function IntakeFormClient({
                   );
                 })}
               </div>
+
+              {form.pages.includes('testimonials') && (
+                <div className="mt-5 rounded-2xl border border-amber-300 bg-amber-50 p-4">
+                  <label htmlFor="customer-quotes" className="block text-sm font-semibold text-[#10141A]">
+                    Paste real customer quotes (required for a Testimonials page)
+                  </label>
+                  <p className="mt-1 text-xs text-[#4E5761]">
+                    We never write testimonials for you. Paste quotes exactly as your customers wrote
+                    them — one per line, with a first name and town if you have it. If you leave this
+                    empty, the Testimonials page is skipped instead of filled with made-up reviews.
+                  </p>
+                  <textarea
+                    id="customer-quotes"
+                    value={form.customerQuotes}
+                    onChange={(e) => set('customerQuotes', e.target.value)}
+                    rows={5}
+                    placeholder={'"They found the leak two other companies missed. Done in a day." — Maria, Evanston\n"Quote was the price we paid. No surprises." — Dan K.'}
+                    className="mt-3 w-full rounded-xl border border-[#D8DADB] bg-white p-3 text-sm text-[#10141A] outline-none transition focus:border-[#2438C9]"
+                  />
+                </div>
+              )}
 
               <div className="landing-shadow-float mt-5 rounded-2xl border border-[#E7E8E8] bg-white p-4">
                 <div className="flex items-center justify-between gap-3">

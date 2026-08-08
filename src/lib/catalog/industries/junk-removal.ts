@@ -32,7 +32,7 @@ export const JUNK_REMOVAL_SERVICES: ServiceDef[] = [
     'Removal',
     [...JUNK_THEMES],
     [...JUNK_LAYOUTS, 'local-expert'],
-    { image: JUNK_IMG, description: 'We load it, haul it, and dispose of it — you point, we take it.' },
+    { image: JUNK_IMG, description: 'We load it, haul it, and dispose of it. You point, we take it.' },
     ['junk removal', 'haul away', 'junk hauling', 'clutter removal', 'junk pick up']
   ),
   junk(
@@ -48,7 +48,7 @@ export const JUNK_REMOVAL_SERVICES: ServiceDef[] = [
     'Cleanouts',
     ['urban-reclaim', 'classic-warm', 'functional-utility', 'care-comfort'],
     ['trust-builder', 'conversion-focus', 'local-expert', 'storyteller'],
-    { image: JUNK_IMG, description: 'Compassionate whole-home estate cleanouts — we handle everything.' },
+    { image: JUNK_IMG, description: 'Compassionate whole-home estate cleanouts. We handle everything.' },
     ['estate cleanout', 'estate clear out', 'house cleanout', 'downsizing cleanout']
   ),
   junk(

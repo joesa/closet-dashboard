@@ -1,4 +1,6 @@
 import { generateTextWithFallback } from '@/lib/ai/aiTextProvider'
+import { HUMAN_COPY_VOICE_RULES } from '@/lib/ai/humanCopyVoice'
+import { validateGeneratedUnits } from '@/lib/validation/generatedContentQuality'
 
 export type QuizOption = { id: string; label: string }
 export type QuizQuestionConfig = { id: 'frustration' | 'style' | 'timeline'; title: string; options: QuizOption[] }
@@ -87,6 +89,8 @@ export async function generateQuizConfig(
 
   const prompt = `A contractor's marketing website has a short "3-question quiz" widget that qualifies a visitor before they request a quote. Write industry-specific copy for it — a prospect in THIS exact trade should recognize every option as something they'd actually pick (avoid generic filler, and never reuse closet/storage-organization wording unless the trade genuinely is that).
 
+${HUMAN_COPY_VOICE_RULES}
+
 Return JSON only, no markdown, with this EXACT shape:
 {
   "eyebrow": string,          // 2-4 word label above the quiz heading, e.g. "Get Your Estimate"
@@ -140,7 +144,31 @@ ${other ? `Other/custom services: ${other}\n` : ''}${input.business_name ? `Busi
       }
     })
 
-    return { config: { eyebrow, headline, questions }, source: provider }
+    // Copy gate ('label' profile: short strings are only checked for banned
+    // phrases). Telly quiz copy falls back to the generic config, which the
+    // template pipeline already fails closed on (quiz omitted from the site).
+    const config: QuizConfig = { eyebrow, headline, questions }
+    const gate = validateGeneratedUnits({
+      stage: 'quiz_config',
+      profile: 'label',
+      units: [
+        { id: 'eyebrow', text: config.eyebrow },
+        { id: 'headline', text: config.headline },
+        ...config.questions.flatMap((q) => [
+          { id: `${q.id}.title`, text: q.title },
+          ...q.options.map((opt) => ({ id: `${q.id}.${opt.id}`, text: opt.label })),
+        ]),
+      ],
+    })
+    if (gate.status === 'failed') {
+      console.warn(
+        '[generateQuizConfig] generated quiz failed the copy gate:',
+        gate.findings.map((f) => `${f.unitId}: ${f.samples.join(', ')}`).join('; ')
+      )
+      return { config: DEFAULT_QUIZ_CONFIG, source: 'fallback' }
+    }
+
+    return { config, source: provider }
   } catch {
     return { config: DEFAULT_QUIZ_CONFIG, source: 'fallback' }
   }

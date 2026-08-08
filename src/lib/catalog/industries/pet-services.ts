@@ -49,7 +49,7 @@ export const PET_SERVICES_SERVICES: ServiceDef[] = [
     'Boarding',
     ['pastoral-pet', 'care-comfort', 'playful-kids', 'classic-warm'],
     ['trust-builder', 'gallery-showcase', 'storyteller', 'local-expert'],
-    { image: PET_IMG, description: 'Home-style dog boarding — your dog stays with a sitter, not in a cage.' },
+    { image: PET_IMG, description: 'Home-style dog boarding. Your dog stays with a sitter, not in a cage.' },
     ['dog boarding', 'overnight dog care', 'dog hotel', 'pet boarding']
   ),
   pet(
@@ -57,7 +57,7 @@ export const PET_SERVICES_SERVICES: ServiceDef[] = [
     'Grooming',
     ['pastoral-pet', 'fresh-clean', 'classic-warm', 'playful-kids'],
     ['gallery-showcase', 'before-after', 'trust-builder', 'local-expert'],
-    { image: GROOM_IMG, description: 'Full grooming in a mobile salon van — no cages, no waiting.' },
+    { image: GROOM_IMG, description: 'Full grooming in a mobile salon van. No cages, no waiting.' },
     ['mobile grooming', 'pet grooming', 'dog grooming', 'mobile dog groomer', 'grooming van']
   ),
   pet(
@@ -65,7 +65,7 @@ export const PET_SERVICES_SERVICES: ServiceDef[] = [
     'Grooming',
     ['pastoral-pet', 'fresh-clean', 'classic-warm', 'elegant-dressing'],
     ['gallery-showcase', 'before-after', 'trust-builder', 'local-expert'],
-    { image: GROOM_IMG, description: 'Full-service grooming salon — baths, haircuts, nail trims, and more.' },
+    { image: GROOM_IMG, description: 'Full-service grooming salon. Baths, haircuts, nail trims, and more.' },
     ['pet grooming salon', 'dog haircut', 'bath and brush', 'nail trim', 'groomer']
   ),
   pet(
@@ -89,7 +89,7 @@ export const PET_SERVICES_SERVICES: ServiceDef[] = [
     'Transport',
     ['pastoral-pet', 'swift-mobile', 'care-comfort', 'classic-warm'],
     ['compact-quote', 'trust-builder', 'local-expert', 'conversion-focus'],
-    { image: PET_IMG, description: 'Safe, stress-free pet transport to vets, groomers, and beyond.' },
+    { image: PET_IMG, description: 'Door-to-door pet transport to vet, groomer, and boarding appointments.' },
     ['pet taxi', 'pet transport', 'pet shuttle', 'vet transport', 'cat transport']
   ),
 ]

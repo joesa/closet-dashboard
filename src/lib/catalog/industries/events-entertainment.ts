@@ -17,9 +17,9 @@ export const EVENT_RENTALS_SERVICES: ServiceDef[] = [
 ]
 
 export const DJ_ENTERTAINMENT_SERVICES: ServiceDef[] = [
-  ev('Wedding DJ', 'Weddings', 'dj-entertainment', ['event-festive', 'elegant-dressing', 'luxury-minimal', 'sophisticated-wine'], ['event-booking', 'storyteller', 'gallery-showcase', 'conversion-focus'], { image: IMG, description: 'Professional wedding DJ and MC — ceremony, cocktail hour, and reception.' }, ['wedding dj', 'wedding disc jockey', 'wedding entertainment', 'dj for wedding']),
+  ev('Wedding DJ', 'Weddings', 'dj-entertainment', ['event-festive', 'elegant-dressing', 'luxury-minimal', 'sophisticated-wine'], ['event-booking', 'storyteller', 'gallery-showcase', 'conversion-focus'], { image: IMG, description: 'Professional wedding DJ and MC. Ceremony, cocktail hour, and reception.' }, ['wedding dj', 'wedding disc jockey', 'wedding entertainment', 'dj for wedding']),
   ev('Party & Corporate DJ', 'Events', 'dj-entertainment', ['event-festive', 'sleek-entertainment', 'commercial-pro', 'modern-office'], ['event-booking', 'gallery-showcase', 'compact-quote', 'conversion-focus'], { image: IMG, description: 'DJ entertainment for corporate parties, school dances, and private events.' }, ['party dj', 'event dj', 'corporate dj', 'dj service', 'mobile dj']),
-  ev('Karaoke DJ', 'Entertainment', 'dj-entertainment', ['event-festive', 'playful-kids', 'classic-warm', 'gourmet-warm'], ['event-booking', 'compact-quote', 'gallery-showcase', 'local-expert'], { image: IMG, description: 'Karaoke systems with tens of thousands of songs — hosted by our DJ.' }, ['karaoke dj', 'karaoke rental', 'karaoke host', 'karaoke night']),
+  ev('Karaoke DJ', 'Entertainment', 'dj-entertainment', ['event-festive', 'playful-kids', 'classic-warm', 'gourmet-warm'], ['event-booking', 'compact-quote', 'gallery-showcase', 'local-expert'], { image: IMG, description: 'Karaoke systems with tens of thousands of songs. Hosted by our DJ.' }, ['karaoke dj', 'karaoke rental', 'karaoke host', 'karaoke night']),
 ]
 
 export const BOUNCE_HOUSE_SERVICES: ServiceDef[] = [
@@ -31,7 +31,7 @@ export const BOUNCE_HOUSE_SERVICES: ServiceDef[] = [
 
 export const FOOD_TRUCK_SERVICES: ServiceDef[] = [
   ev('Food Truck Booking', 'Catering', 'food-truck', ['gourmet-warm', 'event-festive', 'rustic-pantry', 'artisan-wood'], ['event-booking', 'gallery-showcase', 'storyteller', 'conversion-focus'], { image: IMG, description: 'Book our food truck for private parties, corporate events, and festivals.' }, ['food truck', 'food truck catering', 'food truck rental', 'book food truck', 'food truck event']),
-  ev('Corporate Lunch Rotation', 'Corporate', 'food-truck', ['gourmet-warm', 'commercial-pro', 'modern-office', 'event-festive'], ['event-booking', 'trust-builder', 'compact-quote', 'conversion-focus'], { image: IMG, description: 'Regular lunch stops at your office or business park — contact us to schedule.' }, ['food truck office', 'corporate food truck', 'office lunch food truck', 'food truck schedule']),
+  ev('Corporate Lunch Rotation', 'Corporate', 'food-truck', ['gourmet-warm', 'commercial-pro', 'modern-office', 'event-festive'], ['event-booking', 'trust-builder', 'compact-quote', 'conversion-focus'], { image: IMG, description: 'Regular lunch stops at your office or business park. Contact us to schedule.' }, ['food truck office', 'corporate food truck', 'office lunch food truck', 'food truck schedule']),
   ev('Festival & Pop-Up Vending', 'Events', 'food-truck', ['gourmet-warm', 'event-festive', 'rustic-pantry', 'media-creative'], ['event-booking', 'gallery-showcase', 'storyteller', 'local-expert'], { image: IMG, description: 'Food truck vending at farmers markets, festivals, and pop-up events.' }, ['food truck festival', 'pop up food', 'food truck market', 'street food vendor']),
 ]
 

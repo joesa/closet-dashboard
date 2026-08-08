@@ -42,7 +42,7 @@ export const CUSTOM_CLOSETS_SERVICES: ServiceDef[] = [
     'Walk-In Closet',
     ['luxury-minimal', 'elegant-dressing', 'luxury-gallery', 'minimalist-zen'],
     ['portfolio-first', 'standard', 'gallery-showcase'],
-    { image: CLOSET_IMG, description: 'Luxurious walk-in spaces designed for your lifestyle.' },
+    { image: CLOSET_IMG, description: 'Double-hang rods, drawer stacks, and shoe shelving sized to what you own.' },
     ['walk in', 'walk-in', 'master closet']
   ),
   closet(

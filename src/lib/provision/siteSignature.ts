@@ -21,23 +21,23 @@ const MOTIFS = [
 // vertical's tone.
 
 const EYEBROWS_MEDICAL = [
-  'Compassionate care',
   'Patient care',
   'In practice',
   'How we care',
   'For your family',
   'Our approach',
-  'Clinical excellence',
+  'Clinical care',
   'Patient-first',
+  'At the clinic',
 ]
 
 const EYEBROWS_WELLNESS = [
   'Serene care',
   'The experience',
   'In studio',
-  'Holistic care',
   'Mind & Body',
   'Your wellbeing',
+  'Between visits',
 ]
 
 const EYEBROWS_PROFESSIONAL = [
@@ -67,11 +67,43 @@ const EYEBROWS_TRADE = [
   'For businesses nearby',
 ]
 
-// Trade-specific terms used for process names — medical gets "Care Approach"
-const METHOD_WORDS_TRADE = ['Method', 'Process', 'Standard', 'Approach', 'System', 'Craft']
-const METHOD_WORDS_MEDICAL = ['Care Approach', 'Care Standard', 'Care Process']
-const METHOD_WORDS_PROFESSIONAL = ['Practice', 'Approach', 'Standard', 'Method']
-const METHOD_WORDS_WELLNESS = ['Experience', 'Approach', 'Method', 'Practice']
+// Process-section titles. Deliberately NOT the "The {Brand} Method" formula —
+// that fill-in-the-blank title is a recognisable generator signature (see
+// findFormulaicTitles in humanCopyVoice.ts), so none of these may match it.
+const PROCESS_TITLES_TRADE = [
+  'How we run a job',
+  'From first call to final walkthrough',
+  'What happens after you book',
+  'How the work gets done',
+  'Start to finish',
+  'How a project moves',
+  'The order we work in',
+  'What to expect on site',
+]
+const PROCESS_TITLES_MEDICAL = [
+  'What a visit looks like',
+  'From booking to follow-up',
+  'How appointments work',
+  'Your first visit, step by step',
+  'What to expect at your visit',
+  'How care moves forward',
+]
+const PROCESS_TITLES_PROFESSIONAL = [
+  'How an engagement works',
+  'From consultation to resolution',
+  'What working together looks like',
+  'How we take on new work',
+  'From first meeting to final filing',
+  'What happens after you reach out',
+]
+const PROCESS_TITLES_WELLNESS = [
+  'What to expect',
+  'From booking to your first session',
+  'How sessions work',
+  'Your first visit, start to finish',
+  'How we set up your routine',
+  'What a session looks like',
+]
 
 type VerticalHint = 'medical' | 'wellness' | 'professional' | 'trade'
 
@@ -103,12 +135,12 @@ function getEyebrowPool(hint: VerticalHint): string[] {
   }
 }
 
-function getMethodWords(hint: VerticalHint): string[] {
+function getProcessTitlePool(hint: VerticalHint): string[] {
   switch (hint) {
-    case 'medical': return METHOD_WORDS_MEDICAL
-    case 'wellness': return METHOD_WORDS_WELLNESS
-    case 'professional': return METHOD_WORDS_PROFESSIONAL
-    default: return METHOD_WORDS_TRADE
+    case 'medical': return PROCESS_TITLES_MEDICAL
+    case 'wellness': return PROCESS_TITLES_WELLNESS
+    case 'professional': return PROCESS_TITLES_PROFESSIONAL
+    default: return PROCESS_TITLES_TRADE
   }
 }
 
@@ -119,16 +151,6 @@ function hashSeed(input: string): number {
     h = Math.imul(h, 16777619)
   }
   return h >>> 0
-}
-
-function brandToken(brandName: string): string {
-  const cleaned = brandName
-    .replace(/\b(llc|inc|co|company|the|and|&)\b/gi, ' ')
-    .replace(/[^a-zA-Z0-9\s]/g, ' ')
-    .trim()
-  const parts = cleaned.split(/\s+/).filter(Boolean)
-  if (parts.length === 0) return 'Studio'
-  return parts[0].charAt(0).toUpperCase() + parts[0].slice(1)
 }
 
 export type ProvisionSignature = {
@@ -144,13 +166,11 @@ export function buildProvisionSignature(opts: {
   services?: string[] | null
 }): ProvisionSignature {
   const seed = (opts.seed || opts.businessName || 'site').trim()
-  const brand = brandToken(opts.businessName || 'Studio')
   const hint = detectVerticalHint(opts.industry, opts.services)
-  const methodWords = getMethodWords(hint)
+  const titlePool = getProcessTitlePool(hint)
   const eyebrowPool = getEyebrowPool(hint)
-  const method = methodWords[hashSeed(`${seed}::method`) % methodWords.length]
   return {
-    processName: `The ${brand} ${method}`,
+    processName: titlePool[hashSeed(`${seed}::method`) % titlePool.length],
     motif: MOTIFS[hashSeed(`${seed}::motif`) % MOTIFS.length],
     eyebrow: eyebrowPool[hashSeed(`${seed}::eyebrow`) % eyebrowPool.length],
   }

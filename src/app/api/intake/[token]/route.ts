@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { checkRateLimit, hashRateKey } from '@/lib/rateLimit'
 import { enqueueProvisionJob } from '@/lib/provision/enqueueProvisionJob'
 import { getIntakeByToken } from '@/lib/intake/getIntakeByToken'
+import { stripUneditedCraftSuggestions } from '@/lib/intake/buildIntakeBrief'
 import { buildIntakePublicJson } from '@/lib/intake/intakePublicResponse'
 import { healIntakeTierFromPayments, effectiveIntakeTier } from '@/lib/intake/intakeTierGates'
 import { kickProvisionAfterSubmit } from '@/lib/provision/kickProvisionAfterSubmit'
@@ -250,6 +251,7 @@ export async function POST(
       timeline_facts: toStr(body.timelineFacts),
       guarantee_terms: toStr(body.guaranteeTerms),
       signature_materials: toArr(body.signatureMaterials),
+      customer_quotes: toStr(body.customerQuotes),
       requested_pages: clampPagesForTier(
         body.pages,
         intakeTier
@@ -258,6 +260,11 @@ export async function POST(
       gallery_images: galleryUrls,
       menu_items: menuItems,
     }
+
+    // Craft answers the prospect accepted verbatim from AI suggestions are
+    // examples, not facts about this business. Drop them so invented
+    // specifics never launder into the generation brief as "proof".
+    stripUneditedCraftSuggestions(update, body.craftSuggestedFields)
     if (logoUrl) update.logo_url = logoUrl
 
     // --- User presentation override (from the review step) ---

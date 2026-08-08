@@ -57,7 +57,7 @@ export const MOBILE_AUTO_SERVICES: ServiceDef[] = [
     'Roadside',
     [...MOBILE_THEMES],
     [...MOBILE_LAYOUTS],
-    { image: AUTO_IMG, description: 'Flat tire? We come to you — repair, rotate, and replace on-site.' },
+    { image: AUTO_IMG, description: 'Flat tire? We come to you. Repair, rotate, and replace on-site.' },
     ['flat tire', 'mobile tire', 'tire repair', 'tire change', 'tire rotation']
   ),
   auto(

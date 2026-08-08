@@ -81,7 +81,7 @@ export const MOVING_SERVICES: ServiceDef[] = [
     'Specialty',
     ['urban-reclaim', 'functional-utility', 'clean-move', 'modern-office'],
     ['conversion-focus', 'compact-quote', 'trust-builder', 'local-expert'],
-    { image: TRUCK_IMG, description: 'Clutter cleared before or after your move — same-day haul-away.' },
+    { image: TRUCK_IMG, description: 'Clutter cleared before or after your move. Same-day haul-away.' },
     ['junk removal', 'haul away', 'junk hauling', 'debris removal', 'cleanout']
   ),
   move(

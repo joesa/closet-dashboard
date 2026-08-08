@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server'
 import { generateTextWithFallback } from '@/lib/ai/aiTextProvider'
 import { getCurrentAdmin } from '@/lib/admin'
+import { DESIGN_CRAFT_PERSONA } from '@/lib/ai/craftStandards'
+import { HUMAN_COPY_VOICE_RULES } from '@/lib/ai/humanCopyVoice'
+import { generateWithQualityRetry } from '@/lib/ai/generateWithQualityRetry'
+import { validateGeneratedUnits } from '@/lib/validation/generatedContentQuality'
 
 export const maxDuration = 30
 export const runtime = 'nodejs'
@@ -122,12 +126,17 @@ export async function POST(req: Request) {
 
     const prompt = `Read the business brief below and write website copy that SELLS — specific to this business, not generic filler.
 
+${DESIGN_CRAFT_PERSONA}
+
+${HUMAN_COPY_VOICE_RULES}
+
 RULES:
 - Hero headline: benefit-first, confident, memorable. Reference their niche or location when it adds punch.
 - Hero subheadline: one supporting sentence with a concrete proof point or differentiator from the brief; never repeat the headline.
 - About story: warm but professional; name the business; mention services and 1–2 differentiators from the brief.
 - Match the tone they asked for (e.g. playful, luxury, bold).
 - Never mention "Apex Garage" or unrelated placeholder brands.
+- Never invent testimonials, reviews, ratings, statistics, or awards; concrete claims come from the brief only.
 - If a business name is in the brief, use it exactly.
 
 Return ONLY valid JSON matching this schema:
@@ -136,21 +145,50 @@ ${JSON.stringify(COPY_SCHEMA, null, 2)}
 User brief:
 ${input.trim()}`
 
-    const { text: rawText } = await generateTextWithFallback({
-      prompt,
-      systemPrompt,
-      jsonMode: true,
-      temperature: 0.75,
-      maxOutputTokens: 2048,
-    })
-
-    if (!rawText.trim()) {
-      throw new Error('AI returned no copy')
+    const generateOnce = async (fullPrompt: string) => {
+      const { text: rawText } = await generateTextWithFallback({
+        prompt: fullPrompt,
+        systemPrompt,
+        jsonMode: true,
+        temperature: 0.65,
+        maxOutputTokens: 2048,
+      })
+      if (!rawText.trim()) {
+        throw new Error('AI returned no copy')
+      }
+      return JSON.parse(sanitizeJsonString(extractJson(rawText))) as Record<string, string>
     }
 
-    const data = JSON.parse(sanitizeJsonString(extractJson(rawText)))
+    const first = await generateOnce(prompt)
 
-    return NextResponse.json({ success: true, data })
+    // Post-validate the customer-visible strings against the shared copy gate
+    // and retry once with violation feedback (labels use the 'label' profile:
+    // a 6-word headline can't be expected to carry a measurement).
+    const COPY_KEYS = ['heroHeadline', 'heroSubheadline', 'aboutDescription'] as const
+    const result = await generateWithQualityRetry<Record<string, string>>({
+      initial: first,
+      validate: (output) =>
+        validateGeneratedUnits({
+          stage: 'sandbox_copy',
+          profile: 'label',
+          units: COPY_KEYS.filter((k) => typeof output[k] === 'string').map((k) => ({
+            id: k,
+            text: output[k],
+            sourceText: input.trim(),
+          })),
+        }),
+      regenerate: async ({ findings }) => {
+        const feedback = findings
+          .map((f, i) => `${i + 1}. [${f.unitId}] ${f.message}${f.samples.length ? ` Offending: ${f.samples.join(', ')}` : ''}`)
+          .join('\n')
+        return generateOnce(
+          `${prompt}\n\nYour previous draft failed the copy quality gate. Fix EVERY violation below and return the full corrected JSON:\n${feedback}`
+        )
+      },
+      maxRetries: 1,
+    })
+
+    return NextResponse.json({ success: true, data: result.output, quality: result.status })
   } catch (error) {
     console.error('AI generate-copy error:', error)
     const message = error instanceof Error ? error.message : 'Copy generation failed'

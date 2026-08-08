@@ -32,7 +32,7 @@ export const LOCKSMITH_SERVICES: ServiceDef[] = [
     'Emergency',
     [...URGENT_THEMES],
     [...URGENT_LAYOUTS],
-    { image: LOCK_IMG, description: 'Locked out? We\'re on the way — 24/7 residential lockout service.' },
+    { image: LOCK_IMG, description: 'Locked out? We\'re on the way. 24/7 residential lockout service.' },
     ['locked out', 'home lockout', 'house lockout', 'residential lockout']
   ),
   lock(
@@ -48,7 +48,7 @@ export const LOCKSMITH_SERVICES: ServiceDef[] = [
     'Residential',
     ['swift-mobile', 'modern-office', 'functional-utility', 'classic-warm'],
     ['compact-quote', 'trust-builder', 'conversion-focus', 'local-expert'],
-    { image: LOCK_IMG, description: 'Change who can enter without replacing hardware — fast and affordable.' },
+    { image: LOCK_IMG, description: 'Change who can enter without replacing hardware. Fast and affordable.' },
     ['rekey', 'lock rekey', 'change locks', 'new keys', 'rekey deadbolt']
   ),
   lock(

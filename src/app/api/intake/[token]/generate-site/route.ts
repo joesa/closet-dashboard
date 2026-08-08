@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { generateSiteConfigFromInput } from '@/lib/ai/generateSiteConfig'
 import { mergeAiSiteConfigWithPresentation } from '@/lib/ai/mergeAiSitePresentation'
-import { buildIntakeBrief } from '@/lib/intake/buildIntakeBrief'
+import { buildIntakeBrief, stripUneditedCraftSuggestions } from '@/lib/intake/buildIntakeBrief'
 import { resolveIntakeBeforeAfterCategory } from '@/lib/intake/intakeBeforeAfter'
 import { getIntakeByToken } from '@/lib/intake/getIntakeByToken'
 import { assertDraftIntake, assertDepositPaid } from '@/lib/intake/intakeTierGates'
@@ -106,6 +106,7 @@ export async function POST(
       update.include_quiz = body.includeQuiz === true
     }
     if (body.notes !== undefined) update.notes = toStr(body.notes)
+    if (body.customerQuotes !== undefined) update.customer_quotes = toStr(body.customerQuotes)
     
     if (body.pages !== undefined) {
       update.requested_pages = pageSlugs
@@ -147,6 +148,10 @@ export async function POST(
         Object.assign(row, update)
       }
     }
+
+    // Unedited AI craft suggestions are examples, not proof — keep them out
+    // of the brief the site is generated from.
+    stripUneditedCraftSuggestions(row as Record<string, unknown>, body.craftSuggestedFields)
 
     const brief = buildIntakeBrief(row)
     if (!brief.trim()) {

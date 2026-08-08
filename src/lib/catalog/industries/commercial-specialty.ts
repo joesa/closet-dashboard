@@ -25,7 +25,7 @@ export const SIGNAGE_WRAPS_SERVICES: ServiceDef[] = [
 export const WELDING_FABRICATION_SERVICES: ServiceDef[] = [
   mk('Custom Gates & Railings', 'Ornamental', 'welding-fabrication', ['artisan-wood', 'brutalist', 'stone-masonry', 'garage-industrial'], ['portfolio-first', 'gallery-showcase', 'visual-impact', 'before-after'], { image: IMG, description: 'Custom steel gates, handrails, and ornamental ironwork fabricated on-site.' }, ['custom gates', 'steel gate', 'custom railing', 'ornamental iron', 'wrought iron gate']),
   mk('Structural Welding', 'Structural', 'welding-fabrication', ['functional-utility', 'commercial-pro', 'brutalist', 'stone-masonry'], ['trust-builder', 'process-steps', 'compact-quote', 'conversion-focus'], { image: IMG, description: 'AWS-certified structural welding for steel construction and repair projects.' }, ['structural welding', 'steel welding', 'metal fabrication', 'certified welder']),
-  mk('Mobile Welding Service', 'Mobile', 'welding-fabrication', ['swift-mobile', 'brutalist', 'garage-industrial', 'functional-utility'], ['emergency-first', 'compact-quote', 'trust-builder', 'local-expert'], { image: IMG, description: 'Field welding service — we come to your job site or farm.' }, ['mobile welding', 'on-site welding', 'field welding', 'mobile welder']),
+  mk('Mobile Welding Service', 'Mobile', 'welding-fabrication', ['swift-mobile', 'brutalist', 'garage-industrial', 'functional-utility'], ['emergency-first', 'compact-quote', 'trust-builder', 'local-expert'], { image: IMG, description: 'Field welding service. We come to your job site or farm.' }, ['mobile welding', 'on-site welding', 'field welding', 'mobile welder']),
 ]
 
 export const ELEVATOR_SERVICES_SERVICES: ServiceDef[] = [

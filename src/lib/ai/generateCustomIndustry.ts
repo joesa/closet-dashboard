@@ -1,4 +1,6 @@
 import { generateTextWithFallback } from '@/lib/ai/aiTextProvider'
+import { HUMAN_COPY_VOICE_RULES } from '@/lib/ai/humanCopyVoice'
+import { validateGeneratedUnits } from '@/lib/validation/generatedContentQuality'
 import { THEME_SLUGS, LAYOUT_SLUGS } from '@/lib/catalog/sitePresentationCatalog'
 import type { CustomIndustryRecord, CustomIndustryService } from '@/lib/catalog/customIndustries'
 import type { BeforeAfterCategory } from '@/lib/openai-images'
@@ -62,6 +64,8 @@ export async function generateCustomIndustry(
   if (!industryText || !useGemini) return { def: fallback, source: 'fallback' }
 
   const prompt = `A contractor is signing up for a website + instant-quote-widget builder and typed an industry/trade that isn't in our catalog yet. Generate a starting definition for this NEW industry so the product can support it well immediately, and so other contractors in the same trade can reuse it later.
+
+Service labels and descriptions are customer-visible copy. ${HUMAN_COPY_VOICE_RULES}
 
 Return JSON only, no markdown, with this EXACT shape:
 {
@@ -168,6 +172,35 @@ ${input.businessName ? `Business name: ${input.businessName}\n` : ''}${input.oth
       : 'quote'
 
     if (services.length === 0) return { def: fallback, source: 'fallback' }
+
+    // Copy gate on the customer-visible strings ('label' profile). Telly
+    // service copy is repaired by dropping the offending descriptions rather
+    // than failing the whole industry definition.
+    const gate = validateGeneratedUnits({
+      stage: 'custom_industry',
+      profile: 'label',
+      units: [
+        { id: 'label', text: label },
+        ...services.flatMap((s, i) => [
+          { id: `services[${i}].label`, text: s.label },
+          ...(s.description ? [{ id: `services[${i}].description`, text: s.description }] : []),
+        ]),
+      ],
+    })
+    if (gate.status === 'failed') {
+      console.warn(
+        '[generateCustomIndustry] copy gate findings:',
+        gate.findings.map((f) => `${f.unitId}: ${f.samples.join(', ')}`).join('; ')
+      )
+      for (const finding of gate.findings) {
+        const m = finding.unitId.match(/^services\[(\d+)\]\.description$/)
+        if (m) services[Number(m[1])].description = undefined
+      }
+      // A telly label (not just description) means the definition is unsafe.
+      if (gate.findings.some((f) => f.unitId === 'label' || /\.label$/.test(f.unitId))) {
+        return { def: fallback, source: 'fallback' }
+      }
+    }
 
     return {
       def: {

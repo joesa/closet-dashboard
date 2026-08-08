@@ -44,6 +44,9 @@ yarn-error.log*
 # local accidental dumps
 et -a
 
+# fleet audit reports (contain tenant data)
+/audit-output/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

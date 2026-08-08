@@ -3,6 +3,7 @@ import {
   CLAUDE_SONNET_MODEL,
   generateTextWithFallback,
 } from '@/lib/ai/aiTextProvider'
+import { DESIGN_CRAFT_PERSONA } from '@/lib/ai/craftStandards'
 import { HUMAN_COPY_VOICE_RULES } from '@/lib/ai/humanCopyVoice'
 import { LAYOUT_SLUGS, THEME_SLUGS } from '@/lib/catalog/sitePresentationCatalog'
 
@@ -434,6 +435,8 @@ export async function generateSiteConfigFromInput(
 
   let systemPrompt = `You write site configs for real local service businesses: honest marketing copy plus photorealistic image prompts. Sound like a good local shop — not a SaaS landing page and not a luxury-agency press release.
 
+${DESIGN_CRAFT_PERSONA}
+
 ${HUMAN_COPY_VOICE_RULES}
 
 Image prompts must avoid AI-render tropes (no plastic surfaces, warped geometry, fake brand text, uncanny symmetry, lifeless stock CGI).
@@ -515,9 +518,15 @@ Match each product to a real service from the business information.
 - theme: infer exactly one of the allowed theme slugs that best fits this specific industry and trade.
 - layoutStyle: infer exactly one of the allowed layout styles that best fits this specific industry and trade.`
 
+  // Testimonials are never fabricated: the page may exist ONLY when the brief
+  // carries an owner-supplied REAL CUSTOMER QUOTES block (see buildIntakeBrief).
+  const briefHasRealQuotes = /REAL CUSTOMER QUOTES/i.test(scrapedText)
+
   systemPrompt += `\n\n=== MULTI-PAGE SITEMAP (CRITICAL) ===
-Generate a comprehensive "pagesConfig" array containing 8 to 12 pages for this business. This is a library of pages; you must generate the core pages AND all logical optional pages (e.g. FAQ, Service Areas, Financing, Gallery, specific services, About, Process, Contact, Testimonials, etc).
+Generate a comprehensive "pagesConfig" array containing 8 to 12 pages for this business. This is a library of pages; you must generate the core pages AND all logical optional pages (e.g. FAQ, Service Areas, Financing, Gallery, specific services, About, Process, Contact${briefHasRealQuotes ? ', Testimonials' : ''}, etc).
 (Home is rendered separately — do NOT include it in pagesConfig).
+
+FACTS-ONLY RULE (NON-NEGOTIABLE, applies to every page): use only facts present in the business information. Never invent testimonials, reviews, star ratings, review counts, statistics, awards, certifications, or named customers. ${briefHasRealQuotes ? 'The REAL CUSTOMER QUOTES block is the ONLY sanctioned source of quotes — reproduce them verbatim, never extend or re-attribute them.' : 'This brief contains NO customer quotes, so do NOT generate a Testimonials/Reviews page and do NOT place quotes anywhere on the site.'} Where no fact exists for a section, write less rather than inventing.
 
 For each page:
 - "slug": a lowercase URL slug starting with "/" derived from the page title
@@ -538,7 +547,7 @@ For each page:
       cards (great for FAQ Q&A, service lists, testimonials, process steps, or service-area cities).
   Choose block types that fit the page: FAQ -> grid of Q&A; Services -> one intro text block PLUS
   either a grid with ONE item per service in "Services offered" OR alternating image_left/image_right
-  blocks covering EVERY service (do not truncate to 3–4); Testimonials -> grid of quotes;
+  blocks covering EVERY service (do not truncate to 3–4);${briefHasRealQuotes ? ' Testimonials -> grid of the verbatim owner-supplied quotes;' : ''}
   Service Areas -> grid of cities + a text intro; About/Process -> text + image blocks.
   Fill every field with concrete, on-brand content. No lorem ipsum, no
   "describe your..." instructions, no empty bodies.`
@@ -579,6 +588,22 @@ ${Object.entries(pageContents)
     throw new Error(
       'AI did not return valid JSON.'
     )
+  }
+
+  // Deterministic enforcement of the testimonials policy: even if the model
+  // ignored the prompt, a quotes page cannot ship without owner-supplied quotes.
+  if (!briefHasRealQuotes && Array.isArray((aiData as { pagesConfig?: unknown }).pagesConfig)) {
+    const pages = (aiData as { pagesConfig: Array<{ slug?: string; title?: string }> }).pagesConfig
+    const filtered = pages.filter((page) => {
+      const key = `${page?.slug || ''} ${page?.title || ''}`.toLowerCase()
+      return !/testimonial|review/.test(key)
+    })
+    if (filtered.length !== pages.length) {
+      console.warn(
+        `[generateSiteConfig] dropped ${pages.length - filtered.length} testimonials page(s): no owner-supplied quotes in brief`
+      )
+      ;(aiData as { pagesConfig: unknown }).pagesConfig = filtered
+    }
   }
 
   return {

@@ -40,7 +40,7 @@ export const GARAGE_DOOR_SERVICES: ServiceDef[] = [
     'Repair',
     [...GD_THEMES],
     [...GD_LAYOUTS],
-    { image: GARAGE_IMG, description: 'Torsion and extension spring replacement — same day available.' },
+    { image: GARAGE_IMG, description: 'Torsion and extension spring replacement. Same day available.' },
     ['spring replacement', 'torsion spring', 'extension spring', 'broken spring', 'spring repair']
   ),
   gd(
@@ -48,7 +48,7 @@ export const GARAGE_DOOR_SERVICES: ServiceDef[] = [
     'Installation',
     ['garage-smart', 'garage-industrial', 'modern-office', 'luxury-minimal'],
     ['portfolio-first', 'gallery-showcase', 'conversion-focus', 'before-after'],
-    { image: DOOR_IMG, description: 'New garage door installation — steel, wood, carriage-style, and more.' },
+    { image: DOOR_IMG, description: 'New garage door installation. Steel, wood, carriage-style, and more.' },
     ['new garage door', 'garage door install', 'door replacement', 'carriage door', 'custom garage door']
   ),
   gd(

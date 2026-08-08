@@ -1,4 +1,6 @@
 import { generateTextWithFallback } from '@/lib/ai/aiTextProvider'
+import { HUMAN_COPY_VOICE_RULES } from '@/lib/ai/humanCopyVoice'
+import { validateGeneratedUnits } from '@/lib/validation/generatedContentQuality'
 
 export type SuggestIdealCustomersInput = {
   industry?: string | null
@@ -68,6 +70,9 @@ export async function suggestIdealCustomers(
   const prompt = `A contractor is filling out a form to build their marketing website and must choose their "ideal customer" from a dropdown menu.
 Based on their industry and services, suggest 4-5 short, specific ideal-customer segment labels (2-5 words each) that someone in this exact trade would actually recognize and pick from. Avoid generic filler — tailor to the trade (e.g. a towing company's segments differ completely from a custom closet company's).
 Always include one broad catch-all option worded close to "A mix of everyone".
+
+These labels can appear in customer-visible copy. ${HUMAN_COPY_VOICE_RULES}
+
 Return JSON only, no markdown: { "options": string[] }
 
 Industry: ${industry || '(not specified)'}
@@ -84,8 +89,20 @@ ${other ? `Other/custom services: ${other}\n` : ''}${input.business_name ? `Busi
     console.log("suggestIdealCustomers: Raw text returned:", JSON.stringify(rawText))
     const text = rawText.replace(/```json/gi, '').replace(/```/g, '').trim()
     const parsed = JSON.parse(text) as { options?: unknown }
-    const options = sanitizeOptions(parsed.options)
+    let options = sanitizeOptions(parsed.options)
     console.log("suggestIdealCustomers: parsed options length:", options.length);
+
+    // Copy gate ('label' profile): drop any telly option rather than shipping it.
+    const gate = validateGeneratedUnits({
+      stage: 'ideal_customers',
+      profile: 'label',
+      units: options.map((text, i) => ({ id: String(i), text })),
+    })
+    if (gate.status === 'failed') {
+      const bad = new Set(gate.failedUnitIds.map(Number))
+      options = options.filter((_, i) => !bad.has(i))
+    }
+
     if (options.length < 3) return { options: DEFAULT_CUSTOMER_OPTIONS, source: 'default' }
     if (!options.some((o) => o.toLowerCase().includes('mix'))) options.push(CATCH_ALL_OPTION)
     return { options, source: provider }

@@ -16,9 +16,12 @@ export type AiTellRule = {
  */
 export const AI_TELL_RULES: readonly AiTellRule[] = [
   'elevate',
+  'elevates',
   'elevating',
   'elevated',
-  { phrase: 'seamless', allowedContexts: [/\bseamless\s+(?:aluminum\s+|copper\s+)?gutters?\b/i] },
+  // "Seamless gutters" is the literal product name, including list forms like
+  // "seamless aluminum, copper, and half-round gutter installation".
+  { phrase: 'seamless', allowedContexts: [/\bseamless\b[^.!?]{0,60}\bgutters?\b/i] },
   'seamlessly',
   'unleash',
   'empower',
@@ -58,6 +61,13 @@ export const AI_TELL_RULES: readonly AiTellRule[] = [
   'meticulously crafted',
   'nestled in',
   'at the heart of everything',
+  'comprehensive',
+  'game-changer',
+  'streamline',
+  'testament to',
+  'we are committed to',
+  'our team of experienced professionals',
+  'whether you need',
 ].map((rule) => (typeof rule === 'string' ? { phrase: rule } : rule))
 
 /** Backwards-compatible phrase list used to render the generation prompts. */
@@ -84,6 +94,59 @@ export function findAiTellPhrases(text: string, sourceText = ''): string[] {
     }
   }
   return hits
+}
+
+// ── Placeholder tells ────────────────────────────────────────────────────────
+// Text that ships when a model or a template forgets to fill a slot. Unlike the
+// marketing tells above these are never legitimate in customer-visible copy, so
+// there is no allowedContexts escape hatch.
+
+export const PLACEHOLDER_TELL_RES: readonly RegExp[] = [
+  /\bjane\s+doe\b/gi,
+  /\bjohn\s+doe\b/gi,
+  /\b[\w.+-]+@example\.(?:com|org|net)\b/gi,
+  /\blorem\b/gi,
+  /\bTODO\b/g, // case-sensitive: "to do" in prose is fine, TODO markers are not
+  /\boffering\s+\d+\b/gi, // "Offering 1", "Offering 2" slot names
+  /\byour\s+(?:text|copy|content|headline)\s+here\b/gi,
+  /\bplaceholder\b/gi,
+]
+
+/** Unfilled-slot text (Jane Doe, lorem, TODO, "Offering 3", …). */
+export function findPlaceholderTells(text: string): string[] {
+  const hits: string[] = []
+  for (const re of PLACEHOLDER_TELL_RES) {
+    re.lastIndex = 0
+    for (const match of text.matchAll(re)) hits.push(match[0])
+  }
+  return Array.from(new Set(hits))
+}
+
+// ── Em dash in short copy ────────────────────────────────────────────────────
+// In prose an em dash is a style choice; in a CTA, an eyebrow, a meta
+// description or any other chrome string it is a generator fingerprint,
+// because no human labels a button with one.
+
+export const EM_DASH_SHORT_COPY_WORD_LIMIT = 24
+
+export function hasEmDashInShortCopy(
+  text: string,
+  wordLimit = EM_DASH_SHORT_COPY_WORD_LIMIT
+): boolean {
+  if (!text.includes('—')) return false
+  return text.trim().split(/\s+/).length <= wordLimit
+}
+
+// ── Formulaic titles ─────────────────────────────────────────────────────────
+// "The {Brand} Method" and its siblings are a recognisable generator signature:
+// the same fill-in-the-blank title on thousands of sites.
+
+export const FORMULAIC_TITLE_RE =
+  /\bThe\s+[A-Z][\w’']*\s+(?:Method|Approach|Difference|Promise|Standard|System|Blueprint|Process|Experience|Touch|Way\b|Care\s+(?:Approach|Standard|Process))\b/g
+
+export function findFormulaicTitles(text: string): string[] {
+  FORMULAIC_TITLE_RE.lastIndex = 0
+  return Array.from(new Set((text.match(FORMULAIC_TITLE_RE) ?? []).map((m) => m.trim())))
 }
 
 export const HUMAN_COPY_VOICE_RULES = `HUMAN VOICE (NON-NEGOTIABLE for all headlines, subheads, body, CTAs, process steps, service blurbs, FAQ, testimonials labels):

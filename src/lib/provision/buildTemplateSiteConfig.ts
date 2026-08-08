@@ -167,7 +167,7 @@ export async function buildTemplateProvisionPayload(intake: IntakeRowForProvisio
       details: {
         subtitle: 'What we offer',
         longDescription: `${serviceName} from ${businessName}${place ? ` serving ${place}` : ''}.`,
-        specifications: defaultProductSpecs(presentation.engagementModel, serviceName),
+        specifications: defaultProductSpecs(presentation.engagementModel, serviceName, null, businessName),
       },
     }
   })
@@ -180,7 +180,7 @@ export async function buildTemplateProvisionPayload(intake: IntakeRowForProvisio
       details: {
         subtitle: 'What we offer',
         longDescription: intake.other_services.trim(),
-        specifications: defaultProductSpecs(presentation.engagementModel, intake.other_services.trim()),
+        specifications: defaultProductSpecs(presentation.engagementModel, intake.other_services.trim(), null, businessName),
       },
     })
   }

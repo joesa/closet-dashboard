@@ -24,6 +24,8 @@ import {
 } from '@/lib/customSiteAssets'
 import { buildSiteContextPack } from '@/lib/ai/adminSiteChatContext'
 import { mergeSiteChatColumn } from '@/lib/ai/mergeSiteChatChanges'
+import { findAiTellPhrases, findPlaceholderTells } from '@/lib/ai/humanCopyVoice'
+import { analyzeSpecificity } from '@/lib/validation/specificityGate'
 import {
   adminWantsAttachmentsOnSite,
   persistAssistantAttachments,
@@ -59,6 +61,73 @@ const MAX_IMAGES = 4
 /** Durable + in-request history window (enough for multi-step site edits). */
 const MAX_HISTORY = 40
 const MAX_STORED_HISTORY = 80
+
+/** Keys whose string values are machine data, not customer-visible copy. */
+const NON_COPY_KEY_RE =
+  /^(?:image|images|backgroundImage|beforeImage|afterImage|logo|logoUrl|icon|url|href|slug|id|video|videoUrl|poster|color|primaryColorHex|hex|number|motif|signatureMotif|theme|layoutStyle|design_variant|updated_at)$/i
+
+function looksLikeMachineString(value: string): boolean {
+  const v = value.trim()
+  return (
+    !v ||
+    /^https?:\/\//i.test(v) ||
+    v.startsWith('/') ||
+    v.startsWith('data:') ||
+    /^#[0-9a-f]{3,8}$/i.test(v) ||
+    /^[a-z0-9]+(?:-[a-z0-9]+)+$/.test(v) // slug-like
+  )
+}
+
+/** Recursively collect customer-visible strings from a column value. */
+export function collectCopyStrings(
+  value: unknown,
+  path = ''
+): Array<{ path: string; text: string }> {
+  if (typeof value === 'string') {
+    return looksLikeMachineString(value) ? [] : [{ path: path || '$', text: value }]
+  }
+  if (Array.isArray(value)) {
+    return value.flatMap((item, i) => collectCopyStrings(item, `${path}[${i}]`))
+  }
+  if (value && typeof value === 'object') {
+    return Object.entries(value as Record<string, unknown>).flatMap(([key, child]) =>
+      NON_COPY_KEY_RE.test(key)
+        ? []
+        : collectCopyStrings(child, path ? `${path}.${key}` : key)
+    )
+  }
+  return []
+}
+
+/**
+ * The copy-tell gate for admin-chat writes (plan: eliminate AI tells, Phase 1).
+ * Every text field the model wants to write is checked against the shared ban
+ * list; language the admin typed themselves is exempt (an explicit request is
+ * a decision, not a tell).
+ */
+export function findCopyTellViolations(
+  column: string,
+  value: unknown,
+  adminText: string
+): string[] {
+  const problems: string[] = []
+  for (const { path, text } of collectCopyStrings(value)) {
+    const tells = findAiTellPhrases(text, adminText)
+    const placeholders = findPlaceholderTells(text)
+    const specificity = analyzeSpecificity({ text, sourceText: adminText }).filter(
+      (f) => f.code === 'copy_decorative_stat'
+    )
+    const all = [
+      ...tells.map((t) => `banned phrase "${t}"`),
+      ...placeholders.map((t) => `placeholder text "${t}"`),
+      ...specificity.flatMap((f) => f.samples.map((s) => `decorative marketing stat "${s}"`)),
+    ]
+    for (const problem of all) {
+      problems.push(`${column}.${path}: ${problem}`)
+    }
+  }
+  return problems
+}
 
 /** Parse a data URL into Gemini inline-data parts; returns null if invalid. */
 function parseImageDataUrl(url: string): { mimeType: string; data: string } | null {
@@ -762,6 +831,7 @@ export async function runAdminSiteChat(
   const applied: string[] = []
   const rejected: Array<{ column: string; reason: string }> = []
 
+  const copyViolationsByColumn = new Map<string, string[]>()
   for (const [column, value] of Object.entries(changes)) {
     const def = EDITABLE_COLUMNS[column]
     if (!def) {
@@ -774,8 +844,67 @@ export async function runAdminSiteChat(
       rejected.push({ column, reason: problem })
       continue
     }
+    const copyProblems = findCopyTellViolations(column, merged, lastAdmin)
+    if (copyProblems.length > 0) {
+      copyViolationsByColumn.set(column, copyProblems)
+      continue
+    }
     update[column] = merged
     applied.push(column)
+  }
+
+  // One retry with violation feedback for columns that failed only the copy
+  // gate; a column that still fails is rejected with the concrete reason.
+  if (copyViolationsByColumn.size > 0) {
+    const feedback = Array.from(copyViolationsByColumn.values())
+      .flat()
+      .map((v, i) => `${i + 1}. ${v}`)
+      .join('\n')
+    let retried: Record<string, unknown> = {}
+    try {
+      const retry = await generateTextWithFallback({
+        systemPrompt:
+          systemPrompt +
+          `\n\nCOPY QUALITY RETRY: your previous "changes" contained banned AI-marketing copy. Return the SAME JSON shape with corrected values for ONLY these columns (${Array.from(copyViolationsByColumn.keys()).join(', ')}). Violations to fix:\n${feedback}`,
+        prompt: userPrompt,
+        jsonMode: true,
+        temperature: 0.2,
+        maxOutputTokens: 16384,
+        images,
+        preferredProvider: 'anthropic',
+        anthropicModel: CLAUDE_SONNET_MODEL,
+      })
+      const reparsed = parseSiteChatModelText(retry.text)
+      if (
+        reparsed.ok &&
+        reparsed.changes &&
+        typeof reparsed.changes === 'object' &&
+        !Array.isArray(reparsed.changes)
+      ) {
+        retried = reparsed.changes as Record<string, unknown>
+      }
+    } catch (err) {
+      console.warn('[adminSiteChat] copy-gate retry failed:', err)
+    }
+
+    for (const [column, violations] of copyViolationsByColumn) {
+      const def = EDITABLE_COLUMNS[column]
+      const retryValue = retried[column]
+      if (def && retryValue !== undefined) {
+        const merged = mergeSiteChatColumn(column, config[column], retryValue, lastAdmin)
+        const shapeProblem = def.validate(merged)
+        const copyProblems = shapeProblem ? [] : findCopyTellViolations(column, merged, lastAdmin)
+        if (!shapeProblem && copyProblems.length === 0) {
+          update[column] = merged
+          applied.push(column)
+          continue
+        }
+      }
+      rejected.push({
+        column,
+        reason: `copy failed the AI-tell gate after retry: ${violations.slice(0, 3).join('; ')}`,
+      })
+    }
   }
 
   // Deterministic placement when the admin clearly asked to use an attachment

@@ -48,7 +48,7 @@ export const IRRIGATION_SERVICES: ServiceDef[] = [
     'Seasonal',
     ['seasonal-outdoor', 'classic-warm', 'functional-utility', 'modern-office'],
     ['seasonal-cta', 'compact-quote', 'conversion-focus', 'local-expert'],
-    { image: SPRINKLER_IMG, description: 'Blow-out and shut-down service before the first freeze — protect your system.' },
+    { image: SPRINKLER_IMG, description: 'Blow-out and shut-down service before the first freeze. Protect your system.' },
     ['sprinkler winterization', 'blow out sprinklers', 'irrigation shutdown', 'winterize sprinklers']
   ),
   irr(
@@ -64,7 +64,7 @@ export const IRRIGATION_SERVICES: ServiceDef[] = [
     'Smart',
     ['seasonal-outdoor', 'modern-office', 'sleek-entertainment', 'minimalist-zen'],
     ['process-steps', 'compact-quote', 'trust-builder', 'conversion-focus'],
-    { image: SPRINKLER_IMG, description: 'Rachio, RainBird, and Hunter smart controllers installed — water only when needed.' },
+    { image: SPRINKLER_IMG, description: 'Rachio, RainBird, and Hunter smart controllers installed. Water only when needed.' },
     ['smart sprinkler', 'rachio install', 'smart controller', 'wifi sprinkler', 'rain sensor']
   ),
   irr(

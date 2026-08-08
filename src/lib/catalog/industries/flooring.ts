@@ -66,7 +66,7 @@ export const FLOORING_SERVICES: ServiceDef[] = [
     'Vinyl',
     ['rich-flooring', 'modern-office', 'minimalist-zen', 'classic-warm'],
     ['gallery-showcase', 'conversion-focus', 'portfolio-first', 'compact-quote'],
-    { image: FLOOR_IMG, description: 'Waterproof LVP — beautiful, durable, and budget-friendly.' },
+    { image: FLOOR_IMG, description: 'Waterproof LVP. Beautiful, durable, and budget-friendly.' },
     ['lvp', 'luxury vinyl', 'vinyl plank', 'vinyl flooring', 'waterproof flooring']
   ),
   floor(

@@ -1,4 +1,6 @@
 import { generateTextWithFallback } from '@/lib/ai/aiTextProvider'
+import { generateWithQualityRetry } from '@/lib/ai/generateWithQualityRetry'
+import { findAiTellPhrases, HUMAN_COPY_VOICE_RULES } from '@/lib/ai/humanCopyVoice'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { validateTenantSite, saveValidationReport, type ValidationReport } from '@/lib/validation/siteValidator'
 import { THEME_LAYOUT_AFFINITY, type ThemeSlug, type LayoutSlug } from '@/lib/catalog/sitePresentationCatalog'
@@ -71,6 +73,7 @@ export async function autoFixTenantSite(
   const fixesApplied: string[] = []
   const unfixedIssues: string[] = []
   const updates: Record<string, unknown> = {}
+  const copyTellSamples = new Set<string>()
 
   for (const issue of before.issues) {
     if (!issue.fixable) {
@@ -155,6 +158,21 @@ export async function autoFixTenantSite(
         break
       }
 
+      case 'copy_ai_tell_phrase': {
+        // Collect samples across pages; repaired once, after the loop, so a
+        // phrase appearing on three pages triggers one rewrite pass, not three.
+        const samples = Array.isArray(issue.meta?.samples) ? issue.meta.samples : []
+        let collected = 0
+        for (const s of samples) {
+          if (typeof s === 'string' && s.trim()) {
+            copyTellSamples.add(s.trim())
+            collected++
+          }
+        }
+        if (collected === 0) unfixedIssues.push(issue.message)
+        break
+      }
+
       case 'invalid_process_steps': {
         const brandName = config?.brand_name || tenant?.business_name || 'Your Business'
         const currentProcess = config?.process_config || {}
@@ -166,6 +184,20 @@ export async function autoFixTenantSite(
 
       default:
         unfixedIssues.push(issue.message)
+    }
+  }
+
+  if (copyTellSamples.size > 0) {
+    const repair = await repairCopyTells(tenantId, [...copyTellSamples], updates)
+    if (repair.fixed.length > 0) {
+      fixesApplied.push(
+        `Rewrote ${repair.fixed.length} copy string${repair.fixed.length === 1 ? '' : 's'} that contained banned AI marketing phrases (${[...copyTellSamples].slice(0, 4).join(', ')}${copyTellSamples.size > 4 ? ', …' : ''}).`
+      )
+    }
+    if (repair.unfixed.length > 0) {
+      unfixedIssues.push(
+        `Could not automatically rewrite ${repair.unfixed.length} copy string${repair.unfixed.length === 1 ? '' : 's'} containing banned phrases — the phrases may live in generated page HTML rather than the site config, or the rewrite failed the copy gate. Manual edit needed.`
+      )
     }
   }
 
@@ -222,6 +254,197 @@ Write a short (2-4 sentence) plain-English summary for the admin: what was fixed
   } catch {
     return fallback
   }
+}
+
+/** site_configs columns that hold customer-visible copy the fixer may rewrite. */
+const COPY_COLUMNS = [
+  'hero_config',
+  'about_config',
+  'process_config',
+  'products_config',
+  'before_after_config',
+  'seo_config',
+] as const
+
+/** Keys whose string values are machine config, never visible copy. */
+const NON_COPY_KEY_RE =
+  /(image|img|url|href|slug|icon|color|colour|font|id|key|src|path|video|room)$/i
+
+function walkStrings(
+  node: unknown,
+  visit: (value: string, replace: (next: string) => void) => void,
+  keyHint = ''
+): void {
+  if (typeof node !== 'object' || node === null) return
+  if (Array.isArray(node)) {
+    node.forEach((item, i) => {
+      if (typeof item === 'string') {
+        visit(item, (next) => {
+          ;(node as unknown[])[i] = next
+        })
+      } else {
+        walkStrings(item, visit, keyHint)
+      }
+    })
+    return
+  }
+  for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
+    if (NON_COPY_KEY_RE.test(key)) continue
+    if (typeof value === 'string') {
+      visit(value, (next) => {
+        ;(node as Record<string, unknown>)[key] = next
+      })
+    } else {
+      walkStrings(value, visit, key)
+    }
+  }
+}
+
+/**
+ * Rewrites config copy strings that contain banned AI-tell phrases via
+ * `generateWithQualityRetry` (same retry wrapper as other gated surfaces).
+ * Mutates `updates` in place with the repaired config columns.
+ */
+async function repairCopyTells(
+  tenantId: string,
+  samples: string[],
+  updates: Record<string, unknown>
+): Promise<{ fixed: string[]; unfixed: string[] }> {
+  const supabase = getSupabaseAdmin()
+  const { data } = await supabase
+    .from('site_configs')
+    .select(COPY_COLUMNS.join(', '))
+    .eq('tenant_id', tenantId)
+    .maybeSingle()
+  const row = data as unknown as Record<string, unknown> | null
+  if (!row) return { fixed: [], unfixed: samples }
+
+  const lowerSamples = samples.map((s) => s.toLowerCase())
+  type Offender = { text: string; replace: (next: string) => void }
+  const offenders: Offender[] = []
+  const configs: Record<string, unknown> = {}
+  for (const column of COPY_COLUMNS) {
+    const value = (row as Record<string, unknown>)[column]
+    if (!value || typeof value !== 'object') continue
+    // Deep clone so we can mutate freely and only persist columns that changed.
+    const clone = JSON.parse(JSON.stringify(value))
+    configs[column] = clone
+    walkStrings(clone, (text, replace) => {
+      const lower = text.toLowerCase()
+      if (lowerSamples.some((s) => lower.includes(s))) {
+        offenders.push({ text, replace })
+      }
+    })
+  }
+  if (offenders.length === 0) return { fixed: [], unfixed: samples }
+
+  const unitIds = offenders.map((_, i) => `copy_${i}`)
+  const initial = Object.fromEntries(
+    offenders.map((o, i) => [unitIds[i], o.text])
+  ) as Record<string, string>
+
+  const validate = (output: Record<string, string>) => {
+    const findings = unitIds.flatMap((id) => {
+      const text = output[id] || ''
+      const hits = findAiTellPhrases(text)
+      if (hits.length === 0) return []
+      return [
+        {
+          unitId: id,
+          code: 'copy_ai_tell_phrase',
+          message: `Still contains AI-tell phrasing: ${hits.join(', ')}`,
+          samples: hits,
+        },
+      ]
+    })
+    return {
+      status: findings.length === 0 ? ('passed' as const) : ('failed' as const),
+      findings,
+      failedUnitIds: findings.map((f) => f.unitId),
+    }
+  }
+
+  const rewriteBatch = async (texts: string[], findingsNote: string) => {
+    const prompt = `You are rewriting short pieces of website copy for a local service business so they stop using banned generic marketing phrases.
+
+Banned phrases found: ${samples.join('; ')}
+${findingsNote}
+
+${HUMAN_COPY_VOICE_RULES}
+
+Rewrite each string below. Keep the same meaning, roughly the same length, and any concrete facts (numbers, materials, place names) exactly as they are. Remove or replace the banned phrasing with plain, specific language. Never invent statistics, awards, or testimonials.
+
+Input strings (JSON array):
+${JSON.stringify(texts)}
+
+Output ONLY a JSON array of the same length with the rewritten strings, in the same order.`
+    const { text } = await generateTextWithFallback({
+      prompt,
+      jsonMode: true,
+      temperature: 0.4,
+      maxOutputTokens: 1500,
+    })
+    const parsed = JSON.parse(text)
+    return Array.isArray(parsed) ? parsed : []
+  }
+
+  let result
+  try {
+    result = await generateWithQualityRetry({
+      initial,
+      validate,
+      maxRetries: 2,
+      regenerate: async ({ failedUnitIds, findings, current }) => {
+        const failedSet = new Set(failedUnitIds)
+        const failedTexts = unitIds
+          .filter((id) => failedSet.has(id))
+          .map((id) => current[id])
+        const note =
+          findings.length > 0
+            ? `\nPrevious attempt still failed: ${findings.map((f) => f.message).join('; ')}`
+            : ''
+        const rewrites = await rewriteBatch(failedTexts, note)
+        const out: Record<string, string> = {}
+        let ri = 0
+        for (const id of unitIds) {
+          if (!failedSet.has(id)) continue
+          const next = typeof rewrites[ri] === 'string' ? rewrites[ri].trim() : ''
+          ri += 1
+          if (next) out[id] = next
+        }
+        return out
+      },
+    })
+  } catch {
+    return { fixed: [], unfixed: offenders.map((o) => o.text) }
+  }
+
+  const fixed: string[] = []
+  const unfixed: string[] = []
+  offenders.forEach((offender, i) => {
+    const id = unitIds[i]
+    const rewrite = (result.output[id] || '').trim()
+    if (
+      rewrite &&
+      rewrite !== offender.text &&
+      findAiTellPhrases(rewrite).length === 0
+    ) {
+      offender.replace(rewrite)
+      fixed.push(offender.text)
+    } else {
+      unfixed.push(offender.text)
+    }
+  })
+
+  if (fixed.length > 0) {
+    for (const column of Object.keys(configs)) {
+      const original = (row as Record<string, unknown>)[column]
+      if (JSON.stringify(original) !== JSON.stringify(configs[column])) {
+        updates[column] = configs[column]
+      }
+    }
+  }
+  return { fixed, unfixed }
 }
 
 async function fixProcessStepsWithAi(

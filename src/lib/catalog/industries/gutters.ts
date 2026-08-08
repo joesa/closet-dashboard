@@ -48,7 +48,7 @@ export const GUTTER_SERVICES: ServiceDef[] = [
     'Guards',
     ['seasonal-outdoor', 'modern-office', 'functional-utility', 'classic-warm'],
     ['process-steps', 'trust-builder', 'conversion-focus', 'before-after'],
-    { image: GUARD_IMG, description: 'Micro-mesh and solid-cover gutter guards — never clean again.' },
+    { image: GUARD_IMG, description: 'Micro-mesh and solid-cover gutter guards. Never clean again.' },
     ['gutter guard', 'leaf guard', 'gutter cover', 'gutter protection', 'no clog gutter']
   ),
   gut(

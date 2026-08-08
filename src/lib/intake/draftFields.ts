@@ -98,6 +98,8 @@ export function buildIntakeDraftUpdate(
   setIf('timeline_facts', toStr(body.timelineFacts))
   setIf('guarantee_terms', toStr(body.guaranteeTerms))
   setIf('signature_materials', toMaterials(body.signatureMaterials))
+  // Verbatim customer quotes — only real quotes belong here, never invented.
+  setIf('customer_quotes', toStr(body.customerQuotes))
 
   return update
 }
@@ -160,6 +162,7 @@ export function buildServerDraftFromRow(
   str('competitorTell', 'competitor_tell')
   str('timelineFacts', 'timeline_facts')
   str('guaranteeTerms', 'guarantee_terms')
+  str('customerQuotes', 'customer_quotes')
   const materials = row.signature_materials
   if (Array.isArray(materials) && materials.length > 0) {
     draft.signatureMaterials = materials

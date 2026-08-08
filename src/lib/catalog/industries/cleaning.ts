@@ -98,7 +98,7 @@ export const CLEANING_SERVICES: ServiceDef[] = [
     'Residential',
     ['fresh-clean', 'minimalist-zen', 'laundry-clean', 'modern-office'],
     ['compact-quote', 'conversion-focus', 'trust-builder'],
-    { image: CLEAN_IMG, description: 'Fast turnovers between guests — hotel-quality every time.' },
+    { image: CLEAN_IMG, description: 'Fast turnovers between guests. Hotel-quality every time.' },
     ['airbnb clean', 'vrbo clean', 'vacation rental clean', 'turnover', 'short term rental']
   ),
 ]

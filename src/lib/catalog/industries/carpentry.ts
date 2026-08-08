@@ -57,7 +57,7 @@ export const CARPENTRY_SERVICES: ServiceDef[] = [
     'Finish',
     ['artisan-wood', 'classic-warm', 'luxury-minimal', 'historic-classic'],
     ['portfolio-first', 'gallery-showcase', 'storyteller', 'visual-impact'],
-    { image: CARP_IMG, description: 'Crown molding, baseboards, and custom trim that elevates any room.' },
+    { image: CARP_IMG, description: 'Crown molding, baseboards, and casing with mitered, caulked, paint-ready joints.' },
     ['crown molding', 'trim install', 'baseboard', 'wainscoting', 'chair rail']
   ),
   carp(

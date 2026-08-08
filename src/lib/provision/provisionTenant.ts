@@ -49,6 +49,7 @@ import { platformFromEmail } from '@/lib/fromEmail'
 import { attachVercelDomain } from '@/lib/vercel-domains'
 import {
   buildDefaultAbout,
+  buildDefaultBeforeAfterCopy,
   buildDefaultProcess,
   buildFallbackHeadline,
   defaultRoomForEngagement,
@@ -69,6 +70,46 @@ import {
 } from '@/lib/rooms'
 
 const DEFAULT_DISABLED_ROOMS = [...ROOM_TYPES]
+
+/**
+ * Fallback catalog copy for closet-vertical services. Exported so the
+ * fallback-copy CI guard (fallbackCopy.aiTells.test.ts) can scan every
+ * hardcoded description for banned AI-tell phrases.
+ */
+export const CLOSET_SERVICE_CATALOG: Record<string, { image: string; description: string }> = {
+  'Walk-In Closets': {
+    image: 'https://images.unsplash.com/photo-1558211583-d26f610c1eb1',
+    description: 'Double-hang rods, drawer stacks, and shoe shelving sized to what you actually own.',
+  },
+  'Reach-In Closets': {
+    image: 'https://images.unsplash.com/photo-1595428774223-ef52624120d2',
+    description: 'Adjustable shelving and double-hang layouts that fit a standard 24-inch closet.',
+  },
+  Garages: {
+    image: 'https://images.unsplash.com/photo-1605810230434-7631ac76ec81',
+    description: 'Slatwall, overhead racks, and cabinets rated for tools and seasonal storage.',
+  },
+  'Pantries & Wine': {
+    image: 'https://images.unsplash.com/photo-1556910103-1c02745a872f',
+    description: 'Pull-out shelves, labeled bins, and bottle racks you can restock in one trip.',
+  },
+  'Home Offices': {
+    image: 'https://images.unsplash.com/photo-1524758631624-e2822e304c36',
+    description: 'Built-in desks, file drawers, and cable-managed shelving for real workdays.',
+  },
+  Mudrooms: {
+    image: 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a',
+    description: 'Lockers, bench seating, and boot trays by the door where they get used.',
+  },
+  'Wall Beds': {
+    image: 'https://images.unsplash.com/photo-1505693314120-0d443867891c',
+    description: 'Fold-away beds with full mattresses so a guest room can still be an office.',
+  },
+  'Entertainment Centers': {
+    image: 'https://images.unsplash.com/photo-1593640408182-31c70c8268f5',
+    description: 'Media built-ins with vented equipment bays and no visible wiring.',
+  },
+}
 
 function inferWidgetDomainConfig(services: string[] | null | undefined) {
   if (!services || services.length === 0) return null
@@ -494,40 +535,7 @@ export async function provisionTenant(
     const reachableHost = isLocalBase ? domainResult.platformHost : primaryHost
     siteUrl = isLocalBase ? `http://${reachableHost}:3000` : `https://${reachableHost}`
 
-    const serviceCatalog: Record<string, { image: string; description: string }> = {
-      'Walk-In Closets': {
-        image: 'https://images.unsplash.com/photo-1558211583-d26f610c1eb1',
-        description: 'Luxurious walk-in spaces designed for your lifestyle.',
-      },
-      'Reach-In Closets': {
-        image: 'https://images.unsplash.com/photo-1595428774223-ef52624120d2',
-        description: 'Maximize every inch with precision reach-in designs.',
-      },
-      Garages: {
-        image: 'https://images.unsplash.com/photo-1605810230434-7631ac76ec81',
-        description: 'High-performance garage environments built to last.',
-      },
-      'Pantries & Wine': {
-        image: 'https://images.unsplash.com/photo-1556910103-1c02745a872f',
-        description: 'Elegant storage for culinary and wine collections.',
-      },
-      'Home Offices': {
-        image: 'https://images.unsplash.com/photo-1524758631624-e2822e304c36',
-        description: 'Productive and beautifully organized workspaces.',
-      },
-      Mudrooms: {
-        image: 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a',
-        description: 'Seamless entryways that handle daily chaos.',
-      },
-      'Wall Beds': {
-        image: 'https://images.unsplash.com/photo-1505693314120-0d443867891c',
-        description: 'Transformative sleep solutions for multi-use rooms.',
-      },
-      'Entertainment Centers': {
-        image: 'https://images.unsplash.com/photo-1593640408182-31c70c8268f5',
-        description: 'Sleek media walls for the ultimate viewing experience.',
-      },
-    }
+    const serviceCatalog = CLOSET_SERVICE_CATALOG
 
     const GENERIC_HERO = 'https://images.unsplash.com/photo-1558211583-d26f610c1eb1'
     const THEME_HERO_IMAGES: Record<string, string> = {
@@ -733,6 +741,10 @@ export async function provisionTenant(
       tenant_id: tenantId,
       brand_name: businessName,
       theme: theme!,
+      // Industry label rides along so the renderer can emit the right JSON-LD
+      // @type and industry-aware meta fallbacks (site_configs has a blanket
+      // anon read policy, unlike contractor_settings).
+      industry: aiWidgetIndustryText || getIndustry(beforeAfterContext.industry).label || null,
       layout_style: layoutStyle || 'standard',
       theme_tokens: themeTokens || null,
       design_variant: designVariant || null,
@@ -776,14 +788,16 @@ export async function provisionTenant(
         
         const catalogItem = serviceCatalog[serviceName] || industryService?.catalog || {
           image: GENERIC_HERO,
-          description: isOrderBusiness ? 'Premium menu item.' : 'Premium service offering.',
+          description: isOrderBusiness
+            ? `${serviceName}, made when you order it.`
+            : `${serviceName}, scoped and priced before any work starts.`,
         }
         
         const subtitle = isOrderBusiness ? 'From the menu' : 'What we offer'
         const longDesc = isOrderBusiness
           ? `${serviceName} prepared to order.`
           : `${serviceName} handled with care from first call through completion.`
-        const specs = defaultProductSpecs(resolvedEngagementModel, serviceName)
+        const specs = defaultProductSpecs(resolvedEngagementModel, serviceName, null, copySeed)
 
         return {
           title: serviceName,
@@ -822,8 +836,7 @@ export async function provisionTenant(
           // prospect already chose one in the intake studio)
           beforeImage: beforeSelectedUrl || beforeImage || '/brands/lumina/before.png',
           afterImage,
-          title: `${businessName} — before & after`,
-          subtitle: 'Drag to see',
+          ...buildDefaultBeforeAfterCopy(copySeed),
         }
       })(),
     }
@@ -905,7 +918,7 @@ export async function provisionTenant(
               specifications:
                 p.details?.specifications && p.details.specifications.length > 0
                   ? p.details.specifications
-                  : defaultProductSpecs(resolvedEngagementModel, title),
+                  : defaultProductSpecs(resolvedEngagementModel, title, null, copySeed),
             },
             image:
               resolveAiProductImage(title) ||

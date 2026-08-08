@@ -88,7 +88,7 @@ export const SECURITY_SYSTEMS_SERVICES: ServiceDef[] = [
     'Smart',
     ['home-guardian', 'sleek-entertainment', 'modern-office', 'swift-mobile'],
     ['process-steps', 'trust-builder', 'compact-quote', 'conversion-focus'],
-    { image: SEC_IMG, description: 'Whole-home automation — smart lighting, thermostats, locks, and hubs.' },
+    { image: SEC_IMG, description: 'Whole-home automation. Smart lighting, thermostats, locks, and hubs.' },
     ['smart home installation', 'smart home', 'home automation', 'smart hub install']
   ),
   sec(

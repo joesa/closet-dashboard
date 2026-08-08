@@ -41,7 +41,7 @@ export const WINDOWS_DOORS_SERVICES: ServiceDef[] = [
     'Windows',
     [...WIN_THEMES],
     [...WIN_LAYOUTS],
-    { image: WIN_IMG, description: 'New construction and addition window installation — all styles and materials.' },
+    { image: WIN_IMG, description: 'New construction and addition window installation. All styles and materials.' },
     ['window installation', 'window install', 'new window', 'bay window install', 'casement window']
   ),
   win(

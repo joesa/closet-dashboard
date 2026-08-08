@@ -3,10 +3,14 @@ import { generateTextWithFallback } from '@/lib/ai/aiTextProvider'
 import { getIntakeByToken } from '@/lib/intake/getIntakeByToken'
 import { assertDraftIntake, assertDepositPaid } from '@/lib/intake/intakeTierGates'
 import { checkRateLimit, hashRateKey } from '@/lib/rateLimit'
-import { buildIntakeBrief } from '@/lib/intake/buildIntakeBrief'
+import { buildIntakeBrief, hasRealCustomerQuotes, stripUneditedCraftSuggestions } from '@/lib/intake/buildIntakeBrief'
 import { SITE_PAGE_OPTIONS, clampPagesForTier } from '@/lib/catalog/sitePages'
 import { OTHER_SERVICE_LABEL } from '@/lib/catalog/contractorServices'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { DESIGN_CRAFT_PERSONA } from '@/lib/ai/craftStandards'
+import { HUMAN_COPY_VOICE_RULES } from '@/lib/ai/humanCopyVoice'
+import { generateWithQualityRetry } from '@/lib/ai/generateWithQualityRetry'
+import { validateGeneratedUnits } from '@/lib/validation/generatedContentQuality'
 
 function sanitizeJsonString(json: string): string {
   let insideString = false
@@ -111,7 +115,10 @@ function pageDirective(slug: string, label: string): string {
     case 'process':
       return `Write an Our Process page for "${label}". Walk the reader through how the business works — from initial consultation, through design, to installation. Make each step feel premium and reassuring. Use the brief's tone and vibe.`
     case 'testimonials':
-      return `Write a Reviews & Testimonials page for "${label}". Create an intro paragraph about why clients love working with them. Then write 4-6 realistic, specific testimonial quotes from satisfied customers (with first-name attribution). Each should mention a specific service or outcome.`
+      // Fabricating testimonials is banned platform-wide. This directive only
+      // runs when the brief contains a REAL CUSTOMER QUOTES block (the route
+      // refuses the slug otherwise).
+      return `Write a Reviews & Testimonials page for "${label}". Write a short intro paragraph, then present ONLY the quotes from the REAL CUSTOMER QUOTES block in the brief, verbatim. Never invent, extend, or paraphrase a quote, and never add names, ratings, or details that are not in the block. If a quote has no attribution, present it unattributed.`
     case 'financing':
       return `Write a Financing page for "${label}". Explain that premium storage solutions are an investment. Describe flexible payment options. Address common concerns about cost. Use the pricing notes from the brief if available. Keep it reassuring and professional.`
     case 'faq':
@@ -191,6 +198,24 @@ export async function POST(
       )
     }
 
+    // Testimonials are never fabricated. Without owner-supplied quotes the
+    // page cannot exist, so refuse before spending a model call.
+    if (slug === 'testimonials') {
+      const quotes =
+        typeof body?.customerQuotes === 'string' && body.customerQuotes.trim()
+          ? body.customerQuotes.trim()
+          : row.customer_quotes?.trim() || ''
+      if (!quotes) {
+        return NextResponse.json(
+          {
+            error:
+              'The Reviews & Testimonials page is built only from your real customer quotes. Paste a few quotes (one per line) in the testimonials field first — we never invent reviews.',
+          },
+          { status: 400 }
+        )
+      }
+    }
+
     // Update draft fields in database so the generated brief is based on the user's latest inputs
     const toStr = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : null)
     const toArr = (v: unknown) => (Array.isArray(v) ? v.filter((x) => typeof x === 'string') : [])
@@ -237,6 +262,7 @@ export async function POST(
       update.include_quiz = body.includeQuiz === true
     }
     if (body.notes !== undefined) update.notes = toStr(body.notes)
+    if (body.customerQuotes !== undefined) update.customer_quotes = toStr(body.customerQuotes)
     
     if (body.pages !== undefined) {
       update.requested_pages = clampPagesForTier(
@@ -259,6 +285,10 @@ export async function POST(
       }
     }
 
+    // Craft answers kept verbatim from AI suggestions are examples, not facts
+    // — exclude them so they never become "proof" in generated copy.
+    stripUneditedCraftSuggestions(row as Record<string, unknown>, body.craftSuggestedFields)
+
     const brief = buildIntakeBrief(row)
     if (!brief.trim()) {
       return NextResponse.json(
@@ -275,6 +305,10 @@ export async function POST(
 
 Your job is to write the body copy for a single page of a contractor's website. The copy must be SPECIFIC to this exact business — never generic filler. Write like a $200k creative agency.
 
+${DESIGN_CRAFT_PERSONA}
+
+${HUMAN_COPY_VOICE_RULES}
+
 RULES:
 - Maximum 1200 words. Aim for 400-800 words of rich, persuasive content.
 - Match the brand tone from the brief (e.g. luxury, friendly, bold).
@@ -284,6 +318,7 @@ RULES:
 - Do NOT include page titles or headings — just the body copy.
 - Every sentence must deliver value — no padding, no filler.
 - Reference specific services, materials, and locations from the brief.
+- Never invent testimonials, reviews, ratings, statistics, awards, or named customers. Concrete claims must come from the brief.
 - End with a natural call-to-action relevant to the page.
 
 PAGE: ${label}
@@ -296,13 +331,56 @@ Return ONLY valid JSON: { "content": "the page body copy here" }
 Business Brief:
 ${brief}`
 
-    const content = await generatePageCopy(prompt)
+    const initialContent = await generatePageCopy(prompt)
+
+    // Validate against the shared copy gate and retry with violation feedback,
+    // so this surface is held to the same bar as full-redesign generation.
+    const result = await generateWithQualityRetry<{ content: string }>({
+      initial: { content: initialContent },
+      validate: (output) => {
+        const report = validateGeneratedUnits({
+          stage: 'intake_page_copy',
+          units: [{ id: 'content', text: output.content, sourceText: brief }],
+          businessName: row.business_name,
+          locality: row.address_locality || row.service_area,
+        })
+        return {
+          status: report.status,
+          findings: report.findings.map((f) => ({
+            unitId: f.unitId,
+            code: f.code,
+            message: f.message,
+            samples: f.samples,
+          })),
+          failedUnitIds: report.failedUnitIds,
+        }
+      },
+      regenerate: async ({ findings }) => {
+        const feedback = findings
+          .map((f, i) => `${i + 1}. ${f.message}${f.samples.length ? ` Offending: ${f.samples.join(', ')}` : ''}`)
+          .join('\n')
+        const retryPrompt = `${prompt}\n\nYour previous draft failed the copy quality gate. Fix EVERY violation below and return the full corrected page body:\n${feedback}`
+        return { content: await generatePageCopy(retryPrompt) }
+      },
+      maxRetries: 2,
+    })
+
+    const content = result.output.content
 
     // Enforce 1200-word cap
     const words = content.split(/\s+/).filter(Boolean)
     const capped = words.length > 1200 ? words.slice(0, 1200).join(' ') : content
 
-    return NextResponse.json({ success: true, content: capped, slug })
+    // A still-failing report does not block here (enforcement bites at the
+    // provisioning gate for new tenants); it is surfaced so the intake UI and
+    // logs can show what the admin will have to fix.
+    return NextResponse.json({
+      success: true,
+      content: capped,
+      slug,
+      quality: result.status,
+      qualityFindings: result.status === 'failed' ? result.report.findings : [],
+    })
   } catch (error) {
     console.error('generate-page-copy error:', error)
     const message =

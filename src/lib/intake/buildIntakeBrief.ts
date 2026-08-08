@@ -1,5 +1,45 @@
 import type { ProspectIntakeRow } from '@/lib/intake/getIntakeByToken'
 
+/**
+ * True when the contractor supplied real customer quotes. This is the gate the
+ * testimonials policy hangs off: no quotes, no testimonials page — never
+ * fabricated ones.
+ */
+export function hasRealCustomerQuotes(row: Pick<ProspectIntakeRow, 'customer_quotes'>): boolean {
+  return !!row.customer_quotes?.trim()
+}
+
+/** Client craft-field key → prospect_intakes column, for the suggestion policy below. */
+const CRAFT_COLUMN_BY_FIELD: Record<string, string> = {
+  craftSpec: 'craft_spec',
+  clientArtifact: 'client_artifact',
+  shopRule: 'shop_rule',
+  localConditions: 'local_conditions',
+  recentJob: 'recent_job',
+  timelineFacts: 'timeline_facts',
+  crewShape: 'crew_shape',
+  competitorTell: 'competitor_tell',
+  guaranteeTerms: 'guarantee_terms',
+  signatureMaterials: 'signature_materials',
+}
+
+/**
+ * Craft answers a prospect accepted verbatim from AI suggestions are examples,
+ * not facts about their business. Blank those columns (in a row or an update
+ * map) so invented specifics never enter the brief as "proprietary facts".
+ */
+export function stripUneditedCraftSuggestions(
+  target: Record<string, unknown>,
+  craftSuggestedFields: unknown
+): void {
+  if (!Array.isArray(craftSuggestedFields)) return
+  for (const field of craftSuggestedFields) {
+    const column = typeof field === 'string' ? CRAFT_COLUMN_BY_FIELD[field] : undefined
+    if (!column) continue
+    target[column] = column === 'signature_materials' ? [] : null
+  }
+}
+
 /** Plain-text brief for Gemini generate-site from prospect intake fields. */
 export function buildIntakeBrief(row: ProspectIntakeRow): string {
   const lines: string[] = []
@@ -44,6 +84,14 @@ export function buildIntakeBrief(row: ProspectIntakeRow): string {
   addFact('Guarantee, in the owner’s words', row.guarantee_terms)
   if (row.signature_materials?.length) {
     addFact('Named materials / brands / equipment', row.signature_materials.join(', '))
+  }
+
+  if (row.customer_quotes?.trim()) {
+    lines.push('')
+    lines.push('REAL CUSTOMER QUOTES (verbatim, owner-supplied). These are the ONLY quotes')
+    lines.push('that may appear anywhere on the site. Never invent, extend, paraphrase into')
+    lines.push('first person, or add attribution beyond what is written here.')
+    lines.push(row.customer_quotes.trim())
   }
 
   if (facts.length) {

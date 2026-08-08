@@ -32,7 +32,7 @@ export const HOME_INSPECTION_SERVICES: ServiceDef[] = [
     'Residential',
     [...INSP_THEMES],
     [...INSP_LAYOUTS, 'conversion-focus'],
-    { image: HOME_IMG, description: 'Comprehensive home inspection for buyers — full report in 24 hours.' },
+    { image: HOME_IMG, description: 'Roof-to-foundation inspection for buyers. Full report in 24 hours.' },
     ['home inspection', 'buyer inspection', 'house inspection', 'property inspection']
   ),
   insp(
@@ -40,7 +40,7 @@ export const HOME_INSPECTION_SERVICES: ServiceDef[] = [
     'Residential',
     ['home-guardian', 'classic-warm', 'modern-office', 'commercial-pro'],
     ['trust-report', 'trust-builder', 'conversion-focus', 'local-expert'],
-    { image: HOME_IMG, description: 'Seller inspections to find issues before listing — sell with confidence.' },
+    { image: HOME_IMG, description: 'Seller inspections to find issues before listing. Sell with confidence.' },
     ['pre listing inspection', 'seller inspection', 'pre sale inspection', 'listing inspection']
   ),
   insp(
