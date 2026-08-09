@@ -1,5 +1,5 @@
 import type { ProspectIntakeRow } from '@/lib/intake/getIntakeByToken'
-import { formatUsd, getTierEntry } from '@/lib/intake/tiers'
+import { formatUsd, getTierEntry, isDepositCleared } from '@/lib/intake/tiers'
 
 export type IntakeCheckoutKind = 'deposit' | 'balance' | 'standard_build' | 'maintenance'
 
@@ -42,7 +42,7 @@ export function getIntakePaymentSummary(row: ProspectIntakeRow): IntakePaymentSu
     if (
       row.intake_tier === 'ai_premium' &&
       row.deposit_required_cents > 0 &&
-      row.deposit_status !== 'paid'
+      !isDepositCleared(row.deposit_status)
     ) {
       return {
         stage: 'deposit',
@@ -82,7 +82,10 @@ export function getIntakePaymentSummary(row: ProspectIntakeRow): IntakePaymentSu
   }
 
   if (row.intake_tier === 'ai_premium' && !row.balance_paid_at) {
-    if (row.deposit_status !== 'paid') {
+    // A waived deposit is settled, not outstanding — without this a spec build
+    // that the owner accepted would be asked for a $0 deposit forever and could
+    // never reach the balance checkout.
+    if (!isDepositCleared(row.deposit_status)) {
       return {
         stage: 'deposit',
         label: `Deposit required before balance (${formatUsd(row.deposit_required_cents)})`,

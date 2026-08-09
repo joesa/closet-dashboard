@@ -2,6 +2,11 @@ import { NextResponse } from 'next/server'
 
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { extractBearerOrHeaderToken } from '@/lib/scraper-control'
+import {
+  enqueueSpecBuildsForRun,
+  type EnqueueFromRunSummary,
+} from '@/lib/spec/enqueueFromScraperRun'
+import type { ScrapedLeadShape } from '@/lib/spec/qualifyLead'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -75,6 +80,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
+  let specBuildSummary: EnqueueFromRunSummary | null = null
+
   if (phase === 'completed') {
     if (runId) {
       const leads = Array.isArray(payload.leads) ? payload.leads : []
@@ -144,9 +151,12 @@ export async function POST(req: Request) {
         }))
 
         // Insert leads without conflicting since run_id+email+phone duplicates might exist, but we just want to track them.
-        const { error: insertLeadsError } = await admin
+        // `select('id')` returns the new rows in insertion order, which is what
+        // lets a queued spec build point back at the lead it came from.
+        const { data: insertedLeads, error: insertLeadsError } = await admin
           .from('scraper_leads')
           .insert(leadsToInsert)
+          .select('id')
         if (insertLeadsError) {
           console.error('Failed to insert scraper_leads', insertLeadsError)
           return NextResponse.json(
@@ -157,6 +167,20 @@ export async function POST(req: Request) {
             },
             { status: 207 }
           )
+        }
+
+        // Spec builds: queue the no-website leads for an unattended site build.
+        // Off unless SPEC_BUILD_ENABLED=true, capped by SPEC_BUILD_DAILY_MAX,
+        // and never allowed to fail this webhook — the run results are already
+        // committed above and matter more than the queueing.
+        try {
+          const pairs = (insertedLeads ?? []).map((inserted, i) => ({
+            id: (inserted as { id: string }).id,
+            row: leadsToInsert[i] as ScrapedLeadShape,
+          }))
+          specBuildSummary = await enqueueSpecBuildsForRun(runId, pairs)
+        } catch (specErr) {
+          console.error('[spec-builds] enqueue from run failed', specErr)
         }
       }
     }
@@ -201,5 +225,8 @@ export async function POST(req: Request) {
     }
   }
 
-  return NextResponse.json({ ok: true }, { status: 200 })
+  return NextResponse.json(
+    specBuildSummary ? { ok: true, specBuilds: specBuildSummary } : { ok: true },
+    { status: 200 }
+  )
 }

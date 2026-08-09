@@ -1,6 +1,11 @@
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import type { ProspectIntakeRow } from '@/lib/intake/getIntakeByToken'
-import { depositStatusForTier, getTierEntry, type IntakeTierSlug } from '@/lib/intake/tiers'
+import {
+  depositStatusForTier,
+  getTierEntry,
+  isDepositCleared,
+  type IntakeTierSlug,
+} from '@/lib/intake/tiers'
 
 /** AI Premium 30% deposit from catalog (authoritative when row fields are stale). */
 export function premiumDepositRequiredCents(): number {
@@ -27,6 +32,10 @@ export function effectiveIntakeTier(row: ProspectIntakeRow): IntakeTierSlug {
 export function depositSatisfied(row: ProspectIntakeRow): boolean {
   const tier = effectiveIntakeTier(row)
   if (tier !== 'ai_premium') return true
+  // Spec builds owe nothing up front — we build first and ask afterwards. This
+  // must be checked before the catalog fallback below, which would otherwise
+  // reinstate the full list deposit for a row whose requirement is zero.
+  if (isDepositCleared(row.deposit_status)) return true
   const required =
     row.deposit_required_cents > 0
       ? row.deposit_required_cents

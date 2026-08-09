@@ -141,6 +141,18 @@ export function getTierEntry(slug: IntakeTierSlug): IntakeTierCatalogEntry | und
   return getTierCatalog().find((t) => t.slug === slug)
 }
 
+/**
+ * True when no deposit is still owed — either it was paid, or it was waived.
+ *
+ * 'waived' exists for spec builds, where we build the site first and only ask
+ * for money if the owner says yes. Anywhere that gates on "deposit settled"
+ * must use this rather than comparing to 'paid', or a waived row gets stuck
+ * being asked for a $0 deposit it can never pay.
+ */
+export function isDepositCleared(status: string | null | undefined): boolean {
+  return status === 'paid' || status === 'waived'
+}
+
 export function depositStatusForTier(
   tier: IntakeTierSlug,
   paidCents: number,
