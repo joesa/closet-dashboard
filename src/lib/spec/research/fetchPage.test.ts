@@ -1,5 +1,10 @@
-import { describe, expect, it } from 'vitest'
-import { prosePortion } from '@/lib/spec/research/fetchPage'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { fetchPageText, prosePortion } from '@/lib/spec/research/fetchPage'
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+  delete process.env.FIRECRAWL_API_KEY
+})
 
 /**
  * Observed on real pages: a Google Maps place URL scrapes to ~6,600 characters
@@ -31,5 +36,55 @@ describe('prosePortion', () => {
     expect(prosePortion('| --- | --- |\nSee https://example.com/x for details')).toBe(
       'See for details'
     )
+  })
+})
+
+describe('fetchPageText — Facebook', () => {
+  it('uses indexed snippets keyed by the numeric profile id instead of unsupported scrape', async () => {
+    process.env.FIRECRAWL_API_KEY = 'test-key'
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
+      new Response(
+        JSON.stringify({
+          data: {
+            web: [
+              {
+                url: 'https://www.facebook.com/61590230650878/',
+                title: 'Peerless Pressure & SoftWash | Clarksville TN',
+                description:
+                  'Professional pressure washing services for homes, driveways, sidewalks, fences, patios and more.',
+              },
+              {
+                url: 'https://www.facebook.com/61590230650878/posts/122110868769341021/',
+                title: 'Professional exterior cleaning services',
+                description:
+                  'Restore that clean, well-maintained look with house washing, driveways, and sidewalks.',
+              },
+              {
+                url: 'https://www.facebook.com/unrelated/',
+                title: 'Unrelated result',
+                description: 'This must not enter the research source.',
+              },
+            ],
+          },
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      )
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await fetchPageText(
+      'https://www.facebook.com/profile.php?id=61590230650878&sk=about',
+      'facebook_about'
+    )
+
+    expect(result.error).toBeUndefined()
+    expect(result.text).toContain('Professional pressure washing services')
+    expect(result.text).not.toContain('Unrelated result')
+    expect(fetchMock).toHaveBeenCalledOnce()
+    expect(String(fetchMock.mock.calls[0][0]).endsWith('/v1/search')).toBe(true)
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toMatchObject({
+      query: 'site:facebook.com "61590230650878"',
+      limit: 5,
+    })
   })
 })

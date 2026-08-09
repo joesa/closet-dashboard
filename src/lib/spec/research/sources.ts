@@ -69,7 +69,17 @@ export function normalizeFacebookUrl(url: string): string {
   try {
     const parsed = new URL(url)
     if (!/(^|\.)facebook\.com$/i.test(parsed.hostname)) return url
-    if (/about/i.test(parsed.pathname)) return url
+    if (parsed.pathname.toLowerCase() === '/profile.php') {
+      const id = parsed.searchParams.get('id')?.trim()
+      if (!id) return url
+      const canonical = new URL('/profile.php', parsed.origin)
+      canonical.searchParams.set('id', id)
+      canonical.searchParams.set('sk', 'about')
+      return canonical.toString()
+    }
+    if (/about/i.test(parsed.pathname) || /^about/i.test(parsed.searchParams.get('sk') || '')) {
+      return url
+    }
     const path = parsed.pathname.replace(/\/+$/, '')
     if (!path || path === '') return url
     return `${parsed.origin}${path}/about`

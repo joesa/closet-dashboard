@@ -69,7 +69,10 @@ export async function runSpecResearch(build: SpecBuildRow): Promise<SpecResearch
   }
 
   if (pagesByUrl.size === 0) {
-    outcome.blockedReason = 'Every source failed to load.'
+    const failures = outcome.fetched
+      .map((source) => `${source.sourceKind}: ${source.error || 'no readable text'}`)
+      .join('; ')
+    outcome.blockedReason = `No source produced readable text.${failures ? ` ${failures}` : ''}`
     return outcome
   }
 
