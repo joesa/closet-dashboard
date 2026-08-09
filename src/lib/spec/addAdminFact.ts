@@ -32,7 +32,7 @@ export type AddAdminFactInput = {
 }
 
 export type AddAdminFactResult =
-  | { ok: true; factCount: number; status: string; redrafted: boolean }
+  | { ok: true; factCount: number; status: string; redrafted: boolean; weak?: boolean }
   | { ok: false; reason: string }
 
 export async function addAdminFact(input: AddAdminFactInput): Promise<AddAdminFactResult> {
@@ -92,6 +92,10 @@ export async function addAdminFact(input: AddAdminFactInput): Promise<AddAdminFa
     factCount: facts.length,
     status: redrafted ? 'drafting' : build.status,
     redrafted,
+    // Stored and true, but it carries neither a measurement nor a named thing,
+    // so the copy gate will not count it. Saying so now costs nothing; finding
+    // out after a full build costs a site generation and a redesign.
+    weak: !redrafted,
   }
 }
 

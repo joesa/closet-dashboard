@@ -1,5 +1,6 @@
 import { qualifyLeadForSpecBuild, type ScrapedLeadShape } from '@/lib/spec/qualifyLead'
 import { normalizePublicProfileResearch } from '@/lib/spec/research/publicProfileResearch'
+import { kickSpecBuild } from '@/lib/spec/kickSpecBuild'
 import {
   countSpecBuildsStartedToday,
   queueSpecBuild,
@@ -132,7 +133,13 @@ export async function enqueueSpecBuildsForRun(
         scraperLeadId: item.id,
         scraperRunId: runId,
       })
-      if (result.queued) summary.queued += 1
+      if (result.queued) {
+        summary.queued += 1
+        // Only the scraper path auto-advances. A hand-entered lead waits for an
+        // admin to press the button, because someone typing a lead in is
+        // usually about to look at it.
+        kickSpecBuild(result.id)
+      }
       else if (result.reason === 'duplicate') summary.duplicates += 1
       else summary.unqualified += 1
     } catch (err) {

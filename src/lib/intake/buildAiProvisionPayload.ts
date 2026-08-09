@@ -199,6 +199,11 @@ export async function buildAiProvisionPayload(
     mode: 'full',
     siteStatus: 'pending_approval',
     loginOrigin,
-    sendWelcomeEmail: true,
+    // A spec build is a site nobody asked for yet. Emailing "Welcome, here is
+    // your password" to a business that has never heard of us — before they
+    // have seen anything or agreed to anything — is the single worst thing this
+    // pipeline could do, so both the mail and the account wait for acceptance.
+    sendWelcomeEmail: row.source !== 'spec',
+    createAuthUser: row.source !== 'spec',
   }
 }

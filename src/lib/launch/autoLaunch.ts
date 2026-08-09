@@ -14,6 +14,7 @@ import { getIntakePaymentSummary } from '@/lib/intake/intakePaymentStage'
 import { sendIntakeLaunchPaymentEmail } from '@/lib/intake/sendIntakeLaunchEmail'
 import { revalidateTenantSiteCache } from '@/lib/tenants/revalidateTenantSite'
 import { publicAppOrigin } from '@/lib/urls'
+import { onSpecBuildRedesignFinished } from '@/lib/spec/specBuildHooks'
 import type { ProspectIntakeRow } from '@/lib/intake/getIntakeByToken'
 
 /** Product policy: every new marketing site gets bespoke treatment, regardless of intake tier. */
@@ -223,6 +224,11 @@ export async function finishAutoLaunch(tenantId: string): Promise<void> {
     reason: published ? 'redesign_published' : 'publish_blocked',
   })
 
+  // Best-effort by design: a spec-side failure must not break a real launch.
+  await onSpecBuildRedesignFinished(tenantId, { published, publishError }).catch((err) =>
+    console.error('[auto-launch] spec build hook failed', tenantId, err)
+  )
+
   console.info(
     JSON.stringify({ event: 'auto_launch_finished', tenantId, published })
   )
@@ -246,6 +252,10 @@ export async function failAutoLaunch(tenantId: string): Promise<void> {
   }
 
   await autoApproveTenantSite(tenantId, { reason: 'redesign_failed' })
+  await onSpecBuildRedesignFinished(tenantId, {
+    published: false,
+    publishError: 'Redesign exhausted its attempts.',
+  }).catch((err) => console.error('[auto-launch] spec build hook failed', tenantId, err))
   console.info(JSON.stringify({ event: 'auto_launch_failed_revealed', tenantId }))
 }
 
@@ -316,7 +326,7 @@ export async function autoApproveTenantSite(
   const { data: intakeData } = await supabase
     .from('prospect_intakes')
     .select(
-      `id, token, status, business_name, contact_email, notification_email,
+      `id, token, status, source, business_name, contact_email, notification_email,
        intake_tier, tier_total_cents, deposit_required_cents, deposit_paid_cents,
        deposit_status, build_paid_at, balance_paid_at, maintenance_plan,
        preview_approved_at, site_live_at, provisioned_contractor_id, maintenance_started_at`
@@ -324,6 +334,28 @@ export async function autoApproveTenantSite(
     .eq('provisioned_contractor_id', tenantId)
     .maybeSingle()
   const intake = intakeData as (ProspectIntakeRow & { token: string }) | null
+
+  // A spec build must never reveal itself. Everything below this point is the
+  // reveal: it stamps preview_approved_at, flips site_status, and emails a
+  // launch pay link — to a business that has not asked for a site, seen it, or
+  // agreed to buy it. An admin approves those by hand, and only then does an
+  // offer go out.
+  //
+  // The guard lives here rather than in the callers because there are three of
+  // them (finishAutoLaunch, failAutoLaunch, and kickAutoLaunch's
+  // redesign_unavailable fallback), and keying it on data means a fourth caller
+  // added later inherits the protection instead of having to remember it.
+  // Returning false is already a first-class outcome, so nothing downstream
+  // misbehaves, and auto_launch_completed_at is left unstamped.
+  if (intake?.source === 'spec') {
+    await logSystemAction({
+      action: 'site.spec_build_approval_suppressed',
+      targetType: 'tenant',
+      targetId: tenantId,
+      metadata: { intakeId: intake.id, reason: opts.reason ?? 'unspecified' },
+    })
+    return false
+  }
 
   if (intake?.id) {
     // Stand in for "Approve preview": without this the intake never leaves

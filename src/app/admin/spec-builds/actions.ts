@@ -91,6 +91,38 @@ export async function runResearchAction(formData: FormData): Promise<void> {
   revalidatePath(`/admin/spec-builds/${id}`)
 }
 
+/**
+ * Move a build forward one step by hand.
+ *
+ * One step per press rather than looping to completion: site generation and
+ * imaging each take tens of seconds and cost real money, and a server action
+ * that ran the whole chain would blow past any request timeout and leave the
+ * build half-done with nobody watching. Pressing again is cheap; a stuck
+ * request is not.
+ */
+export async function advanceSpecBuildAction(formData: FormData): Promise<void> {
+  const admin = await requireAdmin()
+  const id = String(formData.get('spec_build_id') || '')
+  if (!id) return
+
+  const result = await advanceSpecBuild(id)
+
+  await logAdminAction({
+    actor: admin,
+    action: 'spec_build.advanced',
+    targetType: 'spec_build',
+    targetId: id,
+    metadata: { from: result.from, to: result.to, note: result.note },
+  })
+
+  revalidatePath('/admin/spec-builds')
+  redirect(
+    `/admin/spec-builds/${id}?advanced=${encodeURIComponent(
+      `${result.from} → ${result.to}${result.note ? ` (${result.note})` : ''}`
+    )}`
+  )
+}
+
 export async function rejectSpecBuildAction(formData: FormData): Promise<void> {
   const admin = await requireAdmin()
   const id = String(formData.get('spec_build_id') || '')

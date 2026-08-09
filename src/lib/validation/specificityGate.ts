@@ -94,6 +94,36 @@ function escapeRe(value: string): string {
  * Runs the deterministic checks over one page's copy.
  * Returns [] when the copy has nothing measurable wrong with it.
  */
+/**
+ * The swap test's core question, exposed so callers can ask it *before*
+ * generating a site rather than only after.
+ *
+ * Strip the business name and city — every template interpolates those, so they
+ * prove nothing — and see whether anything left ties the words to this specific
+ * business: a measurement carrying a unit, or a multi-word proper noun (a
+ * brand, material, street or neighbourhood).
+ *
+ * The spec-build pipeline uses this to decide whether a lead has enough to be
+ * worth building. Sharing the implementation with `analyzeSpecificity` is the
+ * point: a gate that releases a build must apply the same test as the gate that
+ * later judges it, or builds get released only to fail expensively at the end.
+ */
+export function findProprietaryDetail(
+  text: string,
+  own: { businessName?: string | null; locality?: string | null } = {}
+): { measurements: string[]; properNouns: string[]; residual: string } {
+  let residual = stripToText(text)
+  for (const value of [own.businessName, own.locality]) {
+    if (value?.trim()) residual = residual.replace(new RegExp(escapeRe(value.trim()), 'gi'), ' ')
+  }
+  const measurements = residual.match(MEASUREMENT_RE) ?? []
+  const properNouns = (residual.match(PROPER_NOUN_RE) ?? []).filter(
+    // Sentence-initial pairs like "We Build" are capitalisation, not names.
+    (m) => !/^(?:We|Our|The|This|You|Your|Get|Call|Book)\b/.test(m)
+  )
+  return { measurements: [...measurements], properNouns, residual }
+}
+
 export function analyzeSpecificity(input: SpecificityInput): SpecificityFinding[] {
   const text = stripToText(input.text)
   const findings: SpecificityFinding[] = []
@@ -114,15 +144,7 @@ export function analyzeSpecificity(input: SpecificityInput): SpecificityFinding[
 
   // 2. The swap test proper. Strip the two values every template interpolates,
   //    then ask whether anything left ties this copy to this business.
-  let residual = text
-  for (const own of [input.businessName, input.locality]) {
-    if (own?.trim()) residual = residual.replace(new RegExp(escapeRe(own.trim()), 'gi'), ' ')
-  }
-  const measurements = residual.match(MEASUREMENT_RE) ?? []
-  const properNouns = (residual.match(PROPER_NOUN_RE) ?? []).filter(
-    // Sentence-initial pairs like "We Build" are capitalisation, not names.
-    (m) => !/^(?:We|Our|The|This|You|Your|Get|Call|Book)\b/.test(m)
-  )
+  const { measurements, properNouns, residual } = findProprietaryDetail(text, input)
   if (measurements.length === 0 && properNouns.length === 0) {
     findings.push({
       code: 'copy_no_proprietary_detail',

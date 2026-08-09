@@ -137,21 +137,56 @@ describe('hasProprietaryDetail', () => {
     expect(hasProprietaryDetail(map([]).patch)).toBe(false)
   })
 
-  it('is true once any craft fact or real review has landed', () => {
-    expect(hasProprietaryDetail(map([fact({ field: 'craft_spec', value: 'Cut at 3.5 inches' })]).patch)).toBe(true)
+  it('is true once a fact carries a measurement or a named thing', () => {
+    expect(
+      hasProprietaryDetail(map([fact({ field: 'craft_spec', value: 'Cut at 3.5 inches' })]).patch)
+    ).toBe(true)
     expect(
       hasProprietaryDetail(
-        map([fact({ field: 'customer_quotes', value: 'They came back twice', sourceKind: 'maps_review' })]).patch
+        map([fact({ field: 'signature_materials', value: 'Scotts Turf Builder' })]).patch
       )
     ).toBe(true)
     expect(
-      hasProprietaryDetail(map([fact({ field: 'signature_materials', value: 'Fescue' })]).patch)
+      hasProprietaryDetail(
+        map([
+          fact({
+            field: 'customer_quotes',
+            // Spelled-out numbers do not count — the gate wants a digit and a
+            // unit, which is what an operational fact actually reads like.
+            value: 'They came back twice in 9 years to re-level the pad',
+            sourceKind: 'maps_review',
+          }),
+        ]).patch
+      )
     ).toBe(true)
   })
 
+  it('is FALSE for a fact that fills a column but earns no copy-gate credit', () => {
+    // The reason this asks the gate's own question rather than "is the column
+    // non-empty": "The owner himself" is true, and useless. Releasing a build
+    // on it would pay for a site generation, images and a redesign only to fail
+    // copy_no_proprietary_detail at the end — the one finding no machine can fix.
+    expect(
+      hasProprietaryDetail(map([fact({ field: 'crew_shape', value: 'The owner himself' })]).patch)
+    ).toBe(false)
+    expect(
+      hasProprietaryDetail(map([fact({ field: 'shop_rule', value: 'We never cut corners' })]).patch)
+    ).toBe(false)
+  })
+
+  it('does not count the business name or city as detail', () => {
+    // Every template interpolates both, so they prove nothing about the copy.
+    expect(
+      hasProprietaryDetail(
+        map([fact({ field: 'recent_job', value: "A job for CC's Lawn Service in Clarksville" })])
+          .patch
+      )
+    ).toBe(false)
+  })
+
   it('is not fooled by notes alone, which never enter the facts block', () => {
-    expect(hasProprietaryDetail(map([fact({ field: 'notes', value: 'A nice company' })]).patch)).toBe(
-      false
-    )
+    expect(
+      hasProprietaryDetail(map([fact({ field: 'notes', value: 'Serves the Sango area' })]).patch)
+    ).toBe(false)
   })
 })

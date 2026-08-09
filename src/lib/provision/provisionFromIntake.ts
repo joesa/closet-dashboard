@@ -188,7 +188,11 @@ export async function provisionFromIntakeJob(
       ...payload,
       intakeId: row.id,
       loginOrigin,
-      sendWelcomeEmail: true,
+      // Honour what buildAiProvisionPayload decided. Re-asserting `true` here is
+      // what would send a cold lead their credentials despite the payload
+      // saying otherwise.
+      sendWelcomeEmail: payload.sendWelcomeEmail ?? true,
+      createAuthUser: payload.createAuthUser ?? true,
       ...(aiWidgetConfigFromHints ? { aiWidgetConfig: aiWidgetConfigFromHints } : {}),
     })
 

@@ -6,7 +6,12 @@ import { SPEC_BUILD_SELECT, type SpecBuildRow, type SpecFact } from '@/lib/spec/
 import { firecrawlConfigured } from '@/lib/spec/research/fetchPage'
 import { resolveResearchSources } from '@/lib/spec/research/sources'
 import { ADMIN_FACT_FIELDS } from '@/lib/spec/addAdminFact'
-import { addFactAction, rejectSpecBuildAction, runResearchAction } from '../actions'
+import {
+  addFactAction,
+  advanceSpecBuildAction,
+  rejectSpecBuildAction,
+  runResearchAction,
+} from '../actions'
 
 /** Plain-language prompts — the column names mean nothing to a person on a call. */
 const ADMIN_FACT_LABELS: Record<string, string> = {
@@ -44,10 +49,14 @@ export default async function SpecBuildDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>
-  searchParams: Promise<{ fact_error?: string; fact_added?: string }>
+  searchParams: Promise<{ fact_error?: string; fact_added?: string; advanced?: string }>
 }) {
   const { id } = await params
-  const { fact_error: factError, fact_added: factAdded } = await searchParams
+  const {
+    fact_error: factError,
+    fact_added: factAdded,
+    advanced,
+  } = await searchParams
   const { data } = await getSupabaseAdmin()
     .from('spec_builds')
     .select(SPEC_BUILD_SELECT)
@@ -89,11 +98,16 @@ export default async function SpecBuildDetailPage({
           {factError}
         </div>
       )}
+      {advanced && (
+        <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+          {advanced}
+        </div>
+      )}
       {factAdded && (
         <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
           {factAdded === 'drafting'
             ? 'Fact added. The build now has a concrete claim and has moved to drafting.'
-            : 'Fact added, but the build still has no claim that would pass the copy gate.'}
+            : 'Fact stored, but it will not get this build past the copy gate. That check counts only a measurement with a unit ("above 1% sodium hypochlorite", "6–8 weeks") or a named thing (a brand, material, street or neighbourhood). Add one more fact with a number or a name in it.'}
         </div>
       )}
 
@@ -365,6 +379,17 @@ export default async function SpecBuildDetailPage({
               {build.research_at ? 'Re-run research' : 'Run research'}
             </button>
           </form>
+          {['drafting', 'imaging'].includes(build.status) && (
+            <form action={advanceSpecBuildAction}>
+              <input type="hidden" name="spec_build_id" value={build.id} />
+              <button
+                type="submit"
+                className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500"
+              >
+                {build.status === 'drafting' ? 'Generate the site' : 'Generate images'}
+              </button>
+            </form>
+          )}
           <form action={rejectSpecBuildAction}>
             <input type="hidden" name="spec_build_id" value={build.id} />
             <button

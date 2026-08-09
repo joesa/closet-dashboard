@@ -266,6 +266,7 @@ export async function provisionTenant(
     intakeId,
     loginOrigin,
     sendWelcomeEmail = true,
+    createAuthUser = true,
   } = body
 
   // Mutable so provisioning can rebalance an auto-resolved theme/layout across
@@ -1379,10 +1380,19 @@ export async function provisionTenant(
   const tempPassword = generateTempPassword()
   let authUserId: string | null = null
 
-  const { data: existingUsers } = await supabase.auth.admin.listUsers()
-  const existingUser = existingUsers.users.find((u) => u.email === ownerEmail)
+  // Spec builds skip this entirely: no account is created for a business that
+  // has not agreed to anything, and nothing is left to clean up if the build is
+  // later purged. The real account is created at acceptance instead.
+  const { data: existingUsers } = createAuthUser
+    ? await supabase.auth.admin.listUsers()
+    : { data: { users: [] as { id: string; email?: string }[] } }
+  const existingUser = createAuthUser
+    ? existingUsers.users.find((u) => u.email === ownerEmail)
+    : undefined
 
-  if (!existingUser) {
+  if (!createAuthUser) {
+    // no-op — authUserId stays null and the contractor_settings update below is skipped
+  } else if (!existingUser) {
     const { data: created, error: authError } = await supabase.auth.admin.createUser({
       email: ownerEmail,
       password: tempPassword,

@@ -4,6 +4,7 @@ import {
   classifyProvisionError,
   type ProvisionJobRow,
 } from '@/lib/provision/provisionFromIntake'
+import { onSpecBuildProvisionFailed } from '@/lib/spec/specBuildHooks'
 
 const MAX_ATTEMPTS = parseInt(process.env.PROVISION_MAX_ATTEMPTS || '3', 10)
 const BATCH_SIZE = parseInt(process.env.PROVISION_BATCH_SIZE || '5', 10)
@@ -71,6 +72,15 @@ export async function processProvisionQueue(
           finished_at: terminal ? new Date().toISOString() : null,
         })
         .eq('id', job.id)
+
+      // Terminal failures need to surface in the spec queue, or a build sits in
+      // 'provisioning' forever with no sign anything went wrong. Best-effort —
+      // a spec-side failure must not disturb the provision queue.
+      if (terminal) {
+        await onSpecBuildProvisionFailed(job.intake_id, message).catch((hookErr) =>
+          console.error('[spec-builds] provision-failed hook failed', job.id, hookErr)
+        )
+      }
 
       results.push({ jobId: job.id, status: nextStatus, error: message })
       console.error('provision job error', job.id, message)

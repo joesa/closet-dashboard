@@ -1,5 +1,6 @@
 import { cityFromAddress } from '@/lib/spec/qualifyLead'
 import { CRAFT_FACT_FIELDS } from '@/lib/spec/research/verifyFacts'
+import { findProprietaryDetail } from '@/lib/validation/specificityGate'
 import type { SpecBuildLeadInput, SpecFact } from '@/lib/spec/types'
 
 /**
@@ -120,21 +121,39 @@ export function mapFactsToIntake(
   return { patch, unused }
 }
 
-/**
- * True when the intake has at least one concrete, business-specific claim.
- *
- * This is the Phase 0 finding made operational: a site with no proprietary
- * detail fails `copy_no_proprietary_detail`, which no machine can repair. A
- * build with nothing here is worth flagging to an admin before it is worth
- * spending a full redesign on.
- */
-export function hasProprietaryDetail(patch: IntakePatch): boolean {
+/** Everything on the intake that can carry a concrete claim into the brief. */
+export function proprietaryText(patch: IntakePatch): string {
+  const parts: string[] = []
   for (const field of CRAFT_FACT_FIELDS) {
     const value = patch[field]
-    if (typeof value === 'string' && value.trim()) return true
-    if (Array.isArray(value) && value.length > 0) return true
+    if (typeof value === 'string' && value.trim()) parts.push(value.trim())
+    else if (Array.isArray(value)) parts.push(value.filter((v) => typeof v === 'string').join(', '))
   }
-  return typeof patch.customer_quotes === 'string' && patch.customer_quotes.trim().length > 0
+  if (typeof patch.customer_quotes === 'string') parts.push(patch.customer_quotes)
+  return parts.join('\n')
+}
+
+/**
+ * True when the intake carries a claim that would actually survive the copy gate.
+ *
+ * This asks the same question `analyzeSpecificity` asks — is there a measurement
+ * or a named thing? — rather than merely "is a column non-empty". The
+ * distinction is expensive: a fact like "The owner himself" fills a column but
+ * earns no credit, so checking for presence would release a build to be paid
+ * for and then fail `copy_no_proprietary_detail` at the very end, which is the
+ * one finding no machine can repair.
+ */
+export function hasProprietaryDetail(
+  patch: IntakePatch,
+  own: { businessName?: string | null; locality?: string | null } = {}
+): boolean {
+  const text = proprietaryText(patch)
+  if (!text.trim()) return false
+  const { measurements, properNouns } = findProprietaryDetail(text, {
+    businessName: own.businessName ?? (patch.business_name as string | undefined),
+    locality: own.locality ?? (patch.address_locality as string | undefined),
+  })
+  return measurements.length > 0 || properNouns.length > 0
 }
 
 function dedupe(values: string[]): string[] {

@@ -3,6 +3,7 @@ import { createGraphilePool } from '@/lib/jobs/databaseUrl'
 import { loadWorkerEnv } from './loadEnv'
 import {
   TASK_ADMIN_GENERATE_BEFORE,
+  TASK_SPEC_BUILD_ADVANCE,
   TASK_ADMIN_GENERATE_IMAGES,
   TASK_FULL_REDESIGN,
   TASK_INTAKE_GENERATE_IMAGES,
@@ -15,6 +16,7 @@ import { intakeGenerateSiteTask } from './tasks/intakeGenerateSite'
 import { intakeGenerateImagesTask } from './tasks/intakeGenerateImages'
 import { adminGenerateImagesTask } from './tasks/adminGenerateImages'
 import { adminGenerateBeforeTask } from './tasks/adminGenerateBefore'
+import { specBuildAdvanceTask } from './tasks/specBuildAdvance'
 
 loadWorkerEnv()
 
@@ -52,6 +54,7 @@ const taskList: TaskList = {
   [TASK_INTAKE_GENERATE_IMAGES]: intakeGenerateImagesTask,
   [TASK_ADMIN_GENERATE_IMAGES]: adminGenerateImagesTask,
   [TASK_ADMIN_GENERATE_BEFORE]: adminGenerateBeforeTask,
+  [TASK_SPEC_BUILD_ADVANCE]: specBuildAdvanceTask,
 }
 
 async function main() {

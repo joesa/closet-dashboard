@@ -102,6 +102,16 @@ export type ProvisionTenantInput = {
   siteStatus?: 'active' | 'pending_approval' | 'widget_only' | 'suspended'
   loginOrigin: string
   sendWelcomeEmail?: boolean
+  /**
+   * Whether to create a Supabase auth account for `ownerEmail`. Default true.
+   *
+   * Spec builds provision under a platform placeholder address and set this
+   * false: the real owner's account is created at acceptance. Two reasons —
+   * nobody gets an account they never asked for, and `teardownTenantData` only
+   * removes table rows, so every purged spec build would otherwise leave an
+   * orphaned auth user behind.
+   */
+  createAuthUser?: boolean
   tenantId?: string
 }
 

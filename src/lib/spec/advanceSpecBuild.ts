@@ -1,4 +1,11 @@
+import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { getIntakeByToken } from '@/lib/intake/getIntakeByToken'
+import { validateAiPremiumReady } from '@/lib/intake/buildAiProvisionPayload'
+import { enqueueProvisionJob } from '@/lib/provision/enqueueProvisionJob'
+import { kickProvisionAfterSubmit } from '@/lib/provision/kickProvisionAfterSubmit'
 import { createSpecIntake } from '@/lib/spec/createSpecIntake'
+import { generateSpecImages } from '@/lib/spec/generateSpecImages'
+import { generateSpecSiteConfig } from '@/lib/spec/generateSpecSite'
 import { runSpecResearch, saveSpecResearch } from '@/lib/spec/research/runSpecResearch'
 import { getSpecBuild, transitionSpecBuild } from '@/lib/spec/specBuilds'
 import type { SpecBuildRow } from '@/lib/spec/types'
@@ -11,9 +18,9 @@ import type { SpecBuildRow } from '@/lib/spec/types'
  * finds the work already done just moves on. Every transition is a
  * compare-and-set, so two workers racing the same build cannot both proceed.
  *
- * Phase 2 implements queued → researching → drafting and stops there. Nothing
- * here provisions, generates images, or contacts anyone — those arrive in
- * Phase 3, at which point this function gains the remaining cases.
+ * queued → researching → drafting → imaging → provisioning, then a handoff:
+ * provision_tenant and full_redesign run on their own queues and report back
+ * through specBuildHooks rather than being polled from here.
  */
 
 export type AdvanceResult = {
@@ -35,12 +42,15 @@ export async function advanceSpecBuild(buildId: string): Promise<AdvanceResult> 
       // research writes no partial state that a second pass would corrupt.
       return runResearchStep(build, { alreadyClaimed: true })
     case 'drafting':
-      return {
-        from: 'drafting',
-        to: 'drafting',
-        done: true,
-        note: 'Phase 2 stops here — building starts in Phase 3.',
-      }
+      return runGenerationStep(build, 'drafting')
+    case 'imaging':
+      return runGenerationStep(build, 'imaging')
+    case 'provisioning':
+      // Handed off to provision_tenant and then full_redesign. Control comes
+      // back through specBuildHooks, not by polling from here.
+      return { from: 'provisioning', to: 'provisioning', done: true, note: 'awaiting provisioning' }
+    case 'building':
+      return { from: 'building', to: 'building', done: true, note: 'awaiting redesign' }
     default:
       return { from: build.status, to: build.status, done: true }
   }
@@ -102,5 +112,109 @@ async function runResearchStep(
       status_reason: 'Research failed',
     })
     return { from: 'researching', to: 'needs_attention', done: true, note: message }
+  }
+}
+
+/**
+ * drafting → imaging → provisioning.
+ *
+ * Each sub-step is guarded by "is the work product still absent?", so a retry
+ * after a partial failure resumes rather than repeating paid work: a site
+ * config already written is not regenerated, and an image slot already filled
+ * is not re-imaged.
+ */
+async function runGenerationStep(
+  build: SpecBuildRow,
+  from: 'drafting' | 'imaging'
+): Promise<AdvanceResult> {
+  if (!build.intake_id) {
+    await transitionSpecBuild(build.id, from, 'needs_attention', {
+      status_reason: 'No intake row — re-run research first.',
+    })
+    return { from, to: 'needs_attention', done: true }
+  }
+
+  const supabase = getSupabaseAdmin()
+  const { data: tokenRow } = await supabase
+    .from('prospect_intakes')
+    .select('token')
+    .eq('id', build.intake_id)
+    .maybeSingle()
+  const token = (tokenRow as { token?: string } | null)?.token
+  if (!token) {
+    await transitionSpecBuild(build.id, from, 'needs_attention', {
+      status_reason: 'Intake row is missing.',
+    })
+    return { from, to: 'needs_attention', done: true }
+  }
+
+  try {
+    if (from === 'drafting') {
+      const row = await getIntakeByToken(token)
+      if (!row) throw new Error('Intake not found')
+
+      const site = await generateSpecSiteConfig(row)
+      if (!site.ok) {
+        await transitionSpecBuild(build.id, 'drafting', 'needs_attention', {
+          status_reason: site.reason,
+        })
+        return { from, to: 'needs_attention', done: true, note: site.reason }
+      }
+      await transitionSpecBuild(build.id, 'drafting', 'imaging', {
+        status_reason: null,
+        last_error: null,
+      })
+      return { from, to: 'imaging', done: false, note: `${site.pages} pages via ${site.source}` }
+    }
+
+    // imaging → provisioning
+    const row = await getIntakeByToken(token)
+    if (!row) throw new Error('Intake not found')
+
+    const images = await generateSpecImages(row)
+    if (!images.ok) {
+      await transitionSpecBuild(build.id, 'imaging', 'needs_attention', {
+        status_reason: images.reason,
+      })
+      return { from, to: 'needs_attention', done: true, note: images.reason }
+    }
+
+    // The intake is only marked submitted at the point everything the
+    // provisioner reads is actually present. Flipping it earlier would let the
+    // safety-net cron pick up a half-built row.
+    await supabase
+      .from('prospect_intakes')
+      .update({ status: 'submitted', submitted_at: new Date().toISOString() })
+      .eq('id', build.intake_id)
+
+    const fresh = await getIntakeByToken(token)
+    const gate = fresh ? validateAiPremiumReady(fresh) : 'Intake vanished'
+    if (gate) {
+      await transitionSpecBuild(build.id, 'imaging', 'needs_attention', {
+        status_reason: `Not ready to provision: ${gate}`,
+      })
+      return { from, to: 'needs_attention', done: true, note: gate }
+    }
+
+    await transitionSpecBuild(build.id, 'imaging', 'provisioning', {
+      status_reason: null,
+      last_error: null,
+    })
+    await enqueueProvisionJob(build.intake_id, 'ai_full')
+    kickProvisionAfterSubmit(build.intake_id)
+
+    return {
+      from,
+      to: 'provisioning',
+      done: false,
+      note: `${images.generated} image(s) generated, handed off to provisioning`,
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    await transitionSpecBuild(build.id, from, 'needs_attention', {
+      last_error: message.slice(0, 1000),
+      status_reason: from === 'drafting' ? 'Site generation failed' : 'Image generation failed',
+    })
+    return { from, to: 'needs_attention', done: true, note: message }
   }
 }
