@@ -2115,7 +2115,7 @@ Banned defaults (unless the brief explicitly requests them):
 - Cream/off-white + high-contrast serif display + terracotta/warm-clay accent as a habit skin
 - Near-black + single acid-green / neon lime / cyan / gold accent applied regardless of fit; carbon texture; skewed italic CTAs
 - Hero template: vague headline ("Build faster. Ship smarter."), gray subhead, two buttons, gradient blob / abstract 3D on the right
-- Numbered markers (01 / 02 / 03) when content is not a real sequence. Never number ordinary service, feature, testimonial, or team lists for decoration.
+- Standalone numeric counters (01 / 02 / 03, Step 01, figure labels) as visual decoration. Do not display process numbers by default even for a real sequence; semantic order, titles, spacing, and connectors already communicate progression. Show a number only when visitors must refer to it or it communicates a supplied fact. Never zero-pad a decorative sequence, and never number ordinary service, feature, testimonial, or team lists.
 - Spec-sheet / technical document metadata: NEVER output artificial reference tags, spec sheet codes, or engineering document markers like "DOC. REF: ABT-01", "DOC: INQ-LOG", "REV: 2024", "REF: 01 / 02 / 03", "Case File", "System Spec //", "FIG 1", or programming comment syntax ("//") on public content. Never use document-style CTA labels such as "View Protocol", "Open Dossier", or "View Case File"; use audience-appropriate actions such as "View Services" or "Learn More". UI badges and labels must be natural, human, and industry-appropriate.
 - Emoji in headings, UI copy, or feature lists
 - Glassmorphism cards, floating blurred orbs, dot-grid as default texture
@@ -3042,7 +3042,7 @@ ${
       ? `13. REFERENCE-ONLY ATTACHMENTS: use the attached files only to understand the request, visual problem, subject, or desired direction. The admin did NOT explicitly ask to place them on the site. Do not insert, embed, upload, publish, or reproduce them in HTML/CSS, and do not replace existing site imagery because attachments were provided.`
     : ''
 }
-14. NO SPEC SHEET TAGS: NEVER output artificial reference tags, spec sheet codes, or engineering document markers like "DOC: INQ-LOG", "REV: 2024", "REF: 01 / 02 / 03", "DOC. REF:", "Case File", "System Spec //", "FIG 1", or programming comment syntax ("//") on public UI content. Badges and labels must be natural, human, and industry-appropriate.`
+14. NO SPEC SHEET TAGS OR DECORATIVE COUNTERS: NEVER output artificial reference tags, spec sheet codes, engineering document markers, or standalone zero-padded counters like "01 / 02 / 03", "Step 01", "DOC: INQ-LOG", "REV: 2024", "DOC. REF:", "Case File", "System Spec //", "FIG 1", or programming comment syntax ("//") on public UI content. Processes should communicate order through semantic structure, titles, spacing, or connectors. Show numbers only when visitors must refer to them or they communicate supplied facts. Badges and labels must be natural, human, and industry-appropriate.`
 
   const attachedBlock = attachedUrls.length
     ? `ATTACHED CDN ASSET URLS (use these exact https URLs when placing images):\n${attachedUrls

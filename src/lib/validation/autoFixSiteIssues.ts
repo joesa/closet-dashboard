@@ -186,7 +186,7 @@ export async function autoFixTenantSite(
         const currentProcess = config?.process_config || {}
         const fixedProcess = await fixProcessStepsWithAi(tenantId, brandName, currentProcess)
         updates.process_config = fixedProcess
-        fixesApplied.push('Regenerated and correctly numbered the process steps using AI to form a complete 3-step sequence starting with 01.')
+        fixesApplied.push('Regenerated the process as a complete 3-step sequence with valid internal ordering metadata.')
         break
       }
 
@@ -613,7 +613,7 @@ Please output a corrected, premium 3-step process configuration as a valid JSON 
   ]
 }
 
-Ensure the steps are exactly numbered '01', '02', '03' in that order. Keep the copy premium, specific to their trade (e.g. beauty/grooming vs HVAC vs construction), and consistent with any existing valid steps.
+Use '01', '02', '03' only as internal ordering metadata in that order; never include those numbers in visitor-facing titles or descriptions. Keep the copy specific to their trade (e.g. beauty/grooming vs HVAC vs construction) and consistent with any existing valid steps.
 Only output JSON.`
 
     const { text } = await generateTextWithFallback({

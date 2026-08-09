@@ -148,6 +148,10 @@ Banned defaults (unless an admin seed explicitly requests them):
 - Vague SaaS heroes ("Build faster…"), gradient blobs, abstract 3D
 - Emoji in UI; glassmorphism; floating orbs; default dot-grids
 - Three identical icon-title-sentence cards; Inter/Poppins/Roboto/Syne-by-habit
+- Standalone 01 / 02 / 03 counters, "Step 01", figure labels, or reference-style
+  numbering used as visual decoration. A process already has semantic order: use
+  titles, spacing, connectors, or an ordered list. Show a number only when visitors
+  must refer to it or it communicates a supplied fact; never zero-pad a decorative sequence.
 - Dual-lane gateways unless the business truly has two disciplines
 - Invented testimonials, ratings, awards, years-in-business, lorem, TODOs
 

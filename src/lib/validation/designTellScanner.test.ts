@@ -334,16 +334,26 @@ describe('moved codes keep their old shape', () => {
     expect(hit?.meta).toMatchObject({ path: '/' })
   })
 
-  it('decorative_numbered_list needs three markers and reports the count', () => {
-    const two = '<section><span>01</span><span>02</span></section>'
-    const three = '<section><span>01</span><span>02</span><span>03</span></section>'
-    expect(codes(scanDesignTells(homeOnly(two)))).not.toContain('decorative_numbered_list')
-    const hit = scanDesignTells(homeOnly(three)).find(
+  it('decorative_numbered_list catches even one standalone counter', () => {
+    const hit = scanDesignTells(homeOnly('<section><span>01</span></section>')).find(
       (f) => f.code === 'decorative_numbered_list'
     )
-    expect(hit?.meta).toMatchObject({ path: '/', count: 3 })
+    expect(hit?.meta).toMatchObject({ path: '/', count: 1 })
+    expect(hit?.samples).toEqual(['01'])
     expect(hit?.message).toBe(
-      '/: Remove zero-padded numbering from content that is not a real sequence.'
+      '/: Remove standalone zero-padded counters; they make the page read like a spec sheet.'
+    )
+  })
+
+  it('allows numbers that communicate facts instead of decoration', () => {
+    const factual = `<section>
+      <p>6–8 weeks from template to install</p>
+      <p>$250 project deposit</p>
+      <p>3/4 inch birch plywood</p>
+      <time datetime="2026-08-01">August 1, 2026</time>
+    </section>`
+    expect(codes(scanDesignTells(homeOnly(factual)))).not.toContain(
+      'decorative_numbered_list'
     )
   })
 })

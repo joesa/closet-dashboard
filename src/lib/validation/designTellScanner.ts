@@ -525,18 +525,20 @@ function scanPageHtml(
     )
   }
 
-  // Zero-padded decorative numbering (moved verbatim).
+  // Standalone zero-padded counters are visual decoration, not useful content.
+  // Contextual numbers such as measurements, prices, dates and quantities do not
+  // match this deliberately narrow rule.
   const numberedMarkers = html.match(
-    /<(?:span|div|p)\b[^>]*>\s*0[1-9]\s*<\/(?:span|div|p)>/gi
+    /<(span|div|p|small|strong|b)\b[^>]*>\s*(?:step\s*)?0[1-9]\s*<\/\1>/gi
   )
-  if (numberedMarkers && numberedMarkers.length >= 3) {
+  if (numberedMarkers) {
     out.push(
       finding(
         'decorative_numbered_list',
         path,
-        `${path}: Remove zero-padded numbering from content that is not a real sequence.`,
-        'Delete the 01/02/03 markers unless the content is genuinely a numbered process.',
-        [],
+        `${path}: Remove standalone zero-padded counters; they make the page read like a spec sheet.`,
+        'Delete the numeric marker and preserve hierarchy with semantic order, spacing, connectors, or descriptive titles. Keep real measurements, prices, dates, quantities, and reference numbers only when supplied facts require them.',
+        numberedMarkers.map((sample) => sample.replace(/<[^>]+>/g, '').trim()),
         { path, count: numberedMarkers.length }
       )
     )

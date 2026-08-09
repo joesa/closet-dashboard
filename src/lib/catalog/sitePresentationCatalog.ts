@@ -72,7 +72,7 @@ export const LAYOUT_SLUGS = [
   // New layout types
   'emergency-first',    // Urgent / 24-7 trades: big CTA above fold, phone prominent
   'before-after',       // Cleaning / restoration: before-after photo grid
-  'process-steps',      // Handyman / carpentry: numbered steps build trust
+  'process-steps',      // Handyman / carpentry: a clear process flow builds trust
   'seasonal-cta',       // Seasonal services: opening/closing callouts + urgency
   'trust-report',       // Inspection/compliance — report summary + badge/cert display
   'service-zones',       // Logistics/delivery — zip-code/area focused for coverage

@@ -477,7 +477,7 @@ export async function validateTenantSite(tenantId: string): Promise<ValidationRe
       issues.push({
         code: 'invalid_process_steps',
         severity: 'warning',
-        message: `Process section has invalid steps. It must have exactly 3 steps numbered '01', '02', '03' in order. Currently has: ${steps.map(s => s.number || '(none)').join(', ')}.`,
+        message: `Process section has invalid steps. It must have exactly 3 internal ordering keys: '01', '02', '03'. These keys are not displayed on the site. Currently has: ${steps.map(s => s.number || '(none)').join(', ')}.`,
         fixable: true,
         meta: { stepsCount: steps.length },
       })

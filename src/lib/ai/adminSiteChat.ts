@@ -205,13 +205,13 @@ const EDITABLE_COLUMNS: Record<
   },
   process_config: {
     shape:
-      "{ title: string, subtitle: string, steps: [{ number: '01'|'02'|'03', title: string, description: string }] } — steps MUST be exactly 3, numbered '01','02','03' in order",
+      "{ title: string, subtitle: string, steps: [{ number: '01'|'02'|'03', title: string, description: string }] } — steps MUST be exactly 3; number values are internal ordering metadata and must be '01','02','03' in order, never visitor-facing labels",
     validate: (v) => {
       if (!v || typeof v !== 'object' || Array.isArray(v)) return 'must be an object'
       const steps = (v as Record<string, unknown>).steps
       if (!Array.isArray(steps) || steps.length !== 3) return 'steps must be exactly 3 entries'
       const ok = ['01', '02', '03'].every((n, i) => steps[i]?.number === n)
-      return ok ? null : "steps must be numbered '01','02','03' in order"
+      return ok ? null : "step ordering metadata must be '01','02','03' in order"
     },
   },
   products_config: {
