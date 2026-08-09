@@ -11,11 +11,6 @@ export type SiteContextPack = {
   editableConfig: Record<string, unknown>
   /** Prior assistant apply results still in the durable history window. */
   recentEdits: Array<{ at?: string; applied?: string[]; rejected?: Array<{ column: string; reason: string }> }>
-  /**
-   * Attachments from this turn that were persisted to CDN and may be placed
-   * into editable image fields when the admin asks to use them on the site.
-   */
-  usableAttachments?: Array<{ index: number; url: string; placeOnSite: boolean }>
 }
 
 function titlesFromProducts(products: unknown): string[] {
@@ -51,7 +46,6 @@ export function buildSiteContextPack(opts: {
   config: Record<string, unknown>
   editableColumns: string[]
   recentEdits?: SiteContextPack['recentEdits']
-  usableAttachments?: SiteContextPack['usableAttachments']
 }): SiteContextPack {
   const { businessName, hostnames, config, editableColumns } = opts
   const editableConfig: Record<string, unknown> = {}
@@ -104,8 +98,5 @@ export function buildSiteContextPack(opts: {
     },
     editableConfig,
     recentEdits: opts.recentEdits || [],
-    ...(opts.usableAttachments?.length
-      ? { usableAttachments: opts.usableAttachments }
-      : {}),
   }
 }

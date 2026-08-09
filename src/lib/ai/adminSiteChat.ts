@@ -26,10 +26,6 @@ import { buildSiteContextPack } from '@/lib/ai/adminSiteChatContext'
 import { mergeSiteChatColumn } from '@/lib/ai/mergeSiteChatChanges'
 import { findAiTellPhrases, findPlaceholderTells } from '@/lib/ai/humanCopyVoice'
 import { analyzeSpecificity } from '@/lib/validation/specificityGate'
-import {
-  adminWantsAttachmentsOnSite,
-  persistAssistantAttachments,
-} from '@/lib/ai/persistAssistantAttachments'
 
 /**
  * Admin AI site chat: the admin describes a change to a provisioned tenant
@@ -145,8 +141,6 @@ export type SiteChatResult = {
   /** True when the tenant site's config cache was successfully busted, i.e.
    *  the change is visible on the live site right now (not within ≤60s). */
   liveNow: boolean
-  /** CDN URLs for attachments persisted this turn (when uploaded for site use). */
-  uploadedAssets?: Array<{ index: number; url: string }>
 }
 
 /** Columns the chat is allowed to modify, with a human shape description the
@@ -279,15 +273,15 @@ You will receive:
 1) identity + inventory for this site (hostnames, render mode, product titles, page slugs, nav)
 2) the full editable site_configs columns as JSON
 3) the conversation history for THIS site (including what you applied/rejected on prior turns)
-4) optional attached images (screenshots / photos) — also listed under usableAttachments with permanent CDN URLs when they can be placed on the site
+4) optional attached images (screenshots / visual references only)
 
 Messages with attachments are tagged like "[attached image #1]" and the images follow the text in the same order. Analyze attached images carefully before deciding what to change.
 
-ATTACHED IMAGES — WHEN TO PLACE ON THE SITE:
-- If usableAttachments[].placeOnSite is true (or the admin clearly asks to use/set/put/replace an image on the hero, a service, before/after, gallery, page block, etc.), you MUST use that attachment's CDN "url" in the appropriate config field (hero_config.backgroundImage, products_config[].image, before_after_config.beforeImage/afterImage, pages_config content_blocks[].image / items[].image / images[], etc.).
-- Match "[attached image #N]" to usableAttachments[].index === N.
-- If placeOnSite is false / the attachment is clearly a diagnostic screenshot ("see the problem", "look at this bug"), analyze it but do NOT place it on the site unless the admin also asks to use it as an asset.
-- NEVER invent image URLs. Only use URLs already in the config OR urls listed in usableAttachments.
+ATTACHED IMAGES — VISUAL REFERENCES ONLY:
+- Analyze attachments to understand visual problems, layout, composition, style, color, and the admin's intent.
+- NEVER insert, embed, upload, publish, reproduce, or derive a site image URL from a chat attachment, even when the admin explicitly asks to use it as a hero, service, gallery, logo, before/after, background, or page image.
+- Chat attachments are not site assets. If the admin asks to place one, explain that it must first be uploaded through Media & Files, and make no attachment-based image change.
+- NEVER replace existing site imagery merely because an attachment was provided.
 
 Respond with ONLY a JSON object of this exact shape:
 {
@@ -299,7 +293,6 @@ RULES for "changes":
 - Include a column ONLY when the admin's request requires changing it. Questions, opinions, and ambiguous requests get an empty "changes" object and a clarifying/informative "reply".
 - Prefer MINIMAL patches. For large arrays (products_config, pages_config, nav_links), return ONLY the entries you are creating or editing — the server deep-merges by title/slug onto the live config. Do NOT dump the entire pages_config/products_config unless you are intentionally rewriting most of it.
 - Keep the whole JSON response small enough to finish (aim under ~8k tokens of output). Never paste long HTML you did not change.
-- When placing an attached image, set the image field to the exact usableAttachments CDN url for that index.
 - Keep hero headlines (site hero and every page hero) to 6 words or fewer — longer headlines overflow the large-type designs.
 - When adding a page to pages_config, also add a matching entry to nav_links if it should be reachable from the nav.
 - Keep copy quality high: specific to this business and trade, no lorem ipsum, no placeholders.
@@ -320,7 +313,6 @@ function buildSystemPrompt(context: ReturnType<typeof buildSiteContextPack>): st
       identity: context.identity,
       inventory: context.inventory,
       recentEdits: context.recentEdits,
-      usableAttachments: context.usableAttachments || [],
     },
     null,
     1
@@ -582,22 +574,6 @@ export async function runAdminSiteChat(
   const lastAdminMsg = [...messages].reverse().find((m) => m.role === 'admin')
   const lastAdmin = lastAdminMsg?.content || ''
 
-  // Persist this turn's attachments to CDN so they can be placed into config
-  // when the admin wants them on the site (not only as visual references).
-  const latestAttachmentRefs = (lastAdminMsg?.images || []).slice(0, MAX_IMAGES)
-  const persistedAssets = latestAttachmentRefs.length
-    ? await persistAssistantAttachments(tenantId, latestAttachmentRefs)
-    : []
-  const placeOnSite = adminWantsAttachmentsOnSite(lastAdmin)
-  const usableAttachments = persistedAssets.map((a) => ({
-    index: a.index,
-    url: a.url,
-    placeOnSite,
-  }))
-  const uploadedAssets = persistedAssets
-    .filter((a) => a.uploaded)
-    .map((a) => ({ index: a.index, url: a.url }))
-
   const shortcut = await tryMediaShortcut(tenantId, config, lastAdmin)
   if (shortcut) {
     // Still persist the turn so the next request has history.
@@ -669,7 +645,6 @@ export async function runAdminSiteChat(
     config,
     editableColumns: Object.keys(EDITABLE_COLUMNS),
     recentEdits,
-    usableAttachments,
   })
 
   // Collect attached images newest-first (the latest screenshot is almost
@@ -693,17 +668,6 @@ export async function runAdminSiteChat(
     if (indices.length) imageIndexByMessage.set(msg, indices)
   }
 
-  const assetLegend =
-    usableAttachments.length > 0
-      ? `\n\n[usableAttachments for this turn — ${
-          placeOnSite
-            ? 'PLACE ON SITE when the admin request says so'
-            : 'reference/diagnostic unless admin asks to use on site'
-        }]\n${usableAttachments
-          .map((a) => `- image #${a.index}: ${a.url} (placeOnSite=${a.placeOnSite})`)
-          .join('\n')}`
-      : ''
-
   const transcript =
     recent
       .map((m) => {
@@ -723,7 +687,7 @@ export async function runAdminSiteChat(
               : ''
         return `${m.role === 'admin' ? 'Admin' : 'Assistant'}${tag}${meta}: ${m.content}`
       })
-      .join('\n\n') + assetLegend
+      .join('\n\n')
 
   const systemPrompt = buildSystemPrompt(context)
   const userPrompt = transcript || 'Admin: (no message)'
@@ -816,7 +780,6 @@ export async function runAdminSiteChat(
       applied: [],
       rejected: [],
       liveNow: false,
-      ...(uploadedAssets.length ? { uploadedAssets } : {}),
     }
   }
   const reply =
@@ -908,60 +871,7 @@ export async function runAdminSiteChat(
     }
   }
 
-  // Deterministic placement when the admin clearly asked to use an attachment
-  // and the model forgot to reference the CDN URL in changes.
-  let finalReply = reply
-  if (placeOnSite && usableAttachments.length > 0) {
-    const blob = JSON.stringify(update)
-    const anyUsed = usableAttachments.some((a) => blob.includes(a.url))
-    if (!anyUsed) {
-      const first = usableAttachments[0]
-      const wantsHero = /\bhero\b/i.test(lastAdmin) || /\bbackground\b/i.test(lastAdmin)
-      const serviceMatch = lastAdmin.match(
-        /\b(?:on|for|to)\s+([A-Z][\w &/-]{2,60})/i
-      )
-      if (wantsHero && EDITABLE_COLUMNS.hero_config) {
-        const current =
-          (update.hero_config as Record<string, unknown> | undefined) ||
-          (isPlainHero(config.hero_config) ? { ...config.hero_config } : {})
-        const next = { ...current, backgroundImage: first.url }
-        const problem = EDITABLE_COLUMNS.hero_config.validate(next)
-        if (!problem) {
-          update.hero_config = next
-          if (!applied.includes('hero_config')) applied.push('hero_config')
-          finalReply = `${reply}\n\nPlaced attachment #${first.index} as the hero background.`.trim()
-        }
-      } else if (serviceMatch && Array.isArray(config.products_config)) {
-        const needle = serviceMatch[1].trim().toLowerCase()
-        const products = (
-          (update.products_config as unknown[]) ||
-          (config.products_config as unknown[])
-        ).map((p) =>
-          p && typeof p === 'object' ? { ...(p as Record<string, unknown>) } : p
-        )
-        let hit = false
-        for (const p of products) {
-          if (!p || typeof p !== 'object') continue
-          const product = p as Record<string, unknown>
-          const title = typeof product.title === 'string' ? product.title : ''
-          if (title.toLowerCase().includes(needle) || needle.includes(title.toLowerCase())) {
-            product.image = first.url
-            hit = true
-            break
-          }
-        }
-        if (hit) {
-          const problem = EDITABLE_COLUMNS.products_config.validate(products)
-          if (!problem) {
-            update.products_config = products
-            if (!applied.includes('products_config')) applied.push('products_config')
-            finalReply =
-              `${reply}\n\nPlaced attachment #${first.index} on the matching service image.`.trim()
-          }
-        }
-      }
-    }
-  }
+  const finalReply = reply
 
   let liveNow = false
   if (applied.length > 0) {
@@ -1013,7 +923,6 @@ export async function runAdminSiteChat(
     applied,
     rejected,
     liveNow,
-    ...(uploadedAssets.length ? { uploadedAssets } : {}),
   }
 }
 

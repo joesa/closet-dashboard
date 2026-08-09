@@ -21,8 +21,6 @@ type Message = {
   liveNow?: boolean;
   at?: string;
   hadImages?: boolean;
-  /** CDN URLs for attachments uploaded for use on the site this turn. */
-  uploadedAssets?: Array<{ index: number; url: string }>;
 };
 
 const MAX_ATTACHMENTS = MAX_ADMIN_IMAGE_ATTACHMENTS;
@@ -178,7 +176,6 @@ export default function AdminSiteChat({
           rejected: json.rejected || [],
           liveNow: json.liveNow === true,
           at: new Date().toISOString(),
-          uploadedAssets: Array.isArray(json.uploadedAssets) ? json.uploadedAssets : undefined,
         },
       ]);
       if (Array.isArray(json.applied) && json.applied.length > 0) {
@@ -205,10 +202,10 @@ export default function AdminSiteChat({
     >
       <p className="text-sm text-neutral-400">
         Edits the shared template fields (hero, services, nav, theme, pages) with full live-site
-        context and durable chat history for this tenant. Attach a photo and say where to use it
-        (e.g. &quot;use this as the hero&quot; or &quot;set on Auto Wrapping&quot;) — it is uploaded
-        to site assets and referenced in config. Screenshots of problems stay reference-only unless
-        you ask to place them. For Custom Build HTML/CSS: use{' '}
+        context and durable chat history for this tenant. Paperclip and pasted images are visual
+        references only: AI can inspect them but cannot upload, insert, or publish them on the site.
+        Use Media &amp; Files in Custom Build for images that should become site assets. For Custom
+        Build HTML/CSS: use{' '}
         <span className="text-violet-300">Edit surgically</span>; video URLs pasted here still go to
         the custom draft when recognized.
       </p>
@@ -354,26 +351,6 @@ export default function AdminSiteChat({
                             ))}
                           </div>
                         )}
-                        {m.uploadedAssets && m.uploadedAssets.length > 0 && (
-                          <div className="mt-2 space-y-1">
-                            {m.uploadedAssets.map((a) => (
-                              <div
-                                key={a.index}
-                                className="text-xs text-neutral-400 break-all"
-                              >
-                                Saved attachment #{a.index} →{' '}
-                                <a
-                                  href={a.url}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="text-blue-400 underline hover:text-blue-300"
-                                >
-                                  site asset
-                                </a>
-                              </div>
-                            ))}
-                          </div>
-                        )}
                       </div>
                     )}
                   </div>
@@ -431,7 +408,7 @@ export default function AdminSiteChat({
         <button
           type="button"
           aria-label="Attach image"
-          title="Attach a screenshot or reference image"
+          title="Attach a visual reference (never inserted into the site)"
           onClick={() => fileInputRef.current?.click()}
           disabled={loading || attachments.length >= MAX_ATTACHMENTS}
           className="self-end rounded-lg border border-neutral-700 bg-black/50 px-3 py-3 text-sm text-neutral-300 transition-colors hover:border-neutral-500 hover:text-white disabled:opacity-50"
@@ -464,7 +441,7 @@ export default function AdminSiteChat({
             }
           }}
           rows={2}
-          placeholder='e.g. "Use this photo as the hero", "Set this on Auto Wrapping", or attach a screenshot of the problem'
+          placeholder="Describe the edit, or attach a screenshot/reference for AI to inspect. Upload publishable images through Media & Files."
           className="flex-1 resize-none rounded-lg border border-neutral-700 bg-black/50 px-4 py-3 text-sm text-white placeholder:text-neutral-600 focus:border-blue-500 focus:outline-none"
         />
         <button

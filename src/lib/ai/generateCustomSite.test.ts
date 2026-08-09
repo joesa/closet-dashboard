@@ -302,14 +302,39 @@ describe('surgical + intake copy model', () => {
   })
 })
 
-describe('custom-build attachment placement policy', () => {
-  it('keeps attachments reference-only unless the admin explicitly requests placement', () => {
+describe('custom-build attachment policy', () => {
+  it('keeps every paperclip attachment reference-only, including explicit placement requests', () => {
     const src = readFileSync(join(__dirname, 'generateCustomSite.ts'), 'utf8')
-    expect(src).toContain('adminWantsAttachmentsOnSite')
-    expect(src).toContain('placeableAssetUrls')
     expect(src).toContain('REFERENCE-ONLY ATTACHMENTS')
-    expect(src).toContain('do not insert, embed, upload, publish, or reproduce')
+    expect(src).toContain('Even if the admin explicitly asks to place an attachment')
+    expect(src).toContain('do not insert, embed, upload, publish, reproduce, or derive a site URL')
+    expect(src).not.toContain('context.attachedAssetUrls')
+    expect(src).not.toContain('ATTACHED CDN ASSET')
+    expect(src).not.toContain('adminWantsAttachmentsOnSite')
+    expect(src).not.toContain('placeableAssetUrls')
     expect(src).not.toContain('apply the implied fix')
+  })
+})
+
+describe('AI Site Assistant attachment policy', () => {
+  it('never persists or places chat attachments', () => {
+    const src = readFileSync(join(__dirname, 'adminSiteChat.ts'), 'utf8')
+    expect(src).toContain('Chat attachments are not site assets')
+    expect(src).toContain('NEVER insert, embed, upload, publish, reproduce, or derive')
+    expect(src).not.toContain('persistAssistantAttachments')
+    expect(src).not.toContain('adminWantsAttachmentsOnSite')
+    expect(src).not.toContain('usableAttachments')
+    expect(src).not.toContain('uploadedAssets')
+  })
+
+  it('keeps Full Redesign paperclips transient instead of uploading to Media & Files', () => {
+    const src = readFileSync(
+      join(__dirname, '../../components/AdminCustomBuild.tsx'),
+      'utf8'
+    )
+    expect(src).toContain('fileToAdminImageDataUrl(file)')
+    expect(src).not.toContain('persistPromptImage')
+    expect(src).not.toContain("fd.append('label', file.name || 'prompt-attachment')")
   })
 })
 
@@ -362,10 +387,11 @@ describe('surgical hero image helpers', () => {
     expect(applyHeroFitToGlobalCss(css, 'contain')).toContain('background-size:contain')
   })
 
-  it('wires a deterministic hero shortcut before the surgical model path', () => {
+  it('keeps explicit URL/media hero shortcuts without attachment fallback', () => {
     const src = readFileSync(join(__dirname, 'generateCustomSite.ts'), 'utf8')
     expect(src).toContain('trySurgicalHeroImageShortcut')
     expect(src).toContain('applyHeroImageToHomeHtml')
-    expect(src).toContain('Model omitted the attached hero URL')
+    expect(src).toContain('const fromPrompt = extractHttpUrl(opts.prompt)')
+    expect(src).not.toContain('Model omitted the attached hero URL')
   })
 })

@@ -23,10 +23,8 @@ export type SurgicalRouteKind =
 export type SurgicalRoute = { kind: SurgicalRouteKind }
 
 export type ClassifySurgicalIntentCtx = {
-  /** Attached vision images (data URLs) — hero may still need LLM if no CDN URL. */
+  /** Attached vision references; video shortcuts do not run alongside them. */
   hasImages?: boolean
-  /** CDN URLs already attached to the prompt. */
-  attachedAssetUrls?: string[]
 }
 
 export function looksLikeVideoSurgicalRequest(prompt: string): boolean {

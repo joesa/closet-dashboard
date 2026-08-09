@@ -2,7 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { MAX_ADMIN_IMAGE_ATTACHMENTS } from '@/lib/adminImageAttach';
+import {
+  fileToAdminImageDataUrl,
+  MAX_ADMIN_IMAGE_ATTACHMENTS,
+} from '@/lib/adminImageAttach';
 import AdminCollapsibleCard from '@/components/AdminCollapsibleCard';
 
 type CustomBuildJob = {
@@ -122,7 +125,7 @@ export default function AdminCustomBuild({
   const [uploading, setUploading] = useState(false);
   const [uploadKind, setUploadKind] = useState<'video' | 'image' | 'file' | 'auto'>('auto');
   const [uploadApply, setUploadApply] = useState<'none' | 'video_home' | 'append_home'>('none');
-  /** Persisted CDN https URLs for prompt attachments (uploaded before generate). */
+  /** Transient visual references sent only as multimodal model input. */
   const [attachments, setAttachments] = useState<string[]>([]);
   const [attaching, setAttaching] = useState(false);
   /** Media file list is collapsed by default to keep the AI controls above the fold. */
@@ -140,79 +143,6 @@ export default function AdminCustomBuild({
     (loading &&
       (status?.job?.status === 'queued' || status?.job?.status === 'processing'));
 
-  /** Upload an image to the tenant CDN; returns the public URL. */
-  const persistPromptImage = async (file: File): Promise<string> => {
-    const useDirect = file.size > 3.5 * 1024 * 1024;
-    if (useDirect) {
-      const signRes = await fetch(`/api/admin/sites/${tenantId}/custom-assets`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'sign',
-          fileName: file.name || 'attachment.jpg',
-          mime: file.type || 'image/jpeg',
-          size: file.size,
-          kind: 'image',
-        }),
-      });
-      const signJson = await signRes.json().catch(() => ({}));
-      if (!signRes.ok) {
-        throw new Error(signJson.error || `Could not start upload (${signRes.status})`);
-      }
-      const u = signJson.upload as {
-        signedUrl: string
-        publicUrl: string
-        path: string
-        contentType: string
-        kind: string
-      };
-      const putRes = await fetch(u.signedUrl, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': u.contentType || file.type || 'image/jpeg',
-        },
-        body: file,
-      });
-      if (!putRes.ok) {
-        throw new Error(`Direct upload to storage failed (${putRes.status})`);
-      }
-      const completeRes = await fetch(`/api/admin/sites/${tenantId}/custom-assets`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'complete',
-          url: u.publicUrl,
-          path: u.path,
-          kind: 'image',
-          label: file.name || 'prompt-attachment',
-          mime: u.contentType,
-          size: file.size,
-          apply: 'none',
-        }),
-      });
-      const completeJson = await completeRes.json().catch(() => ({}));
-      if (!completeRes.ok) {
-        throw new Error(completeJson.error || `Finalize failed (${completeRes.status})`);
-      }
-      return u.publicUrl;
-    }
-
-    const fd = new FormData();
-    fd.append('file', file);
-    fd.append('kind', 'image');
-    fd.append('apply', 'none');
-    fd.append('label', file.name || 'prompt-attachment');
-    const res = await fetch(`/api/admin/sites/${tenantId}/custom-assets`, {
-      method: 'POST',
-      body: fd,
-    });
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(json.error || `Upload failed (${res.status})`);
-    const url = json.asset?.url as string | undefined;
-    if (!url) throw new Error('Upload succeeded but no CDN URL was returned');
-    return url;
-  };
-
   const addPromptImages = async (files: FileList | File[]) => {
     setError('');
     setAttaching(true);
@@ -223,18 +153,17 @@ export default function AdminCustomBuild({
       if (imageFiles.length > room) {
         setError(`Up to ${MAX_ADMIN_IMAGE_ATTACHMENTS} images per request.`);
       }
-      const urls: string[] = [];
+      const references: string[] = [];
       for (const file of imageFiles.slice(0, room)) {
-        urls.push(await persistPromptImage(file));
+        references.push(await fileToAdminImageDataUrl(file));
       }
-      if (urls.length) {
-        setAttachments((prev) => [...prev, ...urls]);
+      if (references.length) {
+        setAttachments((prev) => [...prev, ...references]);
         setInfo(
-          urls.length === 1
-            ? 'Image uploaded to CDN — it will be used by URL in the next AI request.'
-            : `${urls.length} images uploaded to CDN — they will be used by URL in the next AI request.`
+          references.length === 1
+            ? 'Visual reference attached — it cannot be inserted into the site.'
+            : `${references.length} visual references attached — they cannot be inserted into the site.`
         );
-        await refreshAssets();
       }
     } catch (err) {
       setError(
@@ -1342,7 +1271,7 @@ export default function AdminCustomBuild({
           <button
             type="button"
             aria-label="Attach image"
-            title="Attach or paste a screenshot / reference image"
+            title="Attach a visual reference (never inserted into the site)"
             onClick={() => promptFileRef.current?.click()}
             disabled={
               loading || attaching || attachments.length >= MAX_ADMIN_IMAGE_ATTACHMENTS
@@ -1384,9 +1313,9 @@ export default function AdminCustomBuild({
           />
         </div>
         <p className="mt-1.5 text-[11px] text-neutral-600">
-          Paste (Ctrl/Cmd+V) or attach up to {MAX_ADMIN_IMAGE_ATTACHMENTS} images — each is uploaded
-          to the CDN first, then the public URL is sent to AI (so hero/photo requests can use the
-          real link). Intake services + engagement engine stay automatically.
+          Paste (Ctrl/Cmd+V) or attach up to {MAX_ADMIN_IMAGE_ATTACHMENTS} images as visual model
+          references only. Attachments are never uploaded to Media &amp; Files or inserted into the
+          site. Use Media &amp; Files above when the site should publish an image.
         </p>
       </div>
 
