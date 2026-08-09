@@ -6,6 +6,7 @@ import { logAdminAction, requireAdmin } from '@/lib/admin'
 import { addAdminFact } from '@/lib/spec/addAdminFact'
 import { approveSpecOffer } from '@/lib/spec/specOffer'
 import { advanceSpecBuild } from '@/lib/spec/advanceSpecBuild'
+import { kickSpecBuild } from '@/lib/spec/kickSpecBuild'
 import { deleteSpecBuild, getSpecBuild, transitionSpecBuild } from '@/lib/spec/specBuilds'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 
@@ -80,6 +81,9 @@ export async function runResearchAction(formData: FormData): Promise<void> {
   }
 
   const result = await advanceSpecBuild(id)
+  // Run the first step here so the admin sees an immediate result, then let the
+  // worker carry the rest.
+  if (!result.done) kickSpecBuild(id)
 
   await logAdminAction({
     actor: admin,
@@ -108,6 +112,7 @@ export async function advanceSpecBuildAction(formData: FormData): Promise<void> 
   if (!id) return
 
   const result = await advanceSpecBuild(id)
+  if (!result.done) kickSpecBuild(id)
 
   await logAdminAction({
     actor: admin,

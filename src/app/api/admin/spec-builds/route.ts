@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getCurrentAdmin, logAdminAction } from '@/lib/admin'
 import { queueSpecBuild } from '@/lib/spec/specBuilds'
+import { kickSpecBuild } from '@/lib/spec/kickSpecBuild'
 import type { SpecBuildLeadInput } from '@/lib/spec/types'
 
 export const runtime = 'nodejs'
@@ -75,6 +76,10 @@ export async function POST(req: Request) {
     try {
       const result = await queueSpecBuild({ lead, leadSource: 'manual' })
       if (result.queued) {
+        // Typing a lead in is an explicit instruction to build it, so it runs
+        // without further clicks. The scraper path is the one that stays behind
+        // SPEC_BUILD_ENABLED, because that is the one that could queue dozens.
+        kickSpecBuild(result.id)
         results.push({ businessName, phone, status: 'queued', id: result.id })
       } else {
         results.push({

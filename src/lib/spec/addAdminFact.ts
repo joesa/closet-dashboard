@@ -2,6 +2,7 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { createSpecIntake } from '@/lib/spec/createSpecIntake'
 import { CRAFT_FACT_FIELDS, verifyFacts } from '@/lib/spec/research/verifyFacts'
 import { getSpecBuild, transitionSpecBuild } from '@/lib/spec/specBuilds'
+import { kickSpecBuild } from '@/lib/spec/kickSpecBuild'
 import type { SpecBuildRow, SpecFact } from '@/lib/spec/types'
 
 /**
@@ -119,6 +120,10 @@ export async function redraftFromFacts(
     status_reason: null,
     last_error: null,
   })
+  // The fact was the only thing missing. Everything after it — the site, the
+  // images, provisioning — is unattended, so hand it straight to the worker
+  // rather than making an admin click through each remaining step.
+  kickSpecBuild(build.id)
   return true
 }
 

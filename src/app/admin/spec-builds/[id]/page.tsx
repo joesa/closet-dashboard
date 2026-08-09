@@ -35,6 +35,16 @@ import DeleteSpecBuildButton from '../DeleteSpecBuildButton'
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
+/** States where the worker is (or should be) carrying the build forward. */
+const IN_PROGRESS_STATUSES: string[] = [
+  'queued',
+  'researching',
+  'drafting',
+  'imaging',
+  'provisioning',
+  'building',
+]
+
 function fmt(d?: string | null): string {
   return d ? new Date(d).toLocaleString() : '—'
 }
@@ -397,14 +407,14 @@ export default async function SpecBuildDetailPage({
               {build.research_at ? 'Re-run research' : 'Run research'}
             </button>
           </form>
-          {['drafting', 'imaging'].includes(build.status) && (
+          {['queued', 'drafting', 'imaging'].includes(build.status) && (
             <form action={advanceSpecBuildAction}>
               <input type="hidden" name="spec_build_id" value={build.id} />
               <button
                 type="submit"
-                className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500"
+                className="rounded-md border border-blue-300 px-4 py-2 text-sm font-medium text-blue-700 hover:bg-blue-50"
               >
-                {build.status === 'drafting' ? 'Generate the site' : 'Generate images'}
+                Run the next step now
               </button>
             </form>
           )}
@@ -435,10 +445,19 @@ export default async function SpecBuildDetailPage({
             disabledReason={deleteDisabledReason(build)}
           />
         </div>
-        <p className="mt-3 text-xs text-gray-500">
-          Research reads public pages and writes the intake row. It does not build a site,
-          generate images, or contact anyone.
-        </p>
+        {IN_PROGRESS_STATUSES.includes(build.status) ? (
+          <p className="mt-3 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-800">
+            <strong className="font-medium">This build is running.</strong> It carries on by
+            itself — research, site copy, images, then provisioning — and stops at{' '}
+            <em>ready for review</em>, where it waits for you. Refresh to see where it has got
+            to. &ldquo;Run the next step now&rdquo; is only needed if the background worker is
+            not running.
+          </p>
+        ) : (
+          <p className="mt-3 text-xs text-gray-500">
+            Nothing here contacts the business. That happens only after you approve.
+          </p>
+        )}
       </section>
 
       {/*
@@ -496,8 +515,8 @@ export default async function SpecBuildDetailPage({
           <Field label="Researched" value={fmt(build.research_at)} />
         </dl>
         <p className="mt-4 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600">
-          Site generation, images and the offer arrive with Phase 3 and 4. Nothing in this queue
-          can build a site or contact a business yet.
+          A build runs unattended to <em>ready for review</em>. Nothing is sent to the business
+          until you approve it, and the SMS then goes out on the next cron run.
         </p>
       </section>
     </div>

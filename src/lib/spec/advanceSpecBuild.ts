@@ -119,7 +119,10 @@ async function runResearchStep(
     return {
       from: 'researching',
       to: 'drafting',
-      done: true,
+      // Not done — drafting, imaging and provisioning follow. This said `true`
+      // while drafting was the end of Phase 2, and left the chain stopping
+      // there once the later steps existed.
+      done: false,
       note: `${outcome.facts.length} verified fact(s)`,
     }
   } catch (err) {
