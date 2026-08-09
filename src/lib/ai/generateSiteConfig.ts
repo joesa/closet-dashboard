@@ -314,7 +314,7 @@ async function repairJsonWithAi(raw: string): Promise<Record<string, unknown> | 
       jsonMode: true,
       temperature: 0,
       maxOutputTokens: 32768,
-      preferredProvider: 'anthropic',
+      preferredProvider: 'openai',
       anthropicModel: CLAUDE_SONNET_MODEL,
     })
     return parseAiSiteJson(text)
@@ -567,7 +567,7 @@ ${Object.entries(pageContents)
     jsonMode: true,
     temperature: 0.55,
     maxOutputTokens: 32768,
-    preferredProvider: 'anthropic',
+    preferredProvider: 'openai',
     anthropicModel: CLAUDE_SONNET_MODEL,
   })
 

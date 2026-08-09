@@ -701,7 +701,7 @@ export async function runAdminSiteChat(
       temperature: 0.3,
       maxOutputTokens: 16384,
       images,
-      preferredProvider: 'anthropic',
+      preferredProvider: 'openai',
       anthropicModel: CLAUDE_SONNET_MODEL,
     })
     text = first.text
@@ -835,7 +835,7 @@ export async function runAdminSiteChat(
         temperature: 0.2,
         maxOutputTokens: 16384,
         images,
-        preferredProvider: 'anthropic',
+        preferredProvider: 'openai',
         anthropicModel: CLAUDE_SONNET_MODEL,
       })
       const reparsed = parseSiteChatModelText(retry.text)

@@ -80,7 +80,20 @@ type ProviderGenerationResult = {
 export const CLAUDE_SONNET_MODEL = 'claude-sonnet-5'
 /** Slower frontier model — deep craft, often too slow for one-shot site JSON. */
 export const CLAUDE_FABLE_MODEL = 'claude-fable-5'
-/** Best OpenAI chat model for surgical edits (env-overridable). */
+/**
+ * Default OpenAI model for everything that does not ask for something else.
+ *
+ * GPT-5.6 Sol rather than a cheaper chat model because this is now the primary
+ * provider: Anthropic is no longer the preferred choice for site generation, so
+ * whatever sits here is what writes customer-facing copy. It is the same model
+ * already used for full redesign, which keeps the first build and any later
+ * redesign speaking with one voice.
+ *
+ * Note gpt-5.6-* rejects `temperature`; generateWithOpenAI already omits it for
+ * that family.
+ */
+export const OPENAI_DEFAULT_MODEL = 'gpt-5.6-sol'
+/** Cheaper, faster model for small mechanical edits (env-overridable). */
 export const OPENAI_SURGICAL_MODEL = 'gpt-4.1'
 /** Best Gemini model alias for surgical edits (env-overridable). */
 export const GEMINI_SURGICAL_MODEL = 'gemini-pro-latest'
@@ -109,6 +122,21 @@ export const FULL_REDESIGN_PROVIDER_CHAIN: readonly AiTextProvider[] = [
   'anthropic',
 ] as const
 
+/**
+ * Fallback order when a caller expresses no preference.
+ *
+ * OpenAI leads. Anthropic sits last rather than being removed: the key is out
+ * of credit, so every call routed there fails and silently falls through, which
+ * cost a real round trip on every generation and made the logs read as though
+ * Claude were in use. Leaving it in the chain means topping the balance up
+ * restores it as a genuine backstop without a code change.
+ */
+export const DEFAULT_PROVIDER_CHAIN: readonly AiTextProvider[] = [
+  'openai',
+  'gemini',
+  'anthropic',
+] as const
+
 export function resolveClaudeModel(override?: string): string {
   const fromOpts = override?.trim()
   if (fromOpts) return fromOpts
@@ -122,7 +150,7 @@ export function resolveOpenAiModel(override?: string): string {
   if (fromOpts) return fromOpts
   const fromEnv = process.env.CUSTOM_SITE_OPENAI_MODEL?.trim()
   if (fromEnv) return fromEnv
-  return OPENAI_SURGICAL_MODEL
+  return OPENAI_DEFAULT_MODEL
 }
 
 export function resolveGeminiModel(override?: string): string {
@@ -430,8 +458,7 @@ export async function generateTextWithFallback(
   }
 
   if (!opts.providerChain) {
-    const defaultOrder: AiTextProvider[] = ['gemini', 'openai', 'anthropic'];
-    for (const p of defaultOrder) {
+    for (const p of DEFAULT_PROVIDER_CHAIN) {
       if (!chain.includes(p) && providerConfigured(p)) {
         chain.push(p);
       }

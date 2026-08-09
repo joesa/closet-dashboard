@@ -6,6 +6,8 @@ import {
   GEMINI_FULL_REDESIGN_MODEL,
   GEMINI_SURGICAL_MODEL,
   OPENAI_FULL_REDESIGN_MODEL,
+  DEFAULT_PROVIDER_CHAIN,
+  OPENAI_DEFAULT_MODEL,
   OPENAI_SURGICAL_MODEL,
   SURGICAL_PROVIDER_CHAIN,
   resolveClaudeModel,
@@ -88,11 +90,23 @@ describe('surgical model defaults', () => {
     ])
   })
 
-  it('defaults OpenAI / Gemini surgical models', () => {
+  it('defaults OpenAI to the primary model, not the cheap surgical one', () => {
+    // OpenAI is the lead provider now, so an unspecified call writes
+    // customer-facing copy — it must land on GPT-5.6 Sol rather than the
+    // cheaper model kept around for small mechanical edits.
     delete process.env.CUSTOM_SITE_OPENAI_MODEL
     delete process.env.CUSTOM_SITE_GEMINI_MODEL
-    expect(resolveOpenAiModel()).toBe(OPENAI_SURGICAL_MODEL)
+    expect(resolveOpenAiModel()).toBe(OPENAI_DEFAULT_MODEL)
+    expect(OPENAI_DEFAULT_MODEL).toBe('gpt-5.6-sol')
+    expect(OPENAI_DEFAULT_MODEL).not.toBe(OPENAI_SURGICAL_MODEL)
     expect(resolveGeminiModel()).toBe(GEMINI_SURGICAL_MODEL)
+  })
+
+  it('leads the default fallback chain with OpenAI', () => {
+    expect(DEFAULT_PROVIDER_CHAIN[0]).toBe('openai')
+    // Anthropic stays last rather than being dropped, so topping the balance
+    // up restores it as a backstop without a code change.
+    expect(DEFAULT_PROVIDER_CHAIN).toContain('anthropic')
   })
 
   it('honors env overrides for surgical models', () => {

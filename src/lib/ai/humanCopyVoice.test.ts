@@ -41,11 +41,14 @@ describe('humanCopyVoice', () => {
     }
   })
 
-  it('is wired into intake site generation on Claude Sonnet', () => {
+  it('is wired into intake site generation with an explicit provider', () => {
+    // The voice rules are the point; the provider is asserted only so the call
+    // keeps choosing one deliberately rather than drifting onto whatever the
+    // fallback chain happens to reach. Site generation moved from Claude to
+    // GPT-5.6 Sol when the Anthropic key ran out of credit.
     const src = readFileSync(join(__dirname, 'generateSiteConfig.ts'), 'utf8')
     expect(src).toContain('HUMAN_COPY_VOICE_RULES')
-    expect(src).toContain("preferredProvider: 'anthropic'")
-    expect(src).toContain('CLAUDE_SONNET_MODEL')
+    expect(src).toContain("preferredProvider: 'openai'")
   })
 
   it('matches the canonical cross-repo rule table (renderer mirror)', () => {
