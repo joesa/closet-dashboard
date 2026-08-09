@@ -87,3 +87,20 @@ describe('planSpecBuildEnqueue — Maps URL provenance', () => {
     expect(plan.toQueue[0].mapsPlaceUrl).toBeUndefined()
   })
 })
+
+describe('planSpecBuildEnqueue — public profile provenance', () => {
+  it('carries temporary public profile research to the guarded queue boundary', () => {
+    const publicProfileResearch = {
+      sourceUrl: 'https://facebook.com/test-contracting',
+      text: 'Temporary public business prose retained only until verified extraction completes.',
+      capturedAt: '2026-08-09T00:00:00.000Z',
+      captureMethod: 'public_browser',
+    }
+    const plan = planSpecBuildEnqueue(
+      [{ id: 'lead-0', row: b1(), publicProfileResearch }],
+      1
+    )
+
+    expect(plan.toQueue[0].publicProfileResearch).toBe(publicProfileResearch)
+  })
+})

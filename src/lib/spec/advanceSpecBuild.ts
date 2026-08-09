@@ -59,7 +59,7 @@ async function runResearchStep(
 
   try {
     const outcome = await runSpecResearch(build)
-    await saveSpecResearch(build.id, outcome)
+    await saveSpecResearch(build, outcome)
 
     if (outcome.blockedReason) {
       await transitionSpecBuild(build.id, 'researching', 'needs_attention', {

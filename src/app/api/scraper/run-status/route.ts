@@ -32,6 +32,17 @@ function asObject(value: unknown): Record<string, unknown> {
     : {}
 }
 
+function withoutTemporaryProfileResearch(value: unknown): unknown {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value
+  const { publicProfileResearch: _discarded, ...retained } = value as Record<string, unknown>
+  return retained
+}
+
+function sanitizeRunPayload(payload: Record<string, unknown>): Record<string, unknown> {
+  if (!Array.isArray(payload.leads)) return payload
+  return { ...payload, leads: payload.leads.map(withoutTemporaryProfileResearch) }
+}
+
 function assertControlPlaneToken(req: Request): NextResponse | null {
   const configured = process.env.SCRAPER_CONTROL_PLANE_TOKEN || ''
   if (!configured) {
@@ -73,7 +84,7 @@ export async function POST(req: Request) {
     run_id: runId,
     phase,
     source: 'scraper',
-    payload,
+    payload: sanitizeRunPayload(payload),
   })
 
   if (error) {
@@ -85,6 +96,7 @@ export async function POST(req: Request) {
   if (phase === 'completed') {
     if (runId) {
       const leads = Array.isArray(payload.leads) ? payload.leads : []
+      const durableLeads = leads.map(withoutTemporaryProfileResearch)
       const stats = asObject(payload.stats)
       const artifacts = asObject(payload.artifacts)
       const filters = asObject(payload.filters)
@@ -98,7 +110,7 @@ export async function POST(req: Request) {
           phase,
           lead_count: leads.length,
           stats,
-          leads,
+          leads: durableLeads,
           webhooks,
           artifacts,
           filters,
@@ -121,6 +133,7 @@ export async function POST(req: Request) {
           servicesSource?: string
           businessDescription?: string
           socialProfileUrl?: string
+          publicProfileResearch?: unknown
           hasOwnWebsite?: boolean
           phoneNumber?: string
           websiteUrl?: string
@@ -185,6 +198,8 @@ export async function POST(req: Request) {
               typeof (leads[i] as { mapsPlaceUrl?: unknown })?.mapsPlaceUrl === 'string'
                 ? ((leads[i] as { mapsPlaceUrl: string }).mapsPlaceUrl)
                 : null,
+            publicProfileResearch: (leads[i] as { publicProfileResearch?: unknown })
+              ?.publicProfileResearch,
           }))
           specBuildSummary = await enqueueSpecBuildsForRun(runId, pairs)
         } catch (specErr) {

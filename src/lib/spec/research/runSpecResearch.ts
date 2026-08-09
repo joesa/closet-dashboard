@@ -31,12 +31,13 @@ export async function runSpecResearch(build: SpecBuildRow): Promise<SpecResearch
   const outcome: SpecResearchOutcome = { facts: [], rejected: [], fetched: [] }
 
   const sources = resolveResearchSources(lead)
-  if (sources.length === 0) {
+  const capturedProfile = lead.publicProfileResearch
+  if (sources.length === 0 && !capturedProfile) {
     outcome.blockedReason =
       'No public sources for this lead — no Google Maps listing and no Facebook page.'
     return outcome
   }
-  if (!firecrawlConfigured()) {
+  if (!firecrawlConfigured() && !capturedProfile) {
     outcome.blockedReason = 'FIRECRAWL_API_KEY is not set, so no page could be read.'
     return outcome
   }
@@ -44,7 +45,27 @@ export async function runSpecResearch(build: SpecBuildRow): Promise<SpecResearch
   const pagesByUrl = new Map<string, string>()
   const candidates: Partial<SpecFact>[] = []
 
+  if (capturedProfile) {
+    pagesByUrl.set(capturedProfile.sourceUrl, capturedProfile.text)
+    outcome.fetched.push({
+      url: capturedProfile.sourceUrl,
+      sourceKind: 'facebook_about',
+      chars: capturedProfile.text.length,
+    })
+    const extracted = await extractFactsFromPage(
+      {
+        url: capturedProfile.sourceUrl,
+        sourceKind: 'facebook_about',
+        text: capturedProfile.text,
+      },
+      { name: build.business_name, city: build.city, services: lead.services }
+    )
+    if (extracted.error) outcome.fetched[0].error = `extraction failed: ${extracted.error}`
+    candidates.push(...extracted.candidates)
+  }
+
   for (const source of sources) {
+    if (capturedProfile && source.sourceKind === 'facebook_about') continue
     const page = await fetchPageText(source.url, source.sourceKind)
     outcome.fetched.push({
       url: page.url,
@@ -84,12 +105,16 @@ export async function runSpecResearch(build: SpecBuildRow): Promise<SpecResearch
 
 /** Persist research onto the build so the admin ledger can render it. */
 export async function saveSpecResearch(
-  buildId: string,
+  build: SpecBuildRow,
   outcome: SpecResearchOutcome
 ): Promise<void> {
-  await getSupabaseAdmin()
+  const { publicProfileResearch: _discarded, ...retainedLeadInput } = build.lead_input
+  const { error } = await getSupabaseAdmin()
     .from('spec_builds')
     .update({
+      // Full browser text is temporary. Keep only verified evidence excerpts
+      // in research once extraction has completed.
+      lead_input: retainedLeadInput,
       research: {
         facts: outcome.facts,
         fetched: outcome.fetched,
@@ -104,5 +129,6 @@ export async function saveSpecResearch(
       research_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     })
-    .eq('id', buildId)
+    .eq('id', build.id)
+  if (error) throw new Error(`Failed to save spec research: ${error.message}`)
 }

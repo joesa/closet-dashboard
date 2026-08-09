@@ -1,4 +1,5 @@
 import { qualifyLeadForSpecBuild, type ScrapedLeadShape } from '@/lib/spec/qualifyLead'
+import { normalizePublicProfileResearch } from '@/lib/spec/research/publicProfileResearch'
 import {
   countSpecBuildsStartedToday,
   queueSpecBuild,
@@ -44,13 +45,20 @@ export type ScraperLeadPair = {
   row: ScrapedLeadShape
   /** Not a column on scraper_leads — carried through from the raw scraped lead. */
   mapsPlaceUrl?: string | null
+  /** Raw authenticated payload; normalized against the expected profile before queueing. */
+  publicProfileResearch?: unknown
 }
 
 export function planSpecBuildEnqueue(
   leads: ScraperLeadPair[],
   budget: number
 ): {
-  toQueue: { id: string; lead: ReturnType<typeof qualifyLeadForSpecBuild>; mapsPlaceUrl?: string | null }[]
+  toQueue: {
+    id: string
+    lead: ReturnType<typeof qualifyLeadForSpecBuild>
+    mapsPlaceUrl?: string | null
+    publicProfileResearch?: unknown
+  }[]
   unqualified: number
   capped: number
 } {
@@ -59,6 +67,7 @@ export function planSpecBuildEnqueue(
     id: string
     lead: ReturnType<typeof qualifyLeadForSpecBuild>
     mapsPlaceUrl?: string | null
+    publicProfileResearch?: unknown
   }[] = []
   let unqualified = 0
   let capped = 0
@@ -74,7 +83,12 @@ export function planSpecBuildEnqueue(
       continue
     }
     remaining -= 1
-    toQueue.push({ id: lead.id, lead: qualified, mapsPlaceUrl: lead.mapsPlaceUrl })
+    toQueue.push({
+      id: lead.id,
+      lead: qualified,
+      mapsPlaceUrl: lead.mapsPlaceUrl,
+      publicProfileResearch: lead.publicProfileResearch,
+    })
   }
 
   return { toQueue, unqualified, capped }
@@ -106,7 +120,14 @@ export async function enqueueSpecBuildsForRun(
     if (!item.lead.qualified) continue
     try {
       const result = await queueSpecBuild({
-        lead: { ...item.lead.lead, mapsPlaceUrl: item.mapsPlaceUrl ?? null },
+        lead: {
+          ...item.lead.lead,
+          mapsPlaceUrl: item.mapsPlaceUrl ?? null,
+          publicProfileResearch: normalizePublicProfileResearch(
+            item.publicProfileResearch,
+            item.lead.lead.socialProfileUrl
+          ),
+        },
         leadSource: 'scraper',
         scraperLeadId: item.id,
         scraperRunId: runId,

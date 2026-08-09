@@ -87,6 +87,13 @@ export type SpecBuildResearch = {
   fetched?: { url: string; sourceKind: SpecFactSourceKind; chars: number; error?: string }[]
 }
 
+export type PublicProfileResearch = {
+  sourceUrl: string
+  text: string
+  capturedAt: string
+  captureMethod: 'public_browser'
+}
+
 export type SpecBuildRow = {
   id: string
   status: SpecBuildStatus
@@ -137,6 +144,8 @@ export type SpecBuildLeadInput = {
   address?: string | null
   ratingValue?: number | null
   reviewCount?: number | null
+  /** Temporary minimized prose, erased immediately after research extraction. */
+  publicProfileResearch?: PublicProfileResearch | null
 }
 
 export const SPEC_BUILD_SELECT = `
