@@ -6,6 +6,7 @@ import { buildIntakeBrief } from '@/lib/intake/buildIntakeBrief'
 import { resolveIntakeBeforeAfterCategory } from '@/lib/intake/intakeBeforeAfter'
 import { getIntakeByToken } from '@/lib/intake/getIntakeByToken'
 import { clampPagesForTier, pageSlugsToSitemap } from '@/lib/catalog/sitePages'
+import { checkAndIncrementAiUsage } from '@/lib/aiUsage'
 
 export type IntakeGenerateSitePayload = {
   token: string
@@ -56,6 +57,15 @@ export const intakeGenerateSiteTask: Task = async (payload, helpers) => {
         : Array.isArray(row.services) && row.services.length > 0
           ? row.services.join(', ')
           : null
+
+    // The daily spend cap has to live here, not only on /api/ai/*. The worker
+    // is the path that runs unattended and in bulk, so it is the one that can
+    // quietly run up a bill overnight. Failing here surfaces the reason in
+    // background_job, which the intake UI already renders.
+    const usage = await checkAndIncrementAiUsage('generate_site')
+    if (!usage.allowed) {
+      throw new Error(usage.reason || 'Daily AI generation limit reached.')
+    }
 
     const result = await generateSiteConfigFromInput(
       brief,

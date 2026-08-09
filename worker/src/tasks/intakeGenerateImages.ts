@@ -8,6 +8,7 @@ import {
 import { buildBeforeImagePrompt } from '@/lib/images/beforeAfterPrompt'
 import { resolveIntakeBeforeAfterCategory } from '@/lib/intake/intakeBeforeAfter'
 import { resolveStudioServiceNames } from '@/lib/intake/studioServiceNames'
+import { checkAndIncrementAiUsage } from '@/lib/aiUsage'
 import {
   maxAttemptsPerSlot,
   parseImageSelections,
@@ -79,6 +80,14 @@ export const intakeGenerateImagesTask: Task = async (payload, helpers) => {
         : slot === 'before'
           ? `before-a${attemptNum}`
           : `product-${(productIndex ?? 0) + 1}-a${attemptNum}`
+
+    // Same reasoning as intake_generate_site: the worker is the unattended,
+    // bulk path, so the daily image cap has to be enforced here and not only
+    // on /api/ai/generate-images. Counted once per batch, matching that route.
+    const usage = await checkAndIncrementAiUsage('generate_images')
+    if (!usage.allowed) {
+      throw new Error(usage.reason || 'Daily AI image limit reached.')
+    }
 
     let urls: string[]
     let effectivePrompt = prompt

@@ -73,6 +73,80 @@ export function copyGateEnforcedFor(createdAt?: string | null): boolean {
   return Number.isFinite(created) && Number.isFinite(cutoff) && created >= cutoff
 }
 
+/**
+ * Intake columns holding language the owner wrote themselves. The specificity
+ * gate must not blame generation for a phrase the owner supplied verbatim, and
+ * it must not count the locality as evidence that copy is specific — both are
+ * what `sourceText` and `locality` are for.
+ */
+const OWNER_VERBATIM_COLUMNS = [
+  'customer_quotes',
+  'notes',
+  'craft_spec',
+  'shop_rule',
+  'local_conditions',
+  'crew_shape',
+  'client_artifact',
+  'recent_job',
+  'competitor_tell',
+  'timeline_facts',
+  'guarantee_terms',
+] as const
+
+export type OwnerCopyContext = { sourceText: string; locality: string | null }
+
+export const EMPTY_OWNER_COPY_CONTEXT: OwnerCopyContext = { sourceText: '', locality: null }
+
+const OWNER_COPY_SELECT = `${OWNER_VERBATIM_COLUMNS.join(
+  ', '
+)}, signature_materials, address_locality, service_area`
+
+/** Pure half — assembles the context from an intake row. Unit-tested. */
+export function ownerCopyContextFromIntakeRow(
+  row: Record<string, unknown> | null | undefined
+): OwnerCopyContext {
+  if (!row) return EMPTY_OWNER_COPY_CONTEXT
+
+  const parts: string[] = []
+  for (const column of OWNER_VERBATIM_COLUMNS) {
+    const value = row[column]
+    if (typeof value === 'string' && value.trim()) parts.push(value.trim())
+  }
+  if (Array.isArray(row.signature_materials)) {
+    const materials = row.signature_materials
+      .filter((m): m is string => typeof m === 'string' && m.trim().length > 0)
+      .join(', ')
+    if (materials) parts.push(materials)
+  }
+
+  const locality =
+    (typeof row.address_locality === 'string' && row.address_locality.trim()) ||
+    (typeof row.service_area === 'string' && row.service_area.trim()) ||
+    null
+
+  return { sourceText: parts.join('\n\n'), locality }
+}
+
+/**
+ * Owner-supplied language and locality for the intake behind a tenant.
+ *
+ * Best-effort by design: a tenant with no intake (seeded, migrated, or admin
+ * created) gets an empty context, which is how this behaved before the
+ * exemptions were wired up.
+ */
+export async function loadOwnerCopyContext(tenantId: string): Promise<OwnerCopyContext> {
+  try {
+    const { data } = await getSupabaseAdmin()
+      .from('prospect_intakes')
+      .select(OWNER_COPY_SELECT)
+      .eq('provisioned_contractor_id', tenantId)
+      .maybeSingle()
+    return ownerCopyContextFromIntakeRow(data as Record<string, unknown> | null)
+  } catch {
+    return EMPTY_OWNER_COPY_CONTEXT
+  }
+}
+
 function withTimeout(ms: number): AbortSignal {
   return AbortSignal.timeout(ms)
 }
@@ -670,11 +744,17 @@ export async function validateTenantSite(tenantId: string): Promise<ValidationRe
     )
     const copySeverity: ValidationSeverity = enforceCopyErrors ? 'error' : 'warning'
     const businessName = (config.brand_name || tenant.business_name || '').trim()
+    // Without these two the gate blames generation for the owner's own words and
+    // credits the city name as proof of specificity — the exemptions
+    // specificityGate was built around never fired.
+    const { sourceText, locality } = await loadOwnerCopyContext(tenantId)
     for (const [index, pageHtml] of copyPages.entries()) {
-      // Locality is not joined in here, so a city name still counts as a named
-      // place. That errs toward passing, which is the right way for a new check
-      // to be wrong.
-      for (const finding of analyzeSpecificity({ text: pageHtml, businessName })) {
+      for (const finding of analyzeSpecificity({
+        text: pageHtml,
+        businessName,
+        locality,
+        sourceText,
+      })) {
         issues.push({
           code: finding.code,
           severity: copySeverity,

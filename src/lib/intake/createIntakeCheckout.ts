@@ -7,13 +7,96 @@ import {
   type IntakeCheckoutKind,
 } from '@/lib/intake/intakePaymentStage'
 import {
-  depositForTier,
   depositStatusForTier,
   formatUsd,
   getTierEntry,
   type IntakeTierSlug,
 } from '@/lib/intake/tiers'
 import { resolveOneTimePriceId, stripePriceEnv } from '@/lib/stripeCatalog'
+
+export type OneTimeCheckoutKind = Exclude<IntakeCheckoutKind, 'maintenance'>
+
+export type OneTimeCheckoutPricing = {
+  amountCents: number
+  /** The catalog list amount for this kind, or -1 when it cannot be resolved. */
+  catalogCents: number
+  /** Non-null only when charging exactly list price; otherwise inline price_data. */
+  priceId: string | null
+  metaKind: string
+  productName: string
+  description: string
+}
+
+type OneTimePriceEnv = {
+  aiPremiumDeposit?: string
+  aiPremiumBalance?: string
+  standardBuild?: string
+}
+
+/** Which catalog entry prices this row — independent of any discount on it. */
+function catalogTierSlug(row: Pick<ProspectIntakeRow, 'intake_tier'>): IntakeTierSlug {
+  return row.intake_tier === 'ai_premium' ? 'ai_premium' : 'standard'
+}
+
+/**
+ * Price a one-time intake charge.
+ *
+ * The load-bearing rule: `catalogCents` comes from the tier CATALOG, never from
+ * the row. `resolveOneTimePriceId` reuses the pre-made Stripe price only when we
+ * are charging exactly list price. Deriving both sides from the row made them
+ * equal by construction, so a discounted row silently reused the full-price
+ * Stripe price and charged list price while the UI showed the discount. A
+ * catalog entry that cannot be resolved yields -1, which never matches — that
+ * forces inline `price_data`, the safe direction when we cannot prove the
+ * amount is list price.
+ */
+export function resolveOneTimeCheckoutPricing(
+  row: Pick<
+    ProspectIntakeRow,
+    'intake_tier' | 'tier_total_cents' | 'deposit_required_cents'
+  >,
+  kind: OneTimeCheckoutKind,
+  env: OneTimePriceEnv
+): OneTimeCheckoutPricing {
+  const catalog = getTierEntry(catalogTierSlug(row))
+  const remainder = Math.max(0, row.tier_total_cents - row.deposit_required_cents)
+
+  if (kind === 'deposit') {
+    const amountCents = row.deposit_required_cents
+    const catalogCents = catalog?.depositCents ?? -1
+    return {
+      amountCents,
+      catalogCents,
+      priceId: resolveOneTimePriceId(env.aiPremiumDeposit, amountCents, catalogCents),
+      metaKind: 'intake_deposit',
+      productName: 'DitchTheForm AI Premium — 30% deposit',
+      description: `30% deposit (${formatUsd(amountCents)}) of ${formatUsd(row.tier_total_cents)} total. Unlocks AI image studio and starts your site build. Balance due only after you approve the preview before launch; deposit refunded if you decline.`,
+    }
+  }
+
+  if (kind === 'balance') {
+    const catalogCents = catalog?.remainderCents ?? -1
+    return {
+      amountCents: remainder,
+      catalogCents,
+      priceId: resolveOneTimePriceId(env.aiPremiumBalance, remainder, catalogCents),
+      metaKind: 'intake_balance',
+      productName: 'DitchTheForm AI Premium — balance',
+      description: `Balance (${formatUsd(remainder)}) due before launch.`,
+    }
+  }
+
+  const amountCents = row.tier_total_cents
+  const catalogCents = catalog?.totalCents ?? -1
+  return {
+    amountCents,
+    catalogCents,
+    priceId: resolveOneTimePriceId(env.standardBuild, amountCents, catalogCents),
+    metaKind: 'intake_standard_build',
+    productName: 'DitchTheForm Standard site build',
+    description: `One-time build (${formatUsd(amountCents)}) — pay when satisfied.`,
+  }
+}
 
 export async function createIntakeCheckoutSession(opts: {
   row: ProspectIntakeRow
@@ -90,38 +173,8 @@ export async function createIntakeCheckoutSession(opts: {
       cancel_url: `${returnUrl}?payment=cancelled`,
     })
   } else {
-    const catalogDeposit = depositForTier(row.tier_total_cents)
-    const remainder = Math.max(0, row.tier_total_cents - row.deposit_required_cents)
-
-    let priceId: string | null = null
-    let amountCents = 0
-    let catalogCents = 0
-    let metaKind = ''
-    let productName = ''
-    let description = ''
-
-    if (kind === 'deposit') {
-      amountCents = row.deposit_required_cents
-      catalogCents = catalogDeposit
-      priceId = resolveOneTimePriceId(env.aiPremiumDeposit, amountCents, catalogCents)
-      metaKind = 'intake_deposit'
-      productName = 'DitchTheForm AI Premium — 30% deposit'
-      description = `30% deposit (${formatUsd(amountCents)}) of ${formatUsd(row.tier_total_cents)} total. Unlocks AI image studio and starts your site build. Balance due only after you approve the preview before launch; deposit refunded if you decline.`
-    } else if (kind === 'balance') {
-      amountCents = remainder
-      catalogCents = remainder
-      priceId = resolveOneTimePriceId(env.aiPremiumBalance, amountCents, catalogCents)
-      metaKind = 'intake_balance'
-      productName = 'DitchTheForm AI Premium — balance'
-      description = `Balance (${formatUsd(amountCents)}) due before launch.`
-    } else {
-      amountCents = row.tier_total_cents
-      catalogCents = row.tier_total_cents
-      priceId = resolveOneTimePriceId(env.standardBuild, amountCents, catalogCents)
-      metaKind = 'intake_standard_build'
-      productName = 'DitchTheForm Standard site build'
-      description = `One-time build (${formatUsd(amountCents)}) — pay when satisfied.`
-    }
+    const { amountCents, priceId, metaKind, productName, description } =
+      resolveOneTimeCheckoutPricing(row, kind, env)
 
     // Never create a $0 (or negative) one-time-payment session — a real
     // build/deposit/balance charge should always have a positive amount.
