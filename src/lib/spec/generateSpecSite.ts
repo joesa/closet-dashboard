@@ -3,7 +3,12 @@ import { checkAndIncrementAiUsage } from '@/lib/aiUsage'
 import { generateSiteConfigFromInput } from '@/lib/ai/generateSiteConfig'
 import { mergeAiSiteConfigWithPresentation } from '@/lib/ai/mergeAiSitePresentation'
 import { buildIntakeBrief } from '@/lib/intake/buildIntakeBrief'
-import { clampPagesForTier, pageSlugsToSitemap } from '@/lib/catalog/sitePages'
+import {
+  RECOMMENDED_PAGE_SLUGS,
+  SITE_PAGE_SLUGS,
+  clampPagesForTier,
+  pageSlugsToSitemap,
+} from '@/lib/catalog/sitePages'
 import { extractProspectSiteConfig } from '@/lib/intake/mergeProspectImages'
 import type { ProspectIntakeRow } from '@/lib/intake/getIntakeByToken'
 
@@ -38,7 +43,10 @@ export async function generateSpecSiteConfig(
   }
 
   const tier = row.intake_tier === 'ai_premium' ? 'ai_premium' : 'standard'
-  const pageSlugs = clampPagesForTier(row.requested_pages, tier)
+  const requested = (row.requested_pages ?? []).length > 0
+    ? row.requested_pages
+    : [...RECOMMENDED_PAGE_SLUGS]
+  const pageSlugs = clampPagesForTier(requested, tier)
   const sitemap = pageSlugsToSitemap(pageSlugs)
 
   const intakeIndustry =
@@ -54,14 +62,43 @@ export async function generateSpecSiteConfig(
   )
   const merged = await mergeAiSiteConfigWithPresentation(row, result.data)
 
+  // Critical: `requested_pages` is what survives provisioning, not the pages
+  // the model wrote. normalizeAiPagesConfig maps over the REQUESTED slugs and
+  // looks each one up in the generated set, so an empty requested_pages
+  // discards every generated page and provisions a site with none at all — a
+  // failure that would only surface after paying for the full build.
+  //
+  // A human prospect picks pages in the form. A spec build has nobody to pick,
+  // so it takes the model's own choices, floored by the recommended set so a
+  // thin generation still yields a usable site.
+  const generatedSlugs = extractGeneratedSlugs(merged)
+  const requestedPages = clampPagesForTier(
+    [...RECOMMENDED_PAGE_SLUGS, ...generatedSlugs],
+    tier
+  )
+
   await getSupabaseAdmin()
     .from('prospect_intakes')
     .update({
       ai_site_config: merged,
-      requested_pages: pageSlugs,
+      requested_pages: requestedPages,
       updated_at: new Date().toISOString(),
     })
     .eq('id', row.id)
 
-  return { ok: true, source: result.source, pages: pageSlugs.length }
+  return { ok: true, source: result.source, pages: requestedPages.length }
+}
+
+/** Catalog slugs the model actually produced, normalised off `/about` form. */
+function extractGeneratedSlugs(config: unknown): string[] {
+  const pages = (config as { pagesConfig?: { slug?: unknown }[] })?.pagesConfig
+  if (!Array.isArray(pages)) return []
+  const known = new Set<string>(SITE_PAGE_SLUGS)
+  const out: string[] = []
+  for (const page of pages) {
+    if (typeof page?.slug !== 'string') continue
+    const slug = page.slug.replace(/^\/+/, '').trim()
+    if (slug && known.has(slug) && !out.includes(slug)) out.push(slug)
+  }
+  return out
 }

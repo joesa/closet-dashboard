@@ -189,6 +189,33 @@ export async function countSpecBuildsInFlight(): Promise<number> {
   return count ?? 0
 }
 
+export function specBuildMaxInFlight(): number {
+  const raw = parseInt(process.env.SPEC_BUILD_MAX_IN_FLIGHT || '2', 10)
+  return Number.isFinite(raw) && raw > 0 ? raw : 2
+}
+
+/**
+ * Whether another build may start work right now.
+ *
+ * The daily cap guards *enqueue*, which is the wrong end for spend: a backlog
+ * queued over several days carries no daily budget with it, so the moment
+ * builds began advancing on their own that cap stopped bounding anything. This
+ * throttles execution instead, and it is checked at the point a build claims
+ * its first expensive step rather than when it joins the queue.
+ *
+ * A build held back is not lost — it stays queued and the next worker pass
+ * picks it up.
+ */
+export async function specBuildCapacityAvailable(): Promise<{
+  available: boolean
+  inFlight: number
+  max: number
+}> {
+  const max = specBuildMaxInFlight()
+  const inFlight = await countSpecBuildsInFlight()
+  return { available: inFlight < max, inFlight, max }
+}
+
 /** Mirrors the partial unique index — a closed build frees its phone number. */
 export function isClosedStatus(status: SpecBuildStatus): boolean {
   return (SPEC_BUILD_CLOSED_STATUSES as readonly string[]).includes(status)

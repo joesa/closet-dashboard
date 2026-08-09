@@ -7,7 +7,11 @@ import { createSpecIntake } from '@/lib/spec/createSpecIntake'
 import { generateSpecImages } from '@/lib/spec/generateSpecImages'
 import { generateSpecSiteConfig } from '@/lib/spec/generateSpecSite'
 import { runSpecResearch, saveSpecResearch } from '@/lib/spec/research/runSpecResearch'
-import { getSpecBuild, transitionSpecBuild } from '@/lib/spec/specBuilds'
+import {
+  getSpecBuild,
+  specBuildCapacityAvailable,
+  transitionSpecBuild,
+} from '@/lib/spec/specBuilds'
 import type { SpecBuildRow } from '@/lib/spec/types'
 
 /**
@@ -61,6 +65,19 @@ async function runResearchStep(
   opts: { alreadyClaimed?: boolean } = {}
 ): Promise<AdvanceResult> {
   if (!opts.alreadyClaimed) {
+    // Concurrency limit, checked where the spending starts rather than where
+    // the queue is filled. A build over the limit stays queued and is picked up
+    // on a later pass; `done: false` keeps the task re-enqueuing itself.
+    const capacity = await specBuildCapacityAvailable()
+    if (!capacity.available) {
+      return {
+        from: 'queued',
+        to: 'queued',
+        done: false,
+        note: `at capacity (${capacity.inFlight}/${capacity.max} in flight)`,
+      }
+    }
+
     const claimed = await transitionSpecBuild(build.id, 'queued', 'researching')
     if (!claimed) {
       return { from: 'queued', to: 'queued', done: false, note: 'claimed by another worker' }

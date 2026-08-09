@@ -1,7 +1,11 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { SPEC_BUILD_IN_FLIGHT_STATUSES } from './types'
 import type { SpecBuildRow } from './types'
-import { deleteSpecBuild, specBuildDeletionBlockReason } from './specBuilds'
+import {
+  deleteSpecBuild,
+  specBuildDeletionBlockReason,
+  specBuildMaxInFlight,
+} from './specBuilds'
 
 const mocks = vi.hoisted(() => ({ getSupabaseAdmin: vi.fn() }))
 vi.mock('@/lib/supabase-admin', () => ({ getSupabaseAdmin: mocks.getSupabaseAdmin }))
@@ -115,5 +119,28 @@ describe('deleteSpecBuild', () => {
       reason: 'tenant_exists',
     })
     expect(from).toHaveBeenCalledTimes(1)
+  })
+})
+describe('specBuildMaxInFlight', () => {
+  afterEach(() => {
+    delete process.env.SPEC_BUILD_MAX_IN_FLIGHT
+  })
+
+  it('defaults to a conservative 2', () => {
+    expect(specBuildMaxInFlight()).toBe(2)
+  })
+
+  it('honours the env override', () => {
+    process.env.SPEC_BUILD_MAX_IN_FLIGHT = '5'
+    expect(specBuildMaxInFlight()).toBe(5)
+  })
+
+  it('refuses values that would remove the limit', () => {
+    // A cap of 0 or a typo must not read as "unlimited" — that is the failure
+    // mode where a backlog drains all at once and spends the month's budget.
+    for (const bad of ['0', '-3', 'lots', '']) {
+      process.env.SPEC_BUILD_MAX_IN_FLIGHT = bad
+      expect.soft(specBuildMaxInFlight(), bad).toBe(2)
+    }
   })
 })
