@@ -3,6 +3,8 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { logSystemAction } from '@/lib/admin'
 import { checkRateLimit, hashRateKey } from '@/lib/rateLimit'
 import { purgeGraceHours } from '@/lib/spec/specOffer'
+import { adoptSpecBuild } from '@/lib/spec/adoptSpecBuild'
+import { SPEC_BUILD_SELECT, type SpecBuildRow } from '@/lib/spec/types'
 
 export const runtime = 'nodejs'
 
@@ -41,17 +43,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
   const supabase = getSupabaseAdmin()
   const { data } = await supabase
     .from('spec_builds')
-    .select('id, status, offer_deadline_at, business_name, lead_input')
+    .select(SPEC_BUILD_SELECT)
     .eq('offer_token', token)
     .maybeSingle()
 
-  const build = data as {
-    id: string
-    status: string
-    offer_deadline_at: string | null
-    business_name: string
-    lead_input: Record<string, unknown>
-  } | null
+  const build = data as SpecBuildRow | null
   if (!build) {
     return NextResponse.json({ error: 'This offer link is no longer valid.' }, { status: 404 })
   }
@@ -96,6 +92,26 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
 
   if (error) {
     return NextResponse.json({ error: 'Could not record that. Please try again.' }, { status: 500 })
+  }
+
+  // Hand the site over. Deliberately after the status is committed: if adoption
+  // fails we still have a durable record that they said yes, and an admin can
+  // finish it by hand. Losing the "yes" because an email bounced would be far
+  // worse than an adoption that needs retrying.
+  if (action === 'accept') {
+    const adopted = await adoptSpecBuild({ ...build, status: 'accepted' }, email).catch((err) => {
+      console.error('[offer] adoption threw', build.id, err)
+      return { ok: false as const, reason: 'adoption_threw' }
+    })
+    if (!adopted.ok) {
+      await supabase
+        .from('spec_builds')
+        .update({
+          status_reason: `Accepted, but handover needs a human: ${adopted.reason}`,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', build.id)
+    }
   }
 
   await logSystemAction({

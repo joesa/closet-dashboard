@@ -4,6 +4,7 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { teardownTenantData } from '@/lib/provision/teardownTenantData'
 import { widgetEmbedSnippet } from '@/lib/urls'
 import { generateTempPassword } from '@/lib/clientLoginCredentials'
+import { ensureTenantAuthUser } from '@/lib/provision/ensureTenantAuthUser'
 import {
   parseImageSelections,
   syncProductSlots,
@@ -1377,56 +1378,14 @@ export async function provisionTenant(
 
 
 
-  const tempPassword = generateTempPassword()
-  let authUserId: string | null = null
-
   // Spec builds skip this entirely: no account is created for a business that
   // has not agreed to anything, and nothing is left to clean up if the build is
-  // later purged. The real account is created at acceptance instead.
-  const { data: existingUsers } = createAuthUser
-    ? await supabase.auth.admin.listUsers()
-    : { data: { users: [] as { id: string; email?: string }[] } }
-  const existingUser = createAuthUser
-    ? existingUsers.users.find((u) => u.email === ownerEmail)
-    : undefined
-
-  if (!createAuthUser) {
-    // no-op — authUserId stays null and the contractor_settings update below is skipped
-  } else if (!existingUser) {
-    const { data: created, error: authError } = await supabase.auth.admin.createUser({
-      email: ownerEmail,
-      password: tempPassword,
-      email_confirm: true,
-      user_metadata: {
-        force_password_reset: true,
-        tenant_id: tenantId,
-        widget_id: widgetId,
-      },
-    })
-    if (authError) console.error('Failed to create auth user:', authError)
-    else authUserId = created.user?.id ?? null
-  } else {
-    authUserId = existingUser.id
-    await supabase.auth.admin.updateUserById(existingUser.id, {
-      password: tempPassword,
-      user_metadata: {
-        force_password_reset: true,
-        tenant_id: tenantId,
-        widget_id: widgetId,
-      },
-    })
-  }
-
-  if (authUserId) {
-    await supabase
-      .from('contractor_settings')
-      .update({
-        user_id: authUserId,
-        contact_email: ownerEmail,
-        initial_login_password: tempPassword,
-      })
-      .eq('id', tenantId)
-  }
+  // later purged. The real account is created at adoption instead, through the
+  // same helper, so the two cannot drift.
+  const auth = createAuthUser
+    ? await ensureTenantAuthUser(supabase, { ownerEmail, tenantId, widgetId })
+    : { authUserId: null, tempPassword: generateTempPassword(), created: false }
+  const tempPassword = auth.tempPassword
 
   const loginUrl = `${loginOrigin.replace(/\/$/, '')}/login`
   const embedSnippet = widgetEmbedSnippet(widgetId, engagementModel)
@@ -1541,6 +1500,6 @@ export async function provisionTenant(
     ownerEmail,
     loginUrl,
     tempPassword,
-    authUserId,
+    authUserId: auth.authUserId,
   }
 }
