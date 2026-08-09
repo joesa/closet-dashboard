@@ -1,4 +1,4 @@
-import { generateTextWithFallback, CLAUDE_SONNET_MODEL } from '@/lib/ai/aiTextProvider'
+import { generateTextFullRedesign } from '@/lib/ai/aiTextProvider'
 import { extractServicesNamedInBrief } from '@/lib/ai/extractBriefServices'
 import {
   EMPTY_SEED_DIRECTION_INSTRUCTIONS,
@@ -33,7 +33,7 @@ export type EnhancedFullRedesignBrief = {
   optimizedBrief: string
   /** True when admin left the seed empty and we invented the full direction. */
   inventedFromIntake: boolean
-  source: 'gemini' | 'anthropic' | 'fallback'
+  source: 'openai' | 'gemini' | 'anthropic' | 'fallback'
   directionMetrics?: {
     candidateCount: number
     reuseScore: number
@@ -424,15 +424,18 @@ const JSON_SHAPE = `{
  * Expand a simple or detailed admin Full redesign prompt into a subject-derived,
  * anti-AI creative brief grounded in intake.
  *
- * Empty admin seed: Claude Sonnet invents a complete design-direction prompt
- * using the studio design system (educated guess from intake). Non-empty seed:
- * Gemini expands/optimizes (keeps Claude budget for the site generate).
+ * Every model-backed phase uses the Full redesign provider chain. The
+ * deterministic fallback remains available when no provider succeeds.
  */
 export async function enhanceFullRedesignBrief(
   opts: EnhanceOpts
 ): Promise<EnhancedFullRedesignBrief> {
   const fallback = fallbackEnhancedBrief(opts)
-  if (!process.env.GEMINI_API_KEY && !process.env.ANTHROPIC_API_KEY) {
+  if (
+    !process.env.OPENAI_API_KEY &&
+    !process.env.GEMINI_API_KEY &&
+    !process.env.ANTHROPIC_API_KEY
+  ) {
     return fallback
   }
 
@@ -485,22 +488,18 @@ ${opts.adminBrief.trim() || '(EMPTY — invent a complete self-authored design-d
 Produce the optimized brief JSON.`
 
   try {
-    // Empty seed: Claude Sonnet invents the direction (design-system judgment).
-    // Non-empty: Gemini expands — keep Claude budget for the full site generate.
-    const { text, provider } = await generateTextWithFallback({
+    const { text, provider } = await generateTextFullRedesign({
       systemPrompt,
       prompt: userPrompt,
       jsonMode: true,
       temperature: seedEmpty ? 0.75 : 0.65,
       maxOutputTokens: seedEmpty ? 2200 : 1400,
-      preferredProvider: seedEmpty ? 'anthropic' : 'gemini',
-      anthropicModel: CLAUDE_SONNET_MODEL,
     })
     const parsed = extractJsonObject(text)
     const firstDraft = normalizeEnhanced(
       parsed,
       opts,
-      provider === 'anthropic' ? 'anthropic' : 'gemini'
+      provider
     )
     const takenConcepts = opts.avoid?.taken
       .map((taken) => taken.signatureConcept || '')
@@ -519,19 +518,17 @@ ${JSON.stringify(candidate)}
 
 BUSINESS:
 ${userPrompt}`
-      const { text: reviewedText, provider: reviewProvider } = await generateTextWithFallback({
+      const { text: reviewedText, provider: reviewProvider } = await generateTextFullRedesign({
         systemPrompt: `You are the independent principal design-engineering reviewer. No site build has started and none may start until you approve a complete, coherent, original, anti-AI design system. Output JSON only.\n\n${FULL_REDESIGN_DESIGN_SYSTEM}\n${avoidBlock}\nReturn ONLY JSON:\n${JSON_SHAPE}`,
         prompt: reviewPrompt,
         jsonMode: true,
         temperature: 0.45 + reviewAttempt * 0.1,
         maxOutputTokens: seedEmpty ? 2600 : 2200,
-        preferredProvider: provider,
-        anthropicModel: CLAUDE_SONNET_MODEL,
       })
       candidate = lockAdminSeedInBrief(normalizeEnhanced(
         extractJsonObject(reviewedText),
         opts,
-        reviewProvider === 'anthropic' ? 'anthropic' : 'gemini'
+        reviewProvider
       ), opts.adminBrief)
       failures = validateFullRedesignPreflight(
         candidate,

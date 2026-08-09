@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import {
   CLAUDE_SONNET_MODEL,
   configuredSurgicalProviders,
+  generateTextFullRedesign,
   generateTextWithFallback,
 } from '@/lib/ai/aiTextProvider'
 import {
@@ -1852,10 +1853,6 @@ async function runFullGenerate(opts: {
     source: string
   }
 }> {
-  // Full redesigns use Claude Sonnet 5 by default — Fable 5's adaptive
-  // thinking routinely exceeds the ~5 minute serverless budget. Override with
-  // CUSTOM_SITE_CLAUDE_MODEL=claude-fable-5 if you want the frontier model.
-  const useClaude = !!process.env.ANTHROPIC_API_KEY
   const hasImages = !!(opts.images && opts.images.length > 0)
   const attachedAssetUrls = Array.isArray(opts.context.attachedAssetUrls)
     ? (opts.context.attachedAssetUrls as unknown[])
@@ -1935,6 +1932,7 @@ async function runFullGenerate(opts: {
           inventedFromIntake: !!resumeLocked.inventedFromIntake,
           source:
             resumeLocked.source === 'gemini' ||
+            resumeLocked.source === 'openai' ||
             resumeLocked.source === 'anthropic' ||
             resumeLocked.source === 'fallback'
               ? resumeLocked.source
@@ -2247,33 +2245,15 @@ DIRECTION LOCK:
     temperature?: number
     withImages?: boolean
   }): Promise<Record<string, unknown>> {
-    try {
-      return await callModelJson({
-        systemPrompt: args.systemPrompt,
-        userPrompt: args.userPrompt,
-        temperature: args.temperature ?? 0.7,
-        maxOutputTokens: args.maxOutputTokens,
-        preferredProvider: useClaude ? 'anthropic' : undefined,
-        anthropicModel: CLAUDE_SONNET_MODEL,
-        images: args.withImages ? opts.images : undefined,
-        abortMs: args.abortMs,
-      })
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      if (/timed out|terminated/i.test(msg) && process.env.GEMINI_API_KEY) {
-        console.warn('[runFullGenerate] primary model failed — Gemini fallback:', msg)
-        extraWarnings.push(`Pass fell back to Gemini after: ${msg.slice(0, 120)}`)
-        return await callModelJson({
-          systemPrompt: args.systemPrompt,
-          userPrompt: args.userPrompt,
-          temperature: 0.65,
-          maxOutputTokens: args.maxOutputTokens,
-          preferredProvider: 'gemini',
-          images: args.withImages ? opts.images : undefined,
-        })
-      }
-      throw err
-    }
+    return callModelJson({
+      systemPrompt: args.systemPrompt,
+      userPrompt: args.userPrompt,
+      temperature: args.temperature ?? 0.7,
+      maxOutputTokens: args.maxOutputTokens,
+      images: args.withImages ? opts.images : undefined,
+      abortMs: args.abortMs,
+      useFullRedesignProviderChain: true,
+    })
   }
 
   const report = async (
@@ -2449,7 +2429,7 @@ Build globalCss + home "/" only. Output JSON.`
     const parsed = await modelJson({
       systemPrompt: foundationSystem,
       userPrompt: foundationUser,
-      maxOutputTokens: useClaude ? 16000 : 24576,
+      maxOutputTokens: 24576,
       abortMs: 420_000,
       withImages: true,
     })
@@ -2599,7 +2579,7 @@ Output JSON for ${path} only.`
     const parsed = await modelJson({
       systemPrompt: pageSystem,
       userPrompt: pageUser,
-      maxOutputTokens: useClaude ? 10000 : 16384,
+      maxOutputTokens: 16384,
       abortMs: 300_000,
       withImages: false,
       temperature: 0.65,
@@ -3210,11 +3190,12 @@ async function callModelJson(opts: {
   preferredProvider?: 'anthropic' | 'gemini' | 'openai'
   anthropicModel?: string
   images?: Array<{ mimeType: string; data: string }>
-  /** Claude abort budget — Full redesign uses ~500s on the 800s worker. */
+  /** Provider abort budget; Full redesign runs on the dedicated 800s worker. */
   abortMs?: number
+  /** Full redesign only: GPT-5.6 Sol → Gemini 3.1 Pro → Sonnet 5. */
+  useFullRedesignProviderChain?: boolean
   /**
-   * Surgical edits only: Gemini → OpenAI → Anthropic across credit/API/JSON failures.
-   * Full redesign keeps preferredProvider (Claude-first).
+  * Surgical edits only: Gemini → OpenAI → Anthropic across credit/API/JSON failures.
    */
   useSurgicalProviderChain?: boolean
 }): Promise<Record<string, unknown>> {
@@ -3230,7 +3211,10 @@ async function callModelJson(opts: {
   for (let attempt = 0; attempt < 2; attempt++) {
     let text: string
     try {
-      const result = await generateTextWithFallback({
+      const generateText = opts.useFullRedesignProviderChain
+        ? generateTextFullRedesign
+        : generateTextWithFallback
+      const result = await generateText({
         prompt: opts.userPrompt,
         systemPrompt:
           attempt === 0

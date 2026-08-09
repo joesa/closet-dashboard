@@ -10,7 +10,7 @@
  *
  * The avoid-list is load-bearing here in a way it would not be for most
  * pipelines: aiTextProvider deliberately does not send `temperature` to Claude
- * (the models reject it), and Full redesign is Claude-first, so sampling
+ * (the models reject it), and Full redesign uses a fixed provider chain, so sampling
  * variation is not available as a diversity lever. Prompt content is the lever.
  *
  * Every read is non-fatal. If the table is missing, unreachable, or the query

@@ -7,7 +7,7 @@ host. Vercel only enqueues jobs and serves the admin/intake poll APIs.
 
 ## Why
 
-Vercel serverless `maxDuration` (even 800s) kills Full redesign mid-Claude —
+Vercel serverless `maxDuration` (even 800s) can kill Full redesign mid-generation —
 and site-wide surgical renames also exceeded the 60s API budget (504).
 Heartbeats cannot revive a dead isolate. Graphile has no execution time limit.
 
@@ -247,7 +247,8 @@ but the result is wrong:
 
 Everything else the task path reads has a working default:
 `AUTO_LAUNCH_REDESIGN` (enabled unless `'false'`), `CUSTOM_SITE_GEMINI_MODEL`,
-`CUSTOM_SITE_OPENAI_MODEL`, `PROVISION_BATCH_SIZE`, `PROVISION_MAX_ATTEMPTS`.
+`CUSTOM_SITE_OPENAI_MODEL`, `FULL_REDESIGN_OPENAI_MODEL`,
+`FULL_REDESIGN_GEMINI_MODEL`, `PROVISION_BATCH_SIZE`, `PROVISION_MAX_ATTEMPTS`.
 
 ### Monitoring
 
@@ -340,6 +341,13 @@ worker dies with `ENOSPC`, look here first — jobs stay safe in
 ## Full redesign multi-pass + resume
 
 Full redesign no longer asks the model for every page in one JSON blob.
+
+**Model chain:** OpenAI (`gpt-5.6-sol` / `FULL_REDESIGN_OPENAI_MODEL`) →
+Gemini (`gemini-3.1-pro-preview` / `FULL_REDESIGN_GEMINI_MODEL`) → Anthropic
+(`claude-sonnet-5` / `CUSTOM_SITE_CLAUDE_MODEL`). Providers without API keys
+are skipped; API, credit, timeout, and empty-response failures advance to the
+next configured provider. This chain applies to brief creation, independent
+preflight review, foundation generation, and every page pass.
 
 1. **Foundation** — `globalCss` + home `/` (locked brief + `serviceUpdates` stored on the job)
 2. **One page per pass** — remaining intake paths, matching chrome from home

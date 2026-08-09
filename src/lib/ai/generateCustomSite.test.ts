@@ -284,6 +284,8 @@ describe('full redesign brief enhancement', () => {
     expect(src).toContain('SELF-AUTHORED DESIGN DIRECTION PROMPT')
     expect(src).toContain('FULL_REDESIGN_DESIGN_SYSTEM')
     expect(src).toContain('buildInventedRedesignBriefNote')
+    expect(src).toContain('useFullRedesignProviderChain: true')
+    expect(src).toContain('generateTextFullRedesign')
   })
 })
 

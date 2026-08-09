@@ -2,14 +2,52 @@ import { afterEach, describe, expect, it } from 'vitest'
 import {
   CLAUDE_FABLE_MODEL,
   CLAUDE_SONNET_MODEL,
+  FULL_REDESIGN_PROVIDER_CHAIN,
+  GEMINI_FULL_REDESIGN_MODEL,
   GEMINI_SURGICAL_MODEL,
+  OPENAI_FULL_REDESIGN_MODEL,
   OPENAI_SURGICAL_MODEL,
   SURGICAL_PROVIDER_CHAIN,
   resolveClaudeModel,
+  resolveFullRedesignGeminiModel,
+  resolveFullRedesignOpenAiModel,
   resolveGeminiModel,
   resolveOpenAiModel,
   estimateAiTextCostUsd,
 } from './aiTextProvider'
+
+describe('full redesign model defaults', () => {
+  const prevOpenAi = process.env.FULL_REDESIGN_OPENAI_MODEL
+  const prevGemini = process.env.FULL_REDESIGN_GEMINI_MODEL
+
+  afterEach(() => {
+    if (prevOpenAi === undefined) delete process.env.FULL_REDESIGN_OPENAI_MODEL
+    else process.env.FULL_REDESIGN_OPENAI_MODEL = prevOpenAi
+    if (prevGemini === undefined) delete process.env.FULL_REDESIGN_GEMINI_MODEL
+    else process.env.FULL_REDESIGN_GEMINI_MODEL = prevGemini
+  })
+
+  it('uses GPT-5.6 Sol, Gemini 3.1 Pro, then Sonnet 5', () => {
+    delete process.env.FULL_REDESIGN_OPENAI_MODEL
+    delete process.env.FULL_REDESIGN_GEMINI_MODEL
+    expect([...FULL_REDESIGN_PROVIDER_CHAIN]).toEqual([
+      'openai',
+      'gemini',
+      'anthropic',
+    ])
+    expect(resolveFullRedesignOpenAiModel()).toBe(OPENAI_FULL_REDESIGN_MODEL)
+    expect(resolveFullRedesignGeminiModel()).toBe(GEMINI_FULL_REDESIGN_MODEL)
+    expect(CLAUDE_SONNET_MODEL).toBe('claude-sonnet-5')
+  })
+
+  it('honors dedicated model overrides', () => {
+    process.env.FULL_REDESIGN_OPENAI_MODEL = 'gpt-full-override'
+    process.env.FULL_REDESIGN_GEMINI_MODEL = 'gemini-full-override'
+    expect(resolveFullRedesignOpenAiModel()).toBe('gpt-full-override')
+    expect(resolveFullRedesignGeminiModel()).toBe('gemini-full-override')
+    expect(resolveFullRedesignOpenAiModel('gpt-explicit')).toBe('gpt-explicit')
+  })
+})
 
 describe('resolveClaudeModel', () => {
   const prev = process.env.CUSTOM_SITE_CLAUDE_MODEL

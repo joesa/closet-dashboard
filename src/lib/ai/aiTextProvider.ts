@@ -5,8 +5,7 @@ import OpenAI from 'openai'
 /**
  * Shared text-generation provider.
  *
- * - Full redesign / intake: prefer Claude Sonnet when ANTHROPIC_API_KEY is set
- *   (Fable 5 is opt-in via CUSTOM_SITE_CLAUDE_MODEL); Gemini is the fallback.
+ * - Full redesign: GPT-5.6 Sol → Gemini 3.1 Pro → Claude Sonnet 5.
  * - Surgical edits: Gemini → OpenAI → Anthropic (see generateTextSurgical).
  *
  * Server-only — never import in client components.
@@ -36,6 +35,8 @@ export type TextGenerationOpts = {
    * that provider when its key is set. Default is Gemini.
    */
   preferredProvider?: AiTextProvider
+  /** Explicit provider order. Used by workflows with a fixed fallback policy. */
+  providerChain?: readonly AiTextProvider[]
   /**
    * Override Claude model id. Defaults to CUSTOM_SITE_CLAUDE_MODEL or
    * claude-sonnet-5 (fast enough for Full redesign inside Vercel limits).
@@ -83,6 +84,10 @@ export const CLAUDE_FABLE_MODEL = 'claude-fable-5'
 export const OPENAI_SURGICAL_MODEL = 'gpt-4.1'
 /** Best Gemini model alias for surgical edits (env-overridable). */
 export const GEMINI_SURGICAL_MODEL = 'gemini-pro-latest'
+/** Primary model for Full redesign. */
+export const OPENAI_FULL_REDESIGN_MODEL = 'gpt-5.6-sol'
+/** Second-choice model for Full redesign. */
+export const GEMINI_FULL_REDESIGN_MODEL = 'gemini-3.1-pro-preview'
 
 /**
  * Default Claude abort (~8.3 min). Dedicated Full redesign worker has 800s;
@@ -94,6 +99,13 @@ const CLAUDE_ABORT_MS = 500_000
 export const SURGICAL_PROVIDER_CHAIN: readonly AiTextProvider[] = [
   'gemini',
   'openai',
+  'anthropic',
+] as const
+
+/** Full redesign provider order: OpenAI → Gemini → Anthropic. */
+export const FULL_REDESIGN_PROVIDER_CHAIN: readonly AiTextProvider[] = [
+  'openai',
+  'gemini',
   'anthropic',
 ] as const
 
@@ -119,6 +131,18 @@ export function resolveGeminiModel(override?: string): string {
   const fromEnv = process.env.CUSTOM_SITE_GEMINI_MODEL?.trim()
   if (fromEnv) return fromEnv
   return GEMINI_SURGICAL_MODEL
+}
+
+export function resolveFullRedesignOpenAiModel(override?: string): string {
+  return override?.trim() ||
+    process.env.FULL_REDESIGN_OPENAI_MODEL?.trim() ||
+    OPENAI_FULL_REDESIGN_MODEL
+}
+
+export function resolveFullRedesignGeminiModel(override?: string): string {
+  return override?.trim() ||
+    process.env.FULL_REDESIGN_GEMINI_MODEL?.trim() ||
+    GEMINI_FULL_REDESIGN_MODEL
 }
 
 function providerConfigured(provider: AiTextProvider): boolean {
@@ -318,7 +342,9 @@ async function generateWithOpenAI(opts: TextGenerationOpts): Promise<ProviderGen
     {
       model,
       messages,
-      temperature: opts.temperature ?? 0.5,
+      ...(!/^gpt-5\.6(?:-|$)/i.test(model)
+        ? { temperature: opts.temperature ?? 0.5 }
+        : {}),
       max_completion_tokens: Math.max(opts.maxOutputTokens ?? 2048, 2048),
       ...(opts.jsonMode ? { response_format: { type: 'json_object' as const } } : {}),
     },
@@ -393,14 +419,22 @@ export async function generateTextWithFallback(
 ): Promise<TextGenerationResult> {
   const chain: AiTextProvider[] = [];
 
-  if (opts.preferredProvider && providerConfigured(opts.preferredProvider)) {
+  if (opts.providerChain) {
+    for (const provider of opts.providerChain) {
+      if (!chain.includes(provider) && providerConfigured(provider)) {
+        chain.push(provider)
+      }
+    }
+  } else if (opts.preferredProvider && providerConfigured(opts.preferredProvider)) {
     chain.push(opts.preferredProvider);
   }
 
-  const defaultOrder: AiTextProvider[] = ['gemini', 'openai', 'anthropic'];
-  for (const p of defaultOrder) {
-    if (!chain.includes(p) && providerConfigured(p)) {
-      chain.push(p);
+  if (!opts.providerChain) {
+    const defaultOrder: AiTextProvider[] = ['gemini', 'openai', 'anthropic'];
+    for (const p of defaultOrder) {
+      if (!chain.includes(p) && providerConfigured(p)) {
+        chain.push(p);
+      }
     }
   }
 
@@ -432,6 +466,20 @@ export async function generateTextWithFallback(
 
   const msg = lastErr instanceof Error ? lastErr.message : String(lastErr);
   throw new Error(`AI generation failed on all providers: ${msg}`);
+}
+
+/** Full redesign only: GPT-5.6 Sol → Gemini 3.1 Pro → Claude Sonnet 5. */
+export function generateTextFullRedesign(
+  opts: TextGenerationOpts
+): Promise<TextGenerationResult> {
+  return generateTextWithFallback({
+    ...opts,
+    preferredProvider: undefined,
+    providerChain: FULL_REDESIGN_PROVIDER_CHAIN,
+    openaiModel: resolveFullRedesignOpenAiModel(opts.openaiModel),
+    geminiModel: resolveFullRedesignGeminiModel(opts.geminiModel),
+    anthropicModel: resolveClaudeModel(opts.anthropicModel),
+  })
 }
 
 /**
