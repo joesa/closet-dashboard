@@ -1,10 +1,12 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { specBuildDeletionBlockReason } from '@/lib/spec/specBuilds'
 import { SPEC_BUILD_SELECT, type SpecBuildRow, type SpecFact } from '@/lib/spec/types'
 import { firecrawlConfigured } from '@/lib/spec/research/fetchPage'
 import { resolveResearchSources } from '@/lib/spec/research/sources'
 import { rejectSpecBuildAction, runResearchAction } from '../actions'
+import DeleteSpecBuildButton from '../DeleteSpecBuildButton'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -253,6 +255,12 @@ export default async function SpecBuildDetailPage({
               Reject
             </button>
           </form>
+          <DeleteSpecBuildButton
+            buildId={build.id}
+            businessName={build.business_name}
+            variant="detail"
+            disabledReason={deleteDisabledReason(build)}
+          />
         </div>
         <p className="mt-3 text-xs text-gray-500">
           Research reads public pages and writes the intake row. It does not build a site,
@@ -277,4 +285,13 @@ export default async function SpecBuildDetailPage({
       </section>
     </div>
   )
+}
+
+function deleteDisabledReason(
+  build: Pick<SpecBuildRow, 'status' | 'tenant_id'>
+): string | null {
+  const reason = specBuildDeletionBlockReason(build)
+  if (reason === 'in_flight') return 'Cannot delete while this build is processing.'
+  if (reason === 'tenant_exists') return 'Delete the provisioned tenant from Sites instead.'
+  return null
 }

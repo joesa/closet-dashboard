@@ -1,9 +1,10 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
+import { redirect } from 'next/navigation'
 import { logAdminAction, requireAdmin } from '@/lib/admin'
 import { advanceSpecBuild } from '@/lib/spec/advanceSpecBuild'
-import { getSpecBuild, transitionSpecBuild } from '@/lib/spec/specBuilds'
+import { deleteSpecBuild, getSpecBuild, transitionSpecBuild } from '@/lib/spec/specBuilds'
 
 /**
  * Run (or re-run) research for one build and fill its intake row.
@@ -64,4 +65,31 @@ export async function rejectSpecBuildAction(formData: FormData): Promise<void> {
 
   revalidatePath('/admin/spec-builds')
   revalidatePath(`/admin/spec-builds/${id}`)
+}
+
+export async function deleteSpecBuildAction(formData: FormData): Promise<void> {
+  const admin = await requireAdmin()
+  const id = String(formData.get('spec_build_id') || '')
+  if (!id) return
+
+  const build = await getSpecBuild(id)
+  if (!build) redirect('/admin/spec-builds')
+
+  const result = await deleteSpecBuild(id)
+  if (!result.deleted) return
+
+  await logAdminAction({
+    actor: admin,
+    action: 'spec_build.deleted',
+    targetType: 'spec_build',
+    targetId: id,
+    metadata: {
+      businessName: build.business_name,
+      previousStatus: build.status,
+      intakeDeleted: result.intakeDeleted,
+    },
+  })
+
+  revalidatePath('/admin/spec-builds')
+  redirect('/admin/spec-builds')
 }

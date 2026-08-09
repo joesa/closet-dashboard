@@ -2,6 +2,7 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { normalizePhone } from '@/lib/twilio-sms'
 import {
   SPEC_BUILD_CLOSED_STATUSES,
+  SPEC_BUILD_IN_FLIGHT_STATUSES,
   SPEC_BUILD_SELECT,
   type SpecBuildLeadInput,
   type SpecBuildLeadSource,
@@ -29,6 +30,55 @@ export function specBuildMaxServices(): number {
 export type QueueSpecBuildResult =
   | { queued: true; id: string }
   | { queued: false; reason: 'duplicate' | 'invalid_phone' | 'missing_name'; detail?: string }
+
+export type DeleteSpecBuildResult =
+  | { deleted: true; intakeDeleted: boolean }
+  | { deleted: false; reason: 'not_found' | 'in_flight' | 'tenant_exists' }
+
+export function specBuildDeletionBlockReason(
+  build: Pick<SpecBuildRow, 'status' | 'tenant_id'>
+): 'in_flight' | 'tenant_exists' | null {
+  if ((SPEC_BUILD_IN_FLIGHT_STATUSES as readonly string[]).includes(build.status)) {
+    return 'in_flight'
+  }
+  if (build.tenant_id) return 'tenant_exists'
+  return null
+}
+
+/**
+ * Permanently remove a queue entry that has not produced a tenant.
+ * Any attached intake is deleted only when it is a spec-created row.
+ */
+export async function deleteSpecBuild(id: string): Promise<DeleteSpecBuildResult> {
+  const build = await getSpecBuild(id)
+  if (!build) return { deleted: false, reason: 'not_found' }
+
+  const blocked = specBuildDeletionBlockReason(build)
+  if (blocked) return { deleted: false, reason: blocked }
+
+  const supabase = getSupabaseAdmin()
+  let intakeDeleted = false
+  if (build.intake_id) {
+    const { data, error } = await supabase
+      .from('prospect_intakes')
+      .delete()
+      .eq('id', build.intake_id)
+      .eq('source', 'spec')
+      .select('id')
+    if (error) throw error
+    intakeDeleted = (data?.length ?? 0) > 0
+  }
+
+  const { data, error } = await supabase
+    .from('spec_builds')
+    .delete()
+    .eq('id', id)
+    .select('id')
+  if (error) throw error
+  if ((data?.length ?? 0) === 0) return { deleted: false, reason: 'not_found' }
+
+  return { deleted: true, intakeDeleted }
+}
 
 /**
  * Put one lead in the queue.

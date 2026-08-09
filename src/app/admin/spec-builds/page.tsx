@@ -1,8 +1,13 @@
 import Link from 'next/link'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
-import { specBuildDailyMax, specBuildsEnabled } from '@/lib/spec/specBuilds'
+import {
+  specBuildDailyMax,
+  specBuildDeletionBlockReason,
+  specBuildsEnabled,
+} from '@/lib/spec/specBuilds'
 import { SPEC_BUILD_STATUSES, type SpecBuildRow } from '@/lib/spec/types'
 import BulkLeadForm from './BulkLeadForm'
+import DeleteSpecBuildButton from './DeleteSpecBuildButton'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -210,12 +215,19 @@ export default async function SpecBuildsPage({
                 </td>
                 <td className="px-4 py-3 text-gray-600">{fmt(row.created_at)}</td>
                 <td className="px-4 py-3">
-                  <Link
-                    href={`/admin/spec-builds/${row.id}`}
-                    className="text-sm font-medium text-blue-600 hover:underline"
-                  >
-                    View
-                  </Link>
+                  <div className="flex items-center justify-end gap-3">
+                    <Link
+                      href={`/admin/spec-builds/${row.id}`}
+                      className="text-sm font-medium text-blue-600 hover:underline"
+                    >
+                      View
+                    </Link>
+                    <DeleteSpecBuildButton
+                      buildId={row.id}
+                      businessName={row.business_name}
+                      disabledReason={deleteDisabledReason(row)}
+                    />
+                  </div>
                 </td>
               </tr>
             ))}
@@ -224,4 +236,13 @@ export default async function SpecBuildsPage({
       </div>
     </div>
   )
+}
+
+function deleteDisabledReason(
+  row: Pick<SpecBuildRow, 'status' | 'tenant_id'>
+): string | null {
+  const reason = specBuildDeletionBlockReason(row)
+  if (reason === 'in_flight') return 'Cannot delete while this build is processing.'
+  if (reason === 'tenant_exists') return 'Delete the provisioned tenant from Sites instead.'
+  return null
 }
