@@ -3,8 +3,55 @@
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { logAdminAction, requireAdmin } from '@/lib/admin'
+import { addAdminFact } from '@/lib/spec/addAdminFact'
 import { advanceSpecBuild } from '@/lib/spec/advanceSpecBuild'
 import { deleteSpecBuild, getSpecBuild, transitionSpecBuild } from '@/lib/spec/specBuilds'
+
+/**
+ * Add a fact by hand to rescue a lead that publishes nothing verifiable.
+ *
+ * The admin's identity travels with the fact rather than only into the audit
+ * log: it is rendered next to the claim in the ledger, so whoever reviews the
+ * finished site can see which claims a machine read off a page and which a
+ * colleague vouched for.
+ */
+export async function addFactAction(formData: FormData): Promise<void> {
+  const admin = await requireAdmin()
+  const id = String(formData.get('spec_build_id') || '')
+  if (!id) return
+
+  const result = await addAdminFact({
+    buildId: id,
+    field: String(formData.get('field') || ''),
+    value: String(formData.get('value') || ''),
+    note: String(formData.get('note') || ''),
+    // An admin fact must carry a name. Falling back to the user id keeps that
+    // true even for an account with no email on its profile.
+    addedBy: admin.email || admin.id,
+  })
+
+  if (!result.ok) {
+    revalidatePath(`/admin/spec-builds/${id}`)
+    redirect(`/admin/spec-builds/${id}?fact_error=${encodeURIComponent(result.reason)}`)
+  }
+
+  await logAdminAction({
+    actor: admin,
+    action: 'spec_build.fact_added',
+    targetType: 'spec_build',
+    targetId: id,
+    metadata: {
+      field: String(formData.get('field') || ''),
+      note: String(formData.get('note') || ''),
+      redrafted: result.redrafted,
+    },
+  })
+
+  revalidatePath('/admin/spec-builds')
+  redirect(
+    `/admin/spec-builds/${id}?fact_added=${result.redrafted ? 'drafting' : 'stored'}`
+  )
+}
 
 /**
  * Run (or re-run) research for one build and fill its intake row.

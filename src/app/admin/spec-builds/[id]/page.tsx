@@ -5,7 +5,22 @@ import { specBuildDeletionBlockReason } from '@/lib/spec/specBuilds'
 import { SPEC_BUILD_SELECT, type SpecBuildRow, type SpecFact } from '@/lib/spec/types'
 import { firecrawlConfigured } from '@/lib/spec/research/fetchPage'
 import { resolveResearchSources } from '@/lib/spec/research/sources'
-import { rejectSpecBuildAction, runResearchAction } from '../actions'
+import { ADMIN_FACT_FIELDS } from '@/lib/spec/addAdminFact'
+import { addFactAction, rejectSpecBuildAction, runResearchAction } from '../actions'
+
+/** Plain-language prompts — the column names mean nothing to a person on a call. */
+const ADMIN_FACT_LABELS: Record<string, string> = {
+  craft_spec: 'What they measure, and to what tolerance',
+  shop_rule: 'A rule they never break',
+  local_conditions: 'What goes wrong on local jobs',
+  crew_shape: 'Who actually does the work',
+  client_artifact: 'What the customer receives',
+  recent_job: 'A real recent job',
+  competitor_tell: 'What cheaper competitors get wrong',
+  timeline_facts: 'Real timeframes',
+  guarantee_terms: 'Their guarantee, in their words',
+  signature_materials: 'Named materials, brands or equipment',
+}
 import DeleteSpecBuildButton from '../DeleteSpecBuildButton'
 
 export const dynamic = 'force-dynamic'
@@ -26,10 +41,13 @@ function Field({ label, value }: { label: string; value: React.ReactNode }) {
 
 export default async function SpecBuildDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>
+  searchParams: Promise<{ fact_error?: string; fact_added?: string }>
 }) {
   const { id } = await params
+  const { fact_error: factError, fact_added: factAdded } = await searchParams
   const { data } = await getSupabaseAdmin()
     .from('spec_builds')
     .select(SPEC_BUILD_SELECT)
@@ -63,6 +81,19 @@ export default async function SpecBuildDetailPage({
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {build.status_reason && <p className="font-medium">{build.status_reason}</p>}
           {build.last_error && <p className="mt-1 font-mono text-xs">{build.last_error}</p>}
+        </div>
+      )}
+
+      {factError && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {factError}
+        </div>
+      )}
+      {factAdded && (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+          {factAdded === 'drafting'
+            ? 'Fact added. The build now has a concrete claim and has moved to drafting.'
+            : 'Fact added, but the build still has no claim that would pass the copy gate.'}
         </div>
       )}
 
@@ -144,17 +175,37 @@ export default async function SpecBuildDetailPage({
                   <td className="px-3 py-2 font-mono text-xs text-gray-700">{fact.field}</td>
                   <td className="px-3 py-2 text-gray-900">{fact.value}</td>
                   <td className="px-3 py-2">
-                    <a
-                      href={fact.sourceUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-blue-600 hover:underline"
-                    >
-                      {fact.sourceKind}
-                    </a>
+                    {/*
+                      An admin fact has no page to link to — its provenance is a
+                      person and a note. Showing both is what lets a later
+                      reviewer tell a claim we read off a page from one a
+                      colleague vouched for.
+                    */}
+                    {fact.sourceKind === 'admin_manual' ? (
+                      <div className="text-xs">
+                        <span className="rounded-full bg-purple-100 px-2 py-0.5 font-medium text-purple-700">
+                          added by hand
+                        </span>
+                        <p className="mt-1 text-gray-600">{fact.note}</p>
+                        {fact.addedBy && <p className="text-gray-500">— {fact.addedBy}</p>}
+                      </div>
+                    ) : (
+                      <a
+                        href={fact.sourceUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-blue-600 hover:underline"
+                      >
+                        {fact.sourceKind}
+                      </a>
+                    )}
                   </td>
                   <td className="px-3 py-2">
-                    {fact.verbatim ? (
+                    {fact.sourceKind === 'admin_manual' ? (
+                      <span className="rounded-full bg-purple-100 px-2 py-0.5 text-xs font-medium text-purple-700">
+                        vouched
+                      </span>
+                    ) : fact.verbatim ? (
                       <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">
                         verbatim
                       </span>
@@ -169,6 +220,74 @@ export default async function SpecBuildDetailPage({
             </tbody>
           </table>
         )}
+      </section>
+
+      {/*
+        The escape hatch. Most cold leads publish nothing verifiable, so without
+        a way to write down what the owner says on the phone those builds are
+        simply dead. Testimonials are absent from the field list on purpose: an
+        admin can authorise the business's own claims, not a customer's words.
+      */}
+      <section className="rounded-lg border border-gray-200 bg-white p-6">
+        <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-gray-500">
+          Add a fact by hand
+        </h2>
+        <p className="mb-4 text-sm text-gray-600">
+          For anything the business told you directly. It goes in the ledger with your name and
+          your note, so whoever reviews the finished site can see it came from a person rather
+          than a page.
+        </p>
+        <form action={addFactAction} className="space-y-3">
+          <input type="hidden" name="spec_build_id" value={build.id} />
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+            <label className="text-sm">
+              <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-500">
+                What kind of fact
+              </span>
+              <select
+                name="field"
+                required
+                defaultValue="craft_spec"
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+              >
+                {ADMIN_FACT_FIELDS.map((field) => (
+                  <option key={field} value={field}>
+                    {ADMIN_FACT_LABELS[field] ?? field}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="text-sm md:col-span-2">
+              <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-500">
+                In their words
+              </span>
+              <input
+                name="value"
+                required
+                placeholder="We never soft-wash cedar above 1% sodium hypochlorite"
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+              />
+            </label>
+          </div>
+          <label className="block text-sm">
+            <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-500">
+              Where did you get this? (required)
+            </span>
+            <input
+              name="note"
+              required
+              minLength={15}
+              placeholder="Owner told me on a call, 9 Aug — he brought it up unprompted"
+              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+            />
+          </label>
+          <button
+            type="submit"
+            className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500"
+          >
+            Add fact
+          </button>
+        </form>
       </section>
 
       {/*

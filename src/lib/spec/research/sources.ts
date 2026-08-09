@@ -82,7 +82,14 @@ export function normalizeFacebookUrl(url: string): string {
     }
     const path = parsed.pathname.replace(/\/+$/, '')
     if (!path || path === '') return url
-    return `${parsed.origin}${path}/about`
+
+    // The scraper sometimes stores a deep link into a post, video or photo
+    // rather than the page root. Appending /about to that yields nonsense like
+    // /61590230650878/videos/1036687612587090/about, which is then shown to the
+    // admin as the source link. Keep only the page handle — the first segment.
+    const [handle] = path.replace(/^\//, '').split('/')
+    if (!handle) return url
+    return `${parsed.origin}/${handle}/about`
   } catch {
     return url
   }

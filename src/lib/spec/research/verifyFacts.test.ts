@@ -276,3 +276,79 @@ describe('verifyFacts — contact details never travel as facts', () => {
     expect(result.accepted).toHaveLength(1)
   })
 })
+
+describe('verifyFacts — the admin escape hatch', () => {
+  // Most cold leads have nothing verifiable online, so the only route to a site
+  // is a human ringing the owner. That fact has no page to check against, so it
+  // is checked against a person instead.
+  const adminFact = (over: Partial<SpecFact> = {}): Partial<SpecFact> => ({
+    field: 'craft_spec',
+    value: 'Soft-wash mix never goes above 1% sodium hypochlorite on cedar',
+    sourceKind: 'admin_manual',
+    note: 'Owner said so on a call, 9 Aug 2026',
+    addedBy: 'admin@ditchtheform.com',
+    ...over,
+  })
+
+  const noPages = new Map<string, string>()
+
+  it('accepts an attributed admin fact with no page to verify against', () => {
+    const result = verifyFacts([adminFact()], noPages)
+
+    expect(result.rejected).toHaveLength(0)
+    expect(result.accepted).toHaveLength(1)
+    expect(result.accepted[0].sourceKind).toBe('admin_manual')
+    expect(result.accepted[0].addedBy).toBe('admin@ditchtheform.com')
+    // Authoritative as typed, so it can fill a craft_* column — the whole point.
+    expect(result.accepted[0].verbatim).toBe(true)
+    // The note becomes the evidence a reviewer reads to decide whether to believe it.
+    expect(result.accepted[0].evidence).toBe('Owner said so on a call, 9 Aug 2026')
+  })
+
+  it('refuses an admin fact with no source note — that is just an assertion', () => {
+    expect(verifyFacts([adminFact({ note: '' })], noPages).rejected[0].reason).toBe(
+      'admin_fact_needs_source_note'
+    )
+    expect(verifyFacts([adminFact({ note: 'owner' })], noPages).rejected[0].reason).toBe(
+      'admin_fact_needs_source_note'
+    )
+  })
+
+  it('refuses an unattributed admin fact', () => {
+    // Without a name on it, an admin fact is indistinguishable from an invented one.
+    expect(verifyFacts([adminFact({ addedBy: '' })], noPages).rejected[0].reason).toBe(
+      'admin_fact_needs_attribution'
+    )
+  })
+
+  it('never lets an admin write a testimonial', () => {
+    // An admin can authorise the business's own claims. Nobody can vouch for
+    // what somebody else's customer said.
+    const result = verifyFacts(
+      [adminFact({ field: 'customer_quotes', value: 'Best pressure washing in Clarksville!' })],
+      noPages
+    )
+    expect(result.accepted).toHaveLength(0)
+    expect(result.rejected[0].reason).toBe('quote_not_from_review')
+  })
+
+  it('still refuses contact details and unknown columns from an admin', () => {
+    expect(
+      verifyFacts([adminFact({ value: 'Call the owner on (931) 436-7322' })], noPages).rejected[0]
+        .reason
+    ).toBe('contains_contact_details')
+    expect(verifyFacts([adminFact({ field: 'owner_ssn' })], noPages).rejected[0].reason).toBe(
+      'unknown_field'
+    )
+  })
+
+  it('does not let a scraped fact skip verification by claiming to be admin-entered', () => {
+    // The bypass keys off sourceKind, so a page-sourced fact must not be able to
+    // borrow it without the note and attribution that justify the bypass.
+    const smuggled = verifyFacts(
+      [{ field: 'craft_spec', value: 'Invented claim', sourceKind: 'admin_manual' }],
+      noPages
+    )
+    expect(smuggled.accepted).toHaveLength(0)
+  })
+})

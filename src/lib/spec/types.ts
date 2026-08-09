@@ -79,6 +79,15 @@ export type SpecFact = {
   capturedAt: string
   /** True when `value` is character-for-character the evidence. */
   verbatim: boolean
+  /**
+   * Admin-supplied facts only. An admin fact has no page to check `evidence`
+   * against, so the guarantee changes shape: instead of a machine proving the
+   * text came from a document, a named person states where they got it and
+   * signs their name to it. Both fields are mandatory for `admin_manual` — an
+   * unattributed admin fact is indistinguishable from an invented one.
+   */
+  note?: string
+  addedBy?: string
 }
 
 export type SpecBuildResearch = {

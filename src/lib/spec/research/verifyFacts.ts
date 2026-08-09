@@ -57,6 +57,8 @@ export type FactRejection = {
     | 'quote_not_from_review'
     | 'craft_field_not_verbatim'
     | 'contains_contact_details'
+    | 'admin_fact_needs_source_note'
+    | 'admin_fact_needs_attribution'
 }
 
 /**
@@ -105,6 +107,13 @@ export function normalizeForEvidence(text: string): string {
  */
 const MIN_EVIDENCE_CHARS = 12
 
+/**
+ * An admin fact's note is its whole provenance. "owner" or "call" tells a later
+ * reviewer nothing; enough length to force a sentence is the cheapest way to
+ * make the field carry real information.
+ */
+const MIN_ADMIN_NOTE_CHARS = 15
+
 export function verifyFacts(
   candidates: Partial<SpecFact>[],
   pagesByUrl: Map<string, string>
@@ -133,16 +142,61 @@ export function verifyFacts(
       reject(candidate, 'unknown_field')
       continue
     }
+    if (containsContactDetails(value)) {
+      reject(candidate, 'contains_contact_details')
+      continue
+    }
+
+    // ── Admin-supplied facts take a different route to the same guarantee ──
+    //
+    // Most leads have nothing verifiable online — a page of marketing boiler-
+    // plate and no measurements, brands or constraints anywhere. Those builds
+    // dead-end, and the only way one becomes a site is a human ringing the
+    // owner and writing down what they say. That fact cannot be checked against
+    // a document, so it is checked against a person instead: a mandatory note
+    // saying where it came from, and the admin's identity recorded with it.
+    //
+    // Never testimonials. A craft fact is the business's own claim, which its
+    // owner can authorise; a testimonial is a statement attributed to a third
+    // party, and no admin can vouch for what somebody's customer said.
+    if (candidate.sourceKind === 'admin_manual') {
+      if (field === 'customer_quotes') {
+        reject(candidate, 'quote_not_from_review')
+        continue
+      }
+      const note = candidate.note?.trim()
+      if (!note || note.length < MIN_ADMIN_NOTE_CHARS) {
+        reject(candidate, 'admin_fact_needs_source_note')
+        continue
+      }
+      if (!candidate.addedBy?.trim()) {
+        reject(candidate, 'admin_fact_needs_attribution')
+        continue
+      }
+      accepted.push({
+        field,
+        value,
+        // The note stands in for page evidence: it is what a reviewer reads to
+        // decide whether to believe the claim.
+        evidence: note,
+        sourceUrl: '',
+        sourceKind: 'admin_manual',
+        capturedAt: candidate.capturedAt || new Date().toISOString(),
+        // Authoritative as typed, so it may fill a craft_* column — which is
+        // the entire point of the escape hatch.
+        verbatim: true,
+        note,
+        addedBy: candidate.addedBy.trim(),
+      })
+      continue
+    }
+
     if (!sourceUrl) {
       reject(candidate, 'no_source_url')
       continue
     }
     if (!evidence || evidence.length < MIN_EVIDENCE_CHARS) {
       reject(candidate, 'evidence_too_short')
-      continue
-    }
-    if (containsContactDetails(value)) {
-      reject(candidate, 'contains_contact_details')
       continue
     }
 

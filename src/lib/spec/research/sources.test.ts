@@ -28,3 +28,30 @@ describe('normalizeFacebookUrl', () => {
     )
   })
 })
+describe('normalizeFacebookUrl — deep links', () => {
+  it('reduces a video deep link to the page About tab', () => {
+    // Observed on a real lead: appending /about to the full path produced
+    // .../videos/1036687612587090/about, which was then shown to the admin as
+    // the source link for every fact.
+    expect(
+      normalizeFacebookUrl('https://www.facebook.com/61590230650878/videos/1036687612587090/')
+    ).toBe('https://www.facebook.com/61590230650878/about')
+  })
+
+  it('reduces post and photo deep links the same way', () => {
+    expect(normalizeFacebookUrl('https://www.facebook.com/ccservices84/posts/12345')).toBe(
+      'https://www.facebook.com/ccservices84/about'
+    )
+    expect(normalizeFacebookUrl('https://www.facebook.com/ccservices84/photos/a.1/2/')).toBe(
+      'https://www.facebook.com/ccservices84/about'
+    )
+  })
+
+  it('still handles a bare page root and leaves an About URL alone', () => {
+    expect(normalizeFacebookUrl('https://www.facebook.com/ccservices84/')).toBe(
+      'https://www.facebook.com/ccservices84/about'
+    )
+    const already = 'https://www.facebook.com/ccservices84/about'
+    expect(normalizeFacebookUrl(already)).toBe(already)
+  })
+})
