@@ -177,6 +177,14 @@ export async function POST(req: Request) {
           const pairs = (insertedLeads ?? []).map((inserted, i) => ({
             id: (inserted as { id: string }).id,
             row: leadsToInsert[i] as ScrapedLeadShape,
+            // scraper_leads has no column for the Maps place URL, so it is lost
+            // the moment this request ends. Capture it here, where the full
+            // scraped lead is still in hand — it is the only handle on the
+            // business's reviews.
+            mapsPlaceUrl:
+              typeof (leads[i] as { mapsPlaceUrl?: unknown })?.mapsPlaceUrl === 'string'
+                ? ((leads[i] as { mapsPlaceUrl: string }).mapsPlaceUrl)
+                : null,
           }))
           specBuildSummary = await enqueueSpecBuildsForRun(runId, pairs)
         } catch (specErr) {

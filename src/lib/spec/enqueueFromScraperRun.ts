@@ -39,16 +39,27 @@ export type EnqueueFromRunSummary = {
  * Unqualified leads never consume budget: rejecting a lead costs nothing, so
  * spending a slot on one would silently shrink the day's real capacity.
  */
+export type ScraperLeadPair = {
+  id: string
+  row: ScrapedLeadShape
+  /** Not a column on scraper_leads — carried through from the raw scraped lead. */
+  mapsPlaceUrl?: string | null
+}
+
 export function planSpecBuildEnqueue(
-  leads: { id: string; row: ScrapedLeadShape }[],
+  leads: ScraperLeadPair[],
   budget: number
 ): {
-  toQueue: { id: string; lead: ReturnType<typeof qualifyLeadForSpecBuild> }[]
+  toQueue: { id: string; lead: ReturnType<typeof qualifyLeadForSpecBuild>; mapsPlaceUrl?: string | null }[]
   unqualified: number
   capped: number
 } {
   let remaining = Math.max(0, budget)
-  const toQueue: { id: string; lead: ReturnType<typeof qualifyLeadForSpecBuild> }[] = []
+  const toQueue: {
+    id: string
+    lead: ReturnType<typeof qualifyLeadForSpecBuild>
+    mapsPlaceUrl?: string | null
+  }[] = []
   let unqualified = 0
   let capped = 0
 
@@ -63,7 +74,7 @@ export function planSpecBuildEnqueue(
       continue
     }
     remaining -= 1
-    toQueue.push({ id: lead.id, lead: qualified })
+    toQueue.push({ id: lead.id, lead: qualified, mapsPlaceUrl: lead.mapsPlaceUrl })
   }
 
   return { toQueue, unqualified, capped }
@@ -71,7 +82,7 @@ export function planSpecBuildEnqueue(
 
 export async function enqueueSpecBuildsForRun(
   runId: string,
-  leads: { id: string; row: ScrapedLeadShape }[]
+  leads: ScraperLeadPair[]
 ): Promise<EnqueueFromRunSummary> {
   const summary: EnqueueFromRunSummary = {
     enabled: specBuildsEnabled(),
@@ -95,7 +106,7 @@ export async function enqueueSpecBuildsForRun(
     if (!item.lead.qualified) continue
     try {
       const result = await queueSpecBuild({
-        lead: item.lead.lead,
+        lead: { ...item.lead.lead, mapsPlaceUrl: item.mapsPlaceUrl ?? null },
         leadSource: 'scraper',
         scraperLeadId: item.id,
         scraperRunId: runId,

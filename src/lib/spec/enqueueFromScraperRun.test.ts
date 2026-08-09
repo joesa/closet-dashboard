@@ -69,3 +69,21 @@ describe('planSpecBuildEnqueue', () => {
     expect(plan.toQueue[0].lead.qualified).toBe(true)
   })
 })
+
+describe('planSpecBuildEnqueue — Maps URL provenance', () => {
+  it('carries the Maps place URL through, since scraper_leads has no column for it', () => {
+    // The flattened scraper_leads row drops mapsPlaceUrl, so it must be picked
+    // up at enqueue time from the raw scraped lead or it is lost for good — and
+    // it is the only handle on the business's reviews.
+    const plan = planSpecBuildEnqueue(
+      [{ id: 'lead-0', row: b1(), mapsPlaceUrl: 'https://maps.google.com/place/x' }],
+      1
+    )
+    expect(plan.toQueue[0].mapsPlaceUrl).toBe('https://maps.google.com/place/x')
+  })
+
+  it('tolerates a lead with no Maps URL', () => {
+    const plan = planSpecBuildEnqueue([{ id: 'lead-0', row: b1() }], 1)
+    expect(plan.toQueue[0].mapsPlaceUrl).toBeUndefined()
+  })
+})

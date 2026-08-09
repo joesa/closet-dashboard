@@ -2,6 +2,9 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { SPEC_BUILD_SELECT, type SpecBuildRow, type SpecFact } from '@/lib/spec/types'
+import { firecrawlConfigured } from '@/lib/spec/research/fetchPage'
+import { resolveResearchSources } from '@/lib/spec/research/sources'
+import { rejectSpecBuildAction, runResearchAction } from '../actions'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -35,6 +38,11 @@ export default async function SpecBuildDetailPage({
   const build = data as SpecBuildRow
   const lead = build.lead_input ?? { businessName: '', phone: '' }
   const facts: SpecFact[] = build.research?.facts ?? []
+  const fetched = build.research?.fetched ?? []
+  const rejected =
+    (build.research as { rejected?: { reason: string; field?: string; value?: string }[] })
+      ?.rejected ?? []
+  const sources = resolveResearchSources(lead)
 
   return (
     <div className="space-y-6">
@@ -114,7 +122,9 @@ export default async function SpecBuildDetailPage({
         </p>
         {facts.length === 0 ? (
           <p className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-500">
-            No research yet.
+            {build.research_at
+              ? 'Research ran but found nothing verifiable. A site built from this would fail the copy gate.'
+              : 'No research yet.'}
           </p>
         ) : (
           <table className="min-w-full divide-y divide-gray-200 text-sm">
@@ -159,6 +169,97 @@ export default async function SpecBuildDetailPage({
         )}
       </section>
 
+      {/*
+        What was read and what was thrown away. This is how you tell "the
+        business is quiet online" apart from "the extractor is broken" — the
+        two look identical if you only ever see the accepted facts.
+      */}
+      <section className="rounded-lg border border-gray-200 bg-white p-6">
+        <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-gray-500">
+          Sources read
+        </h2>
+        {sources.length === 0 && (
+          <p className="mb-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+            This lead has neither a Google Maps listing nor a Facebook page, so there is nothing
+            to research. Add one on the lead, or drop it.
+          </p>
+        )}
+        {!firecrawlConfigured() && (
+          <p className="mb-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+            <code className="font-mono">FIRECRAWL_API_KEY</code> is not set — no page can be read.
+          </p>
+        )}
+        <ul className="space-y-1 text-sm">
+          {sources.map((source) => {
+            const hit = fetched.find((f) => f.url === source.url)
+            return (
+              <li key={source.url} className="flex flex-wrap items-baseline gap-2">
+                <a
+                  href={source.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-blue-600 hover:underline"
+                >
+                  {source.sourceKind}
+                </a>
+                <span className="text-gray-500">{source.rationale}</span>
+                {hit && (
+                  <span className={hit.error ? 'text-red-600' : 'text-emerald-700'}>
+                    {hit.error ? hit.error : `${hit.chars.toLocaleString()} chars read`}
+                  </span>
+                )}
+              </li>
+            )
+          })}
+        </ul>
+
+        {rejected.length > 0 && (
+          <details className="mt-4">
+            <summary className="cursor-pointer text-sm font-medium text-gray-700">
+              {rejected.length} candidate fact(s) rejected
+            </summary>
+            <ul className="mt-2 space-y-1 text-xs text-gray-600">
+              {rejected.slice(0, 25).map((r, i) => (
+                <li key={i}>
+                  <span className="font-mono">{r.reason}</span>
+                  {r.field ? ` · ${r.field}` : ''} — {r.value}
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
+      </section>
+
+      <section className="rounded-lg border border-gray-200 bg-white p-6">
+        <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-gray-500">
+          Actions
+        </h2>
+        <div className="flex flex-wrap gap-3">
+          <form action={runResearchAction}>
+            <input type="hidden" name="spec_build_id" value={build.id} />
+            <button
+              type="submit"
+              className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500"
+            >
+              {build.research_at ? 'Re-run research' : 'Run research'}
+            </button>
+          </form>
+          <form action={rejectSpecBuildAction}>
+            <input type="hidden" name="spec_build_id" value={build.id} />
+            <button
+              type="submit"
+              className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            >
+              Reject
+            </button>
+          </form>
+        </div>
+        <p className="mt-3 text-xs text-gray-500">
+          Research reads public pages and writes the intake row. It does not build a site,
+          generate images, or contact anyone.
+        </p>
+      </section>
+
       <section className="rounded-lg border border-gray-200 bg-white p-6">
         <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-gray-500">
           Pipeline
@@ -170,8 +271,8 @@ export default async function SpecBuildDetailPage({
           <Field label="Researched" value={fmt(build.research_at)} />
         </dl>
         <p className="mt-4 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600">
-          Build, review and offer actions arrive with Phase 3 and 4. Nothing in this queue can
-          contact a business yet.
+          Site generation, images and the offer arrive with Phase 3 and 4. Nothing in this queue
+          can build a site or contact a business yet.
         </p>
       </section>
     </div>

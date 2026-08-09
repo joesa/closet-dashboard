@@ -188,7 +188,18 @@ Also ban:
 Prefer instead:
 - Named services, places, timeframes, warranties, materials, or crew habits from the brief
 - Plain CTAs ("Get a quote", "Call …", "Book this week") over clever abstractions
-- Proof over adjectives: years, neighborhoods, response time, what's included`
+- Proof over adjectives: years, neighborhoods, response time, what's included
+
+SAY ONE TRUE LIMIT. Somewhere on the site — once is enough, and the About or
+FAQ is the natural home — state plainly something this business does NOT do, will
+not do, or a condition it insists on. "We don't do repairs under $200." "We only
+take on one kitchen at a time." "If the deck is out of square we rebuild the
+frame rather than shim it."
+Uniformly positive copy is the AI tell that survives every word filter, because
+no single word in it is wrong; a real owner turns work away and says so. Draw
+the limit from the brief. If the brief supports no such limit, use a scheduling
+or scope boundary implied by the services listed — never invent a policy,
+a price, or a guarantee that is not there.`
 
 /** Shorter block for surgical edits that only rewrite small copy slices. */
 export const HUMAN_COPY_VOICE_RULES_SURGICAL = `When changing text/copy: write like a real local business owner — specific and plain. Never introduce AI marketing tells (Elevate, Seamless, Unleash, Empower, Unlock, Revolutionize, Look no further, We've got you covered, one-stop shop, cutting-edge, world-class, journey, delve, "take it to the next level", em-dash-heavy hype). Prefer concrete services, places, and outcomes already present in the site or business context.`
