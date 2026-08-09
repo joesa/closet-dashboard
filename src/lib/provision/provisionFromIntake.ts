@@ -6,6 +6,10 @@ import {
   autoApproveTenantSite,
   startAutoLaunchRedesign,
 } from '@/lib/launch/autoLaunch'
+import {
+  onSpecBuildProvisioned,
+  onSpecBuildRedesignFinished,
+} from '@/lib/spec/specBuildHooks'
 import { resolveSubdomain } from '@/lib/provision/resolveSubdomain'
 import { provisionTenant } from '@/lib/provision/provisionTenant'
 import { depositSatisfied } from '@/lib/intake/intakeTierGates'
@@ -196,6 +200,13 @@ export async function provisionFromIntakeJob(
       ...(aiWidgetConfigFromHints ? { aiWidgetConfig: aiWidgetConfigFromHints } : {}),
     })
 
+    // Record the tenant on the spec build before anything else can report back
+    // — every later hook finds the build by tenant_id, so this has to land
+    // first or they all silently match nothing.
+    await onSpecBuildProvisioned(row.id, result.tenantId).catch((err) =>
+      console.error('[provisionFromIntake] spec build provisioned hook failed', row.id, err)
+    )
+
     await kickAutoLaunch(result.tenantId)
     return
   }
@@ -318,7 +329,22 @@ export async function provisionFromIntakeJob(
 async function kickAutoLaunch(tenantId: string): Promise<void> {
   try {
     const started = await startAutoLaunchRedesign(tenantId)
-    if (!started) await autoApproveTenantSite(tenantId, { reason: 'redesign_unavailable' })
+    if (!started) {
+      await autoApproveTenantSite(tenantId, { reason: 'redesign_unavailable' })
+      // A spec build hears back through autoApproveTenantSite for every other
+      // outcome, but that function returns early for spec builds by design, so
+      // this branch would leave one sitting in 'provisioning' forever with no
+      // signal. Observed on a live run with AUTO_LAUNCH_REDESIGN=false.
+      // published:false is accurate — the site is on the engine template, not a
+      // bespoke build, which is exactly what an admin needs to be told before
+      // showing it to anyone.
+      await onSpecBuildRedesignFinished(tenantId, {
+        published: false,
+        publishError: 'The redesign did not start, so the site is on the engine template.',
+      }).catch((err) =>
+        console.error('[provisionFromIntake] spec build hook failed', tenantId, err)
+      )
+    }
   } catch (err) {
     console.error('[provisionFromIntake] auto-launch failed', tenantId, err)
   }

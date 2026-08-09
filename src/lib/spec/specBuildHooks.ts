@@ -21,6 +21,38 @@ async function specBuildIdForTenant(tenantId: string): Promise<string | null> {
 }
 
 /**
+ * Provisioning succeeded. Record the tenant and move the build to `building`.
+ *
+ * This is the link that makes every later hook work: they find the build by
+ * `tenant_id`, and until provisioning happens there is no tenant to record. A
+ * live run caught it missing — the redesign hook silently matched nothing and
+ * builds sat in `provisioning` for ever, looking healthy.
+ */
+export async function onSpecBuildProvisioned(
+  intakeId: string,
+  tenantId: string
+): Promise<void> {
+  const supabase = getSupabaseAdmin()
+  const { data } = await supabase
+    .from('spec_builds')
+    .select('id')
+    .eq('intake_id', intakeId)
+    .maybeSingle()
+  const buildId = (data as { id: string } | null)?.id
+  if (!buildId) return
+
+  await supabase
+    .from('spec_builds')
+    .update({ tenant_id: tenantId, updated_at: new Date().toISOString() })
+    .eq('id', buildId)
+
+  await transitionSpecBuild(buildId, ['provisioning', 'imaging'], 'building', {
+    status_reason: null,
+    last_error: null,
+  })
+}
+
+/**
  * The redesign finished (or gave up). Park the build where an admin will see it.
  *
  * `ready_for_review` requires the same quality bar an admin approval does:

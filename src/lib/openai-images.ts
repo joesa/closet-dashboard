@@ -129,8 +129,14 @@ async function generateImageWithGemini(prompt: string, shape: ImageShape): Promi
     configured.length > 0
       ? configured
       : [
+          // gemini-2.0-flash-preview-image-generation used to sit here and was
+          // removed upstream — it 404s, so every provision reaching this path
+          // burned a failed round trip and logged a stack trace on an otherwise
+          // healthy build. Verified against ListModels that 2.5-flash-image is
+          // still served. The 3.x image models exist but return a payload this
+          // decoder rejects, so adopting one is a separate change with its own
+          // testing rather than a silent swap. Override with GEMINI_IMAGE_MODELS.
           'gemini-2.5-flash-image',
-          'gemini-2.0-flash-preview-image-generation',
         ]
 
   const body = {
@@ -302,8 +308,14 @@ async function generateImageEditWithGemini(
     configured.length > 0
       ? configured
       : [
+          // gemini-2.0-flash-preview-image-generation used to sit here and was
+          // removed upstream — it 404s, so every provision reaching this path
+          // burned a failed round trip and logged a stack trace on an otherwise
+          // healthy build. Verified against ListModels that 2.5-flash-image is
+          // still served. The 3.x image models exist but return a payload this
+          // decoder rejects, so adopting one is a separate change with its own
+          // testing rather than a silent swap. Override with GEMINI_IMAGE_MODELS.
           'gemini-2.5-flash-image',
-          'gemini-2.0-flash-preview-image-generation',
         ]
 
   const body = {
