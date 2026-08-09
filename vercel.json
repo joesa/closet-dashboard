@@ -19,6 +19,14 @@
     {
       "path": "/api/cron/sms-followups",
       "schedule": "0 16 * * 1-5"
+    },
+    {
+      "path": "/api/cron/spec-offers",
+      "schedule": "0,30 14-22 * * 1-5"
+    },
+    {
+      "path": "/api/cron/spec-purge",
+      "schedule": "30 6 * * *"
     }
   ]
 }

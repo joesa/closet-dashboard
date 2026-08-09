@@ -4,8 +4,10 @@ import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { logAdminAction, requireAdmin } from '@/lib/admin'
 import { addAdminFact } from '@/lib/spec/addAdminFact'
+import { approveSpecOffer } from '@/lib/spec/specOffer'
 import { advanceSpecBuild } from '@/lib/spec/advanceSpecBuild'
 import { deleteSpecBuild, getSpecBuild, transitionSpecBuild } from '@/lib/spec/specBuilds'
+import { getSupabaseAdmin } from '@/lib/supabase-admin'
 
 /**
  * Add a fact by hand to rescue a lead that publishes nothing verifiable.
@@ -123,6 +125,46 @@ export async function advanceSpecBuildAction(formData: FormData): Promise<void> 
   )
 }
 
+/**
+ * Approve a finished build and start the offer clock.
+ *
+ * The last gate before a real business is contacted. approveSpecOffer refuses
+ * unless site validation passed — that check is the reason this step is manual
+ * rather than another automated transition.
+ */
+export async function approveSpecBuildAction(formData: FormData): Promise<void> {
+  const admin = await requireAdmin()
+  const id = String(formData.get('spec_build_id') || '')
+  if (!id) return
+
+  const build = await getSpecBuild(id)
+  if (!build) return
+
+  const result = await approveSpecOffer(build)
+  if (!result.ok) {
+    revalidatePath(`/admin/spec-builds/${id}`)
+    redirect(`/admin/spec-builds/${id}?fact_error=${encodeURIComponent(result.reason)}`)
+  }
+
+  await logAdminAction({
+    actor: admin,
+    action: 'spec_build.approved',
+    targetType: 'spec_build',
+    targetId: id,
+    metadata: {
+      offerCents: result.pricing.offerCents,
+      deadlineAt: result.deadlineAt,
+    },
+  })
+
+  revalidatePath('/admin/spec-builds')
+  redirect(
+    `/admin/spec-builds/${id}?advanced=${encodeURIComponent(
+      `Approved — offer at ${result.pricing.offerLabel} until ${new Date(result.deadlineAt).toLocaleDateString()}. The SMS goes out on the next cron run.`
+    )}`
+  )
+}
+
 export async function rejectSpecBuildAction(formData: FormData): Promise<void> {
   const admin = await requireAdmin()
   const id = String(formData.get('spec_build_id') || '')
@@ -134,6 +176,12 @@ export async function rejectSpecBuildAction(formData: FormData): Promise<void> {
   await transitionSpecBuild(id, build.status, 'rejected', {
     status_reason: String(formData.get('reason') || 'Rejected by admin'),
   })
+  // Schedule the teardown. A rejected build is one we will never show anyone,
+  // so there is no reason to keep a real business's name on a live subdomain.
+  await getSupabaseAdmin()
+    .from('spec_builds')
+    .update({ purge_after: new Date().toISOString() })
+    .eq('id', id)
 
   await logAdminAction({
     actor: admin,

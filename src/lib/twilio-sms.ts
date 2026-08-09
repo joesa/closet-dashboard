@@ -54,6 +54,16 @@ export interface SmsSendResult {
  * Uses raw fetch (no SDK dependency) for Edge compatibility.
  */
 export async function sendSms(to: string, body: string): Promise<SmsSendResult> {
+  // Dry run: exercise the whole send path — window, cap, suppression, the
+  // event row, the status update — without a message leaving the building.
+  // Necessary because the alternative for testing is unsetting the Twilio env,
+  // which returns a failure and so records every send as 'failed', poisoning
+  // the counters the caps are computed from.
+  if (process.env.SMS_DRY_RUN === '1') {
+    console.info(`[sms:dry-run] would send to ${to}: ${body.slice(0, 120)}`)
+    return { success: true, messageSid: `DRYRUN-${crypto.randomUUID()}`, error: null }
+  }
+
   const accountSid = process.env.TWILIO_ACCOUNT_SID
   const authToken = process.env.TWILIO_AUTH_TOKEN
   const fromNumber = process.env.TWILIO_PHONE_NUMBER
@@ -133,6 +143,35 @@ export const PIPELINE_B_SMS_TEMPLATES: SmsTemplate[] = [
     step: 2,
     delayDays: 2,
     body: `Hey, just following up about {businessName}. I've got a live demo you can try right now at ${BRAND_DOMAIN} — most contractors see their first lead within 48 hours of going live. Want me to mock up a free design for your business? - Joseph`,
+  },
+]
+
+/**
+ * Spec-build offer messages.
+ *
+ * A separate array from PIPELINE_B_SMS_TEMPLATES on purpose — those are cold
+ * pitches, these tell a business a finished site already exists for them, and
+ * the two should not drift into each other.
+ *
+ * Every one ends with opt-out language. The existing templates carry none,
+ * which is a gap for cold outreach generally and indefensible here: this is an
+ * unsolicited message about a site built without asking. The inbound webhook
+ * already turns STOP into a global suppression, so the words are the only
+ * missing part.
+ *
+ * Kept to two segments where possible — the offer URL is the payload, and
+ * anything past the fold in a phone's preview is wasted.
+ */
+export const SPEC_OFFER_SMS_TEMPLATES: SmsTemplate[] = [
+  {
+    step: 1,
+    delayDays: 0,
+    body: `Hi {businessName} — Joseph with ${BRAND}. I built you a complete website. No charge to look: {offerUrl} If you want it, it's {percentOff}% off — {offerLabel} instead of {listLabel} — until {deadlineLabel}. After that I take it down. Reply STOP to opt out.`,
+  },
+  {
+    step: 2,
+    delayDays: 6,
+    body: `{businessName} — your site comes down {deadlineLabel}. {percentOff}% off until then: {offerUrl} Reply STOP to opt out.`,
   },
 ]
 

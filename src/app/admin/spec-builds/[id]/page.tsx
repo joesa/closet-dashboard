@@ -9,9 +9,13 @@ import { ADMIN_FACT_FIELDS } from '@/lib/spec/addAdminFact'
 import {
   addFactAction,
   advanceSpecBuildAction,
+  approveSpecBuildAction,
   rejectSpecBuildAction,
   runResearchAction,
 } from '../actions'
+import { offerUrl, priceSpecOffer } from '@/lib/spec/specOffer'
+import { SPEC_OFFER_SMS_TEMPLATES, personalizeTemplate } from '@/lib/twilio-sms'
+import { specSmsAllowed, specSmsAllowlist } from '@/lib/spec/specSmsAllowlist'
 
 /** Plain-language prompts — the column names mean nothing to a person on a call. */
 const ADMIN_FACT_LABELS: Record<string, string> = {
@@ -72,6 +76,20 @@ export default async function SpecBuildDetailPage({
     (build.research as { rejected?: { reason: string; field?: string; value?: string }[] })
       ?.rejected ?? []
   const sources = resolveResearchSources(lead)
+
+  const offerPricing = priceSpecOffer(build.offer_discount_bps)
+  const allowlistActive = specSmsAllowlist().length > 0
+  const smsAllowed = specSmsAllowed(build.phone_e164)
+  const previewSms = personalizeTemplate(SPEC_OFFER_SMS_TEMPLATES[0].body, {
+    businessName: build.business_name,
+    offerUrl: offerUrl(build.offer_token ?? '<offer-link>'),
+    offerLabel: offerPricing.offerLabel,
+    listLabel: offerPricing.listLabel,
+    percentOff: String(offerPricing.percentOff),
+    deadlineLabel: build.offer_deadline_at
+      ? new Date(build.offer_deadline_at).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })
+      : '<deadline>',
+  })
 
   return (
     <div className="space-y-6">
@@ -390,6 +408,17 @@ export default async function SpecBuildDetailPage({
               </button>
             </form>
           )}
+          {build.status === 'ready_for_review' && (
+            <form action={approveSpecBuildAction}>
+              <input type="hidden" name="spec_build_id" value={build.id} />
+              <button
+                type="submit"
+                className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500"
+              >
+                Approve &amp; start the offer
+              </button>
+            </form>
+          )}
           <form action={rejectSpecBuildAction}>
             <input type="hidden" name="spec_build_id" value={build.id} />
             <button
@@ -410,6 +439,50 @@ export default async function SpecBuildDetailPage({
           Research reads public pages and writes the intake row. It does not build a site,
           generate images, or contact anyone.
         </p>
+      </section>
+
+      {/*
+        Everything the business will receive, shown before anyone approves. The
+        exact SMS body matters most: it is the only thing here a stranger
+        actually reads, and the last chance to catch a wrong number or a
+        mangled price.
+      */}
+      <section className="rounded-lg border border-gray-200 bg-white p-6">
+        <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-gray-500">
+          The offer
+        </h2>
+        <p className="mb-4 text-sm text-gray-600">
+          What gets sent, and to whom, once this build is approved.
+        </p>
+        <dl className="grid grid-cols-2 gap-4 md:grid-cols-4">
+          <Field label="List price" value={offerPricing.listLabel} />
+          <Field
+            label={`Offer (${offerPricing.percentOff}% off)`}
+            value={offerPricing.offerLabel}
+          />
+          <Field label="Deadline" value={fmt(build.offer_deadline_at)} />
+          <Field label="Sent at" value={fmt(build.offer_sent_at)} />
+        </dl>
+
+        <p className="mt-4 text-xs font-medium uppercase tracking-wide text-gray-500">
+          Exact message to {build.phone_e164}
+        </p>
+        <pre className="mt-1 whitespace-pre-wrap rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-800">
+{previewSms}
+        </pre>
+
+        {!smsAllowed && (
+          <p className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+            <strong className="font-medium">This number is not on the SMS allowlist</strong>, so
+            nothing will actually be sent. Clear <code className="font-mono">
+            SPEC_BUILD_SMS_ALLOWLIST</code> to text real businesses.
+          </p>
+        )}
+        {allowlistActive && smsAllowed && (
+          <p className="mt-3 text-xs text-gray-500">
+            SMS allowlist is active and this number is on it.
+          </p>
+        )}
       </section>
 
       <section className="rounded-lg border border-gray-200 bg-white p-6">
