@@ -64,13 +64,19 @@ export default async function SpecBuildDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>
-  searchParams: Promise<{ fact_error?: string; fact_added?: string; advanced?: string }>
+  searchParams: Promise<{
+    fact_error?: string
+    fact_added?: string
+    advanced?: string
+    sent?: string
+  }>
 }) {
   const { id } = await params
   const {
     fact_error: factError,
     fact_added: factAdded,
     advanced,
+    sent,
   } = await searchParams
   const { data } = await getSupabaseAdmin()
     .from('spec_builds')
@@ -153,6 +159,27 @@ export default async function SpecBuildDetailPage({
       {factError && (
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {factError}
+        </div>
+      )}
+      {sent && (
+        <div
+          className={`rounded-lg border px-4 py-3 text-sm ${
+            sent === 'yes'
+              ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+              : 'border-amber-200 bg-amber-50 text-amber-800'
+          }`}
+        >
+          {sent === 'yes'
+            ? 'Approved, and the message has been sent.'
+            : sent === 'outside_window'
+              ? 'Approved. It is outside the send window (Mon–Fri, 9–5 Central), so the message goes out at the next opportunity.'
+              : sent === 'not_allowlisted'
+                ? 'Approved, but this number is not on SPEC_BUILD_SMS_ALLOWLIST, so nothing was sent.'
+                : sent === 'suppressed'
+                  ? 'Approved, but this number has opted out. Nothing was sent, and nothing will be.'
+                  : sent === 'already_sent'
+                    ? 'Approved. This message had already been sent, so it was not sent again.'
+                    : `Approved, but the message did not send (${sent}).`}
         </div>
       )}
       {advanced && (
@@ -447,17 +474,7 @@ export default async function SpecBuildDetailPage({
               </button>
             </form>
           )}
-          {build.status === 'ready_for_review' && (
-            <form action={approveSpecBuildAction}>
-              <input type="hidden" name="spec_build_id" value={build.id} />
-              <button
-                type="submit"
-                className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500"
-              >
-                Approve &amp; start the offer
-              </button>
-            </form>
-          )}
+
           <form action={rejectSpecBuildAction}>
             <input type="hidden" name="spec_build_id" value={build.id} />
             <button
@@ -488,6 +505,60 @@ export default async function SpecBuildDetailPage({
           </p>
         )}
       </section>
+
+      {/*
+        The send card. The exact message, the number it goes to, and the button
+        sit together on purpose: the decision being made is "send this text to
+        this stranger", so the thing being approved has to be in front of you
+        when you approve it — not in a panel further down the page.
+      */}
+      {build.status === 'ready_for_review' && (
+        <section className="rounded-lg border-2 border-emerald-300 bg-emerald-50/40 p-6">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-emerald-800">
+            Review the message, then send
+          </h2>
+          <p className="mt-1 text-sm text-gray-700">
+            Nothing has been sent to this business. Pressing the button below texts them the
+            message exactly as written here.
+          </p>
+
+          <dl className="mt-4 grid grid-cols-2 gap-4 md:grid-cols-4">
+            <Field label="To" value={build.phone_e164} />
+            <Field label="Business" value={build.business_name} />
+            <Field label="They pay" value={offerPricing.offerLabel} />
+            <Field label="Site password" value={previewPassword ?? '—'} />
+          </dl>
+
+          <p className="mt-4 text-xs font-medium uppercase tracking-wide text-gray-500">
+            Exact message
+          </p>
+          <pre className="mt-1 whitespace-pre-wrap rounded-md border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900">
+{previewSms}
+          </pre>
+
+          {!smsAllowed ? (
+            <p className="mt-4 rounded-md border border-amber-300 bg-amber-100 px-3 py-2 text-sm text-amber-900">
+              <strong className="font-medium">This number is not on the SMS allowlist.</strong>{' '}
+              Approving will mint the offer but send nothing. Clear{' '}
+              <code className="font-mono">SPEC_BUILD_SMS_ALLOWLIST</code> to text real businesses.
+            </p>
+          ) : (
+            <p className="mt-4 text-sm text-gray-700">
+              This is a real text to a real business. It cannot be unsent.
+            </p>
+          )}
+
+          <form action={approveSpecBuildAction} className="mt-4">
+            <input type="hidden" name="spec_build_id" value={build.id} />
+            <button
+              type="submit"
+              className="rounded-md bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-emerald-500"
+            >
+              {smsAllowed ? 'Approve & send this message' : 'Approve (nothing will be sent)'}
+            </button>
+          </form>
+        </section>
+      )}
 
       {/*
         Everything the business will receive, shown before anyone approves. The

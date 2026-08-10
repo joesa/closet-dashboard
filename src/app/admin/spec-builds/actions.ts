@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation'
 import { logAdminAction, requireAdmin } from '@/lib/admin'
 import { addAdminFact } from '@/lib/spec/addAdminFact'
 import { approveSpecOffer } from '@/lib/spec/specOffer'
+import { sendSpecOfferSms } from '@/lib/spec/sendSpecOfferSms'
 import { advanceSpecBuild } from '@/lib/spec/advanceSpecBuild'
 import { kickSpecBuild } from '@/lib/spec/kickSpecBuild'
 import { deleteSpecBuild, getSpecBuild, transitionSpecBuild } from '@/lib/spec/specBuilds'
@@ -151,6 +152,15 @@ export async function approveSpecBuildAction(formData: FormData): Promise<void> 
     redirect(`/admin/spec-builds/${id}?fact_error=${encodeURIComponent(result.reason)}`)
   }
 
+  // Send now rather than waiting for the cron. The button says send, so it
+  // should send — and with a once-daily cron, "approved" would otherwise mean
+  // "goes out sometime in the next 24 hours", which is not something to leave
+  // ambiguous when the next step is a stranger's phone buzzing.
+  const approved = await getSpecBuild(id)
+  const outcome = approved
+    ? await sendSpecOfferSms(approved, 1)
+    : ({ sent: false, reason: 'no_offer' } as const)
+
   await logAdminAction({
     actor: admin,
     action: 'spec_build.approved',
@@ -159,15 +169,13 @@ export async function approveSpecBuildAction(formData: FormData): Promise<void> 
     metadata: {
       offerCents: result.pricing.offerCents,
       deadlineAt: result.deadlineAt,
+      smsSent: outcome.sent,
+      smsReason: outcome.sent ? null : outcome.reason,
     },
   })
 
   revalidatePath('/admin/spec-builds')
-  redirect(
-    `/admin/spec-builds/${id}?advanced=${encodeURIComponent(
-      `Approved — offer at ${result.pricing.offerLabel} until ${new Date(result.deadlineAt).toLocaleDateString()}. The SMS goes out on the next cron run.`
-    )}`
-  )
+  redirect(`/admin/spec-builds/${id}?sent=${encodeURIComponent(outcome.sent ? 'yes' : outcome.reason)}`)
 }
 
 export async function rejectSpecBuildAction(formData: FormData): Promise<void> {
