@@ -680,7 +680,11 @@ export async function validateTenantSite(tenantId: string): Promise<ValidationRe
           for (const finding of analyzeRenderedDesign(html, {
             renderMode: config.render_mode === 'custom' ? 'custom' : 'engine',
           })) {
-            issues.push({ ...finding, severity: designSeverity, fixable: false })
+            issues.push({
+              ...finding,
+              severity: designSeverity,
+              fixable: finding.code === 'design_duplicate_ids' ? config.render_mode === 'custom' : false,
+            })
           }
         }
 

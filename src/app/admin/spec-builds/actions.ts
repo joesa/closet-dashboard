@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation'
 import { logAdminAction, requireAdmin } from '@/lib/admin'
 import { addAdminFact } from '@/lib/spec/addAdminFact'
 import { overrideSpecBuildToDrafting } from '@/lib/spec/overrideSpecBuild'
+import { autoFixTenantSite } from '@/lib/validation/autoFixSiteIssues'
 import { approveSpecOffer } from '@/lib/spec/specOffer'
 import { sendSpecOfferSms } from '@/lib/spec/sendSpecOfferSms'
 import { advanceSpecBuild } from '@/lib/spec/advanceSpecBuild'
@@ -223,6 +224,37 @@ export async function overrideSpecBuildAction(formData: FormData): Promise<void>
 
   revalidatePath('/admin/spec-builds')
   redirect(`/admin/spec-builds/${id}?advanced=${encodeURIComponent('needs_attention → drafting (admin override)')}`)
+}
+
+export async function fixSpecBuildSiteAction(formData: FormData): Promise<void> {
+  const admin = await requireAdmin()
+  const id = String(formData.get('spec_build_id') || '')
+  if (!id) return
+
+  const tenantId = String(formData.get('tenant_id') || '')
+  if (!tenantId) {
+    redirect(`/admin/spec-builds/${id}?source_error=${encodeURIComponent('This build has no tenant yet, so there is nothing to analyze or fix.')}`)
+  }
+
+  const result = await autoFixTenantSite(tenantId)
+
+  await logAdminAction({
+    actor: admin,
+    action: 'spec_build.site_fixed',
+    targetType: 'spec_build',
+    targetId: id,
+    metadata: {
+      tenantId,
+      status: result.report.status,
+      fixesApplied: result.fixesApplied.length,
+      remainingIssues: result.report.issues.length,
+    },
+  })
+
+  revalidatePath('/admin/spec-builds')
+  revalidatePath(`/admin/spec-builds/${id}`)
+  revalidatePath(`/admin/sites/${tenantId}`)
+  redirect(`/admin/spec-builds/${id}?sources_updated=1`)
 }
 
 /**

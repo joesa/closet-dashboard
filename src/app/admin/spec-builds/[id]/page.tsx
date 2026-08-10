@@ -9,6 +9,7 @@ import { ADMIN_FACT_FIELDS } from '@/lib/spec/addAdminFact'
 import {
   addFactAction,
   advanceSpecBuildAction,
+  fixSpecBuildSiteAction,
   overrideSpecBuildAction,
   approveSpecBuildAction,
   rejectSpecBuildAction,
@@ -237,6 +238,30 @@ export default async function SpecBuildDetailPage({
               </li>
             )}
           </ul>
+        </section>
+      )}
+
+      {build.tenant_id && (
+        <section className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="font-medium">Need a quick analyze/fix pass?</p>
+              <p className="mt-1 text-xs text-amber-800">
+                This runs the same deterministic site-fix flow used on the tenant review page: it
+                re-checks the site and repairs simple issues that are safe to fix automatically.
+              </p>
+            </div>
+            <form action={fixSpecBuildSiteAction}>
+              <input type="hidden" name="spec_build_id" value={build.id} />
+              <input type="hidden" name="tenant_id" value={build.tenant_id} />
+              <button
+                type="submit"
+                className="rounded-md bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-500"
+              >
+                Analyze & fix simple issues
+              </button>
+            </form>
+          </div>
         </section>
       )}
 
@@ -567,7 +592,7 @@ export default async function SpecBuildDetailPage({
           {sources.map((source) => {
             const hit = fetched.find((f) => f.url === source.url)
             return (
-              <li key={source.url} className="flex flex-wrap items-baseline gap-2">
+              <li key={`${source.sourceKind}:${source.url}`} className="flex flex-wrap items-baseline gap-2">
                 <a
                   href={source.url}
                   target="_blank"

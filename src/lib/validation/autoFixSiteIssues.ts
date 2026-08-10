@@ -1,6 +1,7 @@
 import { generateTextWithFallback } from '@/lib/ai/aiTextProvider'
 import { generateWithQualityRetry } from '@/lib/ai/generateWithQualityRetry'
 import { findAiTellPhrases, HUMAN_COPY_VOICE_RULES } from '@/lib/ai/humanCopyVoice'
+import { isCustomSiteConfig } from '@/lib/customSite'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import {
   analyzeDirectCopyTells,
@@ -52,7 +53,7 @@ export async function autoFixTenantSite(
 
   const { data: tenant } = await supabase
     .from('tenants')
-    .select('id, widget_id, business_name, site_configs ( theme, layout_style, design_variant, nav_links, hero_config, before_after_config, products_config, brand_name, engagement_model, process_config )')
+    .select('id, widget_id, business_name, site_configs ( theme, layout_style, design_variant, nav_links, hero_config, before_after_config, products_config, brand_name, engagement_model, process_config, render_mode, custom_config, custom_config_draft )')
     .eq('id', tenantId)
     .maybeSingle()
 
@@ -72,6 +73,9 @@ export async function autoFixTenantSite(
           subtitle?: string
           steps?: { number?: string; title?: string; description?: string }[]
         } | null
+        render_mode?: string | null
+        custom_config?: unknown
+        custom_config_draft?: unknown
       } | null)
     : null
 
@@ -187,6 +191,36 @@ export async function autoFixTenantSite(
         const fixedProcess = await fixProcessStepsWithAi(tenantId, brandName, currentProcess)
         updates.process_config = fixedProcess
         fixesApplied.push('Regenerated the process as a complete 3-step sequence with valid internal ordering metadata.')
+        break
+      }
+
+      case 'design_duplicate_ids': {
+        if (config?.render_mode !== 'custom') {
+          unfixedIssues.push(issue.message)
+          break
+        }
+
+        const publishedRepair = repairDuplicateIdsInCustomConfig(config.custom_config)
+        const draftRepair = repairDuplicateIdsInCustomConfig(config.custom_config_draft)
+        let repaired = false
+
+        if (publishedRepair.duplicateIds.length > 0) {
+          updates.custom_config = publishedRepair.next
+          repaired = true
+        }
+        if (draftRepair.duplicateIds.length > 0) {
+          updates.custom_config_draft = draftRepair.next
+          repaired = true
+        }
+
+        if (repaired) {
+          const ids = [...new Set([...publishedRepair.duplicateIds, ...draftRepair.duplicateIds])]
+          fixesApplied.push(
+            `Renamed duplicate HTML ids in the custom site markup (${ids.slice(0, 4).join(', ')}${ids.length > 4 ? ', …' : ''}) so labels and anchors target unique elements.`
+          )
+        } else {
+          unfixedIssues.push(issue.message)
+        }
         break
       }
 
@@ -340,6 +374,48 @@ export function htmlTextSegments(page: { html: string }): HtmlTextSegment[] {
     })
   }
   return segments
+}
+
+type DuplicateIdRepair = {
+  html: string
+  duplicateIds: string[]
+}
+
+/** Rewrite repeated HTML id attributes to unique suffixed ids. */
+export function rewriteDuplicateIdsInHtml(html: string): DuplicateIdRepair {
+  if (!html) return { html: '', duplicateIds: [] }
+
+  const seen = new Map<string, number>()
+  const duplicateIds = new Set<string>()
+  const nextHtml = html.replace(/\sid=(["'])([^"'<>\s]+)\1/gi, (match, quote: string, id: string) => {
+    const occurrence = (seen.get(id) ?? 0) + 1
+    seen.set(id, occurrence)
+    if (occurrence === 1) return match
+    duplicateIds.add(id)
+    return match.replace(`${quote}${id}${quote}`, `${quote}${id}--${occurrence}${quote}`)
+  })
+
+  return { html: nextHtml, duplicateIds: [...duplicateIds] }
+}
+
+function repairDuplicateIdsInCustomConfig(value: unknown): { next: unknown; duplicateIds: string[] } {
+  if (!isCustomSiteConfig(value)) return { next: value, duplicateIds: [] }
+
+  const next = JSON.parse(JSON.stringify(value)) as {
+    pages?: Record<string, { html?: string }>
+  }
+  const duplicateIds = new Set<string>()
+
+  for (const page of Object.values(next.pages || {})) {
+    if (!page || typeof page.html !== 'string') continue
+    const repair = rewriteDuplicateIdsInHtml(page.html)
+    if (repair.html !== page.html) {
+      page.html = repair.html
+      for (const id of repair.duplicateIds) duplicateIds.add(id)
+    }
+  }
+
+  return { next, duplicateIds: [...duplicateIds] }
 }
 
 /**
