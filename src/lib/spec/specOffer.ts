@@ -72,6 +72,39 @@ export function specPreviewUrl(hostname: string, tenantId: string): string {
   return `https://${hostname}?spec_preview_token=${encodeURIComponent(token)}`
 }
 
+/**
+ * Expire an offer whose deadline has passed, and report the effective status.
+ *
+ * Called on read from /offer/[token] as well as by the cron, so the page tells
+ * the truth even if the cron is down or delayed — which matters more now that
+ * the cron runs once a day rather than every half hour.
+ *
+ * Lives here rather than in the page because it is a state transition, not
+ * view logic. It also keeps `Date.now()` out of a Server Component's render,
+ * which the react-hooks/purity rule rightly rejects.
+ */
+export async function expireOfferIfLapsed(build: {
+  id: string
+  status: string
+  offer_deadline_at: string | null
+}): Promise<string> {
+  const OPEN = ['offer_sent', 'offer_reminded', 'approved']
+  if (!build.offer_deadline_at || !OPEN.includes(build.status)) return build.status
+  if (new Date(build.offer_deadline_at).getTime() >= Date.now()) return build.status
+
+  await getSupabaseAdmin()
+    .from('spec_builds')
+    .update({
+      status: 'expired',
+      purge_after: new Date(Date.now() + purgeGraceHours() * 3600_000).toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', build.id)
+    .in('status', OPEN)
+
+  return 'expired'
+}
+
 export type ApproveOfferResult =
   | { ok: true; offerToken: string; deadlineAt: string; pricing: OfferPricing }
   | { ok: false; reason: string }

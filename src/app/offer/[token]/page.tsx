@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { publicAppOrigin } from '@/lib/urls'
-import { priceSpecOffer, purgeGraceHours, specPreviewUrl } from '@/lib/spec/specOffer'
+import { expireOfferIfLapsed, priceSpecOffer, specPreviewUrl } from '@/lib/spec/specOffer'
 import { SPEC_BUILD_SELECT, type SpecBuildRow } from '@/lib/spec/types'
 import OfferActions from './OfferActions'
 
@@ -36,27 +36,9 @@ export default async function OfferPage({ params }: { params: Promise<{ token: s
   if (!data) notFound()
   const build = data as SpecBuildRow
 
-  // Lazy expiry on read. The cron does this too, but a page that tells someone
-  // their offer is live when the deadline passed an hour ago is worse than one
-  // that is a minute early — and this way the page is right even if the cron is
-  // down.
-  let status = build.status
-  if (
-    build.offer_deadline_at &&
-    new Date(build.offer_deadline_at).getTime() < Date.now() &&
-    ['offer_sent', 'offer_reminded', 'approved'].includes(status)
-  ) {
-    await supabase
-      .from('spec_builds')
-      .update({
-        status: 'expired',
-        purge_after: new Date(Date.now() + purgeGraceHours() * 3600_000).toISOString(),
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', build.id)
-      .in('status', ['offer_sent', 'offer_reminded', 'approved'])
-    status = 'expired'
-  }
+  // Lazy expiry on read, so the page is right even if the cron is delayed —
+  // it only runs once a day. The transition itself lives in specOffer.
+  const status = await expireOfferIfLapsed(build)
 
   const pricing = priceSpecOffer(build.offer_discount_bps)
   const pricingUrl = `${publicAppOrigin().replace(/\/$/, '')}/#pricing`

@@ -22,6 +22,14 @@ export const runtime = 'nodejs'
 /**
  * Send offer and reminder texts, and expire offers whose deadline has passed.
  *
+ * Runs ONCE A DAY, and must keep doing so: this project is on a Vercel plan
+ * that rejects any cron expression firing more than once per day — the
+ * deployment fails outright, it is not silently downgraded. Every other cron
+ * here is daily for the same reason. An approved offer therefore waits up to a
+ * day before its text goes out, which is fine against a 7-day deadline, and
+ * /offer/[token] expires lapsed offers on read so the page never contradicts a
+ * sweep that has not run yet.
+ *
  * The ordering of the guards below IS the safety property, and it mirrors
  * /api/cron/sms-followups deliberately:
  *
