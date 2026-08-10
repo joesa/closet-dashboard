@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   findEmptyWidgetShells,
   htmlHasInjectableWidget,
+  normalizeDuplicateHtmlIds,
   normalizeWidgetPlaceholders,
   sanitizeCustomConfig,
   sanitizeCustomCss,
@@ -47,6 +48,28 @@ describe('normalizeWidgetPlaceholders', () => {
     const out = normalizeWidgetPlaceholders(html)
     expect(out.split(WIDGET_PLACEHOLDER)).toHaveLength(2) // one placeholder → 2 parts
     expect(out).not.toMatch(/closet-widget-slot/)
+  })
+
+  it('canonicalizes and dedupes literal widget tags', () => {
+    const html = `
+      <section><closet-quote-widget data-contractor-id="a"></closet-quote-widget></section>
+      <section><closet-quote-widget data-contractor-id="a" /></section>
+    `
+    const out = normalizeWidgetPlaceholders(html)
+    expect(out.split(WIDGET_PLACEHOLDER)).toHaveLength(2)
+    expect(out).not.toMatch(/closet-quote-widget/)
+  })
+})
+
+describe('normalizeDuplicateHtmlIds', () => {
+  it('renames duplicate ids with stable suffixes', () => {
+    const result = normalizeDuplicateHtmlIds(
+      '<main><section id="about"></section><section id="about"></section><section id="about"></section></main>'
+    )
+    expect(result.duplicateIds).toEqual(['about'])
+    expect(result.html).toContain('id="about"')
+    expect(result.html).toContain('id="about--2"')
+    expect(result.html).toContain('id="about--3"')
   })
 })
 

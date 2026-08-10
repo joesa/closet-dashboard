@@ -1,6 +1,7 @@
 import sanitizeHtml from 'sanitize-html'
 import {
   sanitizeCustomConfig,
+  normalizeDuplicateHtmlIds,
   normalizeWidgetPlaceholders,
   WIDGET_PLACEHOLDER,
   type CustomSiteConfig,
@@ -163,10 +164,11 @@ export function sanitizeUntrustedCustomHtml(html: string): string {
       },
     },
   })
-  return purified.replace(
+  const restored = purified.replace(
     new RegExp(`<${PLACEHOLDER_TAG}(?:\\s[^>]*)?></${PLACEHOLDER_TAG}>`, 'gi'),
     WIDGET_PLACEHOLDER
   )
+  return normalizeDuplicateHtmlIds(restored).html
 }
 
 /** Regex sanitizer remains defense-in-depth; sanitize-html is the parser-backed gate. */

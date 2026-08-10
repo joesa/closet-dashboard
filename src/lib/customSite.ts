@@ -57,6 +57,7 @@ export const WIDGET_MOUNT_RESET_CSS = `
 /** AI sometimes emits `<!-- CLOSET_WIDGET theme="dark" -->` — must still match. */
 const WIDGET_COMMENT_RE = /<!--\s*CLOSET_WIDGET\b[\s\S]*?-->/gi
 const WIDGET_MUSTACHE_RE = /\{\{\s*CLOSET_WIDGET\s*\}\}/gi
+const WIDGET_TAG_RE = /<closet-(?:quote|order|booking|ticket)-widget\b[^>]*>([\s\S]*?)<\/closet-[a-z-]+>|<closet-(?:quote|order|booking|ticket)-widget\b[^>]*\/?>/gi
 
 export function isCustomSiteConfig(v: unknown): v is CustomSiteConfig {
   if (!v || typeof v !== 'object' || Array.isArray(v)) return false
@@ -81,6 +82,7 @@ export function normalizeCustomPath(path: string): string {
 export function normalizeWidgetPlaceholders(html: string): string {
   if (!html) return ''
   let out = html
+  out = out.replace(WIDGET_TAG_RE, WIDGET_PLACEHOLDER)
   out = out.replace(WIDGET_COMMENT_RE, WIDGET_PLACEHOLDER)
   out = out.replace(WIDGET_MUSTACHE_RE, WIDGET_PLACEHOLDER)
 
@@ -100,6 +102,28 @@ export function normalizeWidgetPlaceholders(html: string): string {
     ''
   )
   return out
+}
+
+export type DuplicateIdNormalization = {
+  html: string
+  duplicateIds: string[]
+}
+
+/** Ensure each id attribute appears once per page HTML body. */
+export function normalizeDuplicateHtmlIds(html: string): DuplicateIdNormalization {
+  if (!html) return { html: '', duplicateIds: [] }
+
+  const seen = new Map<string, number>()
+  const duplicateIds = new Set<string>()
+  const nextHtml = html.replace(/\sid=(["'])([^"'<>\s]+)\1/gi, (match, quote: string, id: string) => {
+    const occurrence = (seen.get(id) ?? 0) + 1
+    seen.set(id, occurrence)
+    if (occurrence === 1) return match
+    duplicateIds.add(id)
+    return match.replace(`${quote}${id}${quote}`, `${quote}${id}--${occurrence}${quote}`)
+  })
+
+  return { html: nextHtml, duplicateIds: [...duplicateIds] }
 }
 
 /**
@@ -186,13 +210,13 @@ export function findUnmountedWidgetShells(html: string): string[] {
  */
 export function sanitizeCustomHtml(html: string): string {
   if (!html) return ''
-  let out = html
+  let out = normalizeWidgetPlaceholders(html)
   out = out.replace(/<\s*(script|iframe|object|embed|form)\b[^>]*>[\s\S]*?<\s*\/\s*\1\s*>/gi, '')
   out = out.replace(/<\s*(script|iframe|object|embed|form)\b[^>]*\/?\s*>/gi, '')
   out = out.replace(/\s+on\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
   out = out.replace(/\s(href|src|action)\s*=\s*(['"])\s*javascript:[^'"]*\2/gi, ' $1="#"')
   out = out.replace(/\ssrcdoc\s*=\s*("[^"]*"|'[^']*')/gi, '')
-  return normalizeWidgetPlaceholders(out)
+  return normalizeDuplicateHtmlIds(out).html
 }
 
 export function sanitizeCustomCss(css: string): string {
