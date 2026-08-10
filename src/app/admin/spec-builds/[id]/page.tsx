@@ -9,6 +9,7 @@ import { ADMIN_FACT_FIELDS } from '@/lib/spec/addAdminFact'
 import {
   addFactAction,
   advanceSpecBuildAction,
+  overrideSpecBuildAction,
   approveSpecBuildAction,
   rejectSpecBuildAction,
   runResearchAction,
@@ -567,6 +568,35 @@ export default async function SpecBuildDetailPage({
         <p className="mt-3 text-xs text-gray-500">
           Nothing here contacts the business. That happens only after you approve.
         </p>
+
+        {build.status === 'needs_attention' &&
+          ((build.status_reason || '').toLowerCase().includes('no proprietary detail') ||
+            (build.last_error || '').toLowerCase().includes('no proprietary detail')) && (
+            <form action={overrideSpecBuildAction} className="mt-4 rounded-md border border-amber-300 bg-amber-50 p-3">
+              <input type="hidden" name="spec_build_id" value={build.id} />
+              <p className="text-sm font-medium text-amber-900">Admin override</p>
+              <p className="mt-1 text-xs text-amber-800">
+                Continue to drafting anyway. Use this only when you have confirmed the facts are good enough
+                and accept that copy quality checks may still fail later.
+              </p>
+              <label className="mt-2 block text-xs font-medium uppercase tracking-wide text-amber-900">
+                Why override?
+                <input
+                  name="override_note"
+                  required
+                  minLength={15}
+                  placeholder="Called owner and confirmed exact process details"
+                  className="mt-1 w-full rounded-md border border-amber-300 bg-white px-3 py-2 text-sm text-gray-900"
+                />
+              </label>
+              <button
+                type="submit"
+                className="mt-3 rounded-md bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-500"
+              >
+                Override and continue build
+              </button>
+            </form>
+          )}
       </section>
 
       {/*

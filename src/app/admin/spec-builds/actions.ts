@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { logAdminAction, requireAdmin } from '@/lib/admin'
 import { addAdminFact } from '@/lib/spec/addAdminFact'
+import { overrideSpecBuildToDrafting } from '@/lib/spec/overrideSpecBuild'
 import { approveSpecOffer } from '@/lib/spec/specOffer'
 import { sendSpecOfferSms } from '@/lib/spec/sendSpecOfferSms'
 import { advanceSpecBuild } from '@/lib/spec/advanceSpecBuild'
@@ -189,6 +190,39 @@ export async function advanceSpecBuildAction(formData: FormData): Promise<void> 
       `${result.from} → ${result.to}${result.note ? ` (${result.note})` : ''}`
     )}`
   )
+}
+
+export async function overrideSpecBuildAction(formData: FormData): Promise<void> {
+  const admin = await requireAdmin()
+  const id = String(formData.get('spec_build_id') || '')
+  const note = String(formData.get('override_note') || '').trim()
+  if (!id) return
+  if (note.length < 15) {
+    redirect(
+      `/admin/spec-builds/${id}?fact_error=${encodeURIComponent('Add a short reason (at least 15 characters) before overriding.')}`
+    )
+  }
+
+  const result = await overrideSpecBuildToDrafting(id)
+  if (!result.ok) {
+    redirect(`/admin/spec-builds/${id}?fact_error=${encodeURIComponent(result.reason)}`)
+  }
+
+  await logAdminAction({
+    actor: admin,
+    action: 'spec_build.override_to_drafting',
+    targetType: 'spec_build',
+    targetId: id,
+    metadata: {
+      note,
+      from: result.from,
+      to: result.to,
+      intakeId: result.intakeId,
+    },
+  })
+
+  revalidatePath('/admin/spec-builds')
+  redirect(`/admin/spec-builds/${id}?advanced=${encodeURIComponent('needs_attention → drafting (admin override)')}`)
 }
 
 /**
