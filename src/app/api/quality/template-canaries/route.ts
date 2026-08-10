@@ -20,7 +20,12 @@ export async function GET() {
     if (!tenantIds.length) return Response.json({ canaries: [] }, { headers: { 'Cache-Control': 'public, max-age=60' } })
 
     const [{ data: tenants, error: tenantError }, { data: domains, error: domainError }] = await Promise.all([
-      admin.from('tenants').select('id').in('id', tenantIds).eq('site_status', 'active'),
+      admin
+        .from('tenants')
+        .select('id')
+        .in('id', tenantIds)
+        .eq('site_status', 'active')
+        .eq('validation_status', 'passed'),
       admin
         .from('domains')
         .select('tenant_id, hostname, is_primary, source')
