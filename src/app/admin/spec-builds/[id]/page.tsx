@@ -14,6 +14,7 @@ import {
   runResearchAction,
 } from '../actions'
 import { offerUrl, priceSpecOffer } from '@/lib/spec/specOffer'
+import { derivePreviewPassword } from '@/lib/spec/specPreviewPassword'
 import { SPEC_OFFER_SMS_TEMPLATES, personalizeTemplate } from '@/lib/twilio-sms'
 import { specSmsAllowed, specSmsAllowlist } from '@/lib/spec/specSmsAllowlist'
 
@@ -87,6 +88,33 @@ export default async function SpecBuildDetailPage({
       ?.rejected ?? []
   const sources = resolveResearchSources(lead)
 
+  // The password is derived, never stored, so the admin page can show it in
+  // plain text whenever it is needed — for reading down the phone if a business
+  // loses the text, or for checking the site yourself. It only throws if
+  // SPEC_PREVIEW_SECRET is unset, which is a configuration problem worth
+  // surfacing rather than hiding behind a blank.
+  let previewPassword: string | null = null
+  let previewPasswordError: string | null = null
+  try {
+    previewPassword = derivePreviewPassword(build.id)
+  } catch (err) {
+    previewPasswordError = err instanceof Error ? err.message : 'Could not derive the password.'
+  }
+
+  // Whether the site is actually locked right now. Set at approval, cleared on
+  // acceptance — so this is also how you tell an accepted build from an
+  // approved one at a glance.
+  let previewLockActive = false
+  if (build.tenant_id) {
+    const { data: cfg } = await getSupabaseAdmin()
+      .from('site_configs')
+      .select('spec_preview_password_hash')
+      .eq('tenant_id', build.tenant_id)
+      .maybeSingle()
+    previewLockActive = !!(cfg as { spec_preview_password_hash?: string | null } | null)
+      ?.spec_preview_password_hash
+  }
+
   const offerPricing = priceSpecOffer(build.offer_discount_bps)
   const allowlistActive = specSmsAllowlist().length > 0
   const smsAllowed = specSmsAllowed(build.phone_e164)
@@ -99,6 +127,7 @@ export default async function SpecBuildDetailPage({
     deadlineLabel: build.offer_deadline_at
       ? new Date(build.offer_deadline_at).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })
       : '<deadline>',
+    previewPassword: previewPassword ?? '<password>',
   })
 
   return (
@@ -482,6 +511,38 @@ export default async function SpecBuildDetailPage({
           <Field label="Deadline" value={fmt(build.offer_deadline_at)} />
           <Field label="Sent at" value={fmt(build.offer_sent_at)} />
         </dl>
+
+        <div className="mt-5 rounded-md border border-gray-200 bg-gray-50 p-4">
+          <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+            Site password
+          </p>
+          {previewPasswordError ? (
+            <p className="mt-1 text-sm text-red-700">{previewPasswordError}</p>
+          ) : (
+            <>
+              <p className="mt-1 font-mono text-xl tracking-widest text-gray-900">
+                {previewPassword}
+              </p>
+              <p className="mt-1 text-sm text-gray-600">
+                {previewLockActive ? (
+                  <>
+                    The site is locked. Only someone with this password can open it — read it
+                    down the phone if they lose the text. It is removed automatically when they
+                    accept and the site goes live.
+                  </>
+                ) : (
+                  <>
+                    Not applied yet. The lock goes on when you approve this build, and comes off
+                    again the moment they accept.
+                  </>
+                )}
+              </p>
+              <p className="mt-2 text-xs text-gray-500">
+                Your admin bypass ignores this — you never need the password to view the site.
+              </p>
+            </>
+          )}
+        </div>
 
         <p className="mt-4 text-xs font-medium uppercase tracking-wide text-gray-500">
           Exact message to {build.phone_e164}
