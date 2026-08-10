@@ -67,6 +67,7 @@ export type SpecFactSourceKind =
   | 'facebook_about'
   | 'facebook_post'
   | 'yelp_business'
+  | 'yelp_review'
   | 'admin_manual'
 
 export type SpecFact = {

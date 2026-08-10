@@ -58,6 +58,11 @@ beforeEach(() => {
   mocks.statusEq.mockReturnValue({ select: mocks.select })
   mocks.idEq.mockReturnValue({ eq: mocks.statusEq })
   mocks.update.mockReturnValue({ eq: mocks.idEq })
+  mocks.fetchPageText.mockImplementation(async (url: string, sourceKind: string) => ({
+    url,
+    sourceKind,
+    text: `${EVIDENCE} ${'Yelp customers describe the crew as prompt, careful, and thorough. '.repeat(8)}`,
+  }))
   mocks.extractFactsFromPage.mockImplementation(async (page: { url: string; sourceKind: string }) => ({
     candidates: [{
       field: 'shop_rule',
@@ -101,7 +106,7 @@ describe('scraper-captured public profile research lifecycle', () => {
     expect(mocks.statusEq).toHaveBeenCalledWith('status', 'researching')
   })
 
-  it('labels captured Yelp evidence correctly and avoids a redundant Yelp fetch', async () => {
+  it('labels captured Yelp evidence correctly and fetches the Yelp review source once', async () => {
     const yelpUrl = 'https://www.yelp.com/biz/peerless-pressure-softwash-clarksville'
     const yelpBuild = {
       ...build,
@@ -118,7 +123,7 @@ describe('scraper-captured public profile research lifecycle', () => {
 
     const outcome = await runSpecResearch(yelpBuild)
 
-    expect(mocks.fetchPageText).not.toHaveBeenCalled()
+    expect(mocks.fetchPageText).toHaveBeenCalledTimes(1)
     expect(outcome.facts[0]).toMatchObject({
       sourceKind: 'yelp_business',
       sourceUrl: yelpUrl,

@@ -85,6 +85,23 @@ export default async function SpecBuildDetailPage({
   if (!data) notFound()
   const build = data as SpecBuildRow
   const initialProgress = await getSpecBuildProgress(id)
+  const tenantValidationResult = build.tenant_id
+    ? await getSupabaseAdmin()
+        .from('tenants')
+        .select('validation_status, validation_report, validated_at')
+        .eq('id', build.tenant_id)
+        .maybeSingle()
+    : null
+  const tenantValidation = (tenantValidationResult?.data as {
+    validation_status?: 'pending' | 'passed' | 'failed' | null
+    validation_report?: Array<{
+      code?: string
+      severity?: string
+      message?: string
+      fixable?: boolean
+    }>
+    validated_at?: string | null
+  } | null) ?? null
   const lead = build.lead_input ?? { businessName: '', phone: '' }
   const facts: SpecFact[] = build.research?.facts ?? []
   const fetched = build.research?.fetched ?? []
@@ -92,6 +109,9 @@ export default async function SpecBuildDetailPage({
     (build.research as { rejected?: { reason: string; field?: string; value?: string }[] })
       ?.rejected ?? []
   const sources = resolveResearchSources(lead)
+  const validationStatus = tenantValidation?.validation_status ?? null
+  const validationReport = tenantValidation?.validation_report ?? []
+  const validatedAt = tenantValidation?.validated_at ?? null
 
   // The password is derived, never stored, so the admin page can show it in
   // plain text whenever it is needed — for reading down the phone if a business
@@ -156,7 +176,68 @@ export default async function SpecBuildDetailPage({
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {build.status_reason && <p className="font-medium">{build.status_reason}</p>}
           {build.last_error && <p className="mt-1 font-mono text-xs">{build.last_error}</p>}
+          {build.tenant_id && (
+            <div className="mt-3">
+              <Link
+                href={`/admin/sites/${build.tenant_id}`}
+                className="rounded-md bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-500"
+              >
+                Open review page
+              </Link>
+            </div>
+          )}
         </div>
+      )}
+
+      {build.tenant_id && validationStatus === 'failed' && (
+        <section className="rounded-lg border border-red-200 bg-white p-6">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">
+                Validation failure details
+              </h2>
+              <p className="mt-1 text-sm text-gray-600">
+                The site validation report failed. Review the issues below before approval.
+              </p>
+            </div>
+            <Link
+              href={`/admin/sites/${build.tenant_id}`}
+              className="rounded-md border border-red-300 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50"
+            >
+              Open full review
+            </Link>
+          </div>
+
+          {validatedAt && (
+            <p className="mt-3 text-xs text-gray-500">Validated {fmt(validatedAt)}</p>
+          )}
+
+          <ul className="mt-4 space-y-2">
+            {validationReport.map((issue, index) => (
+              <li
+                key={`${issue.code || 'issue'}-${index}`}
+                className={`rounded-lg border px-4 py-3 text-sm ${
+                  issue.severity === 'error'
+                    ? 'border-red-200 bg-red-50 text-red-800'
+                    : 'border-amber-200 bg-amber-50 text-amber-800'
+                }`}
+              >
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <span>{issue.message || issue.code || 'Validation issue'}</span>
+                  <span className="text-xs font-medium uppercase tracking-wide text-gray-500">
+                    {issue.code || 'unknown'}
+                  </span>
+                </div>
+              </li>
+            ))}
+            {validationReport.length === 0 && (
+              <li className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+                Validation failed but no issue list was recorded. Open the review page for the full
+                report.
+              </li>
+            )}
+          </ul>
+        </section>
       )}
 
       {factError && (
@@ -568,6 +649,17 @@ export default async function SpecBuildDetailPage({
         <p className="mt-3 text-xs text-gray-500">
           Nothing here contacts the business. That happens only after you approve.
         </p>
+
+        {build.tenant_id && (
+          <div className="mt-3">
+            <Link
+              href={`/admin/sites/${build.tenant_id}`}
+              className="inline-flex rounded-md border border-emerald-300 px-4 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50"
+            >
+              Review / approve site
+            </Link>
+          </div>
+        )}
 
         {build.status === 'needs_attention' &&
           ((build.status_reason || '').toLowerCase().includes('no proprietary detail') ||

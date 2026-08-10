@@ -149,6 +149,21 @@ describe('verifyFacts — testimonials', () => {
     expect(result.accepted).toHaveLength(1)
   })
 
+  it('accepts a verbatim Yelp review as a customer quote', () => {
+    const result = verifyFacts(
+      [
+        fact({
+          field: 'customer_quotes',
+          value: review,
+          evidence: review,
+          sourceKind: 'yelp_review',
+        }),
+      ],
+      pages
+    )
+    expect(result.accepted).toHaveLength(1)
+  })
+
   it('refuses a paraphrased review — that is an invented customer statement', () => {
     const result = verifyFacts(
       [

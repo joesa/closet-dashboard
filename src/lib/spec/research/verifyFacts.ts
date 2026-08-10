@@ -215,7 +215,7 @@ export function verifyFacts(
     // "review" is a fabricated customer statement, which is the worst thing
     // this pipeline could put on a page.
     if (field === 'customer_quotes') {
-      if (sourceKind !== 'maps_review') {
+      if (sourceKind !== 'maps_review' && sourceKind !== 'yelp_review') {
         reject(candidate, 'quote_not_from_review')
         continue
       }

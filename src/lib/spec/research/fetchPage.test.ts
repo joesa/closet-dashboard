@@ -107,6 +107,30 @@ A customer said this was the best service ever.`
     expect(result).not.toContain('A customer said')
   })
 
+  it('preserves review text when the source kind is a Yelp review fetch', async () => {
+    process.env.FIRECRAWL_API_KEY = 'test-key'
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
+      new Response(
+        JSON.stringify({
+          data: {
+            markdown: `# L & L Grooming & Boarding\n\n## Recommended Reviews\n${'They arrived on time and finished early. '.repeat(15)}`,
+          },
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      )
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await fetchPageText(
+      'https://www.yelp.com/biz/l-and-l-grooming-boarding',
+      'yelp_review'
+    )
+
+    expect(result.error).toBeUndefined()
+    expect(result.text).toContain('Recommended Reviews')
+    expect(result.text).toContain('They arrived on time and finished early.')
+  })
+
   it.each(['## Reviews (14)', '### Review Highlights', '## Ask the Community']) (
     'stops at Yelp section variant %s',
     (heading) => {

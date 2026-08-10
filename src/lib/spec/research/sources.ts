@@ -54,6 +54,11 @@ export function resolveResearchSources(lead: SpecBuildLeadInput): ResearchSource
       sourceKind: 'yelp_business',
       rationale: 'Current Yelp business details and public page prose',
     })
+    sources.push({
+      url: lead.yelpUrl!.trim(),
+      sourceKind: 'yelp_review',
+      rationale: 'Yelp customer reviews — real review quotes and service details',
+    })
   }
 
   return sources

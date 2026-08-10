@@ -58,16 +58,21 @@ describe('normalizeFacebookUrl — deep links', () => {
 
 describe('resolveResearchSources — Yelp', () => {
   it('adds a canonical Yelp business page as a distinct source', () => {
-    expect(
-      resolveResearchSources({
-        businessName: 'Peerless',
-        phone: '+19315550199',
-        yelpUrl: 'https://www.yelp.com/biz/peerless-pressure-softwash-clarksville',
-      })
-    ).toContainEqual({
+    const sources = resolveResearchSources({
+      businessName: 'Peerless',
+      phone: '+19315550199',
+      yelpUrl: 'https://www.yelp.com/biz/peerless-pressure-softwash-clarksville',
+    })
+
+    expect(sources).toContainEqual({
       url: 'https://www.yelp.com/biz/peerless-pressure-softwash-clarksville',
       sourceKind: 'yelp_business',
       rationale: 'Current Yelp business details and public page prose',
+    })
+    expect(sources).toContainEqual({
+      url: 'https://www.yelp.com/biz/peerless-pressure-softwash-clarksville',
+      sourceKind: 'yelp_review',
+      rationale: 'Yelp customer reviews — real review quotes and service details',
     })
   })
 

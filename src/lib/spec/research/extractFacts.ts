@@ -78,7 +78,7 @@ export async function extractFactsFromPage(
 ): Promise<ExtractFactsResult> {
   if (!page.text.trim()) return { candidates: [], error: page.error || 'empty page' }
 
-  const quotesAllowed = page.sourceKind === 'maps_review'
+  const quotesAllowed = page.sourceKind === 'maps_review' || page.sourceKind === 'yelp_review'
 
   const prompt = `Business: ${business.name}${business.city ? ` in ${business.city}` : ''}
 ${business.services?.length ? `Known services: ${business.services.join(', ')}` : ''}
