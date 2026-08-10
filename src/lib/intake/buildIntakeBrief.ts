@@ -1,4 +1,5 @@
 import type { ProspectIntakeRow } from '@/lib/intake/getIntakeByToken'
+import { SPEC_EMAIL_PLACEHOLDER } from '@/lib/spec/research/mapFactsToIntake'
 
 /**
  * True when the contractor supplied real customer quotes. This is the gate the
@@ -107,7 +108,13 @@ export function buildIntakeBrief(row: ProspectIntakeRow): string {
 
   add('Contact', row.contact_name)
   add('Phone', row.contact_phone)
-  add('Email', row.contact_email)
+  // A spec build's contact_email is a platform placeholder (spec+<id>@…) that
+  // exists so provisioning has a unique owner address. It must never reach the
+  // generated site: it leaked into a real footer, publishing an internal build
+  // id, and it tells the business nothing. Swap in the sentence that explains
+  // what will actually appear once they approve. adoptSpecBuild puts their real
+  // address on the row at acceptance, after which this branch stops applying.
+  add('Email', row.source === 'spec' ? SPEC_EMAIL_PLACEHOLDER : row.contact_email)
 
   const address = [
     row.street_address,

@@ -73,6 +73,11 @@ export async function adoptSpecBuild(
       contact_email: email,
       notification_email: email,
       verification_email: email,
+      // Restore the real number. It was held as a placeholder for the whole
+      // spec period so the site never published a working line for a business
+      // that had not agreed to one; now they have.
+      contact_phone: build.phone_e164,
+      notification_phone: build.phone_e164,
       tier_total_cents: amountCents,
       deposit_required_cents: 0,
       deposit_status: 'waived',
@@ -122,7 +127,15 @@ export async function adoptSpecBuild(
     }
   }
 
-  // 5. Open the launch paywall. syncTenantLaunchAccess reads preview_approved_at
+  // 5. Drop the preview password. They have said yes, so the site stops being
+  //    a private pitch — asking a paying owner to type a code to see their own
+  //    site would be absurd.
+  await supabase
+    .from('site_configs')
+    .update({ spec_preview_password_hash: null })
+    .eq('tenant_id', build.tenant_id)
+
+  // 6. Open the launch paywall. syncTenantLaunchAccess reads preview_approved_at
   //    (set above) and moves the site to awaiting_launch_payment with a pay URL.
   const launch = await syncTenantLaunchAccess({
     tenantId: build.tenant_id,

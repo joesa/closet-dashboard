@@ -1,5 +1,6 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { priceSpecOffer } from '@/lib/spec/specOffer'
+import { derivePreviewPassword, hashPreviewPassword } from '@/lib/spec/specPreviewPassword'
 import { specSmsAllowed, specSmsAllowlist } from '@/lib/spec/specSmsAllowlist'
 import { SPEC_OFFER_SMS_TEMPLATES } from '@/lib/twilio-sms'
 
@@ -76,5 +77,64 @@ describe('offer SMS templates', () => {
       expect.soft(template.body).toContain('{businessName}')
       expect.soft(template.body).toContain('{deadlineLabel}')
     }
+  })
+})
+
+describe('spec preview password', () => {
+  const BUILD_A = '44dc11d4-c5ff-4e36-a368-7d8e0394ab33'
+  const BUILD_B = '11111111-2222-3333-4444-555555555555'
+
+  // Derivation is keyed on the shared secret, which CI has no reason to hold.
+  beforeEach(() => {
+    process.env.SPEC_PREVIEW_SECRET = 'spec-preview-test-secret'
+  })
+  afterEach(() => {
+    delete process.env.SPEC_PREVIEW_SECRET
+  })
+
+  it('is readable off a phone screen', () => {
+    // It gets read out of a text message and typed by hand, so no characters
+    // anybody has to squint at.
+    const pw = derivePreviewPassword(BUILD_A)
+    expect(pw).toMatch(/^[A-Z2-9]{4}-[A-Z2-9]{4}$/)
+    expect(pw).not.toMatch(/[O0I1S5]/)
+  })
+
+  it('is stable for a build, so a resent text still works', () => {
+    expect(derivePreviewPassword(BUILD_A)).toBe(derivePreviewPassword(BUILD_A))
+  })
+
+  it('differs per build, so one password opens one site', () => {
+    expect(derivePreviewPassword(BUILD_A)).not.toBe(derivePreviewPassword(BUILD_B))
+    expect(hashPreviewPassword(derivePreviewPassword(BUILD_A))).not.toBe(
+      hashPreviewPassword(derivePreviewPassword(BUILD_B))
+    )
+  })
+
+  it('never stores the password in its own hash', () => {
+    const pw = derivePreviewPassword(BUILD_A)
+    expect(hashPreviewPassword(pw)).not.toContain(pw.replace('-', ''))
+  })
+
+  it('accepts what a human actually types', () => {
+    // Lowercase and stray spaces are what you get from a phone keyboard.
+    const pw = derivePreviewPassword(BUILD_A)
+    const hash = hashPreviewPassword(pw)
+    expect(hashPreviewPassword(pw.toLowerCase())).toBe(hash)
+    expect(hashPreviewPassword(`  ${pw} `)).toBe(hash)
+  })
+})
+
+describe('offer SMS carries the password', () => {
+  it('includes the password and says the site is private', () => {
+    const first = SPEC_OFFER_SMS_TEMPLATES.find((t) => t.step === 1)!
+    expect(first.body).toContain('{previewPassword}')
+    expect(first.body.toLowerCase()).toMatch(/private/)
+  })
+
+  it('repeats the password in the reminder', () => {
+    // The reminder may be the only message still in their inbox a week later.
+    const second = SPEC_OFFER_SMS_TEMPLATES.find((t) => t.step === 2)!
+    expect(second.body).toContain('{previewPassword}')
   })
 })

@@ -15,6 +15,7 @@ import {
   purgeGraceHours,
 } from '@/lib/spec/specOffer'
 import { specSmsAllowed, specSmsAllowlist } from '@/lib/spec/specSmsAllowlist'
+import { derivePreviewPassword } from '@/lib/spec/specPreviewPassword'
 import { SPEC_BUILD_SELECT, type SpecBuildRow } from '@/lib/spec/types'
 
 export const runtime = 'nodejs'
@@ -156,6 +157,10 @@ async function run(req: Request) {
       listLabel: pricing.listLabel,
       percentOff: String(pricing.percentOff),
       deadlineLabel: fmtDeadline(build.offer_deadline_at),
+      // Re-derived rather than looked up: the password is never stored, only
+      // its hash, so a resend produces the same code without a plaintext
+      // sitting in the database waiting to leak.
+      previewPassword: derivePreviewPassword(build.id),
     })
 
     // Claim the send before making it. run_id is NOT NULL on this table and a

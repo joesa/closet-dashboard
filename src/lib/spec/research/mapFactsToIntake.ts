@@ -21,6 +21,15 @@ import type { SpecBuildLeadInput, SpecFact } from '@/lib/spec/types'
 
 export type IntakePatch = Record<string, unknown>
 
+/**
+ * Stand-ins rendered on a spec site in place of the owner's real contact
+ * details. Written as sentences rather than blanks so the business reads them
+ * as a deliberate state — "this switches on when you approve" — instead of a
+ * mistake we made.
+ */
+export const SPEC_PHONE_PLACEHOLDER = 'Your phone number appears here once you approve'
+export const SPEC_EMAIL_PLACEHOLDER = 'Your email appears here once you approve'
+
 export type MapFactsResult = {
   patch: IntakePatch
   /** Facts that had nowhere to go, for the admin ledger. */
@@ -45,8 +54,19 @@ export function mapFactsToIntake(
   patch.business_name = lead.businessName
   patch.industry = lead.businessCategory?.trim() || null
   patch.services = lead.services ?? []
-  patch.contact_phone = lead.phone
-  patch.notification_phone = lead.phone
+  // The business's real number never reaches the generated site.
+  //
+  // Two reasons. A spec site that publishes a working phone number is a lead
+  // funnel for a business that has not agreed to have one, and if a customer
+  // ever found it they would be calling about a site the owner does not know
+  // exists. And when the owner reviews the site, a visible placeholder is what
+  // tells them the number is theirs to switch on by approving — far clearer
+  // than seeing their real number and wondering whether it is already live.
+  //
+  // adoptSpecBuild restores the real number at acceptance. The lead record
+  // keeps it throughout; this only governs what the site renders.
+  patch.contact_phone = SPEC_PHONE_PLACEHOLDER
+  patch.notification_phone = SPEC_PHONE_PLACEHOLDER
 
   // Never the owner's real address for contact — a spec build must not create
   // an account or send mail to someone who has not agreed to anything.

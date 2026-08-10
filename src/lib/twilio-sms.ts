@@ -166,12 +166,12 @@ export const SPEC_OFFER_SMS_TEMPLATES: SmsTemplate[] = [
   {
     step: 1,
     delayDays: 0,
-    body: `Hi {businessName} — Joseph with ${BRAND}. I built you a complete website. No charge to look: {offerUrl} If you want it, it's {percentOff}% off — {offerLabel} instead of {listLabel} — until {deadlineLabel}. After that I take it down. Reply STOP to opt out.`,
+    body: `Hi {businessName} — Joseph with ${BRAND}. I built you a complete website. Have a look, no charge: {offerUrl}\n\nIt's private — password {previewPassword}. Nobody else can see it, and it won't show up on Google.\n\nIf you want it, {percentOff}% off: {offerLabel} instead of {listLabel}, until {deadlineLabel}. After that I take it down. Reply STOP to opt out.`,
   },
   {
     step: 2,
     delayDays: 6,
-    body: `{businessName} — your site comes down {deadlineLabel}. {percentOff}% off until then: {offerUrl} Reply STOP to opt out.`,
+    body: `{businessName} — your site comes down {deadlineLabel}. {percentOff}% off until then: {offerUrl} (password {previewPassword}) Reply STOP to opt out.`,
   },
 ]
 

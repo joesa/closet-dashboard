@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { formatUsd, getTierEntry } from '@/lib/intake/tiers'
 import { publicAppOrigin } from '@/lib/urls'
 import { mintSpecPreviewToken } from '@/lib/spec/specPreviewToken'
+import { derivePreviewPassword, hashPreviewPassword } from '@/lib/spec/specPreviewPassword'
 import type { SpecBuildRow } from '@/lib/spec/types'
 
 /**
@@ -106,7 +107,13 @@ export async function expireOfferIfLapsed(build: {
 }
 
 export type ApproveOfferResult =
-  | { ok: true; offerToken: string; deadlineAt: string; pricing: OfferPricing }
+  | {
+      ok: true
+      offerToken: string
+      deadlineAt: string
+      pricing: OfferPricing
+      previewPassword: string
+    }
   | { ok: false; reason: string }
 
 /**
@@ -147,6 +154,15 @@ export async function approveSpecOffer(build: SpecBuildRow): Promise<ApproveOffe
   const offerToken = randomUUID().replace(/-/g, '')
   const deadlineAt = new Date(Date.now() + offerDeadlineHours() * 3600_000).toISOString()
 
+  // Lock the site behind a password the business has to type. Only the hash is
+  // stored; the password itself is derived from the build id whenever a message
+  // needs it, so it never sits in the database.
+  const previewPassword = derivePreviewPassword(build.id)
+  await supabase
+    .from('site_configs')
+    .update({ spec_preview_password_hash: hashPreviewPassword(previewPassword) })
+    .eq('tenant_id', build.tenant_id)
+
   const { error } = await supabase
     .from('spec_builds')
     .update({
@@ -162,5 +178,5 @@ export async function approveSpecOffer(build: SpecBuildRow): Promise<ApproveOffe
     .eq('status', 'ready_for_review')
 
   if (error) return { ok: false, reason: error.message }
-  return { ok: true, offerToken, deadlineAt, pricing }
+  return { ok: true, offerToken, deadlineAt, pricing, previewPassword }
 }
