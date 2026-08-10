@@ -12,6 +12,7 @@ import {
   approveSpecBuildAction,
   rejectSpecBuildAction,
   runResearchAction,
+  updateResearchSourcesAction,
 } from '../actions'
 import { offerUrl, priceSpecOffer } from '@/lib/spec/specOffer'
 import { derivePreviewPassword } from '@/lib/spec/specPreviewPassword'
@@ -69,6 +70,8 @@ export default async function SpecBuildDetailPage({
     fact_added?: string
     advanced?: string
     sent?: string
+    source_error?: string
+    sources_updated?: string
   }>
 }) {
   const { id } = await params
@@ -77,6 +80,8 @@ export default async function SpecBuildDetailPage({
     fact_added: factAdded,
     advanced,
     sent,
+    source_error: sourceError,
+    sources_updated: sourcesUpdated,
   } = await searchParams
   const { data } = await getSupabaseAdmin()
     .from('spec_builds')
@@ -161,6 +166,16 @@ export default async function SpecBuildDetailPage({
           {factError}
         </div>
       )}
+      {sourceError && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {sourceError}
+        </div>
+      )}
+      {sourcesUpdated && (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+          Sources saved and research rerun.
+        </div>
+      )}
       {sent && (
         <div
           className={`rounded-lg border px-4 py-3 text-sm ${
@@ -234,9 +249,70 @@ export default async function SpecBuildDetailPage({
               ) : null
             }
           />
+          <Field
+            label="Yelp"
+            value={
+              lead.yelpUrl ? (
+                <a
+                  href={lead.yelpUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-blue-600 hover:underline"
+                >
+                  Listing
+                </a>
+              ) : null
+            }
+          />
           <Field label="Scraper run" value={build.scraper_run_id} />
         </dl>
       </section>
+
+      {!build.tenant_id && ['queued', 'needs_attention'].includes(build.status) && (
+        <section className="rounded-lg border border-gray-200 bg-white p-6">
+          <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-gray-500">
+            Research sources
+          </h2>
+          <p className="mb-4 text-sm text-gray-600">
+            Use whichever listing is current. Saving reruns research and keeps facts added by hand.
+          </p>
+          <form action={updateResearchSourcesAction} className="space-y-3">
+            <input type="hidden" name="spec_build_id" value={build.id} />
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <label className="text-sm">
+                <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-500">
+                  Facebook URL
+                </span>
+                <input
+                  name="facebook_url"
+                  type="url"
+                  defaultValue={lead.socialProfileUrl ?? ''}
+                  placeholder="https://www.facebook.com/business"
+                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                />
+              </label>
+              <label className="text-sm">
+                <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-500">
+                  Yelp business URL
+                </span>
+                <input
+                  name="yelp_url"
+                  type="url"
+                  defaultValue={lead.yelpUrl ?? ''}
+                  placeholder="https://www.yelp.com/biz/business-city"
+                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                />
+              </label>
+            </div>
+            <button
+              type="submit"
+              className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800"
+            >
+              Save &amp; research
+            </button>
+          </form>
+        </section>
+      )}
 
       {/*
         The fact ledger is the non-fabrication audit trail: every claim the site
@@ -399,7 +475,7 @@ export default async function SpecBuildDetailPage({
         </h2>
         {sources.length === 0 && (
           <p className="mb-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-            This lead has neither a Google Maps listing nor a Facebook page, so there is nothing
+            This lead has no Google Maps, Facebook, or Yelp page, so there is nothing
             to research. Add one on the lead, or drop it.
           </p>
         )}

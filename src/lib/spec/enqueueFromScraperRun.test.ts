@@ -103,4 +103,11 @@ describe('planSpecBuildEnqueue — public profile provenance', () => {
 
     expect(plan.toQueue[0].publicProfileResearch).toBe(publicProfileResearch)
   })
+
+  it('carries a Yelp URL separately from Facebook and owned websites', () => {
+    const yelpUrl = 'https://www.yelp.com/biz/test-contracting-clarksville'
+    const plan = planSpecBuildEnqueue([{ id: 'lead-0', row: b1(), yelpUrl }], 1)
+
+    expect(plan.toQueue[0].yelpUrl).toBe(yelpUrl)
+  })
 })

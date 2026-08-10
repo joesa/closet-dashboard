@@ -40,7 +40,7 @@ export function resolveResearchSources(lead: SpecBuildLeadInput): ResearchSource
 
   // The owner's own page: About text and recent posts, written by them about
   // themselves. The best source of operational specifics.
-  if (isHttpUrl(lead.socialProfileUrl)) {
+  if (isFacebookUrl(lead.socialProfileUrl)) {
     sources.push({
       url: normalizeFacebookUrl(lead.socialProfileUrl!.trim()),
       sourceKind: 'facebook_about',
@@ -48,7 +48,26 @@ export function resolveResearchSources(lead: SpecBuildLeadInput): ResearchSource
     })
   }
 
+  if (isYelpBusinessUrl(lead.yelpUrl)) {
+    sources.push({
+      url: lead.yelpUrl!.trim(),
+      sourceKind: 'yelp_business',
+      rationale: 'Current Yelp business details and public page prose',
+    })
+  }
+
   return sources
+}
+
+export function isFacebookUrl(value?: string | null): boolean {
+  if (!isHttpUrl(value)) return false
+  return /(^|\.)facebook\.com$/i.test(new URL(value!.trim()).hostname)
+}
+
+export function isYelpBusinessUrl(value?: string | null): boolean {
+  if (!isHttpUrl(value)) return false
+  const parsed = new URL(value!.trim())
+  return /(^|\.)yelp\.com$/i.test(parsed.hostname) && parsed.pathname.toLowerCase().startsWith('/biz/')
 }
 
 function isHttpUrl(value?: string | null): boolean {

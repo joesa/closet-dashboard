@@ -14,6 +14,7 @@ type ManualLeadBody = {
   city?: string
   email?: string
   socialProfileUrl?: string
+  yelpUrl?: string
 }
 
 export type QueueLeadOutcome = {
@@ -71,6 +72,7 @@ export async function POST(req: Request) {
       city: row.city?.trim() || null,
       email: row.email?.trim() || null,
       socialProfileUrl: row.socialProfileUrl?.trim() || null,
+      yelpUrl: row.yelpUrl?.trim() || null,
     }
 
     try {

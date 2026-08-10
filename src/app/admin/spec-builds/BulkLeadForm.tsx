@@ -11,6 +11,7 @@ type Row = {
   city: string
   email: string
   socialProfileUrl: string
+  yelpUrl: string
 }
 
 const BLANK: Row = {
@@ -20,6 +21,7 @@ const BLANK: Row = {
   city: '',
   email: '',
   socialProfileUrl: '',
+  yelpUrl: '',
 }
 
 const OUTCOME_STYLE: Record<QueueLeadOutcome['status'], string> = {
@@ -118,7 +120,7 @@ export default function BulkLeadForm() {
           </h2>
           <p className="mt-1 text-sm text-gray-600">
             Business name and phone are required. Everything else improves the build — the
-            Facebook page in particular, since it is the best source of real, verifiable facts.
+            Facebook and Yelp pages can provide current, verifiable business details.
           </p>
         </div>
         <button
@@ -145,7 +147,7 @@ export default function BulkLeadForm() {
 
       <div className="space-y-3">
         {rows.map((row, i) => (
-          <div key={i} className="grid grid-cols-1 gap-2 md:grid-cols-6">
+          <div key={i} className="grid grid-cols-1 gap-2 md:grid-cols-7">
             <input
               value={row.businessName}
               onChange={(e) => set(i, { businessName: e.target.value })}
@@ -174,6 +176,12 @@ export default function BulkLeadForm() {
               value={row.socialProfileUrl}
               onChange={(e) => set(i, { socialProfileUrl: e.target.value })}
               placeholder="Facebook URL"
+              className="rounded-md border border-gray-300 px-3 py-1.5 text-sm"
+            />
+            <input
+              value={row.yelpUrl}
+              onChange={(e) => set(i, { yelpUrl: e.target.value })}
+              placeholder="Yelp URL"
               className="rounded-md border border-gray-300 px-3 py-1.5 text-sm"
             />
           </div>

@@ -2,6 +2,10 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { extractFactsFromPage } from '@/lib/spec/research/extractFacts'
 import { fetchPageText, firecrawlConfigured } from '@/lib/spec/research/fetchPage'
 import { resolveResearchSources } from '@/lib/spec/research/sources'
+import {
+  normalizePublicProfileResearch,
+  publicProfileSourceKind,
+} from '@/lib/spec/research/publicProfileResearch'
 import { verifyFacts, type FactRejection } from '@/lib/spec/research/verifyFacts'
 import type { SpecBuildRow, SpecFact } from '@/lib/spec/types'
 
@@ -29,15 +33,32 @@ export type SpecResearchOutcome = {
 export async function runSpecResearch(build: SpecBuildRow): Promise<SpecResearchOutcome> {
   const lead = build.lead_input
   const outcome: SpecResearchOutcome = { facts: [], rejected: [], fetched: [] }
+  const manualFacts = (build.research?.facts ?? []).filter(
+    (fact) => fact.sourceKind === 'admin_manual'
+  )
 
   const sources = resolveResearchSources(lead)
-  const capturedProfile = lead.publicProfileResearch
+  const capturedProfile = normalizePublicProfileResearch(
+    lead.publicProfileResearch,
+    [lead.socialProfileUrl, lead.yelpUrl]
+  )
+  const capturedSourceKind = capturedProfile
+    ? publicProfileSourceKind(capturedProfile.sourceUrl)
+    : null
   if (sources.length === 0 && !capturedProfile) {
+    if (manualFacts.length > 0) {
+      outcome.facts = manualFacts
+      return outcome
+    }
     outcome.blockedReason =
-      'No public sources for this lead — no Google Maps listing and no Facebook page.'
+      'No public sources for this lead — no Google Maps, Facebook, or Yelp page.'
     return outcome
   }
   if (!firecrawlConfigured() && !capturedProfile) {
+    if (manualFacts.length > 0) {
+      outcome.facts = manualFacts
+      return outcome
+    }
     outcome.blockedReason = 'FIRECRAWL_API_KEY is not set, so no page could be read.'
     return outcome
   }
@@ -45,17 +66,17 @@ export async function runSpecResearch(build: SpecBuildRow): Promise<SpecResearch
   const pagesByUrl = new Map<string, string>()
   const candidates: Partial<SpecFact>[] = []
 
-  if (capturedProfile) {
+  if (capturedProfile && capturedSourceKind) {
     pagesByUrl.set(capturedProfile.sourceUrl, capturedProfile.text)
     outcome.fetched.push({
       url: capturedProfile.sourceUrl,
-      sourceKind: 'facebook_about',
+      sourceKind: capturedSourceKind,
       chars: capturedProfile.text.length,
     })
     const extracted = await extractFactsFromPage(
       {
         url: capturedProfile.sourceUrl,
-        sourceKind: 'facebook_about',
+        sourceKind: capturedSourceKind,
         text: capturedProfile.text,
       },
       { name: build.business_name, city: build.city, services: lead.services }
@@ -65,7 +86,7 @@ export async function runSpecResearch(build: SpecBuildRow): Promise<SpecResearch
   }
 
   for (const source of sources) {
-    if (capturedProfile && source.sourceKind === 'facebook_about') continue
+    if (capturedProfile && source.sourceKind === capturedSourceKind) continue
     const page = await fetchPageText(source.url, source.sourceKind)
     outcome.fetched.push({
       url: page.url,
@@ -90,6 +111,10 @@ export async function runSpecResearch(build: SpecBuildRow): Promise<SpecResearch
   }
 
   if (pagesByUrl.size === 0) {
+    if (manualFacts.length > 0) {
+      outcome.facts = manualFacts
+      return outcome
+    }
     const failures = outcome.fetched
       .map((source) => `${source.sourceKind}: ${source.error || 'no readable text'}`)
       .join('; ')
@@ -98,7 +123,7 @@ export async function runSpecResearch(build: SpecBuildRow): Promise<SpecResearch
   }
 
   const verified = verifyFacts(candidates, pagesByUrl)
-  outcome.facts = verified.accepted
+  outcome.facts = [...manualFacts, ...verified.accepted]
   outcome.rejected = verified.rejected
   return outcome
 }
@@ -107,9 +132,9 @@ export async function runSpecResearch(build: SpecBuildRow): Promise<SpecResearch
 export async function saveSpecResearch(
   build: SpecBuildRow,
   outcome: SpecResearchOutcome
-): Promise<void> {
+): Promise<boolean> {
   const { publicProfileResearch: _discarded, ...retainedLeadInput } = build.lead_input
-  const { error } = await getSupabaseAdmin()
+  const { data, error } = await getSupabaseAdmin()
     .from('spec_builds')
     .update({
       // Full browser text is temporary. Keep only verified evidence excerpts
@@ -130,5 +155,8 @@ export async function saveSpecResearch(
       updated_at: new Date().toISOString(),
     })
     .eq('id', build.id)
+    .eq('status', 'researching')
+    .select('id')
   if (error) throw new Error(`Failed to save spec research: ${error.message}`)
+  return (data?.length ?? 0) > 0
 }

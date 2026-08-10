@@ -37,6 +37,13 @@ export function prosePortion(markdown: string): string {
     .trim()
 }
 
+/** Keep Yelp's business-owned listing details; never ingest customer reviews. */
+export function yelpBusinessPortion(markdown: string): string {
+  const stopHeading = /^#{1,4}\s+(?:(?:recommended\s+)?reviews?\b|review highlights\b|ask the community\b|you might also consider\b|people also (?:searched|viewed)\b|reach out to other businesses\b|browse nearby\b|related searches?\b)/im
+  const match = stopHeading.exec(markdown)
+  return (match ? markdown.slice(0, match.index) : markdown).trim()
+}
+
 export type FetchedPage = {
   url: string
   sourceKind: SpecFactSourceKind
@@ -105,7 +112,9 @@ export async function fetchPageText(
     const json = (await res.json()) as {
       data?: { markdown?: string; html?: string; metadata?: { title?: string } }
     }
-    const text = (json.data?.markdown || '').slice(0, MAX_PAGE_CHARS)
+    const rawText = json.data?.markdown || ''
+    const text = (sourceKind === 'yelp_business' ? yelpBusinessPortion(rawText) : rawText)
+      .slice(0, MAX_PAGE_CHARS)
     if (!text.trim()) {
       return { url, sourceKind, text: '', error: 'Firecrawl returned no readable content' }
     }

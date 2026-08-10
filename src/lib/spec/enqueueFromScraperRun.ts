@@ -46,6 +46,8 @@ export type ScraperLeadPair = {
   row: ScrapedLeadShape
   /** Not a column on scraper_leads — carried through from the raw scraped lead. */
   mapsPlaceUrl?: string | null
+  /** Also transient because scraper_leads has no Yelp URL column. */
+  yelpUrl?: string | null
   /** Raw authenticated payload; normalized against the expected profile before queueing. */
   publicProfileResearch?: unknown
 }
@@ -58,6 +60,7 @@ export function planSpecBuildEnqueue(
     id: string
     lead: ReturnType<typeof qualifyLeadForSpecBuild>
     mapsPlaceUrl?: string | null
+    yelpUrl?: string | null
     publicProfileResearch?: unknown
   }[]
   unqualified: number
@@ -68,6 +71,7 @@ export function planSpecBuildEnqueue(
     id: string
     lead: ReturnType<typeof qualifyLeadForSpecBuild>
     mapsPlaceUrl?: string | null
+    yelpUrl?: string | null
     publicProfileResearch?: unknown
   }[] = []
   let unqualified = 0
@@ -88,6 +92,7 @@ export function planSpecBuildEnqueue(
       id: lead.id,
       lead: qualified,
       mapsPlaceUrl: lead.mapsPlaceUrl,
+      yelpUrl: lead.yelpUrl,
       publicProfileResearch: lead.publicProfileResearch,
     })
   }
@@ -124,9 +129,10 @@ export async function enqueueSpecBuildsForRun(
         lead: {
           ...item.lead.lead,
           mapsPlaceUrl: item.mapsPlaceUrl ?? null,
+          yelpUrl: item.yelpUrl ?? null,
           publicProfileResearch: normalizePublicProfileResearch(
             item.publicProfileResearch,
-            item.lead.lead.socialProfileUrl
+            [item.lead.lead.socialProfileUrl, item.yelpUrl]
           ),
         },
         leadSource: 'scraper',

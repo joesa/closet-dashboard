@@ -10,6 +10,8 @@ import { advanceSpecBuild } from '@/lib/spec/advanceSpecBuild'
 import { kickSpecBuild } from '@/lib/spec/kickSpecBuild'
 import { deleteSpecBuild, getSpecBuild, transitionSpecBuild } from '@/lib/spec/specBuilds'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { withoutPublicProfileResearch } from '@/lib/spec/research/publicProfileResearch'
+import { isFacebookUrl, isYelpBusinessUrl } from '@/lib/spec/research/sources'
 
 /**
  * Add a fact by hand to rescue a lead that publishes nothing verifiable.
@@ -96,6 +98,64 @@ export async function runResearchAction(formData: FormData): Promise<void> {
 
   revalidatePath('/admin/spec-builds')
   revalidatePath(`/admin/spec-builds/${id}`)
+}
+
+/** Update public research sources on an unprovisioned build, then rerun research. */
+export async function updateResearchSourcesAction(formData: FormData): Promise<void> {
+  const admin = await requireAdmin()
+  const id = String(formData.get('spec_build_id') || '')
+  if (!id) return
+
+  const build = await getSpecBuild(id)
+  if (!build) return
+  const facebookUrl = String(formData.get('facebook_url') || '').trim()
+  const yelpUrl = String(formData.get('yelp_url') || '').trim()
+
+  if (facebookUrl && !isFacebookUrl(facebookUrl)) {
+    redirect(`/admin/spec-builds/${id}?source_error=${encodeURIComponent('Enter a valid Facebook page URL.')}`)
+  }
+  if (yelpUrl && !isYelpBusinessUrl(yelpUrl)) {
+    redirect(`/admin/spec-builds/${id}?source_error=${encodeURIComponent('Enter a Yelp business URL whose path starts with /biz/.')}`)
+  }
+  if (build.tenant_id || !['queued', 'needs_attention'].includes(build.status)) {
+    redirect(`/admin/spec-builds/${id}?source_error=${encodeURIComponent('Sources can only be changed before drafting or provisioning starts.')}`)
+  }
+
+  const { data, error } = await getSupabaseAdmin()
+    .from('spec_builds')
+    .update({
+      lead_input: {
+        ...withoutPublicProfileResearch(build.lead_input),
+        socialProfileUrl: facebookUrl || null,
+        yelpUrl: yelpUrl || null,
+      },
+      status: 'queued',
+      status_reason: null,
+      last_error: null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', id)
+    .in('status', ['queued', 'needs_attention'])
+    .is('tenant_id', null)
+    .select('id')
+
+  if (error || !data?.length) {
+    redirect(`/admin/spec-builds/${id}?source_error=${encodeURIComponent(error?.message || 'The build changed before its sources could be saved.')}`)
+  }
+
+  const result = await advanceSpecBuild(id)
+  if (!result.done) kickSpecBuild(id)
+
+  await logAdminAction({
+    actor: admin,
+    action: 'spec_build.sources_updated',
+    targetType: 'spec_build',
+    targetId: id,
+    metadata: { facebookUrl: facebookUrl || null, yelpUrl: yelpUrl || null },
+  })
+
+  revalidatePath('/admin/spec-builds')
+  redirect(`/admin/spec-builds/${id}?sources_updated=1`)
 }
 
 /**

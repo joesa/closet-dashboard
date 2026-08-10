@@ -66,6 +66,7 @@ export type SpecFactSourceKind =
   | 'maps_review'
   | 'facebook_about'
   | 'facebook_post'
+  | 'yelp_business'
   | 'admin_manual'
 
 export type SpecFact = {
@@ -147,6 +148,7 @@ export type SpecBuildLeadInput = {
   city?: string | null
   email?: string | null
   socialProfileUrl?: string | null
+  yelpUrl?: string | null
   mapsPlaceUrl?: string | null
   businessCategory?: string | null
   businessDescription?: string | null

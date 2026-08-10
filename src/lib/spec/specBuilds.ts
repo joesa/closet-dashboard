@@ -139,7 +139,16 @@ export async function transitionSpecBuild(
   from: SpecBuildStatus | SpecBuildStatus[],
   to: SpecBuildStatus,
   patch: Partial<
-    Pick<SpecBuildRow, 'last_error' | 'status_reason' | 'attempts' | 'intake_id' | 'tenant_id'>
+    Pick<
+      SpecBuildRow,
+      | 'last_error'
+      | 'status_reason'
+      | 'attempts'
+      | 'intake_id'
+      | 'tenant_id'
+      | 'lead_input'
+      | 'research'
+    >
   > = {}
 ): Promise<boolean> {
   const fromStatuses = Array.isArray(from) ? from : [from]

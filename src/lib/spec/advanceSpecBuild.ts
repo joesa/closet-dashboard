@@ -86,7 +86,15 @@ async function runResearchStep(
 
   try {
     const outcome = await runSpecResearch(build)
-    await saveSpecResearch(build, outcome)
+    const saved = await saveSpecResearch(build, outcome)
+    if (!saved) {
+      return {
+        from: 'researching',
+        to: 'researching',
+        done: true,
+        note: 'build state changed while research was running',
+      }
+    }
 
     if (outcome.blockedReason) {
       await transitionSpecBuild(build.id, 'researching', 'needs_attention', {

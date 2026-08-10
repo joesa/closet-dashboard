@@ -133,6 +133,7 @@ export async function POST(req: Request) {
           servicesSource?: string
           businessDescription?: string
           socialProfileUrl?: string
+          yelpUrl?: string
           publicProfileResearch?: unknown
           hasOwnWebsite?: boolean
           phoneNumber?: string
@@ -197,6 +198,10 @@ export async function POST(req: Request) {
             mapsPlaceUrl:
               typeof (leads[i] as { mapsPlaceUrl?: unknown })?.mapsPlaceUrl === 'string'
                 ? ((leads[i] as { mapsPlaceUrl: string }).mapsPlaceUrl)
+                : null,
+            yelpUrl:
+              typeof (leads[i] as { yelpUrl?: unknown })?.yelpUrl === 'string'
+                ? ((leads[i] as { yelpUrl: string }).yelpUrl)
                 : null,
             publicProfileResearch: (leads[i] as { publicProfileResearch?: unknown })
               ?.publicProfileResearch,

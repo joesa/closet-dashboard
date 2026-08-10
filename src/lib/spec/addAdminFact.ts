@@ -1,5 +1,6 @@
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { createSpecIntake } from '@/lib/spec/createSpecIntake'
+import { withoutPublicProfileResearch } from '@/lib/spec/research/publicProfileResearch'
 import { CRAFT_FACT_FIELDS, verifyFacts } from '@/lib/spec/research/verifyFacts'
 import { getSpecBuild, transitionSpecBuild } from '@/lib/spec/specBuilds'
 import { kickSpecBuild } from '@/lib/spec/kickSpecBuild'
@@ -77,11 +78,18 @@ export async function addAdminFact(input: AddAdminFactInput): Promise<AddAdminFa
 
   const existing = build.research?.facts ?? []
   const facts = [...existing, accepted[0]]
+  const clearsResearchAttention = isResearchAttention(build.status_reason, build.last_error)
 
   await getSupabaseAdmin()
     .from('spec_builds')
     .update({
+      lead_input: withoutPublicProfileResearch(build.lead_input),
       research: { ...(build.research ?? {}), facts },
+      // The source-load failure has been superseded by a human-vouched fact.
+      // A weak fact remains needs_attention, with the result banner explaining
+      // what is still missing, but the obsolete Facebook error must not linger.
+      status_reason: clearsResearchAttention ? null : build.status_reason,
+      last_error: clearsResearchAttention ? null : build.last_error,
       updated_at: new Date().toISOString(),
     })
     .eq('id', input.buildId)
@@ -100,6 +108,17 @@ export async function addAdminFact(input: AddAdminFactInput): Promise<AddAdminFa
   }
 }
 
+export function isResearchAttention(statusReason: string | null, lastError: string | null): boolean {
+  const message = `${statusReason || ''} ${lastError || ''}`.toLowerCase()
+  return [
+    'no public sources',
+    'no source produced readable text',
+    'no proprietary detail found',
+    'firecrawl',
+    'research failed',
+  ].some((marker) => message.includes(marker))
+}
+
 /**
  * Rewrite the intake row from the current fact set and, if it now carries a
  * concrete claim, release the build from needs_attention.
@@ -115,11 +134,19 @@ export async function redraftFromFacts(
   const result = await createSpecIntake(build, facts)
   if (!result.hasProprietaryDetail) return false
 
-  await transitionSpecBuild(build.id, ['needs_attention', 'queued', 'researching'], 'drafting', {
-    intake_id: result.intakeId,
-    status_reason: null,
-    last_error: null,
-  })
+  const transitioned = await transitionSpecBuild(
+    build.id,
+    ['needs_attention', 'queued', 'researching'],
+    'drafting',
+    {
+      intake_id: result.intakeId,
+      lead_input: withoutPublicProfileResearch(build.lead_input),
+      research: { ...(build.research ?? {}), facts },
+      status_reason: null,
+      last_error: null,
+    }
+  )
+  if (!transitioned) return false
   // The fact was the only thing missing. Everything after it — the site, the
   // images, provisioning — is unattended, so hand it straight to the worker
   // rather than making an admin click through each remaining step.

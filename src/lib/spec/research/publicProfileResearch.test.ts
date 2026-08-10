@@ -27,6 +27,21 @@ describe('normalizePublicProfileResearch', () => {
     expect(normalizePublicProfileResearch(value(), 'https://instagram.com/61590230650878')).toBeNull()
   })
 
+  it('accepts the exact expected Yelp business and rejects a different listing', () => {
+    const yelp = value({
+      sourceUrl: 'https://www.yelp.com/biz/peerless-pressure-softwash-clarksville',
+    })
+    expect(
+      normalizePublicProfileResearch(
+        yelp,
+        ['https://facebook.com/peerless', 'https://www.yelp.com/biz/peerless-pressure-softwash-clarksville']
+      )
+    ).not.toBeNull()
+    expect(
+      normalizePublicProfileResearch(yelp, 'https://www.yelp.com/biz/another-company')
+    ).toBeNull()
+  })
+
   it('rejects contact-bearing, oversized, insecure, and untrusted captures', () => {
     const expected = value().sourceUrl as string
     expect(normalizePublicProfileResearch(value({ text: `${TEXT} owner@example.com` }), expected)).toBeNull()

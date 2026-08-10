@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { fetchPageText, prosePortion } from '@/lib/spec/research/fetchPage'
+import { fetchPageText, prosePortion, yelpBusinessPortion } from '@/lib/spec/research/fetchPage'
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -87,4 +87,32 @@ describe('fetchPageText — Facebook', () => {
       limit: 5,
     })
   })
+})
+
+describe('yelpBusinessPortion', () => {
+  it('keeps listing details and removes customer review text', () => {
+    const markdown = `# L & L Grooming & Boarding
+
+## Services Offered
+Pet Grooming and Pet Sitting
+
+## Location & Hours
+Updated 3 months ago
+
+## Recommended Reviews
+A customer said this was the best service ever.`
+
+    const result = yelpBusinessPortion(markdown)
+    expect(result).toContain('Pet Grooming and Pet Sitting')
+    expect(result).not.toContain('A customer said')
+  })
+
+  it.each(['## Reviews (14)', '### Review Highlights', '## Ask the Community']) (
+    'stops at Yelp section variant %s',
+    (heading) => {
+      const result = yelpBusinessPortion(`# Business\n\n## Services Offered\nGrooming\n\n${heading}\nCustomer prose`)
+      expect(result).toContain('Grooming')
+      expect(result).not.toContain('Customer prose')
+    }
+  )
 })

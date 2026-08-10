@@ -7,7 +7,9 @@ const mocks = vi.hoisted(() => ({
   fetchPageText: vi.fn(),
   firecrawlConfigured: vi.fn(() => false),
   update: vi.fn(),
-  eq: vi.fn(async () => ({ error: null })),
+  idEq: vi.fn(),
+  statusEq: vi.fn(),
+  select: vi.fn(),
 }))
 
 vi.mock('@/lib/spec/research/extractFacts', () => ({
@@ -52,7 +54,10 @@ const build = {
 beforeEach(() => {
   vi.clearAllMocks()
   mocks.firecrawlConfigured.mockReturnValue(false)
-  mocks.update.mockReturnValue({ eq: mocks.eq })
+  mocks.select.mockResolvedValue({ data: [{ id: 'build-1' }], error: null })
+  mocks.statusEq.mockReturnValue({ select: mocks.select })
+  mocks.idEq.mockReturnValue({ eq: mocks.statusEq })
+  mocks.update.mockReturnValue({ eq: mocks.idEq })
   mocks.extractFactsFromPage.mockImplementation(async (page: { url: string; sourceKind: string }) => ({
     candidates: [{
       field: 'shop_rule',
@@ -87,5 +92,87 @@ describe('scraper-captured public profile research lifecycle', () => {
     expect(JSON.stringify(update)).not.toContain(CAPTURED_TEXT)
     expect(update.lead_input).not.toHaveProperty('publicProfileResearch')
     expect(update.research).toMatchObject({ facts: outcome.facts })
+  })
+
+  it('does not persist stale research after another actor changes the build state', async () => {
+    mocks.select.mockResolvedValue({ data: [], error: null })
+
+    await expect(saveSpecResearch(build, { facts: [], fetched: [], rejected: [] })).resolves.toBe(false)
+    expect(mocks.statusEq).toHaveBeenCalledWith('status', 'researching')
+  })
+
+  it('labels captured Yelp evidence correctly and avoids a redundant Yelp fetch', async () => {
+    const yelpUrl = 'https://www.yelp.com/biz/peerless-pressure-softwash-clarksville'
+    const yelpBuild = {
+      ...build,
+      lead_input: {
+        ...build.lead_input,
+        socialProfileUrl: null,
+        yelpUrl,
+        publicProfileResearch: {
+          ...build.lead_input.publicProfileResearch!,
+          sourceUrl: yelpUrl,
+        },
+      },
+    } as SpecBuildRow
+
+    const outcome = await runSpecResearch(yelpBuild)
+
+    expect(mocks.fetchPageText).not.toHaveBeenCalled()
+    expect(outcome.facts[0]).toMatchObject({
+      sourceKind: 'yelp_business',
+      sourceUrl: yelpUrl,
+    })
+  })
+
+  it('rejects captured evidence whose identity no longer matches the configured source', async () => {
+    const changedBuild = {
+      ...build,
+      lead_input: {
+        ...build.lead_input,
+        socialProfileUrl: 'https://www.facebook.com/a-different-business',
+      },
+    } as SpecBuildRow
+
+    const outcome = await runSpecResearch(changedBuild)
+
+    expect(mocks.extractFactsFromPage).not.toHaveBeenCalled()
+    expect(outcome.blockedReason).toContain('FIRECRAWL_API_KEY')
+  })
+})
+
+describe('manual fact research fallback', () => {
+  it('preserves manual facts and does not block when every public source fails', async () => {
+    const manualFact = {
+      field: 'client_artifact',
+      value: 'Every customer receives a written grooming report.',
+      evidence: 'Every customer receives a written grooming report.',
+      sourceUrl: 'admin://manual',
+      sourceKind: 'admin_manual',
+      capturedAt: '2026-08-09T00:00:00.000Z',
+      verbatim: true,
+      note: 'Owner told the admin during a call.',
+      addedBy: 'admin@example.com',
+    } as const
+    const manualBuild = {
+      ...build,
+      lead_input: {
+        ...build.lead_input,
+        publicProfileResearch: null,
+      },
+      research: { facts: [manualFact] },
+    } as SpecBuildRow
+    mocks.firecrawlConfigured.mockReturnValue(true)
+    mocks.fetchPageText.mockResolvedValue({
+      url: SOURCE_URL,
+      sourceKind: 'facebook_about',
+      text: '',
+      error: 'Facebook returned no indexed prose',
+    })
+
+    const outcome = await runSpecResearch(manualBuild)
+
+    expect(outcome.blockedReason).toBeUndefined()
+    expect(outcome.facts).toEqual([manualFact])
   })
 })

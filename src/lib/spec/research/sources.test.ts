@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { normalizeFacebookUrl } from '@/lib/spec/research/sources'
+import { normalizeFacebookUrl, resolveResearchSources } from '@/lib/spec/research/sources'
 
 describe('normalizeFacebookUrl', () => {
   it('preserves a numeric profile id and selects its About view', () => {
@@ -53,5 +53,32 @@ describe('normalizeFacebookUrl — deep links', () => {
     )
     const already = 'https://www.facebook.com/ccservices84/about'
     expect(normalizeFacebookUrl(already)).toBe(already)
+  })
+})
+
+describe('resolveResearchSources — Yelp', () => {
+  it('adds a canonical Yelp business page as a distinct source', () => {
+    expect(
+      resolveResearchSources({
+        businessName: 'Peerless',
+        phone: '+19315550199',
+        yelpUrl: 'https://www.yelp.com/biz/peerless-pressure-softwash-clarksville',
+      })
+    ).toContainEqual({
+      url: 'https://www.yelp.com/biz/peerless-pressure-softwash-clarksville',
+      sourceKind: 'yelp_business',
+      rationale: 'Current Yelp business details and public page prose',
+    })
+  })
+
+  it('rejects Yelp search pages and does not label Yelp as Facebook', () => {
+    expect(
+      resolveResearchSources({
+        businessName: 'Peerless',
+        phone: '+19315550199',
+        socialProfileUrl: 'https://www.yelp.com/biz/peerless-pressure-softwash-clarksville',
+        yelpUrl: 'https://www.yelp.com/search?find_desc=pressure+washing',
+      })
+    ).toEqual([])
   })
 })
