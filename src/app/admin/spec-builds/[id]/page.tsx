@@ -18,6 +18,8 @@ import { offerUrl, priceSpecOffer } from '@/lib/spec/specOffer'
 import { derivePreviewPassword } from '@/lib/spec/specPreviewPassword'
 import { SPEC_OFFER_SMS_TEMPLATES, personalizeTemplate } from '@/lib/twilio-sms'
 import { specSmsAllowed, specSmsAllowlist } from '@/lib/spec/specSmsAllowlist'
+import { getSpecBuildProgress } from '@/lib/spec/specBuildProgress'
+import SpecBuildProgress from './SpecBuildProgress'
 
 /** Plain-language prompts — the column names mean nothing to a person on a call. */
 const ADMIN_FACT_LABELS: Record<string, string> = {
@@ -36,16 +38,6 @@ import DeleteSpecBuildButton from '../DeleteSpecBuildButton'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
-
-/** States where the worker is (or should be) carrying the build forward. */
-const IN_PROGRESS_STATUSES: string[] = [
-  'queued',
-  'researching',
-  'drafting',
-  'imaging',
-  'provisioning',
-  'building',
-]
 
 function fmt(d?: string | null): string {
   return d ? new Date(d).toLocaleString() : '—'
@@ -91,6 +83,7 @@ export default async function SpecBuildDetailPage({
 
   if (!data) notFound()
   const build = data as SpecBuildRow
+  const initialProgress = await getSpecBuildProgress(id)
   const lead = build.lead_input ?? { businessName: '', phone: '' }
   const facts: SpecFact[] = build.research?.facts ?? []
   const fetched = build.research?.fetched ?? []
@@ -153,6 +146,10 @@ export default async function SpecBuildDetailPage({
           {build.lead_source}
         </p>
       </div>
+
+      {initialProgress && (
+        <SpecBuildProgress buildId={build.id} initialProgress={initialProgress} />
+      )}
 
       {(build.last_error || build.status_reason) && (
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -567,19 +564,9 @@ export default async function SpecBuildDetailPage({
             disabledReason={deleteDisabledReason(build)}
           />
         </div>
-        {IN_PROGRESS_STATUSES.includes(build.status) ? (
-          <p className="mt-3 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-800">
-            <strong className="font-medium">This build is running.</strong> It carries on by
-            itself — research, site copy, images, then provisioning — and stops at{' '}
-            <em>ready for review</em>, where it waits for you. Refresh to see where it has got
-            to. &ldquo;Run the next step now&rdquo; is only needed if the background worker is
-            not running.
-          </p>
-        ) : (
-          <p className="mt-3 text-xs text-gray-500">
-            Nothing here contacts the business. That happens only after you approve.
-          </p>
-        )}
+        <p className="mt-3 text-xs text-gray-500">
+          Nothing here contacts the business. That happens only after you approve.
+        </p>
       </section>
 
       {/*
