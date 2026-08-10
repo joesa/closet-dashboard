@@ -1,7 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
-import { useEffect } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 
 type AutoRefreshProps = {
@@ -35,7 +34,7 @@ export default function AutoRefresh({ intervalMs = 15000 }: AutoRefreshProps) {
     <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500">
       <span>Live feedback enabled: auto-refresh every {Math.round(intervalMs / 1000)}s.</span>
       <span aria-hidden="true">|</span>
-      <span>Last updated: {formattedLastUpdated}</span>
+      <span suppressHydrationWarning>Last updated: {formattedLastUpdated}</span>
     </div>
   )
 }
