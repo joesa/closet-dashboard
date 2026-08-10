@@ -233,10 +233,19 @@ export async function fixSpecBuildSiteAction(formData: FormData): Promise<void> 
 
   const tenantId = String(formData.get('tenant_id') || '')
   if (!tenantId) {
-    redirect(`/admin/spec-builds/${id}?source_error=${encodeURIComponent('This build has no tenant yet, so there is nothing to analyze or fix.')}`)
+    redirect(`/admin/spec-builds/${id}?fix_error=${encodeURIComponent('This build has no tenant yet, so there is nothing to analyze or fix.')}`)
   }
 
-  const result = await autoFixTenantSite(tenantId)
+  let result
+  try {
+    result = await autoFixTenantSite(tenantId)
+  } catch (error) {
+    const message =
+      error instanceof Error && error.message.trim()
+        ? error.message
+        : 'Analyze/fix failed. Please try again from the tenant review page.'
+    redirect(`/admin/spec-builds/${id}?fix_error=${encodeURIComponent(message)}`)
+  }
 
   await logAdminAction({
     actor: admin,
@@ -254,7 +263,11 @@ export async function fixSpecBuildSiteAction(formData: FormData): Promise<void> 
   revalidatePath('/admin/spec-builds')
   revalidatePath(`/admin/spec-builds/${id}`)
   revalidatePath(`/admin/sites/${tenantId}`)
-  redirect(`/admin/spec-builds/${id}?sources_updated=1`)
+
+  const fixStatus = result.fixesApplied.length > 0 ? 'applied' : 'none'
+  redirect(
+    `/admin/spec-builds/${id}?fix_status=${encodeURIComponent(fixStatus)}&fixes_applied=${encodeURIComponent(String(result.fixesApplied.length))}&fixes_remaining=${encodeURIComponent(String(result.report.issues.length))}`
+  )
 }
 
 /**

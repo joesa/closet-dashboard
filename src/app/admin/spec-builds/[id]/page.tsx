@@ -66,6 +66,10 @@ export default async function SpecBuildDetailPage({
     sent?: string
     source_error?: string
     sources_updated?: string
+    fix_error?: string
+    fix_status?: string
+    fixes_applied?: string
+    fixes_remaining?: string
   }>
 }) {
   const { id } = await params
@@ -76,6 +80,10 @@ export default async function SpecBuildDetailPage({
     sent,
     source_error: sourceError,
     sources_updated: sourcesUpdated,
+    fix_error: fixError,
+    fix_status: fixStatus,
+    fixes_applied: fixesApplied,
+    fixes_remaining: fixesRemaining,
   } = await searchParams
   const { data } = await getSupabaseAdmin()
     .from('spec_builds')
@@ -273,6 +281,22 @@ export default async function SpecBuildDetailPage({
       {sourceError && (
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {sourceError}
+        </div>
+      )}
+      {fixError && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {fixError}
+        </div>
+      )}
+      {fixStatus === 'applied' && (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+          Analyze/fix applied {fixesApplied || '0'} change{fixesApplied === '1' ? '' : 's'}.
+          {typeof fixesRemaining === 'string' ? ` ${fixesRemaining} issue${fixesRemaining === '1' ? '' : 's'} still in the latest validation report.` : ''}
+        </div>
+      )}
+      {fixStatus === 'none' && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          Analyze/fix ran, but no automatic repair was available for the current issues.
         </div>
       )}
       {sourcesUpdated && (
