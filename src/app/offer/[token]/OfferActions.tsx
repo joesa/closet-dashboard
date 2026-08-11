@@ -45,7 +45,7 @@ export default function OfferActions({
   if (state === 'accepted') {
     return (
       <div className="mt-8 rounded-lg border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm text-emerald-900">
-        Thanks — we&apos;ll be in touch shortly about changes and a domain name.
+        Thanks — we&apos;ll follow up shortly about the details, revisions, and a domain name.
       </div>
     )
   }
@@ -61,7 +61,7 @@ export default function OfferActions({
   return (
     <div className="mt-8">
       <label className="block text-sm font-medium text-gray-700">
-        Your email, if you want it
+        Your email, if you want the handoff
         <input
           type="email"
           value={email}
@@ -71,7 +71,7 @@ export default function OfferActions({
         />
       </label>
       <p className="mt-1 text-xs text-gray-500">
-        Only so we can send {businessName} the login. We won&apos;t add you to any list.
+        Only so we can send {businessName} the access details. We won&apos;t add you to any list.
       </p>
 
       <div className="mt-4 flex flex-wrap gap-3">
@@ -81,7 +81,7 @@ export default function OfferActions({
           onClick={() => void submit('accept')}
           className="rounded-lg bg-indigo-600 px-6 py-3 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-50"
         >
-          {state === 'sending' ? 'Sending…' : "Yes — let's talk"}
+          {state === 'sending' ? 'Sending…' : 'Yes — send the details'}
         </button>
         <button
           type="button"

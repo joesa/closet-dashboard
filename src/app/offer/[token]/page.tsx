@@ -86,9 +86,9 @@ export default async function OfferPage({ params }: { params: Promise<{ token: s
   const accepted = status === 'accepted'
 
   const highlights = [
-    'Private preview link',
+    'Private link',
     'Password protected',
-    'Copy, design, and domain can all be changed',
+    'Copy, layout, and domain can all be changed',
   ]
 
   return (
@@ -98,7 +98,7 @@ export default async function OfferPage({ params }: { params: Promise<{ token: s
 
       <div className="relative mx-auto max-w-6xl px-6 py-10 lg:py-14">
         <div className="mb-8 flex flex-wrap items-center justify-between gap-3">
-          <StatusPill tone="indigo">Private offer preview</StatusPill>
+          <StatusPill tone="indigo">One-off proposal</StatusPill>
           <p className="text-xs text-slate-400">
             Built for {build.business_name} · not indexed · deadline is enforced
           </p>
@@ -146,7 +146,7 @@ export default async function OfferPage({ params }: { params: Promise<{ token: s
                   </h1>
                   <p className="max-w-2xl text-base leading-7 text-slate-300 sm:text-lg">
                     No catch and nothing to fill in. The site below already exists, built from the
-                    Google listing and what was found online. The copy, design, and domain can all
+                    Google listing and what was found online. The copy, layout, and domain can all
                     be changed.
                   </p>
 
@@ -158,7 +158,7 @@ export default async function OfferPage({ params }: { params: Promise<{ token: s
                         rel="noreferrer"
                         className="inline-flex items-center rounded-full bg-white px-5 py-3 text-sm font-semibold text-slate-950 shadow-lg shadow-indigo-950/30 transition hover:-translate-y-0.5 hover:bg-slate-100"
                       >
-                        Open private preview →
+                        Open private link →
                       </a>
                     )}
                     {build.offer_deadline_at && (
@@ -198,7 +198,7 @@ export default async function OfferPage({ params }: { params: Promise<{ token: s
                   </div>
                 </div>
                 <p className="mt-4 max-w-2xl text-sm leading-6 text-slate-300">
-                  That is {pricing.percentOff}% off the AI Premium build —{' '}
+                  That is {pricing.percentOff}% off the full custom build —{' '}
                   <a href={pricingUrl} className="font-medium text-white underline decoration-indigo-300/70 underline-offset-4" target="_blank" rel="noreferrer">
                     the same one on our pricing page
                   </a>
@@ -218,9 +218,9 @@ export default async function OfferPage({ params }: { params: Promise<{ token: s
           <aside className="space-y-4 lg:sticky lg:top-8">
             {!closed && !accepted && (
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1">
-                <StatCard label="Offer" value={pricing.offerLabel} note={`${pricing.percentOff}% off AI Premium`} />
+                <StatCard label="Offer" value={pricing.offerLabel} note={`${pricing.percentOff}% off full custom build`} />
                 <StatCard label="Deadline" value={build.offer_deadline_at ? deadlineLabel(build.offer_deadline_at) : '—'} note="After this, the site comes down." />
-                <StatCard label="Preview password" value={previewPassword ?? '—'} note="Private link only." />
+                <StatCard label="Access code" value={previewPassword ?? '—'} note="Private link only." />
               </div>
             )}
 
