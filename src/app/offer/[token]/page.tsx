@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { publicAppOrigin } from '@/lib/urls'
 import { expireOfferIfLapsed, priceSpecOffer, specPreviewUrl } from '@/lib/spec/specOffer'
+import { derivePreviewPassword } from '@/lib/spec/specPreviewPassword'
 import { SPEC_BUILD_SELECT, type SpecBuildRow } from '@/lib/spec/types'
 import OfferActions from './OfferActions'
 
@@ -23,6 +24,30 @@ function deadlineLabel(iso: string): string {
   })
 }
 
+function StatusPill({ children, tone = 'indigo' }: { children: React.ReactNode; tone?: 'indigo' | 'emerald' | 'slate' }) {
+  const styles =
+    tone === 'emerald'
+      ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+      : tone === 'slate'
+        ? 'border-slate-200 bg-slate-100 text-slate-700'
+        : 'border-indigo-200 bg-indigo-50 text-indigo-700'
+  return (
+    <span className={`inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.22em] ${styles}`}>
+      {children}
+    </span>
+  )
+}
+
+function StatCard({ label, value, note }: { label: string; value: string; note?: string }) {
+  return (
+    <div className="rounded-2xl border border-white/60 bg-white/80 p-4 shadow-[0_10px_30px_rgba(15,23,42,0.08)] backdrop-blur">
+      <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">{label}</div>
+      <div className="mt-2 text-2xl font-semibold text-slate-900">{value}</div>
+      {note && <div className="mt-1 text-sm text-slate-500">{note}</div>}
+    </div>
+  )
+}
+
 export default async function OfferPage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params
   const supabase = getSupabaseAdmin()
@@ -42,6 +67,7 @@ export default async function OfferPage({ params }: { params: Promise<{ token: s
 
   const pricing = priceSpecOffer(build.offer_discount_bps)
   const pricingUrl = `${publicAppOrigin().replace(/\/$/, '')}/#pricing`
+  const previewPassword = derivePreviewPassword(build.id)
 
   let previewUrl: string | null = null
   if (build.tenant_id && !['expired', 'purged', 'declined'].includes(status)) {
@@ -59,87 +85,157 @@ export default async function OfferPage({ params }: { params: Promise<{ token: s
   const closed = ['expired', 'purged', 'declined'].includes(status)
   const accepted = status === 'accepted'
 
+  const highlights = [
+    'Private preview link',
+    'Password protected',
+    'Copy, design, and domain can all be changed',
+  ]
+
   return (
-    <main className="mx-auto max-w-2xl px-6 py-16">
-      <p className="text-sm font-medium uppercase tracking-widest text-indigo-600">
-        A website for {build.business_name}
-      </p>
+    <main className="relative min-h-screen overflow-hidden bg-slate-950 text-slate-100">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(99,102,241,0.28),_transparent_28%),radial-gradient(circle_at_top_right,_rgba(16,185,129,0.18),_transparent_24%),linear-gradient(180deg,_#07111f_0%,_#0b1324_46%,_#0f172a_100%)]" />
+      <div className="absolute inset-0 opacity-[0.08] [background-image:linear-gradient(rgba(255,255,255,0.22)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.22)_1px,transparent_1px)] [background-size:36px_36px]" />
 
-      {closed ? (
-        <>
-          <h1 className="mt-3 text-3xl font-semibold text-gray-900">This one has expired</h1>
-          <p className="mt-4 text-gray-600">
-            We built {build.business_name} a website and held it for a week. Nobody got back to
-            us, so it has been taken down — as promised.
+      <div className="relative mx-auto max-w-6xl px-6 py-10 lg:py-14">
+        <div className="mb-8 flex flex-wrap items-center justify-between gap-3">
+          <StatusPill tone="indigo">Private offer preview</StatusPill>
+          <p className="text-xs text-slate-400">
+            Built for {build.business_name} · not indexed · deadline is enforced
           </p>
-          <p className="mt-4 text-gray-600">
-            If you saw this late and still want it, reply to the text and we will rebuild it.
-          </p>
-        </>
-      ) : accepted ? (
-        <>
-          <h1 className="mt-3 text-3xl font-semibold text-gray-900">You&apos;re all set</h1>
-          <p className="mt-4 text-gray-600">
-            Thanks — we have your details and will be in touch shortly to talk through changes
-            and the domain name you want it on.
-          </p>
-        </>
-      ) : (
-        <>
-          <h1 className="mt-3 text-3xl font-semibold text-gray-900">
-            We already built it. Have a look.
-          </h1>
-          <p className="mt-4 text-gray-600">
-            No catch and nothing to fill in — the site below already exists, built from your
-            Google listing and what you told us. Everything on it can be changed.
-          </p>
+        </div>
 
-          {previewUrl && (
-            <a
-              href={previewUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="mt-6 inline-block rounded-lg bg-gray-900 px-6 py-3 text-sm font-medium text-white hover:bg-gray-800"
-            >
-              See your website →
-            </a>
-          )}
+        <div className="grid gap-8 lg:grid-cols-[1.2fr_0.8fr] lg:items-start">
+          <section className="space-y-6 rounded-[2rem] border border-white/10 bg-white/6 p-6 shadow-[0_30px_80px_rgba(0,0,0,0.35)] backdrop-blur-xl sm:p-8 lg:p-10">
+            <div className="max-w-2xl space-y-5">
+              {closed ? (
+                <StatusPill tone="slate">Offer closed</StatusPill>
+              ) : accepted ? (
+                <StatusPill tone="emerald">Accepted</StatusPill>
+              ) : (
+                <StatusPill>Ready for review</StatusPill>
+              )}
 
-          <div className="mt-10 rounded-xl border border-indigo-200 bg-indigo-50 p-6">
-            <p className="text-sm font-medium uppercase tracking-wide text-indigo-700">
-              If you want to keep it
-            </p>
-            <p className="mt-2 text-3xl font-semibold text-gray-900">
-              {pricing.offerLabel}{' '}
-              <span className="text-lg font-normal text-gray-500 line-through">
-                {pricing.listLabel}
-              </span>
-            </p>
-            <p className="mt-2 text-sm text-gray-700">
-              That is {pricing.percentOff}% off our AI Premium build —{' '}
-              <a href={pricingUrl} className="underline" target="_blank" rel="noreferrer">
-                the same one on our pricing page
-              </a>
-              . It covers customising the site with you and putting it on a domain name of your
-              choosing; we can help you get one.
-            </p>
-            {build.offer_deadline_at && (
-              <p className="mt-3 text-sm font-medium text-indigo-800">
-                Open until {deadlineLabel(build.offer_deadline_at)} — after that the site comes
-                down.
-              </p>
+              {closed ? (
+                <>
+                  <h1 className="text-4xl font-semibold tracking-tight text-white sm:text-5xl">
+                    This preview has expired.
+                  </h1>
+                  <p className="max-w-xl text-base leading-7 text-slate-300 sm:text-lg">
+                    We built {build.business_name} a website and held it for a week. Nobody got
+                    back to us, so it has been taken down as promised.
+                  </p>
+                  <p className="max-w-xl text-sm leading-6 text-slate-400">
+                    If you saw this late and still want it, reply to the text and we can rebuild
+                    it.
+                  </p>
+                </>
+              ) : accepted ? (
+                <>
+                  <h1 className="text-4xl font-semibold tracking-tight text-white sm:text-5xl">
+                    You&apos;re all set.
+                  </h1>
+                  <p className="max-w-xl text-base leading-7 text-slate-300 sm:text-lg">
+                    Thanks. We have your details and will follow up about changes and the domain
+                    name you want it on.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <h1 className="max-w-3xl text-4xl font-semibold tracking-tight text-white sm:text-5xl lg:text-6xl">
+                    We already built {build.business_name} a website.
+                  </h1>
+                  <p className="max-w-2xl text-base leading-7 text-slate-300 sm:text-lg">
+                    No catch and nothing to fill in. The site below already exists, built from the
+                    Google listing and what was found online. The copy, design, and domain can all
+                    be changed.
+                  </p>
+
+                  <div className="flex flex-wrap gap-3">
+                    {previewUrl && (
+                      <a
+                        href={previewUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center rounded-full bg-white px-5 py-3 text-sm font-semibold text-slate-950 shadow-lg shadow-indigo-950/30 transition hover:-translate-y-0.5 hover:bg-slate-100"
+                      >
+                        Open private preview →
+                      </a>
+                    )}
+                    {build.offer_deadline_at && (
+                      <div className="inline-flex items-center rounded-full border border-white/10 bg-white/6 px-4 py-3 text-sm text-slate-200">
+                        Held until {deadlineLabel(build.offer_deadline_at)}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    {highlights.map((item) => (
+                      <div
+                        key={item}
+                        className="rounded-2xl border border-white/10 bg-slate-900/60 p-4 text-sm text-slate-200"
+                      >
+                        {item}
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+
+            {!closed && !accepted && (
+              <div className="rounded-[1.75rem] border border-white/10 bg-slate-900/70 p-5 shadow-inner shadow-black/20">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.22em] text-indigo-300">
+                      If you want to keep it
+                    </p>
+                    <p className="mt-2 text-4xl font-semibold tracking-tight text-white">
+                      {pricing.offerLabel}{' '}
+                      <span className="ml-2 text-base font-normal text-slate-400 line-through">
+                        {pricing.listLabel}
+                      </span>
+                    </p>
+                  </div>
+                </div>
+                <p className="mt-4 max-w-2xl text-sm leading-6 text-slate-300">
+                  That is {pricing.percentOff}% off the AI Premium build —{' '}
+                  <a href={pricingUrl} className="font-medium text-white underline decoration-indigo-300/70 underline-offset-4" target="_blank" rel="noreferrer">
+                    the same one on our pricing page
+                  </a>
+                  . It includes the site, customization with you, and help getting a domain name.
+                </p>
+              </div>
             )}
-          </div>
 
-          <OfferActions token={token} businessName={build.business_name} />
-        </>
-      )}
+            {closed && (
+              <div className="rounded-[1.75rem] border border-white/10 bg-slate-900/70 p-5 text-slate-300">
+                This build was speculative after finding {build.business_name} online. Search engines
+                are told not to index it.
+              </div>
+            )}
+          </section>
 
-      <p className="mt-12 border-t border-gray-200 pt-6 text-xs text-gray-500">
-        We built this speculatively after finding {build.business_name} online. It is not public
-        and search engines are told to ignore it. Not interested? Say so above, or reply STOP to
-        the text and we will not contact you again.
-      </p>
+          <aside className="space-y-4 lg:sticky lg:top-8">
+            {!closed && !accepted && (
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1">
+                <StatCard label="Offer" value={pricing.offerLabel} note={`${pricing.percentOff}% off AI Premium`} />
+                <StatCard label="Deadline" value={build.offer_deadline_at ? deadlineLabel(build.offer_deadline_at) : '—'} note="After this, the site comes down." />
+                <StatCard label="Preview password" value={previewPassword ?? '—'} note="Private link only." />
+              </div>
+            )}
+
+            <div className="rounded-[1.75rem] border border-white/10 bg-white/90 p-6 text-slate-900 shadow-[0_24px_60px_rgba(15,23,42,0.22)]">
+              <OfferActions token={token} businessName={build.business_name} />
+            </div>
+          </aside>
+        </div>
+
+        <p className="mx-auto mt-8 max-w-3xl text-center text-xs leading-6 text-slate-400">
+          We built this speculatively after finding {build.business_name} online. It is not public
+          and search engines are told to ignore it. Not interested? Say so above, or reply STOP to
+          the text and we will not contact you again.
+        </p>
+      </div>
     </main>
   )
 }
