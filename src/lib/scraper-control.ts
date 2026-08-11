@@ -105,16 +105,14 @@ function asString(value: unknown, fallback: string): string {
 
 export function normalizeScraperControlConfig(input: unknown): ScraperControlConfig {
   const raw = (input && typeof input === 'object' ? input : {}) as Record<string, unknown>
+  const hasMapsKeywords = Object.prototype.hasOwnProperty.call(raw, 'mapsKeywords')
+  const hasTargetLocations = Object.prototype.hasOwnProperty.call(raw, 'targetLocations')
 
   return {
     startUrls: asStringArray(raw.startUrls),
     disableWebhooks: asBool(raw.disableWebhooks, DEFAULT_CONFIG.disableWebhooks),
-    mapsKeywords: asStringArray(raw.mapsKeywords).length
-      ? asStringArray(raw.mapsKeywords)
-      : DEFAULT_CONFIG.mapsKeywords,
-    targetLocations: asStringArray(raw.targetLocations).length
-      ? asStringArray(raw.targetLocations)
-      : DEFAULT_CONFIG.targetLocations,
+    mapsKeywords: hasMapsKeywords ? asStringArray(raw.mapsKeywords) : DEFAULT_CONFIG.mapsKeywords,
+    targetLocations: hasTargetLocations ? asStringArray(raw.targetLocations) : DEFAULT_CONFIG.targetLocations,
     cityPool: asStringArray(raw.cityPool),
     autoModeEnabled: asBool(raw.autoModeEnabled, DEFAULT_CONFIG.autoModeEnabled),
     autoCitiesPerRun: asInt(raw.autoCitiesPerRun, DEFAULT_CONFIG.autoCitiesPerRun, 1, 50),
