@@ -60,6 +60,36 @@ function assertControlPlaneToken(req: Request): NextResponse | null {
   return null
 }
 
+async function clearScraperSelectionFields(admin: ReturnType<typeof getSupabaseAdmin>) {
+  const { data: cfgRow, error: cfgError } = await admin
+    .from('scraper_config')
+    .select('settings')
+    .eq('id', 'default')
+    .maybeSingle()
+
+  if (cfgError) {
+    console.error('[scraper-config] failed to load config for selection reset', cfgError)
+    return
+  }
+  if (!cfgRow) return
+
+  const settings = asObject((cfgRow as { settings?: unknown }).settings)
+  const nextSettings = {
+    ...settings,
+    startUrls: [],
+    targetLocations: [],
+  }
+
+  const { error: resetError } = await admin
+    .from('scraper_config')
+    .update({ settings: nextSettings, updated_at: new Date().toISOString() })
+    .eq('id', 'default')
+
+  if (resetError) {
+    console.error('[scraper-config] failed to reset selection fields', resetError)
+  }
+}
+
 export async function POST(req: Request) {
   const authError = assertControlPlaneToken(req)
   if (authError) return authError
@@ -251,6 +281,10 @@ export async function POST(req: Request) {
           .eq('city_key', cityKey)
       }
     }
+  }
+
+  if (phase === 'completed' || phase === 'failed') {
+    await clearScraperSelectionFields(admin)
   }
 
   return NextResponse.json(
