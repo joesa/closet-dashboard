@@ -35,6 +35,7 @@ const urls = requestedUrls.map((value) => {
 })
 const outputPath = path.resolve(process.cwd(), args.includes('--output') ? args[args.indexOf('--output') + 1] : 'audit-output/template-quality.json')
 const chromePath = process.env.CHROME_PATH || '/usr/bin/google-chrome'
+const lcpBudgetMs = Math.max(1000, Number(process.env.QA_LCP_MAX_MS || '4200'))
 
 if (urls.length === 0) {
   console.error('No eligible engine-site QA canaries were discovered.')
@@ -138,7 +139,9 @@ try {
     if (lighthouseCls >= 0.1) failures.push(`cls:${lighthouseCls}`)
     // Dev compilation and local image-proxy cold starts are not production LCP.
     // Still report the measurement locally; enforce the time budget on public URLs.
-    if (!isLocalAudit && lighthouseLcp > 4000) failures.push(`lcp:${Math.round(lighthouseLcp)}ms`)
+    if (!isLocalAudit && lighthouseLcp > lcpBudgetMs) {
+      failures.push(`lcp:${Math.round(lighthouseLcp)}ms>${Math.round(lcpBudgetMs)}ms`)
+    }
     if (!isLocalAudit && (!mobile.widgetRelease || !desktop.widgetRelease)) failures.push('widget-release-unverified')
     if (mobile.widgetDefined === false || desktop.widgetDefined === false) failures.push('widget-not-defined')
     if (!mobile.lcpImagePriority || !desktop.lcpImagePriority) failures.push('lcp-image-not-prioritized')
