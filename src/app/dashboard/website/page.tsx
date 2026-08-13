@@ -28,6 +28,12 @@ type Viewport = 'desktop' | 'tablet' | 'mobile'
 type MediaTarget =
   | { path: string; mode: 'set' | 'insert'; index?: number }
   | { mode: 'custom' }
+type CustomSelection = {
+  element: string
+  value: string
+  alt?: string
+  href: string | null
+}
 
 const HOME_SECTIONS = [
   { id: 'hero', label: 'Hero', path: '/hero_config' },
@@ -163,6 +169,7 @@ export default function WebsiteStudioPage() {
   const [state, setState] = useState<SaveState>('loading')
   const [message, setMessage] = useState('')
   const [selectedPath, setSelectedPath] = useState('/hero_config')
+  const [selectedElement, setSelectedElement] = useState<CustomSelection | null>(null)
   const [viewport, setViewport] = useState<Viewport>('desktop')
   const [previewNonce, setPreviewNonce] = useState(0)
   const [previewPath, setPreviewPath] = useState('/')
@@ -380,6 +387,16 @@ export default function WebsiteStudioPage() {
       ) return
       if (event.data.type === 'dtf:content-select' && typeof event.data.path === 'string') {
         setSelectedPath(event.data.path)
+        setSelectedElement(
+          typeof event.data.element === 'string'
+            ? {
+                element: event.data.element,
+                value: typeof event.data.value === 'string' ? event.data.value : '',
+                alt: typeof event.data.alt === 'string' ? event.data.alt : undefined,
+                href: typeof event.data.href === 'string' ? event.data.href : null,
+              }
+            : null
+        )
       }
       if (
         payload.renderMode === 'engine' &&
@@ -585,7 +602,11 @@ export default function WebsiteStudioPage() {
               onChange={queueChange}
             />
           ) : payload.renderMode === 'custom' && customArtifactMode !== 'iframe' && selectedPath.endsWith('/html') ? (
-            <CustomInspector selectedPath={selectedPath} onChooseMedia={() => { setMediaTarget({ mode: 'custom' }); setMediaOpen(true) }} />
+            <CustomInspector
+              selectedPath={selectedPath}
+              selection={selectedElement}
+              onChooseMedia={() => { setMediaTarget({ mode: 'custom' }); setMediaOpen(true) }}
+            />
           ) : (
             <ValueEditor
               path={selectedPath}
@@ -748,11 +769,126 @@ function NavigationEditor({ links, pages, onChange }: {
   </div>
 }
 
-function CustomInspector({ selectedPath, onChooseMedia }: { selectedPath: string; onChooseMedia: () => void }) {
+function CustomInspector({
+  selectedPath,
+  selection,
+  onChooseMedia,
+}: {
+  selectedPath: string
+  selection: CustomSelection | null
+  onChooseMedia: () => void
+}) {
   const send = (action: string, value?: string) => {
     sendCustomEditorCommand(action, value)
   }
-  return <div className="space-y-3"><p className="text-sm leading-relaxed text-zinc-400">Click text, links, images, or sections in the preview. Changes are serialized from the custom page while its CSS remains untouched.</p><p className="rounded-lg border border-indigo-400/15 bg-indigo-500/5 px-3 py-2 text-[11px] leading-relaxed text-indigo-200">Selected images have eight draggable resize points directly in the preview.</p><textarea id="custom-editor-value" rows={6} className="w-full rounded-lg border border-white/10 bg-white/5 p-3 text-sm" placeholder="Replacement text, link, image URL, or alt text" /><button onClick={() => send('setValue', (document.getElementById('custom-editor-value') as HTMLTextAreaElement)?.value)} className="w-full rounded-lg bg-indigo-500 py-2 text-sm font-medium">Apply to selection</button><button onClick={onChooseMedia} className="w-full rounded-lg border border-indigo-400/30 py-2 text-xs text-indigo-300">Choose image from media</button><button onClick={() => send('setAlt', (document.getElementById('custom-editor-value') as HTMLTextAreaElement)?.value)} className="w-full rounded-lg border border-white/10 py-2 text-xs">Apply as image alt text</button><div className="grid grid-cols-2 gap-2"><button onClick={() => send('duplicate')} className="rounded-lg border border-white/10 py-2 text-xs">Duplicate</button><button onClick={() => send('remove')} className="rounded-lg border border-red-500/20 py-2 text-xs text-red-300">Remove</button><button onClick={() => send('moveUp')} className="rounded-lg border border-white/10 py-2 text-xs">Move up</button><button onClick={() => send('moveDown')} className="rounded-lg border border-white/10 py-2 text-xs">Move down</button></div><p className="break-all text-[10px] text-zinc-600">{selectedPath}</p></div>
+  const moveControls = (
+    <div className="grid grid-cols-2 gap-2">
+      <button onClick={() => send('duplicate')} className="rounded-lg border border-white/10 py-2 text-xs">Duplicate</button>
+      <button onClick={() => send('remove')} className="rounded-lg border border-red-500/20 py-2 text-xs text-red-300">Remove</button>
+      <button onClick={() => send('moveUp')} className="rounded-lg border border-white/10 py-2 text-xs">Move up</button>
+      <button onClick={() => send('moveDown')} className="rounded-lg border border-white/10 py-2 text-xs">Move down</button>
+    </div>
+  )
+  const pathFooter = <p className="break-all text-[10px] text-zinc-600">{selectedPath}</p>
+
+  if (selection?.element === 'img') {
+    return (
+      <ImageInspector
+        key={`${selection.value}|${selection.alt ?? ''}|${selection.href ?? ''}`}
+        selection={selection}
+        onChooseMedia={onChooseMedia}
+        send={send}
+        moveControls={moveControls}
+        pathFooter={pathFooter}
+      />
+    )
+  }
+
+  return (
+    <div className="space-y-3">
+      <p className="text-sm leading-relaxed text-zinc-400">Click text, links, images, or sections in the preview. Changes are serialized from the custom page while its CSS remains untouched.</p>
+      <p className="rounded-lg border border-indigo-400/15 bg-indigo-500/5 px-3 py-2 text-[11px] leading-relaxed text-indigo-200">Selected images have eight draggable resize points directly in the preview.</p>
+      <textarea
+        id="custom-editor-value"
+        key={selection?.value ?? selectedPath}
+        rows={6}
+        defaultValue={selection?.value ?? ''}
+        className="w-full rounded-lg border border-white/10 bg-white/5 p-3 text-sm"
+        placeholder="Replacement text, link, image URL, or alt text"
+      />
+      <button onClick={() => send('setValue', (document.getElementById('custom-editor-value') as HTMLTextAreaElement)?.value)} className="w-full rounded-lg bg-indigo-500 py-2 text-sm font-medium">Apply to selection</button>
+      <button onClick={onChooseMedia} className="w-full rounded-lg border border-indigo-400/30 py-2 text-xs text-indigo-300">Choose image from media</button>
+      <button onClick={() => send('setAlt', (document.getElementById('custom-editor-value') as HTMLTextAreaElement)?.value)} className="w-full rounded-lg border border-white/10 py-2 text-xs">Apply as image alt text</button>
+      {moveControls}
+      {pathFooter}
+    </div>
+  )
+}
+
+function ImageInspector({
+  selection,
+  onChooseMedia,
+  send,
+  moveControls,
+  pathFooter,
+}: {
+  selection: CustomSelection
+  onChooseMedia: () => void
+  send: (action: string, value?: string) => void
+  moveControls: React.ReactNode
+  pathFooter: React.ReactNode
+}) {
+  const [src, setSrc] = useState(selection.value)
+  const [alt, setAlt] = useState(selection.alt ?? '')
+  const [href, setHref] = useState(selection.href ?? '')
+
+  return (
+    <div className="space-y-4">
+      <p className="text-sm leading-relaxed text-zinc-400">Image selected. Drag the eight resize handles in the preview to resize, or set properties below.</p>
+      {src && (
+        <img src={src} alt="" className="max-h-40 w-full rounded-lg border border-white/10 object-contain bg-white/5" />
+      )}
+
+      <div>
+        <label className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-zinc-500">Image source</label>
+        <input value={src} onChange={(event) => setSrc(event.target.value)} className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none focus:border-indigo-400" placeholder="https://…" />
+        <div className="mt-2 grid grid-cols-2 gap-2">
+          <button onClick={() => send('setValue', src)} className="rounded-lg bg-indigo-500 py-2 text-xs font-medium">Apply image</button>
+          <button onClick={onChooseMedia} className="rounded-lg border border-indigo-400/30 py-2 text-xs text-indigo-300">Choose from media</button>
+        </div>
+      </div>
+
+      <div>
+        <label className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-zinc-500">Alt text</label>
+        <input value={alt} onChange={(event) => setAlt(event.target.value)} className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none focus:border-indigo-400" placeholder="Describe the image for accessibility & SEO" />
+        <button onClick={() => send('setAlt', alt)} className="mt-2 w-full rounded-lg border border-white/10 py-2 text-xs">Apply alt text</button>
+      </div>
+
+      <div>
+        <label className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-zinc-500">Link</label>
+        {selection.href === null ? (
+          <p className="mb-2 text-[11px] text-zinc-600">This image isn&apos;t wrapped in a link.</p>
+        ) : (
+          <>
+            <input value={href} onChange={(event) => setHref(event.target.value)} className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none focus:border-indigo-400" placeholder="https:// or /path" />
+            <button onClick={() => send('setHref', href)} className="mt-2 w-full rounded-lg border border-white/10 py-2 text-xs">Apply link</button>
+          </>
+        )}
+      </div>
+
+      <div>
+        <label className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-zinc-500">Alignment</label>
+        <div className="grid grid-cols-3 gap-2">
+          <button onClick={() => send('setAlign', 'left')} className="rounded-lg border border-white/10 py-2 text-xs">Left</button>
+          <button onClick={() => send('setAlign', 'center')} className="rounded-lg border border-white/10 py-2 text-xs">Center</button>
+          <button onClick={() => send('setAlign', 'right')} className="rounded-lg border border-white/10 py-2 text-xs">Right</button>
+        </div>
+      </div>
+
+      {moveControls}
+      {pathFooter}
+    </div>
+  )
 }
 
 function HistoryDialog({ revisions, onClose, onRestored }: { revisions: SiteContentRevisionSummary[]; onClose: () => void; onRestored: () => void }) {
