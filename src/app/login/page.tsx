@@ -94,10 +94,10 @@ function LoginForm() {
     const rawNext = searchParams.get('next') || '/dashboard'
     const next = rawNext.startsWith('/') && !rawNext.startsWith('//') ? rawNext : '/dashboard'
 
-    // If this contractor owns a live site (their own subdomain or custom
-    // domain), send them there instead of the shared dashboard host, so
-    // "https://their-site.ditchtheform.com/dashboard" stays their dashboard
-    // URL going forward. Falls back to the shared host on any error.
+    // Admins are sent directly to the canonical /admin workspace. Contractors
+    // who own a live site are sent to that site's dashboard. The server derives
+    // both decisions from the authenticated session; the client never asserts
+    // its own role or tenant.
     try {
       const tenantRes = await fetch(
         `/api/auth/tenant-redirect?next=${encodeURIComponent(next)}`

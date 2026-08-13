@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
+import { getCurrentAdmin } from '@/lib/admin'
 import { getSupabaseServer } from '@/lib/supabase-server'
 import { getTenantHostnameForUser, isDashboardHost } from '@/lib/tenantHost'
+import { publicAppOrigin } from '@/lib/urls'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -30,6 +32,18 @@ export async function GET(req: Request) {
 
   if (!user) {
     return NextResponse.json({ url: null })
+  }
+
+  // Admins always land on the canonical admin workspace. Do this before
+  // tenant-host resolution: an admin may sign in from a proxied tenant login,
+  // but should never be treated as that tenant's contractor or rejected as a
+  // hostname mismatch. This intentionally overrides any client-supplied
+  // `next` path so an admin login has one predictable destination.
+  if (await getCurrentAdmin()) {
+    return NextResponse.json({
+      url: `${publicAppOrigin(new URL(req.url).origin)}/admin`,
+      role: 'admin',
+    })
   }
 
   // Only accept a same-site, single-slash path — reject absolute URLs and
