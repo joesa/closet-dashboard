@@ -10,6 +10,7 @@ import {
   TASK_INTAKE_GENERATION,
   TASK_INTAKE_GENERATE_SITE,
   TASK_PROVISION_TENANT,
+  TASK_TEMP_PREVIEW_REVERT,
 } from './taskIds'
 import { fullRedesignTask } from './tasks/fullRedesign'
 import { provisionTenantTask } from './tasks/provisionTenant'
@@ -19,6 +20,7 @@ import { intakeGenerationTask } from './tasks/intakeGeneration'
 import { adminGenerateImagesTask } from './tasks/adminGenerateImages'
 import { adminGenerateBeforeTask } from './tasks/adminGenerateBefore'
 import { specBuildAdvanceTask } from './tasks/specBuildAdvance'
+import { tempPreviewRevertTask } from './tasks/tempPreviewRevert'
 
 loadWorkerEnv()
 
@@ -58,6 +60,7 @@ const taskList: TaskList = {
   [TASK_ADMIN_GENERATE_IMAGES]: adminGenerateImagesTask,
   [TASK_ADMIN_GENERATE_BEFORE]: adminGenerateBeforeTask,
   [TASK_SPEC_BUILD_ADVANCE]: specBuildAdvanceTask,
+  [TASK_TEMP_PREVIEW_REVERT]: tempPreviewRevertTask,
 }
 
 async function main() {

@@ -7,6 +7,7 @@ import { getStripe } from '@/lib/stripe'
 import { sendIntakeLaunchPaymentEmail } from '@/lib/intake/sendIntakeLaunchEmail'
 import { getIntakePaymentSummary } from '@/lib/intake/intakePaymentStage'
 import { syncTenantLaunchAccess } from '@/lib/intake/syncTenantLaunchAccess'
+import { grantTempPreview, revertTempPreviewNow } from '@/lib/intake/tempPreviewAccess'
 import type { ProspectIntakeRow } from '@/lib/intake/getIntakeByToken'
 import { publicAppOrigin } from '@/lib/urls'
 
@@ -80,7 +81,6 @@ export async function approvePreviewAction(formData: FormData) {
   revalidatePath('/admin/intakes')
   revalidatePath(`/admin/intakes/${intakeId}`)
 }
-
 export async function markSiteLiveAction(formData: FormData) {
   const me = await requireAdmin()
   const intakeId = String(formData.get('intake_id') ?? '')
@@ -165,6 +165,63 @@ export async function refundDepositAction(formData: FormData) {
     targetType: 'intake',
     targetId: intakeId,
     metadata: { session_id: payment.stripe_session_id },
+  })
+
+  revalidatePath('/admin/intakes')
+  revalidatePath(`/admin/intakes/${intakeId}`)
+}
+
+export async function enableTempPreviewAction(formData: FormData) {
+  const me = await requireAdmin()
+  const intakeId = String(formData.get('intake_id') ?? '')
+  const hours = Number(formData.get('hours') ?? '')
+  if (!intakeId) throw new Error('intake_id required')
+  if (!Number.isFinite(hours) || hours <= 0) throw new Error('Invalid duration')
+
+  const row = await loadIntake(intakeId)
+  if (!row.provisioned_contractor_id) {
+    throw new Error('Intake has no provisioned site yet')
+  }
+
+  const { expiresAt } = await grantTempPreview({
+    tenantId: row.provisioned_contractor_id,
+    intakeId,
+    hours,
+  })
+
+  await logAdminAction({
+    actor: me,
+    action: 'intake.temp_preview_enabled',
+    targetType: 'intake',
+    targetId: intakeId,
+    metadata: { hours, expires_at: expiresAt, tenant_id: row.provisioned_contractor_id },
+  })
+
+  revalidatePath('/admin/intakes')
+  revalidatePath(`/admin/intakes/${intakeId}`)
+}
+
+export async function disableTempPreviewAction(formData: FormData) {
+  const me = await requireAdmin()
+  const intakeId = String(formData.get('intake_id') ?? '')
+  if (!intakeId) throw new Error('intake_id required')
+
+  const row = await loadIntake(intakeId)
+  if (!row.provisioned_contractor_id) {
+    throw new Error('Intake has no provisioned site yet')
+  }
+
+  const result = await revertTempPreviewNow({
+    tenantId: row.provisioned_contractor_id,
+    intakeId,
+  })
+
+  await logAdminAction({
+    actor: me,
+    action: 'intake.temp_preview_disabled',
+    targetType: 'intake',
+    targetId: intakeId,
+    metadata: { site_status: result.siteStatus, tenant_id: row.provisioned_contractor_id },
   })
 
   revalidatePath('/admin/intakes')

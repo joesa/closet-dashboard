@@ -10,10 +10,13 @@ import {
 import { getIntakePaymentSummary, isLaunchBuildPaid } from '@/lib/intake/intakePaymentStage'
 import { syncTenantLaunchAccess } from '@/lib/intake/syncTenantLaunchAccess'
 import { formatUsd } from '@/lib/intake/tiers'
+import { TEMP_PREVIEW_DURATIONS } from '@/lib/intake/tempPreviewAccess'
 import {
   approvePreviewAction,
   markSiteLiveAction,
   refundDepositAction,
+  enableTempPreviewAction,
+  disableTempPreviewAction,
 } from './actions'
 import IntakeAdminAlerts from './IntakeAdminAlerts'
 import IntakeDomainPurchase from '@/components/IntakeDomainPurchase'
@@ -62,6 +65,7 @@ export default async function IntakeDetailPage({
   let tenantValidationStatus: string | null = null
   let tenantValidationReport: Array<{code: string; severity: string; message: string; fixable: boolean}> = []
   let tenantValidatedAt: string | null = null
+  let tempPreviewExpiresAt: string | null = null
   let domainRows: Array<{
     hostname: string
     source: string
@@ -90,12 +94,13 @@ export default async function IntakeDetailPage({
 
     const { data: tenantRow } = await admin
       .from('tenants')
-      .select('validation_status, validation_report, validated_at')
+      .select('validation_status, validation_report, validated_at, temp_preview_expires_at')
       .eq('id', data.provisioned_contractor_id)
       .maybeSingle()
     tenantValidationStatus = tenantRow?.validation_status ?? null
     tenantValidationReport = Array.isArray(tenantRow?.validation_report) ? tenantRow.validation_report : []
     tenantValidatedAt = tenantRow?.validated_at ?? null
+    tempPreviewExpiresAt = tenantRow?.temp_preview_expires_at ?? null
   }
 
   const desiredHost = (data.desired_domain || '').trim().toLowerCase()
@@ -125,6 +130,10 @@ export default async function IntakeDetailPage({
   const platformFallbackUrl = domainRows.length > 0 && domainRows[0].hostname
     ? buildPlatformFallbackPreviewUrl(domainRows[0].hostname)
     : null
+
+  const tempPreviewActive = Boolean(
+    tempPreviewExpiresAt && new Date(tempPreviewExpiresAt).getTime() > Date.now()
+  )
 
   return (
     <div>
@@ -309,6 +318,75 @@ export default async function IntakeDetailPage({
           )}
         </div>
       </div>
+
+      {data.provisioned_contractor_id &&
+        !launchPaid &&
+        (tenantSiteStatus !== 'active' || tempPreviewActive) && (
+        <div className="mt-6 rounded-lg border border-gray-200 bg-white p-6">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">
+            Temporary Preview Access
+          </h2>
+
+          {tempPreviewActive ? (
+            <>
+              <p className="mt-2 rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+                Temporary preview is <strong>active</strong> — the balance requirement is
+                bypassed until <strong>{fmt(tempPreviewExpiresAt)}</strong>, then it reverts to
+                requiring payment automatically.
+              </p>
+              {tenantSiteUrl && (
+                <a
+                  href={tenantSiteUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-3 inline-flex text-sm font-semibold text-blue-700 hover:underline"
+                >
+                  Open the client&apos;s view →
+                </a>
+              )}
+              <form action={disableTempPreviewAction} className="mt-3">
+                <input type="hidden" name="intake_id" value={data.id} />
+                <button
+                  type="submit"
+                  className="w-full rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-800 hover:bg-gray-50"
+                >
+                  Require payment now
+                </button>
+              </form>
+            </>
+          ) : (
+            <>
+              <p className="mt-2 text-sm text-gray-500">
+                Let the client view their built site without paying the balance first. Access
+                reverts to requiring payment automatically when the window expires.
+              </p>
+              <form action={enableTempPreviewAction} className="mt-3 flex items-end gap-3">
+                <input type="hidden" name="intake_id" value={data.id} />
+                <label className="flex-1 text-sm">
+                  <span className="mb-1 block text-gray-600">Duration</span>
+                  <select
+                    name="hours"
+                    defaultValue={24}
+                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                  >
+                    {TEMP_PREVIEW_DURATIONS.map((d) => (
+                      <option key={d.hours} value={d.hours}>
+                        {d.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <button
+                  type="submit"
+                  className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500"
+                >
+                  Temporary Approve
+                </button>
+              </form>
+            </>
+          )}
+        </div>
+      )}
 
       <div className="mt-6">
         <IntakeDomainPurchase
