@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { checkRateLimit, hashRateKey } from '@/lib/rateLimit'
 import { resolveIndustryForSetup } from '@/lib/catalog/resolveIndustryForSetup'
+import { enqueueIntakeGeneration, isOracleExecution } from '@/lib/jobs/intakeGeneration'
 
 export const maxDuration = 30
 export const runtime = 'nodejs'
@@ -19,7 +20,7 @@ export const runtime = 'nodejs'
  *    image category) and persist it so future contractors can select this
  *    SAME industry from the dropdown instead of typing free text again.
  */
-export async function POST(
+async function executeIntakeResolveCustomIndustry(
   req: Request,
   { params }: { params: Promise<{ token: string }> }
 ) {
@@ -62,4 +63,12 @@ export async function POST(
     engagementModel: result.engagementModel,
     isCustom: result.isCustom,
   })
+}
+
+export async function POST(req: Request, { params }: { params: Promise<{ token: string }> }) {
+  const { token } = await params
+  if (isOracleExecution(req)) {
+    return executeIntakeResolveCustomIndustry(req, { params: Promise.resolve({ token }) })
+  }
+  return enqueueIntakeGeneration(req, token, 'resolve-custom-industry')
 }

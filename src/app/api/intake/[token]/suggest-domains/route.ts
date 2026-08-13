@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { checkRateLimit, hashRateKey } from '@/lib/rateLimit'
 import { getIntakeByToken } from '@/lib/intake/getIntakeByToken'
 import { searchDomainsForLabel } from '@/lib/domains/purchase'
+import { enqueueIntakeGeneration, isOracleExecution } from '@/lib/jobs/intakeGeneration'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -10,7 +11,7 @@ export const maxDuration = 60
  * Prospect-facing domain suggestions (Vercel Registrar availability).
  * Auth: valid intake token. Does not purchase — only suggests.
  */
-export async function POST(
+async function executeIntakeSuggestDomains(
   req: Request,
   { params }: { params: Promise<{ token: string }> }
 ) {
@@ -71,4 +72,12 @@ export async function POST(
       { status: 500 }
     )
   }
+}
+
+export async function POST(req: Request, { params }: { params: Promise<{ token: string }> }) {
+  const { token } = await params
+  if (isOracleExecution(req)) {
+    return executeIntakeSuggestDomains(req, { params: Promise.resolve({ token }) })
+  }
+  return enqueueIntakeGeneration(req, token, 'suggest-domains')
 }

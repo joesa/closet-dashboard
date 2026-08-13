@@ -4,6 +4,7 @@ import { describeImageError } from '@/lib/ai/generateImagesBatch'
 import { generateSquareImage, uploadSiteAsset } from '@/lib/openai-images'
 import { checkRateLimit, hashRateKey } from '@/lib/rateLimit'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { enqueueIntakeGeneration, isOracleExecution } from '@/lib/jobs/intakeGeneration'
 
 export const runtime = 'nodejs'
 const MAX_LOGO_BATCH_ATTEMPTS = 5
@@ -34,7 +35,7 @@ async function generateLogoVariant(prompt: string): Promise<Buffer> {
   return generateSquareImage(prompt)
 }
 
-export async function POST(
+async function executeIntakeGenerateLogo(
   req: Request,
   { params }: { params: Promise<{ token: string }> }
 ) {
@@ -159,4 +160,12 @@ export async function POST(
     const { status, message } = describeImageError(error)
     return NextResponse.json({ error: message }, { status })
   }
+}
+
+export async function POST(req: Request, { params }: { params: Promise<{ token: string }> }) {
+  const { token } = await params
+  if (isOracleExecution(req)) {
+    return executeIntakeGenerateLogo(req, { params: Promise.resolve({ token }) })
+  }
+  return enqueueIntakeGeneration(req, token, 'generate-logo')
 }

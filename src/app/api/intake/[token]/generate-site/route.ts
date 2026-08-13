@@ -1,13 +1,10 @@
 import { NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
-import { generateSiteConfigFromInput } from '@/lib/ai/generateSiteConfig'
-import { mergeAiSiteConfigWithPresentation } from '@/lib/ai/mergeAiSitePresentation'
 import { buildIntakeBrief, stripUneditedCraftSuggestions } from '@/lib/intake/buildIntakeBrief'
-import { resolveIntakeBeforeAfterCategory } from '@/lib/intake/intakeBeforeAfter'
 import { getIntakeByToken } from '@/lib/intake/getIntakeByToken'
 import { assertDraftIntake, assertDepositPaid } from '@/lib/intake/intakeTierGates'
 import { checkRateLimit, hashRateKey } from '@/lib/rateLimit'
-import { clampPagesForTier, pageSlugsToSitemap, SITE_PAGE_SLUGS } from '@/lib/catalog/sitePages'
+import { clampPagesForTier, SITE_PAGE_SLUGS } from '@/lib/catalog/sitePages'
 import { OTHER_SERVICE_LABEL } from '@/lib/catalog/contractorServices'
 import { canEnqueueBackgroundJobs, enqueueJob } from '@/lib/jobs/enqueueJob'
 import { TASK_INTAKE_GENERATE_SITE } from '@/lib/jobs/taskIds'
@@ -58,7 +55,6 @@ export async function POST(
     if (pageSlugs.length === 0) {
       pageSlugs = clampPagesForTier(row.requested_pages, tier)
     }
-    const sitemap = pageSlugsToSitemap(pageSlugs)
 
     // Update draft fields in database so the generated brief is based on the user's latest inputs
     const toStr = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : null)
@@ -161,8 +157,15 @@ export async function POST(
       )
     }
 
-    // Prefer Graphile Worker when DATABASE_URL is set (no Vercel 120s cap).
-    if (canEnqueueBackgroundJobs()) {
+    // Intake generation is Oracle-only. Never fall back to a long-running
+    // Vercel request when the worker queue is unavailable.
+    if (!canEnqueueBackgroundJobs()) {
+      return NextResponse.json(
+        { error: 'Background generation is temporarily unavailable.' },
+        { status: 503 }
+      )
+    }
+    {
       const admin = getSupabaseAdmin()
       await admin
         .from('prospect_intakes')
@@ -201,46 +204,6 @@ export async function POST(
       })
     }
 
-    const intakeIndustry =
-      typeof row.industry === 'string' && row.industry.trim().length > 0
-        ? row.industry.trim()
-        : Array.isArray(row.services) && row.services.length > 0
-          ? row.services.join(', ')
-          : null
-    const result = await generateSiteConfigFromInput(
-      brief,
-      sitemap,
-      effectivePageContents,
-      intakeIndustry
-    )
-    const merged = await mergeAiSiteConfigWithPresentation(row, result.data)
-
-    // Decide up front whether this business even has a physical "before"
-    // state (same logic provisioning uses, including contractor-created
-    // custom-industry overrides in the DB). The studio uses this to show or
-    // hide the before/after generation section entirely.
-    const beforeAfterCategory = await resolveIntakeBeforeAfterCategory({
-      industry: row.industry,
-      services: row.services,
-      other_services: row.other_services,
-    })
-
-    const admin = getSupabaseAdmin()
-    await admin
-      .from('prospect_intakes')
-      .update({
-        ai_site_config: merged,
-        requested_pages: pageSlugs,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', row.id)
-
-    return NextResponse.json({
-      success: true,
-      source: result.source,
-      data: merged,
-      beforeAfterApplicable: beforeAfterCategory !== 'not-applicable',
-    })
   } catch (error) {
     console.error('intake generate-site error:', error)
     const message = error instanceof Error ? error.message : 'Generation failed'

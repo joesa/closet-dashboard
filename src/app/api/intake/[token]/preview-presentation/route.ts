@@ -3,6 +3,7 @@ import { resolveSitePresentationRules } from '@/lib/ai/resolveSitePresentation'
 import { collectThemeLayoutPools, isLowConfidenceResolution } from '@/lib/catalog/serviceCatalog'
 import { LAYOUT_SLUGS, THEME_SLUGS } from '@/lib/catalog/sitePresentationCatalog'
 import { synthesizeThemeTokens } from '@/lib/ai/synthesizeThemeTokens'
+import { enqueueIntakeGeneration, isOracleExecution } from '@/lib/jobs/intakeGeneration'
 
 export const runtime = 'nodejs'
 
@@ -15,7 +16,7 @@ export const runtime = 'nodejs'
  * isLowConfidenceResolution) so the review step previews exactly what will
  * be provisioned if the user keeps the suggested theme.
  */
-export async function POST(
+async function executeIntakePreviewPresentation(
   req: Request,
   { params }: { params: Promise<{ token: string }> }
 ) {
@@ -83,3 +84,10 @@ export async function POST(
   })
 }
 
+export async function POST(req: Request, { params }: { params: Promise<{ token: string }> }) {
+  const { token } = await params
+  if (isOracleExecution(req)) {
+    return executeIntakePreviewPresentation(req, { params: Promise.resolve({ token }) })
+  }
+  return enqueueIntakeGeneration(req, token, 'preview-presentation')
+}

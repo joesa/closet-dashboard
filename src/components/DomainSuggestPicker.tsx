@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useState } from 'react'
+import { requestIntakeGeneration } from '@/lib/intake/requestGeneration'
 
 export type DomainSuggestionHit = {
   domain: string
@@ -77,7 +78,7 @@ export default function DomainSuggestPicker({
       let res: Response
       if (mode === 'intake') {
         if (!intakeToken) throw new Error('Missing intake token')
-        res = await fetch(`/api/intake/${intakeToken}/suggest-domains`, {
+        res = await requestIntakeGeneration(`/api/intake/${intakeToken}/suggest-domains`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ query: q, businessName: businessNameHint }),

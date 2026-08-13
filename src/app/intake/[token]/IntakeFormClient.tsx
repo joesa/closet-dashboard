@@ -33,6 +33,7 @@ import { getBeforeAfterCategory } from '@/lib/images/beforeAfterPrompt';
 import { fileToUploadJpegBlob } from '@/lib/images/fileToUploadBlob';
 import { readJsonResponse, describeFetchError } from '@/lib/http/readJsonResponse';
 import { detectVertical, getCraftFieldsForVertical, getMaterialsLabelAndPlaceholder } from '@/lib/ai/craftFields';
+import { requestIntakeGeneration } from '@/lib/intake/requestGeneration';
 
 /** Split the free-text services field into individual service/job labels. */
 function parseServiceList(text: string): string[] {
@@ -1092,7 +1093,7 @@ export default function IntakeFormClient({
     setGeneratingLogos(true);
     setError('');
     try {
-      const res = await fetch(`/api/intake/${token}/generate-logo`, {
+      const res = await requestIntakeGeneration(`/api/intake/${token}/generate-logo`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1130,7 +1131,7 @@ export default function IntakeFormClient({
     setSuggestingCustomers(true);
     setError('');
     try {
-      const res = await fetch(`/api/intake/${token}/suggest-customers`, {
+      const res = await requestIntakeGeneration(`/api/intake/${token}/suggest-customers`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1188,7 +1189,7 @@ export default function IntakeFormClient({
     setError('');
 
     try {
-      const res = await fetch(`/api/intake/${token}/generate-page-copy`, {
+      const res = await requestIntakeGeneration(`/api/intake/${token}/generate-page-copy`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ slug, ...form, craftSuggestedFields: getCraftSuggestedFields() }),
@@ -1223,7 +1224,7 @@ export default function IntakeFormClient({
       setBulkProgress({ current: i + 1, total: slugsToGenerate.length });
       setGeneratingCopy((prev) => ({ ...prev, [slug]: true }));
       try {
-        const res = await fetch(`/api/intake/${token}/generate-page-copy`, {
+        const res = await requestIntakeGeneration(`/api/intake/${token}/generate-page-copy`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ slug, ...form, craftSuggestedFields: getCraftSuggestedFields() }),
@@ -1251,7 +1252,7 @@ export default function IntakeFormClient({
     setSuggestingPages(true);
     if (!silent) setError('');
     try {
-      const res = await fetch(`/api/intake/${token}/suggest-pages`, {
+      const res = await requestIntakeGeneration(`/api/intake/${token}/suggest-pages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1758,7 +1759,7 @@ export default function IntakeFormClient({
     lastResolvedIndustryText.current = trimmed
     setResolvingCustomIndustry(true)
     try {
-      const res = await fetch(`/api/intake/${token}/resolve-custom-industry`, {
+      const res = await requestIntakeGeneration(`/api/intake/${token}/resolve-custom-industry`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -2002,7 +2003,7 @@ export default function IntakeFormClient({
 
     try {
       const activeIndustry = form.industry.trim();
-      const res = await fetch(`/api/intake/${token}/suggest-craft`, {
+      const res = await requestIntakeGeneration(`/api/intake/${token}/suggest-craft`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

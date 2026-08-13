@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { suggestCraftAnswers } from '@/lib/ai/suggestCraftAnswers';
 import { checkRateLimit, hashRateKey } from '@/lib/rateLimit';
+import { enqueueIntakeGeneration, isOracleExecution } from '@/lib/jobs/intakeGeneration';
 
 export const maxDuration = 30;
 export const runtime = 'nodejs';
@@ -9,7 +10,7 @@ export const runtime = 'nodejs';
  * AI-tailored "Craft & Proof" answer suggestions for step 4 of the intake form,
  * based on the prospect's industry, business name, services, and location.
  */
-export async function POST(
+async function executeIntakeSuggestCraft(
   req: Request,
   { params }: { params: Promise<{ token: string }> }
 ) {
@@ -47,4 +48,12 @@ export async function POST(
   });
 
   return NextResponse.json(result);
+}
+
+export async function POST(req: Request, { params }: { params: Promise<{ token: string }> }) {
+  const { token } = await params;
+  if (isOracleExecution(req)) {
+    return executeIntakeSuggestCraft(req, { params: Promise.resolve({ token }) });
+  }
+  return enqueueIntakeGeneration(req, token, 'suggest-craft');
 }

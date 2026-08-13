@@ -7,6 +7,7 @@ import {
   TASK_ADMIN_GENERATE_IMAGES,
   TASK_FULL_REDESIGN,
   TASK_INTAKE_GENERATE_IMAGES,
+  TASK_INTAKE_GENERATION,
   TASK_INTAKE_GENERATE_SITE,
   TASK_PROVISION_TENANT,
 } from './taskIds'
@@ -14,6 +15,7 @@ import { fullRedesignTask } from './tasks/fullRedesign'
 import { provisionTenantTask } from './tasks/provisionTenant'
 import { intakeGenerateSiteTask } from './tasks/intakeGenerateSite'
 import { intakeGenerateImagesTask } from './tasks/intakeGenerateImages'
+import { intakeGenerationTask } from './tasks/intakeGeneration'
 import { adminGenerateImagesTask } from './tasks/adminGenerateImages'
 import { adminGenerateBeforeTask } from './tasks/adminGenerateBefore'
 import { specBuildAdvanceTask } from './tasks/specBuildAdvance'
@@ -52,6 +54,7 @@ const taskList: TaskList = {
   [TASK_PROVISION_TENANT]: provisionTenantTask,
   [TASK_INTAKE_GENERATE_SITE]: intakeGenerateSiteTask,
   [TASK_INTAKE_GENERATE_IMAGES]: intakeGenerateImagesTask,
+  [TASK_INTAKE_GENERATION]: intakeGenerationTask,
   [TASK_ADMIN_GENERATE_IMAGES]: adminGenerateImagesTask,
   [TASK_ADMIN_GENERATE_BEFORE]: adminGenerateBeforeTask,
   [TASK_SPEC_BUILD_ADVANCE]: specBuildAdvanceTask,

@@ -5,6 +5,7 @@ import { assertDraftIntake, assertDepositPaid } from '@/lib/intake/intakeTierGat
 import { checkRateLimit, hashRateKey } from '@/lib/rateLimit';
 import { buildIntakeBrief } from '@/lib/intake/buildIntakeBrief';
 import { SITE_PAGE_OPTIONS } from '@/lib/catalog/sitePages';
+import { enqueueIntakeGeneration, isOracleExecution } from '@/lib/jobs/intakeGeneration';
 
 export const maxDuration = 30;
 export const runtime = 'nodejs';
@@ -81,7 +82,7 @@ function parseSuggestions(text: string): RawSuggestion[] {
   return salvaged;
 }
 
-export async function POST(
+async function executeIntakeSuggestPages(
   req: Request,
   { params }: { params: Promise<{ token: string }> }
 ) {
@@ -217,4 +218,12 @@ Provide exactly 5 specific page suggestions tailored to THIS business's brief ab
     const message = error instanceof Error ? error.message : 'Failed to suggest pages';
     return NextResponse.json({ error: message }, { status: 500 });
   }
+}
+
+export async function POST(req: Request, { params }: { params: Promise<{ token: string }> }) {
+  const { token } = await params;
+  if (isOracleExecution(req)) {
+    return executeIntakeSuggestPages(req, { params: Promise.resolve({ token }) });
+  }
+  return enqueueIntakeGeneration(req, token, 'suggest-pages');
 }

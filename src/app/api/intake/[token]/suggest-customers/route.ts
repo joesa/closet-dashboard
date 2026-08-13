@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { suggestIdealCustomers } from '@/lib/ai/suggestIdealCustomers'
 import { checkRateLimit, hashRateKey } from '@/lib/rateLimit'
+import { enqueueIntakeGeneration, isOracleExecution } from '@/lib/jobs/intakeGeneration'
 
 export const maxDuration = 30
 export const runtime = 'nodejs'
@@ -10,7 +11,7 @@ export const runtime = 'nodejs'
  * your business" step, based on the prospect's industry + services so far.
  * Falls back to a generic static list on rate-limit, missing key, or error.
  */
-export async function POST(
+async function executeIntakeSuggestCustomers(
   req: Request,
   { params }: { params: Promise<{ token: string }> }
 ) {
@@ -40,4 +41,12 @@ export async function POST(
   })
 
   return NextResponse.json(result)
+}
+
+export async function POST(req: Request, { params }: { params: Promise<{ token: string }> }) {
+  const { token } = await params
+  if (isOracleExecution(req)) {
+    return executeIntakeSuggestCustomers(req, { params: Promise.resolve({ token }) })
+  }
+  return enqueueIntakeGeneration(req, token, 'suggest-customers')
 }

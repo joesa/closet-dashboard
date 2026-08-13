@@ -11,6 +11,7 @@ import { DESIGN_CRAFT_PERSONA } from '@/lib/ai/craftStandards'
 import { HUMAN_COPY_VOICE_RULES } from '@/lib/ai/humanCopyVoice'
 import { generateWithQualityRetry } from '@/lib/ai/generateWithQualityRetry'
 import { validateGeneratedUnits } from '@/lib/validation/generatedContentQuality'
+import { enqueueIntakeGeneration, isOracleExecution } from '@/lib/jobs/intakeGeneration'
 
 function sanitizeJsonString(json: string): string {
   let insideString = false
@@ -141,7 +142,7 @@ function extractJson(text: string): string {
   return t
 }
 
-export async function POST(
+async function executeIntakeGeneratePageCopy(
   req: Request,
   { params }: { params: Promise<{ token: string }> }
 ) {
@@ -386,4 +387,12 @@ ${brief}`
       error instanceof Error ? error.message : 'Copy generation failed'
     return NextResponse.json({ error: message }, { status: 500 })
   }
+}
+
+export async function POST(req: Request, { params }: { params: Promise<{ token: string }> }) {
+  const { token } = await params
+  if (isOracleExecution(req)) {
+    return executeIntakeGeneratePageCopy(req, { params: Promise.resolve({ token }) })
+  }
+  return enqueueIntakeGeneration(req, token, 'generate-page-copy')
 }
