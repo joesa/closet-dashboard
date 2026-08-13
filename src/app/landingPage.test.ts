@@ -55,6 +55,14 @@ describe('marketing homepage quality contract', () => {
     expect(getStartedSource).toContain('Custom Studio site build')
   })
 
+  it('makes full-site ownership and editing controls explicit for both builds', () => {
+    expect(pageSource).toContain('You control the whole site after launch.')
+    expect(pageSource).toContain('Full dashboard access to edit every page and section after launch')
+    expect(pageSource).toContain('Upload, replace, reorder, or remove site images whenever you want')
+    expect(pageSource).toContain('Everything in Standard, including full-site editing and media controls')
+    expect(pageSource).toMatch(/your own dashboard\s+edits are unlimited/)
+  })
+
   it('never transports the public demo password in a URL', () => {
     expect(pageSource).toContain("const demoLoginHref = '/login?demo=1'")
     expect(pageSource).not.toMatch(/login\?email=.*password=/)

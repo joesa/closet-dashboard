@@ -721,14 +721,17 @@ const WIDGET_FEATURES = [
 const STANDARD_FEATURES = [
   'Custom marketing site + embedded quote calculator',
   'Up to 5 pages (Home plus 4 you choose during setup)',
+  'Full dashboard access to edit every page and section after launch',
+  'Upload, replace, reorder, or remove site images whenever you want',
+  'Update copy, services, prices, links, and contact details yourself',
   'Professional stock hero & service imagery',
   'Unlimited lead capture via SMS & email',
   'Custom service & option pricing',
-  'After launch: hosting, SSL, Pro widget, and 1 content tweak/month',
+  'Unlimited self-service edits plus 1 done-for-you content tweak/month',
 ]
 
 const PREMIUM_FEATURES = [
-  'Everything in Standard',
+  'Everything in Standard, including full-site editing and media controls',
   'Up to 10 pages (Home plus 9 you choose during setup)',
   'Selling copy grounded in your services, process, and market',
   'Original hero and service imagery directed for your business',
@@ -778,9 +781,10 @@ function HowSiteBuildPaymentWorks() {
           <p className="text-sm leading-relaxed" style={{ color: INK_2 }}>
             We build your site with stock imagery and send you the working
             preview. If you want it, you pay the full{' '}
-            {formatUsd(standard.totalCents)}{' '}and we launch it. Full access to
-            your dashboard, leads, and settings handed over. If you
-            don&apos;t, you owe nothing.
+            {formatUsd(standard.totalCents)}{' '}and we launch it. You receive
+            full dashboard access to edit every page and section, including
+            uploading, replacing, reordering, or removing images. Your leads
+            and settings are handed over too. If you don&apos;t, you owe nothing.
           </p>
           <p
             className="text-[13px] tabular-nums md:text-right"
@@ -805,7 +809,8 @@ function HowSiteBuildPaymentWorks() {
             studio during intake. We build with the shots you choose. You
             review the finished site, and the {formatUsd(premium.remainderCents)}{' '}
             balance is due only if you approve it before launch. Not
-            satisfied? The deposit is returned.
+            satisfied? The deposit is returned. After launch, the entire site
+            is yours to edit, including every page, section, and image.
           </p>
           <p
             className="text-[13px] tabular-nums md:text-right"
@@ -945,6 +950,26 @@ function PricingSection() {
         wired in; maintenance starts after launch.
       </p>
 
+      <div
+        className="mt-8 grid gap-4 border-y py-6 sm:grid-cols-[220px_1fr] sm:gap-10"
+        style={{ borderColor: INK }}
+      >
+        <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.12em]" style={{ color: ACCENT }}>
+          Standard + Custom Studio
+        </p>
+        <div>
+          <h3 className="text-xl font-semibold tracking-tight">
+            You control the whole site after launch.
+          </h3>
+          <p className="mt-2 max-w-[62ch] text-sm leading-relaxed" style={{ color: INK_2 }}>
+            Edit every page and section from your dashboard. Change copy,
+            services, prices, links, and contact details, or upload, replace,
+            reorder, and remove images whenever you want. Your own edits are
+            unlimited and do not count against the monthly done-for-you tweak.
+          </p>
+        </div>
+      </div>
+
       <div className="mt-8 flex flex-col gap-2">
         <div>
           <PlanBillingToggle
@@ -1039,7 +1064,8 @@ function PricingSection() {
           <p className="mb-5 mt-2 text-[12.5px]" style={{ color: INK_3 }}>
             Then {formatUsd(siteMaint.perMonthCents)}/mo maintenance after
             launch ({siteMaint.billedLabel}). Hosting, SSL, Pro widget, and 1
-            content tweak/month included, no separate{' '}
+            done-for-you content tweak/month included; your own dashboard
+            edits are unlimited. No separate{' '}
             {formatUsd(widgetSub.monthlyCents)}/mo widget fee.
           </p>
           <PricingFeatureList features={STANDARD_FEATURES} />
