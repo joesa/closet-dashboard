@@ -113,6 +113,27 @@ export const SKELETON_COLLISION_THRESHOLD = 0.85
 /** Weighted palette/type/composition/geometry/motif similarity that blocks. */
 export const VISUAL_COLLISION_THRESHOLD = 0.6
 
+/**
+ * Fleet-frequency guard. Pairwise similarity misses slow convergence: 19 of 20
+ * sites can share hairline grids, uppercase chrome and photo bleed while every
+ * pair stays under the collision threshold. Any single axis value used by this
+ * share of the fleet (given a minimum sample) is "saturated"; a candidate that
+ * reuses FLEET_CONVERGENCE_BLOCK_COUNT saturated values or more is rejected.
+ */
+export const FLEET_CONVERGENCE_SHARE_LIMIT = 0.8
+export const FLEET_CONVERGENCE_MIN_SAMPLE = 10
+export const FLEET_CONVERGENCE_BLOCK_COUNT = 3
+
+/**
+ * Design-family guard. Families are coarse (tone × geometry × chrome register)
+ * on purpose — they catch "every redesign is some editorial variant" even when
+ * fonts, accents and sections all differ.
+ */
+export const FAMILY_RECENT_WINDOW = 20
+export const FAMILY_MIN_SAMPLE = 10
+export const FAMILY_SHARE_LIMIT = 0.5
+
+
 /** Repair attempts per failing unit (globalCss counts as one unit). */
 export const MAX_REPAIR_ATTEMPTS_PER_UNIT = 2
 

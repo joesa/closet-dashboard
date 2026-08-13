@@ -24,6 +24,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { CustomSiteConfig } from '@/lib/customSite'
 import {
   CUSTOM_FINGERPRINT_VERSION,
+  classifyDesignFamily,
   describeFingerprintForAvoidList,
   extractCustomDesignFingerprint,
   fingerprintKeys,
@@ -34,6 +35,13 @@ import {
 import {
   AVOID_LIST_MAX_CHARS,
   AVOID_LIST_MAX_ROWS,
+  BLOCKING_AXES,
+  FAMILY_MIN_SAMPLE,
+  FAMILY_RECENT_WINDOW,
+  FAMILY_SHARE_LIMIT,
+  FLEET_CONVERGENCE_MIN_SAMPLE,
+  FLEET_CONVERGENCE_SHARE_LIMIT,
+  type FingerprintAxis,
 } from '@/lib/validation/designGuardPolicy'
 
 const TABLE = 'custom_design_fingerprints'
@@ -94,7 +102,7 @@ function joinCapped(label: string, values: string[], max: number): string {
 
 export function buildAvoidPromptBlock(taken: TakenDesign[]): string {
   if (taken.length === 0) return ''
-  const budget = Math.floor(AVOID_LIST_MAX_CHARS / 4)
+  const budget = Math.floor(AVOID_LIST_MAX_CHARS / 5)
 
   const skeletons = Array.from(
     new Set(taken.map((t) => t.fingerprint.skeleton.join('→')).filter(Boolean))
@@ -113,16 +121,160 @@ export function buildAvoidPromptBlock(taken: TakenDesign[]): string {
     new Set(taken.map((t) => t.signatureConcept?.trim()).filter((c): c is string => !!c))
   ).map((c) => `"${c.slice(0, 60)}"`)
 
+  // Saturated single-axis values: motifs/families most of the fleet already
+  // uses. Steering away from these up front is what actually breaks the
+  // "everything is an editorial variant" convergence.
+  const saturatedMotifs = saturatedFleetValues(taken)
+  const saturatedFamilies = saturatedFamilyValues(taken)
+
   const lines = [
     '# ALREADY USED ON THIS PLATFORM — your direction must differ from every line below',
     joinCapped('Home section rhythms in use', skeletons, budget),
     joinCapped('Palettes in use (hue-lightness-chroma buckets)', palettes, budget),
     joinCapped('Type pairings in use', fonts, budget),
     joinCapped('Signature concepts already claimed', concepts, budget),
-    'Your complete visual system MUST differ from every design above. A build is rejected when section rhythm alone matches OR when the weighted combination of composition, palette, typography, geometry, and motifs remains too similar. Recoloring or reordering the same template is not sufficient.',
+    joinCapped(
+      'SATURATED motifs (used by ≥80% of the fleet — do NOT use these)',
+      saturatedMotifs,
+      budget
+    ),
+    joinCapped(
+      'SATURATED design families (pick a genuinely different family: different tone, geometry, and chrome register)',
+      saturatedFamilies,
+      budget
+    ),
+    'Your complete visual system MUST differ from every design above. A build is rejected when section rhythm alone matches, when the weighted combination of composition, palette, typography, geometry, and motifs remains too similar, OR when it stacks motifs and a design family the fleet has already saturated. Recoloring or reordering the same template is not sufficient.',
   ].filter(Boolean)
 
   return lines.join('\n').slice(0, AVOID_LIST_MAX_CHARS)
+}
+
+// ── fleet convergence ───────────────────────────────────────────────────────
+
+export type FleetConvergenceFinding = {
+  axis: FingerprintAxis | 'family'
+  value: string
+  /** Share of the compared fleet using this value, 0..1. */
+  share: number
+  sample: number
+}
+
+function fleetShare(taken: TakenDesign[], pred: (t: TakenDesign) => boolean): number {
+  return taken.length === 0 ? 0 : taken.filter(pred).length / taken.length
+}
+
+/** Motif/structure values ≥ the saturation limit across the whole fleet. */
+function saturatedFleetValues(taken: TakenDesign[]): string[] {
+  if (taken.length < FLEET_CONVERGENCE_MIN_SAMPLE) return []
+  const counts = new Map<string, number>()
+  for (const t of taken) {
+    const values = new Set([...t.fingerprint.motifs, ...(t.fingerprint.structure || [])])
+    for (const v of values) counts.set(v, (counts.get(v) ?? 0) + 1)
+  }
+  return Array.from(counts.entries())
+    .filter(([, c]) => c / taken.length >= FLEET_CONVERGENCE_SHARE_LIMIT)
+    .sort((a, b) => b[1] - a[1])
+    .map(([v]) => v)
+}
+
+function recentTaken(taken: TakenDesign[], window: number): TakenDesign[] {
+  return [...taken]
+    .sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))
+    .slice(0, window)
+}
+
+/** Families ≥ the family share limit across the recent window. */
+function saturatedFamilyValues(taken: TakenDesign[]): string[] {
+  const recent = recentTaken(taken, FAMILY_RECENT_WINDOW)
+  if (recent.length < FAMILY_MIN_SAMPLE) return []
+  const counts = new Map<string, number>()
+  for (const t of recent) {
+    const family = classifyDesignFamily(t.fingerprint)
+    counts.set(family, (counts.get(family) ?? 0) + 1)
+  }
+  return Array.from(counts.entries())
+    .filter(([, c]) => c / recent.length >= FAMILY_SHARE_LIMIT)
+    .sort((a, b) => b[1] - a[1])
+    .map(([f]) => f)
+}
+
+/**
+ * Single-axis values this candidate reuses that most of the fleet already
+ * uses. Catches slow platform-wide convergence that pairwise similarity
+ * (findDesignCollisions) structurally cannot see. Uses every blocking axis.
+ */
+export function findFleetConvergence(
+  candidate: CustomDesignFingerprint,
+  taken: TakenDesign[]
+): FleetConvergenceFinding[] {
+  const sample = taken.length
+  if (sample < FLEET_CONVERGENCE_MIN_SAMPLE) return []
+  const out: FleetConvergenceFinding[] = []
+  const push = (axis: FingerprintAxis, value: string, share: number) => {
+    if (share >= FLEET_CONVERGENCE_SHARE_LIMIT) out.push({ axis, value, share, sample })
+  }
+
+  for (const axis of BLOCKING_AXES) {
+    if (axis === 'motifs') {
+      for (const value of [...candidate.motifs, ...(candidate.structure || [])]) {
+        push(
+          axis,
+          value,
+          fleetShare(
+            taken,
+            (t) =>
+              t.fingerprint.motifs.includes(value) ||
+              (t.fingerprint.structure || []).includes(value)
+          )
+        )
+      }
+    } else if (axis === 'shape') {
+      if (candidate.shape) {
+        push(axis, candidate.shape, fleetShare(taken, (t) => t.fingerprint.shape === candidate.shape))
+      }
+    } else if (axis === 'fonts') {
+      if (candidate.fonts.display) {
+        push(
+          axis,
+          candidate.fonts.display,
+          fleetShare(taken, (t) => t.fingerprint.fonts.display === candidate.fonts.display)
+        )
+      }
+    } else if (axis === 'palette') {
+      const bg = candidate.paletteBuckets.find((b) => b.startsWith('bg:'))
+      if (bg) {
+        push(axis, bg, fleetShare(taken, (t) => t.fingerprint.paletteBuckets.includes(bg)))
+      }
+    } else if (axis === 'skeleton') {
+      const opening = candidate.skeleton.slice(0, 2).join('>')
+      if (opening) {
+        push(
+          axis,
+          `opens ${opening}`,
+          fleetShare(taken, (t) => t.fingerprint.skeleton.slice(0, 2).join('>') === opening)
+        )
+      }
+    }
+  }
+  return out.sort((a, b) => b.share - a.share)
+}
+
+/**
+ * Non-null when the candidate lands in a design family that already dominates
+ * the recent fleet window — the "every full redesign is an editorial site"
+ * failure mode as a first-class, blockable finding.
+ */
+export function findFamilyConvergence(
+  candidate: CustomDesignFingerprint,
+  taken: TakenDesign[]
+): FleetConvergenceFinding | null {
+  const recent = recentTaken(taken, FAMILY_RECENT_WINDOW)
+  if (recent.length < FAMILY_MIN_SAMPLE) return null
+  const family = classifyDesignFamily(candidate)
+  const share = fleetShare(recent, (t) => classifyDesignFamily(t.fingerprint) === family)
+  return share >= FAMILY_SHARE_LIMIT
+    ? { axis: 'family', value: family, share, sample: recent.length }
+    : null
 }
 
 /**
@@ -138,6 +290,12 @@ export async function loadDesignAvoidList(opts: {
   industryKey?: string | null
   marketKey?: string | null
   limit?: number
+  /**
+   * Full redesign passes true: a registry outage must fail the run instead of
+   * silently generating with zero uniqueness protection. Other callers keep
+   * the historical fail-open posture.
+   */
+  failClosed?: boolean
 }): Promise<DesignAvoidList> {
   try {
     const { data, error } = await opts.supabase
@@ -149,6 +307,11 @@ export async function loadDesignAvoidList(opts: {
       .limit(opts.limit ?? AVOID_LIST_MAX_ROWS)
 
     if (error || !Array.isArray(data)) {
+      if (opts.failClosed) {
+        throw new Error(
+          `Design uniqueness registry unavailable (${error?.message || 'no data'}) — Full redesign runs fail closed rather than generating without uniqueness protection.`
+        )
+      }
       if (error) {
         console.warn('[designAvoidList] load skipped:', error.message)
       }
@@ -195,6 +358,7 @@ export async function loadDesignAvoidList(opts: {
       promptBlock: buildAvoidPromptBlock(taken),
     }
   } catch (err) {
+    if (opts.failClosed) throw err
     console.warn('[designAvoidList] load failed:', err)
     return EMPTY_AVOID_LIST
   }

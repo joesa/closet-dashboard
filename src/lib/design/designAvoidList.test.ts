@@ -5,6 +5,8 @@ import {
   buildAvoidPromptBlock,
   describeTakenSkeletons,
   findDesignCollisions,
+  findFamilyConvergence,
+  findFleetConvergence,
   loadDesignAvoidList,
   recordCustomDesignFingerprint,
   type TakenDesign,
@@ -261,5 +263,100 @@ describe('describeTakenSkeletons', () => {
       promptBlock: '',
     }
     expect(describeTakenSkeletons(avoid)).toBe('hero→grid3 · hero→band')
+  })
+})
+
+describe('fail-closed loading (Full redesign)', () => {
+  it('throws on a query error instead of returning an empty list', async () => {
+    const { client } = stubSupabase({ error: { message: 'connection refused' } })
+    await expect(
+      loadDesignAvoidList({ supabase: client, tenantId: 'me', failClosed: true })
+    ).rejects.toThrow(/fail closed/i)
+  })
+
+  it('throws when the client throws outright', async () => {
+    const client = {
+      from: () => {
+        throw new Error('network down')
+      },
+    } as unknown as SupabaseClient
+    await expect(
+      loadDesignAvoidList({ supabase: client, tenantId: 'me', failClosed: true })
+    ).rejects.toThrow('network down')
+  })
+})
+
+const DARK_CSS = `:root{--bg:#232a2e;--ink:#eef1f2;--muted:#9aa5aa;--line:#39434a;--acc:#7d2f3a;--df:"Oswald";--bf:"Lato"}
+section{border-radius:20px}`
+
+describe('findFleetConvergence', () => {
+  const fleet = Array.from({ length: 12 }, (_v, n) => taken(`t${n}`, [HERO, GRID, BAND]))
+  const sameAsFleet = extractCustomDesignFingerprint(artifact([HERO, GRID, BAND]))
+
+  it('is silent below the minimum fleet sample', () => {
+    expect(findFleetConvergence(sameAsFleet, fleet.slice(0, 5))).toEqual([])
+  })
+
+  it('flags a candidate that reuses values most of the fleet already uses', () => {
+    const findings = findFleetConvergence(sameAsFleet, fleet)
+    expect(findings.length).toBeGreaterThanOrEqual(3)
+    for (const f of findings) {
+      expect(f.share).toBeGreaterThanOrEqual(0.8)
+      expect(f.sample).toBe(12)
+    }
+  })
+
+  it('mostly clears a candidate from a genuinely different visual system', () => {
+    const different = extractCustomDesignFingerprint({
+      mode: 'inline',
+      globalCss: DARK_CSS,
+      pages: { '/': { html: [HERO, PROSE, PROSE, GRID, BAND, BAND].join('') } },
+    })
+    const sameFindings = findFleetConvergence(sameAsFleet, fleet)
+    const differentFindings = findFleetConvergence(different, fleet)
+    expect(differentFindings.length).toBeLessThan(sameFindings.length)
+    // The axes that define the fleet's shared skin must all clear.
+    expect(differentFindings.some((f) => f.axis === 'shape')).toBe(false)
+    expect(differentFindings.some((f) => f.axis === 'fonts')).toBe(false)
+    expect(differentFindings.some((f) => f.axis === 'palette')).toBe(false)
+  })
+})
+
+describe('findFamilyConvergence', () => {
+  const fleet = Array.from({ length: 12 }, (_v, n) => taken(`t${n}`, [HERO, GRID, BAND]))
+
+  it('flags a candidate in the family that dominates the recent window', () => {
+    const candidate = extractCustomDesignFingerprint(artifact([HERO, PROSE, GRID, BAND]))
+    const hit = findFamilyConvergence(candidate, fleet)
+    expect(hit).not.toBeNull()
+    expect(hit?.axis).toBe('family')
+    expect(hit?.share).toBeGreaterThanOrEqual(0.5)
+  })
+
+  it('clears a candidate from a different family (tone + geometry change)', () => {
+    const candidate = extractCustomDesignFingerprint({
+      mode: 'inline',
+      globalCss: DARK_CSS,
+      pages: { '/': { html: [HERO, PROSE, BAND].join('') } },
+    })
+    expect(findFamilyConvergence(candidate, fleet)).toBeNull()
+  })
+
+  it('is silent below the minimum sample', () => {
+    const candidate = extractCustomDesignFingerprint(artifact([HERO, GRID, BAND]))
+    expect(findFamilyConvergence(candidate, fleet.slice(0, 4))).toBeNull()
+  })
+})
+
+describe('saturated guidance in the prompt block', () => {
+  it('names saturated motifs and families once the fleet is large enough', () => {
+    const many = Array.from({ length: 15 }, (_v, n) => taken(`t${n}`, [HERO, GRID, BAND]))
+    const block = buildAvoidPromptBlock(many)
+    expect(block).toContain('SATURATED')
+  })
+
+  it('omits saturation lines for a small fleet', () => {
+    const block = buildAvoidPromptBlock([taken('a', [HERO, GRID, BAND])])
+    expect(block).not.toContain('SATURATED')
   })
 })

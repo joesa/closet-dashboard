@@ -238,9 +238,28 @@ describe('full redesign design guard', () => {
   it('guards the foundation, each page, and the finished artifact', () => {
     expect(src).toContain("runGuard(\n      'foundation'")
     expect(src).toContain('scanUnitTells')
-    expect(src).toContain("runGuard(\n      'uniqueness'")
     expect(src).toContain('findDesignCollisions')
     expect(src).toContain('recordCustomDesignFingerprint')
+  })
+
+  it('uniqueness repair regenerates the full foundation and re-checks uniqueness', () => {
+    // The repair must send BOTH globalCss and home HTML back (palette/type
+    // live in the CSS) and its scan must recompute collisions + fleet
+    // convergence on the assembled candidate, or the retry loop is a no-op.
+    expect(src).toContain('const uniquenessScan = (candidate: RepairUnits)')
+    expect(src).toContain('[cssUnitId]: draft.globalCss')
+    expect(src).toContain('uniquenessFindings(assessUniqueness(candidateCfg))')
+    expect(src).toContain('findFleetConvergence')
+    expect(src).toContain('findFamilyConvergence')
+  })
+
+  it('fails closed when the uniqueness registry is unavailable', () => {
+    expect(src).toContain('failClosed: true')
+  })
+
+  it('preflights widget identity before a full redesign', () => {
+    expect(src).toContain('tenant has no widget_id')
+    expect(src).toContain('engagement_model is not set')
   })
 
   it('checkpoints before every guard so a crash mid-repair stays resumable', () => {

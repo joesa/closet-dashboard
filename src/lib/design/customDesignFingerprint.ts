@@ -49,6 +49,13 @@ export type CustomDesignFingerprint = {
   shape: string
   /** Chrome motifs present, sorted. */
   motifs: string[]
+  /**
+   * Structural signals (header architecture, hero geometry, density,
+   * alignment, container behavior, widget placement, background rhythm, image
+   * treatment) as prefixed tokens, e.g. 'hero:single-image'. Optional so rows
+   * recorded before this axis existed still compare on the other axes.
+   */
+  structure?: string[]
   hash: string
 }
 
@@ -197,6 +204,68 @@ function extractMotifs(css: string, html: string): string[] {
   return MOTIF_RULES.filter((r) => r.test(css, html)).map((r) => r.id)
 }
 
+/**
+ * Prefixed structural tokens covering the axes pairwise motif comparison used
+ * to miss: header architecture, hero geometry, section density, alignment,
+ * container behavior, widget placement, background rhythm, image treatment.
+ */
+function extractStructuralSignals(
+  css: string,
+  home: string,
+  skeleton: string[]
+): string[] {
+  const out: string[] = []
+
+  const firstSection =
+    (home.match(/<section\b[\s\S]*?<\/section>/i) || [''])[0] || home.slice(0, 4000)
+  if (/<h1\b/i.test(firstSection)) {
+    const heroImgs = (firstSection.match(/<img\b/gi) || []).length
+    out.push(
+      heroImgs === 0 ? 'hero:text' : heroImgs === 1 ? 'hero:single-image' : 'hero:multi-image'
+    )
+  }
+
+  const header = (home.match(/<header\b[\s\S]*?<\/header>/i) || [''])[0]
+  if (header) {
+    out.push(/tel:/i.test(header) ? 'header:tel' : 'header:plain')
+    const headerLinks = (header.match(/<a\b/gi) || []).length
+    out.push(headerLinks >= 6 ? 'header:dense' : 'header:sparse')
+  }
+
+  const n = skeleton.length
+  if (n > 0) {
+    out.push(n <= 4 ? 'density:sparse' : n <= 7 ? 'density:medium' : 'density:dense')
+    const engageIdx = skeleton.indexOf('engage')
+    if (engageIdx >= 0) {
+      const pos = engageIdx / n
+      out.push(pos < 0.34 ? 'widget:early' : pos < 0.67 ? 'widget:mid' : 'widget:late')
+    }
+  }
+
+  const centers = (css.match(/text-align\s*:\s*center/gi) || []).length
+  out.push(centers >= 4 ? 'align:centered' : 'align:flush')
+
+  const maxw = css.match(/max-width\s*:\s*(\d+(?:\.\d+)?)(px|rem)/i)
+  if (maxw) {
+    const px = maxw[2].toLowerCase() === 'rem' ? parseFloat(maxw[1]) * 16 : parseFloat(maxw[1])
+    out.push(px <= 900 ? 'container:narrow' : px <= 1240 ? 'container:standard' : 'container:wide')
+  } else {
+    out.push('container:fluid')
+  }
+
+  const bgValues = new Set(
+    (css.match(/background(?:-color)?\s*:\s*(#[0-9a-fA-F]{3,8}|var\(--[\w-]+\))/g) || []).map(
+      (s) => s.toLowerCase().replace(/\s+/g, '')
+    )
+  )
+  out.push(bgValues.size <= 2 ? 'bg:mono' : bgValues.size <= 4 ? 'bg:duo' : 'bg:varied')
+
+  if (/filter\s*:[^;}]*grayscale/i.test(css)) out.push('img:grayscale')
+  if (/aspect-ratio\s*:/i.test(css)) out.push('img:fixed-ratio')
+
+  return out.sort()
+}
+
 // ── extraction ──────────────────────────────────────────────────────────────
 
 export function extractCustomDesignFingerprint(
@@ -217,6 +286,7 @@ export function extractCustomDesignFingerprint(
   const skeleton = extractSkeleton(home)
   const shape = extractShape(globalCss)
   const motifs = extractMotifs(globalCss, allHtml).sort()
+  const structure = extractStructuralSignals(globalCss, home, skeleton)
 
   const normalized = JSON.stringify({
     v: CUSTOM_FINGERPRINT_VERSION,
@@ -225,6 +295,7 @@ export function extractCustomDesignFingerprint(
     skeleton,
     shape,
     motifs,
+    structure,
   })
 
   return {
@@ -234,6 +305,7 @@ export function extractCustomDesignFingerprint(
     skeleton,
     shape,
     motifs,
+    structure,
     hash: hashSeed(normalized).toString(36),
   }
 }
@@ -288,12 +360,18 @@ export function axisSimilarities(
   const fontsScore =
     (a.fonts.display && a.fonts.display === b.fonts.display ? 0.6 : 0) +
     (a.fonts.body && a.fonts.body === b.fonts.body ? 0.4 : 0)
+  // Structural signals sharpen the motif axis when both rows carry them;
+  // rows recorded before the axis existed compare on chrome motifs alone.
+  const motifScore =
+    a.structure?.length && b.structure?.length
+      ? jaccard(a.motifs, b.motifs) * 0.6 + jaccard(a.structure, b.structure) * 0.4
+      : jaccard(a.motifs, b.motifs)
   return {
     palette: jaccard(a.paletteBuckets, b.paletteBuckets),
     fonts: fontsScore,
     skeleton: skeletonSimilarity(a, b),
     shape: a.shape === b.shape ? 1 : 0,
-    motifs: jaccard(a.motifs, b.motifs),
+    motifs: motifScore,
   }
 }
 
@@ -356,4 +434,28 @@ export function describeFingerprintForAvoidList(fp: CustomDesignFingerprint): st
   const type = [fp.fonts.display, fp.fonts.body].filter(Boolean).join(' + ') || '(unread)'
   const palette = fp.paletteBuckets.join(' ') || '(unread)'
   return `${skeleton} · type ${type} · palette ${palette}`
+}
+
+// ── design family ───────────────────────────────────────────────────────────
+
+/**
+ * Coarse family id: tone × geometry × chrome register. Deliberately blunt —
+ * it exists to catch "every redesign is some light, sharp, hairline-and-
+ * uppercase editorial variant", which pairwise similarity structurally cannot
+ * see. Works on any fingerprint version since it only reads shared fields.
+ */
+export function classifyDesignFamily(fp: CustomDesignFingerprint): string {
+  const bgBucket = fp.paletteBuckets.find((b) => b.startsWith('bg:')) || fp.paletteBuckets[0] || ''
+  const lightness = bgBucket.match(/-l(\d)/)
+  const tone = lightness ? (Number(lightness[1]) >= 5 ? 'light' : 'dark') : 'unknown'
+  const geometry = /^r[01]/.test(fp.shape) ? 'sharp' : 'soft'
+  const editorialChrome =
+    fp.motifs.includes('hairline-grid') &&
+    (fp.motifs.includes('uppercase-chrome') || fp.motifs.includes('eyebrow'))
+  const chrome = editorialChrome
+    ? 'editorial'
+    : fp.motifs.includes('photo-bleed')
+      ? 'photographic'
+      : 'plain'
+  return `${tone}-${geometry}-${chrome}`
 }

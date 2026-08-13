@@ -131,6 +131,7 @@ import {
   type DesignTellFinding,
 } from '@/lib/validation/designTellScanner'
 import {
+  FLEET_CONVERGENCE_BLOCK_COUNT,
   MAX_REPAIR_ATTEMPTS_PER_UNIT,
   REPAIR_CUTOFF_MS,
   TYPOGRAPHY_PROBE_ALERT_THRESHOLD,
@@ -148,9 +149,12 @@ import {
 import {
   describeTakenSkeletons,
   findDesignCollisions,
+  findFamilyConvergence,
+  findFleetConvergence,
   loadDesignAvoidList,
   recordCustomDesignFingerprint,
   type DesignAvoidList,
+  type FleetConvergenceFinding,
 } from '@/lib/design/designAvoidList'
 import {
   extractCustomDesignFingerprint,
@@ -1054,6 +1058,23 @@ export async function generateCustomSiteDraft(opts: {
         ? 'surgical'
         : 'full'
 
+  // Full redesign preflight: without a widget identity and an engagement
+  // model, the generated site can never mount its engagement engine — fail
+  // before spending a 40-minute build, not after.
+  if (intent === 'full') {
+    const widgetId = typeof tenant.widget_id === 'string' ? tenant.widget_id.trim() : ''
+    if (!widgetId) {
+      throw new Error(
+        'Full redesign preflight failed: tenant has no widget_id, so the engagement widget can never mount on the redesigned site. Fix tenant provisioning first.'
+      )
+    }
+    if (typeof cfg.engagement_model !== 'string' || !cfg.engagement_model.trim()) {
+      throw new Error(
+        'Full redesign preflight failed: site_configs.engagement_model is not set — cannot choose the engagement widget for the conversion section.'
+      )
+    }
+  }
+
   if (intent === 'surgical' && !base) {
     throw new Error(
       'No custom site to edit yet — use “Generate from scratch” (clones the live site) first, then surgical edits.'
@@ -1306,11 +1327,14 @@ export async function generateCustomSiteDraft(opts: {
           // Designs already shipped, so the model steers away from taken
           // directions up front rather than being rejected afterwards. Loaded
           // here because runFullGenerate has no Supabase access of its own.
+          // Fail-closed: a registry outage fails the run instead of silently
+          // generating with zero uniqueness protection.
           avoidList: await loadDesignAvoidList({
             supabase,
             tenantId: opts.tenantId,
             industryKey,
             marketKey,
+            failClosed: true,
           }),
           prompt: opts.prompt,
           mode,
@@ -2068,7 +2092,7 @@ Pass 1 — Direction (before tokens or HTML):
 Pass 2 — System + site (then emit JSON only):
 4. Tokens in globalCss :root — implement the optimized palette (adjust only for AA contrast / brief overrides); --df/--bf from the brief's Google Fonts; optional mono only if it fits; one --acc (second accent ONLY for true dual-lane); spacing/radius/shadow consistent with direction (precision brands ≠ soft 24px radii).
 5. Shared chrome: header with real shop name + nav + phone + primary CTA; designed footer with real contact; reusable layout and button primitives. Header behavior, labels, dividers, spacing density, and geometry MUST follow the locked direction — do not add sticky chrome, eyebrow labels, hairlines, oversized whitespace, or rounded cards by habit. Use one atmospheric device only when it comes from the subject (paper grain, material texture, documentary photo bleed, painted rule, open air), never as generic decoration.
-6. Home composition must be invented for this direction, not selected from a house template. Choose a fundamentally distinct spatial grammar (for example immersive image-led, typographic poster, dense catalog, asymmetric editorial, modular utility, horizontal narrative, or restrained single-column), then derive section order and proportions from it. Include services and the engagement engine, but do NOT default to hero → card grid → alternating image/text bands → centered CTA.
+6. Home composition must be invented for this direction, not selected from a house template. Choose a fundamentally distinct spatial grammar (for example immersive image-led, typographic poster, dense catalog, asymmetric editorial, modular utility, horizontal narrative, restrained single-column, stacked full-width color-field bands, dark cinematic showcase, playful rounded-geometry, or utility dashboard with no marketing hero), then derive section order and proportions from it. Include services and the engagement engine, but do NOT default to hero → card grid → alternating image/text bands → centered CTA — and do NOT default to the light editorial register (hairline grids + uppercase eyebrow labels + wide letter-spacing on a pale ground) that AI site builders habitually produce.
 7. Build EVERY required path with the same header/footer. Services page: deep coverage of every service. Contact: tel:/mailto: + hours/address + optional second widget mount — never an HTML form. Use ALL intakePages + services copy; sharpen, don't invent.
 8. Motion: one deliberate CSS moment (load or signature reveal). Respect prefers-reduced-motion. Excess animation is an AI tell.
 9. Quality floor (do not announce): responsive ~768/~420, visible :focus, WCAG AA contrast, performance-conscious (no decorative assets that cost load without purpose).
@@ -2616,40 +2640,160 @@ Output JSON for ${path} only.`
   })
   noteUnresolved(finalFindings)
 
-  // Uniqueness uses the complete visual system. Reordering sections is not
-  // enough when palette, typography, geometry and recurring motifs still make
-  // the result look like the same template.
-  let fingerprint = extractCustomDesignFingerprint(draft)
-  let collisions = findDesignCollisions(fingerprint, opts.avoidList.taken)
-  if (collisions.length > 0 && repairBudgetLeft()) {
-    const homeHtml = draft.pages['/']?.html || draft.pages['']?.html || ''
-    const reshaped = await runGuard(
-      'uniqueness',
-      draft,
-      { [unitIdForPage('/')]: homeHtml },
-      [
-        {
-          code: 'design_duplicate_visual',
-          unitId: '/',
-          severity: 'error',
-          message: `This redesign is visually too similar to another design already on the platform${
-            collisions[0].signatureConcept ? ` ("${collisions[0].signatureConcept}")` : ''
-          }.`,
-          fix: 'Rebuild the home with a different composition family, typography pairing, palette relationship, geometry and signature motif. Preserve business facts, services, links and widget mount, but do not merely reorder the same sections.',
-          samples: [`visual similarity ${collisions[0].score.toFixed(2)}`],
-        },
-      ]
-    )
-    if (reshaped !== draft) {
-      draft = reshaped
-      await checkpoint(draft)
-      fingerprint = extractCustomDesignFingerprint(draft)
-      collisions = findDesignCollisions(fingerprint, opts.avoidList.taken)
+  // Uniqueness uses the complete visual system plus fleet-frequency limits.
+  // Reordering sections is not enough when palette, typography, geometry and
+  // recurring motifs still make the result look like the same template — and
+  // pairwise similarity alone is not enough when the fleet has slowly
+  // converged on the same motifs or design family.
+  const homePageKey = draft.pages['/'] ? '/' : ''
+  const homeUnitId = unitIdForPage(homePageKey || '/')
+  const cssUnitId = unitIdForGlobalCss()
+
+  const assessUniqueness = (cfg: CustomSiteConfig) => {
+    const fp = extractCustomDesignFingerprint(cfg)
+    const collisions = findDesignCollisions(fp, opts.avoidList.taken)
+    const convergence = findFleetConvergence(fp, opts.avoidList.taken)
+    const family = findFamilyConvergence(fp, opts.avoidList.taken)
+    const convergenceBlocking =
+      convergence.length >= FLEET_CONVERGENCE_BLOCK_COUNT || family !== null
+    return {
+      fp,
+      collisions,
+      convergence,
+      family,
+      convergenceBlocking,
+      blocking: collisions.length > 0 || convergenceBlocking,
     }
   }
+
+  const uniquenessFindings = (
+    a: ReturnType<typeof assessUniqueness>
+  ): DesignTellFinding[] => {
+    const out: DesignTellFinding[] = []
+    // Target BOTH foundation units: palette, typography and geometry live in
+    // the global CSS — sending only home HTML back could never change the
+    // visual system the repair was told to replace.
+    const emit = (message: string, fix: string, samples: string[]) => {
+      for (const unitId of [cssUnitId, homeUnitId]) {
+        out.push({
+          code: 'design_duplicate_visual',
+          unitId,
+          severity: 'error',
+          message,
+          fix,
+          samples,
+        })
+      }
+    }
+    if (a.collisions.length > 0) {
+      emit(
+        `This redesign is visually too similar to another design already on the platform${
+          a.collisions[0].signatureConcept ? ` ("${a.collisions[0].signatureConcept}")` : ''
+        }.`,
+        'Rebuild the foundation with a different composition family, typography pairing, palette relationship, geometry and signature motif. Regenerate BOTH the global CSS design tokens and the home HTML together. Preserve business facts, services, links and the widget mount, but do not merely reorder or recolor the same sections.',
+        [`visual similarity ${a.collisions[0].score.toFixed(2)}`]
+      )
+    }
+    if (a.convergenceBlocking) {
+      const saturated: FleetConvergenceFinding[] = [
+        ...a.convergence,
+        ...(a.family ? [a.family] : []),
+      ]
+      emit(
+        `This redesign stacks design choices most of the platform already uses${
+          a.family ? ` and lands in the saturated "${a.family.value}" design family` : ''
+        } — it will read as the house style even though no single prior site matches it.`,
+        `Replace the saturated choices with a genuinely different direction: ${saturated
+          .map((c) => `${c.axis} "${c.value}" (${Math.round(c.share * 100)}% of fleet)`)
+          .join(', ')}. Change tone, geometry and chrome register together in the global CSS and home HTML — not just one of them.`,
+        saturated.slice(0, 6).map((c) => `${c.axis}:${c.value}@${Math.round(c.share * 100)}%`)
+      )
+    }
+    return out
+  }
+
+  let assessment = assessUniqueness(draft)
+  if (assessment.blocking && repairBudgetLeft()) {
+    const units: RepairUnits = {
+      [cssUnitId]: draft.globalCss || '',
+      [homeUnitId]: draft.pages['/']?.html || draft.pages['']?.html || '',
+    }
+    // The scan re-checks regular design tells on the candidate units AND the
+    // uniqueness/convergence verdict on the assembled artifact, so the retry
+    // loop keeps iterating until the visual system actually differs. (The
+    // previous scan could not see uniqueness at all, which made this repair a
+    // structural no-op.)
+    const uniquenessScan = (candidate: RepairUnits) => {
+      const candidateCfg: CustomSiteConfig = {
+        ...draft,
+        globalCss: candidate[cssUnitId] ?? draft.globalCss,
+        pages: {
+          ...draft.pages,
+          [homePageKey || '/']: {
+            ...(draft.pages[homePageKey || '/'] || {}),
+            html: candidate[homeUnitId] ?? units[homeUnitId],
+          },
+        },
+      }
+      const tellFindings = Object.entries(candidate).flatMap(([unitId, content]) => {
+        const path = unitId.startsWith('html:') ? unitId.slice('html:'.length) : null
+        const scanned = path
+          ? scanUnitTells(path, { html: content }, { briefText: briefTextForScan })
+          : scanArtifactTells({
+              globalCss: content,
+              pages: {},
+              briefText: briefTextForScan,
+            })
+        return scanned.map((f) => ({ ...f, unitId: repairUnitIdForFinding(f.unitId) }))
+      })
+      return toUnitQualityReport([
+        ...tellFindings,
+        ...uniquenessFindings(assessUniqueness(candidateCfg)),
+      ])
+    }
+
+    try {
+      const repair = await repairDesignTells({
+        units,
+        findings: uniquenessFindings(assessment),
+        brandName: opts.brandName,
+        directionBlock,
+        pageHints: opts.pageHints,
+        callModel: modelJson,
+        scan: uniquenessScan,
+        maxRetries: MAX_REPAIR_ATTEMPTS_PER_UNIT,
+      })
+      extraWarnings.push(...repair.warnings)
+      if (repair.repairedUnitIds.length > 0) {
+        console.info(
+          '[runFullGenerate] uniqueness repair',
+          repair.repairedUnitIds.join(',')
+        )
+        draft = applyRepairedUnits(draft, repair.units)
+        await checkpoint(draft)
+        assessment = assessUniqueness(draft)
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      console.warn('[runFullGenerate] uniqueness repair failed', msg)
+      extraWarnings.push(`Design repair pass (uniqueness) failed: ${msg.slice(0, 140)}`)
+    }
+  }
+  const collisions = assessment.collisions
   if (collisions.length > 0) {
     extraWarnings.push(
       `Visual design still resembles ${collisions.length} prior redesign(s) on the platform — ${
+        UNIQUENESS_ENFORCEMENT === 'block'
+          ? 'publish will be blocked until it differs.'
+          : 'review before publishing.'
+      }`
+    )
+  }
+  if (assessment.convergenceBlocking) {
+    extraWarnings.push(
+      `Fleet convergence: this design reuses ${assessment.convergence.length} saturated platform-wide choice(s)${
+        assessment.family ? ` and the saturated "${assessment.family.value}" design family` : ''
+      } — ${
         UNIQUENESS_ENFORCEMENT === 'block'
           ? 'publish will be blocked until it differs.'
           : 'review before publishing.'
@@ -3289,16 +3433,22 @@ export async function publishCustomSiteDraft(tenantId: string): Promise<{
 
   // Uniqueness gate. Separate from the artifact report because it is the only
   // check that needs to look at other tenants — a draft can be flawless on its
-  // own and still be a design somebody else is already using.
+  // own and still be a design somebody else is already using. Fail-closed: a
+  // registry outage blocks publish rather than skipping the uniqueness check.
   const fingerprint = extractCustomDesignFingerprint(sanitized)
   const avoid = await loadDesignAvoidList({
     supabase,
     tenantId,
     excludeFingerprintHash: fingerprint.hash,
+    failClosed: true,
   })
   const collisions = findDesignCollisions(fingerprint, avoid.taken)
-  const collisionIssues: ArtifactValidationIssue[] =
-    collisions.length > 0
+  const convergence = findFleetConvergence(fingerprint, avoid.taken)
+  const familyConvergence = findFamilyConvergence(fingerprint, avoid.taken)
+  const convergenceBlocking =
+    convergence.length >= FLEET_CONVERGENCE_BLOCK_COUNT || familyConvergence !== null
+  const collisionIssues: ArtifactValidationIssue[] = [
+    ...(collisions.length > 0
       ? [
           {
             code: 'design_duplicate_visual',
@@ -3312,9 +3462,36 @@ export async function publishCustomSiteDraft(tenantId: string): Promise<{
               collidesWith: collisions.slice(0, 3).map((c) => c.tenantId),
               score: collisions[0].score,
             },
-          },
+          } satisfies ArtifactValidationIssue,
         ]
-      : []
+      : []),
+    ...(convergence.length > 0 || familyConvergence
+      ? [
+          {
+            code: 'design_fleet_convergence',
+            severity: (convergenceBlocking
+              ? tellSeverity('design_duplicate_visual')
+              : 'warning') as ArtifactValidationIssue['severity'],
+            message: `This design reuses ${convergence.length} choice(s) already used by ≥80% of the fleet${
+              familyConvergence
+                ? ` and lands in the saturated "${familyConvergence.value}" design family`
+                : ''
+            }${
+              convergenceBlocking
+                ? '. Run Full redesign again with a genuinely different direction — the platform is converging on one look.'
+                : '.'
+            }`,
+            fixable: false,
+            meta: {
+              path: '/',
+              saturated: [...convergence, ...(familyConvergence ? [familyConvergence] : [])]
+                .slice(0, 8)
+                .map((c) => `${c.axis}:${c.value}@${Math.round(c.share * 100)}%`),
+            },
+          } satisfies ArtifactValidationIssue,
+        ]
+      : []),
+  ]
 
   const blocking = [...draftReport.issues, ...collisionIssues].filter(
     (issue) => issue.severity === 'error'
