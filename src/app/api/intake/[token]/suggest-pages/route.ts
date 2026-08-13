@@ -6,6 +6,7 @@ import { checkRateLimit, hashRateKey } from '@/lib/rateLimit';
 import { buildIntakeBrief } from '@/lib/intake/buildIntakeBrief';
 import { SITE_PAGE_OPTIONS } from '@/lib/catalog/sitePages';
 import { enqueueIntakeGeneration, isOracleExecution } from '@/lib/jobs/intakeGeneration';
+import { includesServiceOffering, splitServiceOfferings } from '@/lib/intake/serviceOffering';
 
 export const maxDuration = 30;
 export const runtime = 'nodejs';
@@ -153,12 +154,13 @@ async function executeIntakeSuggestPages(
     const standardLabels = SITE_PAGE_OPTIONS.map((p) => p.label).join(', ');
     const existing = Array.isArray(existingPages) ? existingPages : [];
 
-    const systemPrompt = `You are an expert digital marketing strategist for local service businesses and contractors. Your job is to suggest exactly 5 highly-specific, conversion-optimized website pages this business should add, derived DIRECTLY from the full business brief provided (industry, every listed service, differentiators, ideal customers, tone/vibe, pricing, and service area).
+    const systemPrompt = `You are an expert service-catalog strategist for local businesses and contractors. Suggest exactly 5 highly-specific OFFERINGS that could be added beneath the existing Services page, derived DIRECTLY from the full business brief.
 
     Rules:
-    - Every suggestion MUST be grounded in the brief — reflect the actual services, specialties, customers, and location described. Do not invent services the business didn't mention.
-    - Prefer dedicated pages for the specific services/specialties listed, plus locally-relevant or customer-segment pages when the brief supports them (e.g. a service-area/city page when a service area is given, or a commercial-vs-residential page when both customer types appear).
-    - Do NOT suggest generic pages already available in the builder: ${standardLabels} (nor Home).
+    - These are service sub-items, NEVER standalone pages or city/location pages.
+    - Do not repeat, rename, or lightly rephrase an offering already listed in the brief.
+    - Suggest only a plausible adjacent offering supported by the business's stated trade and capabilities. Do not invent unsupported specialties.
+    - Do NOT suggest generic pages available in the builder: ${standardLabels} (nor Home).
     - Match the brand's tone/vibe from the brief in each label and description.
 
     Examples of the specificity expected:
@@ -169,9 +171,9 @@ async function executeIntakeSuggestPages(
     {
       "suggestions": [
         {
-          "slug": "url-friendly-slug-with-dashes",
+          "slug": "stable-offering-identifier-with-dashes",
           "label": "Human Readable Title",
-          "description": "A very short 1-sentence description of what this page will cover, referencing this specific business."
+          "description": "A very short sentence describing this service offering."
         }
       ]
     }`;
@@ -181,7 +183,7 @@ ${brief}
 
 Already-selected pages (do NOT suggest these): ${existing.length ? existing.join(', ') : '(none yet)'}
 
-Provide exactly 5 specific page suggestions tailored to THIS business's brief above. Do not repeat any standard builder page or already-selected page.`;
+Provide exactly 5 service offerings tailored to THIS business. They will appear as sub-items beneath Services, not as pages.`;
 
     const { text } = await generateTextWithFallback({
       prompt: userPrompt,
@@ -194,15 +196,29 @@ Provide exactly 5 specific page suggestions tailored to THIS business's brief ab
 
     const suggestions = parseSuggestions(text);
 
+    const existingOfferings = [
+      ...(Array.isArray(merged.services) ? merged.services : []),
+      ...splitServiceOfferings(merged.other_services),
+    ];
+    const seenOfferingKeys = new Set<string>();
     const filtered = suggestions
       .filter((s) => {
         const slug = String(s.slug || '').trim().toLowerCase().replace(/[^a-z0-9-]+/g, '');
+        const label = String(s.label || '');
+        const duplicateInBatch = includesServiceOffering([...seenOfferingKeys], label);
+        if (!duplicateInBatch) {
+          // Store normalized values by feeding the same matcher values it can
+          // compare on subsequent iterations.
+          seenOfferingKeys.add(label);
+        }
         return (
           slug &&
           slug !== 'home' &&
           slug !== 'about' &&
           slug !== 'contact' &&
-          !existing.includes(slug)
+          !existing.includes(slug) &&
+          !includesServiceOffering(existingOfferings, label) &&
+          !duplicateInBatch
         );
       })
       .slice(0, 5);

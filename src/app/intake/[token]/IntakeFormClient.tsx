@@ -34,6 +34,7 @@ import { fileToUploadJpegBlob } from '@/lib/images/fileToUploadBlob';
 import { readJsonResponse, describeFetchError } from '@/lib/http/readJsonResponse';
 import { detectVertical, getCraftFieldsForVertical, getMaterialsLabelAndPlaceholder } from '@/lib/ai/craftFields';
 import { requestIntakeGeneration } from '@/lib/intake/requestGeneration';
+import { includesServiceOffering, splitServiceOfferings } from '@/lib/intake/serviceOffering';
 
 /** Split the free-text services field into individual service/job labels. */
 function parseServiceList(text: string): string[] {
@@ -1278,7 +1279,12 @@ export default function IntakeFormClient({
       }>(res);
       if (!ok) throw new Error(message || 'Failed to suggest pages');
       if (Array.isArray(data?.suggestions)) {
-        setSuggestedPages(data.suggestions);
+        const listedOfferings = [...form.services, ...splitServiceOfferings(form.otherServices)];
+        setSuggestedPages(
+          data.suggestions.filter(
+            (suggestion) => !includesServiceOffering(listedOfferings, suggestion.label)
+          )
+        );
       }
     } catch (err) {
       // Auto-fetch failures stay quiet — the prospect can still pick pages
@@ -1298,25 +1304,22 @@ export default function IntakeFormClient({
     const label = suggestion.label.trim();
     if (!label) return;
 
-    setForm((f) => {
-      const pages = f.pages.includes('services')
-        ? f.pages
-        : f.pages.length >= pageCap
-          ? f.pages
-          : [...f.pages, 'services'];
-      const already =
-        f.services.some((s) => s.toLowerCase() === label.toLowerCase()) ||
-        f.otherServices
-          .split(',')
-          .map((s) => s.trim())
-          .filter(Boolean)
-          .some((s) => s.toLowerCase() === label.toLowerCase());
-      if (already) return { ...f, pages };
+    const listedOfferings = [...form.services, ...splitServiceOfferings(form.otherServices)];
+    if (includesServiceOffering(listedOfferings, label)) {
+      // It is already represented in Services. Remove the redundant card, but
+      // do not claim the AI added it and do not mutate the existing wording.
+      setSuggestedPages((prev) => prev.filter((item) => item.slug !== suggestion.slug));
+      return;
+    }
 
-      const extras = f.otherServices
-        .split(',')
-        .map((s) => s.trim())
-        .filter(Boolean);
+    setForm((f) => {
+      // Defensive removal matters for drafts created by the former UI, where
+      // a recommendation slug may already have been saved as a top-level page.
+      const withoutOfferingPage = f.pages.filter((slug) => slug !== suggestion.slug);
+      const pages = withoutOfferingPage.includes('services')
+        ? withoutOfferingPage
+        : [...withoutOfferingPage, 'services'];
+      const extras = splitServiceOfferings(f.otherServices);
       extras.push(label);
       // Clear Services copy so the next confirm regenerates with the new offerings.
       const { services: _servicesCopy, ...restContents } = f.pageContents;
@@ -3503,8 +3506,9 @@ export default function IntakeFormClient({
                 {suggestedPages.length > 0 ? (
                   <div className="mt-3 grid gap-2 sm:grid-cols-2">
                     {suggestedPages.map((s) => {
-                      const alreadyAdded = addedAiServiceLabels.some(
-                        (l) => l.toLowerCase() === s.label.trim().toLowerCase()
+                      const alreadyAdded = includesServiceOffering(
+                        [...form.services, ...splitServiceOfferings(form.otherServices)],
+                        s.label
                       );
                       const servicesAtCap =
                         !form.pages.includes('services') && form.pages.length >= pageCap;
