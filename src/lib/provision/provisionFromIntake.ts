@@ -299,6 +299,7 @@ export async function provisionFromIntakeJob(
     ...payload,
     mode: mode === 'widget' ? 'widget' : 'full',
     subdomain,
+    isSpecBuild: row.source === 'spec',
     siteStatus,
     loginOrigin,
     sendWelcomeEmail: true,

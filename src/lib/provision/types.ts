@@ -98,6 +98,11 @@ export type ProvisionTenantInput = {
   intakeSetup?: IntakeSetup
   intakeId?: string
   mode?: 'full' | 'widget'
+  /** True when the tenant was created from the unattended spec-build pipeline.
+   * Those sites intentionally ship without a before/after comparison slider;
+   * admins can add one later from the content dashboard if needed.
+   */
+  isSpecBuild?: boolean
   /** Full sites: pending_approval for auto jobs, active for manual admin builds */
   siteStatus?: 'active' | 'pending_approval' | 'widget_only' | 'suspended'
   loginOrigin: string

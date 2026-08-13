@@ -197,6 +197,7 @@ export async function buildAiProvisionPayload(
     },
     intakeId: row.id,
     mode: 'full',
+    isSpecBuild: row.source === 'spec',
     siteStatus: 'pending_approval',
     loginOrigin,
     // A spec build is a site nobody asked for yet. Emailing "Welcome, here is

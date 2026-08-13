@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { mergeCustomAddOnsWithDefaults } from './provisionTenant'
+import { mergeCustomAddOnsWithDefaults, shouldIncludeBeforeAfter } from './provisionTenant'
 
 describe('mergeCustomAddOnsWithDefaults', () => {
   it('guarantees a non-empty, priced add-ons list when the AI produced none', () => {
@@ -39,5 +39,37 @@ describe('mergeCustomAddOnsWithDefaults', () => {
       ['Drain Cleaning']
     )
     expect(result).toHaveLength(1)
+  })
+})
+
+describe('shouldIncludeBeforeAfter', () => {
+  it('disables the before/after section for spec builds even when the industry supports it', () => {
+    expect(
+      shouldIncludeBeforeAfter({
+        beforeAfterApplicable: true,
+        prospectBeforeAfterEnabled: true,
+        isSpecBuild: true,
+      })
+    ).toBe(false)
+  })
+
+  it('keeps the normal site behavior for non-spec builds', () => {
+    expect(
+      shouldIncludeBeforeAfter({
+        beforeAfterApplicable: true,
+        prospectBeforeAfterEnabled: undefined,
+        isSpecBuild: false,
+      })
+    ).toBe(true)
+  })
+
+  it('honors explicit opt-out on supported industries', () => {
+    expect(
+      shouldIncludeBeforeAfter({
+        beforeAfterApplicable: true,
+        prospectBeforeAfterEnabled: false,
+        isSpecBuild: false,
+      })
+    ).toBe(false)
   })
 })

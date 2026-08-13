@@ -234,6 +234,20 @@ export function mergeCustomAddOnsWithDefaults(
   }))
 }
 
+export function shouldIncludeBeforeAfter({
+  beforeAfterApplicable,
+  prospectBeforeAfterEnabled,
+  isSpecBuild,
+}: {
+  beforeAfterApplicable: boolean
+  prospectBeforeAfterEnabled?: boolean | null
+  isSpecBuild?: boolean
+}): boolean {
+  if (isSpecBuild) return false
+  if (prospectBeforeAfterEnabled === false) return false
+  return beforeAfterApplicable
+}
+
 function isMissingDesignVariantColumn(error: unknown): boolean {
   if (!error || typeof error !== 'object') return false
   const e = error as { code?: string; message?: string; details?: string }
@@ -265,6 +279,7 @@ export async function provisionTenant(
     aiWidgetConfig,
     intakeSetup,
     intakeId,
+    isSpecBuild,
     loginOrigin,
     sendWelcomeEmail = true,
     createAuthUser = true,
@@ -824,13 +839,11 @@ export async function provisionTenant(
         geo: { latitude: '', longitude: '' },
       },
       before_after_config: (() => {
-        // Prospect opt-out wins; opt-in forces slider on; otherwise industry default.
-        const include =
-          prospectBeforeAfterEnabled === false
-            ? false
-            : prospectBeforeAfterEnabled === true
-              ? true
-              : beforeAfterApplicable
+        const include = shouldIncludeBeforeAfter({
+          beforeAfterApplicable,
+          prospectBeforeAfterEnabled,
+          isSpecBuild,
+        })
         if (!include) return null
         const afterImage =
           afterSelectedUrl || defaultHeroBackground || '/brands/lumina/hero.png'
