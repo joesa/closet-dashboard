@@ -147,7 +147,7 @@ function StartChoiceModal({
 
           <button
             type="button"
-            onClick={() => router.push('/get-started?tier=ai_premium')}
+            onClick={() => router.push('/get-started?tier=custom_studio')}
             className="flex flex-col items-start gap-2 rounded-xl border-2 p-5 text-left transition hover:opacity-90"
             style={{ borderColor: ACCENT, background: ACCENT_SOFT }}
           >
@@ -1096,7 +1096,7 @@ function PricingSection() {
           <PricingFeatureList features={PREMIUM_FEATURES} inverted />
           <div className="mt-auto flex flex-col gap-2">
             <Link
-              href="/get-started?tier=ai_premium"
+              href="/get-started?tier=custom_studio"
               className="flex min-h-11 w-full items-center justify-center px-5 py-3 text-sm font-medium transition hover:opacity-90"
               style={{ background: BG, color: INK }}
             >

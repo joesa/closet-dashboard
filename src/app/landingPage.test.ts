@@ -5,6 +5,7 @@ import { BG, INK_3, SURFACE_2 } from '@/lib/landingTheme'
 
 const pageSource = fs.readFileSync(path.join(process.cwd(), 'src/app/page.tsx'), 'utf8')
 const loginSource = fs.readFileSync(path.join(process.cwd(), 'src/app/login/page.tsx'), 'utf8')
+const getStartedSource = fs.readFileSync(path.join(process.cwd(), 'src/app/get-started/page.tsx'), 'utf8')
 
 function channel(hex: string, start: number) {
   return Number.parseInt(hex.slice(start, start + 2), 16) / 255
@@ -48,6 +49,10 @@ describe('marketing homepage quality contract', () => {
       expect(pageSource).not.toContain(tell)
     }
     expect(pageSource).toContain('Custom Studio')
+    expect(pageSource).not.toContain('tier=ai_premium')
+    expect(pageSource).toContain('tier=custom_studio')
+    expect(getStartedSource).toContain("tierParam === 'custom_studio'")
+    expect(getStartedSource).toContain('Custom Studio site build')
   })
 
   it('never transports the public demo password in a URL', () => {

@@ -8,6 +8,11 @@ import { useSearchParams } from 'next/navigation';
 function GetStartedForm() {
   const searchParams = useSearchParams();
   const tierParam = searchParams.get('tier');
+  const selectedTier = tierParam === 'custom_studio' || tierParam === 'ai_premium'
+    ? 'ai_premium'
+    : tierParam === 'standard'
+      ? 'standard'
+      : undefined;
   const [email, setEmail] = useState('');
   const [businessName, setBusinessName] = useState('');
   const [loading, setLoading] = useState(false);
@@ -19,9 +24,9 @@ function GetStartedForm() {
   const siteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
 
   const tierHint =
-    tierParam === 'ai_premium'
-      ? 'AI Premium site build'
-      : tierParam === 'standard'
+    selectedTier === 'ai_premium'
+      ? 'Custom Studio site build'
+      : selectedTier === 'standard'
         ? 'Standard site build'
         : null;
 
@@ -77,7 +82,7 @@ function GetStartedForm() {
           email,
           businessName,
           hasWebsite: false,
-          tier: tierParam === 'ai_premium' || tierParam === 'standard' ? tierParam : undefined,
+          tier: selectedTier,
           ...(turnstileToken ? { turnstileToken } : {}),
         }),
       });
