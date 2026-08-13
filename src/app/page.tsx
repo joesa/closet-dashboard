@@ -503,7 +503,7 @@ export default function LandingPage() {
           style={{ color: INK_2 }}
         >
           Everything the calculator quotes comes off a rate sheet you control.
-          change a number in the dashboard and the widget quotes the new price
+          Change a number in the dashboard and the widget quotes the new price
           immediately. Nothing is averaged or marked up.
         </p>
 
