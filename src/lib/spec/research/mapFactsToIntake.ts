@@ -1,5 +1,9 @@
 import { cityFromAddress } from '@/lib/spec/qualifyLead'
-import { CRAFT_FACT_FIELDS } from '@/lib/spec/research/verifyFacts'
+import {
+  adminFactFieldLabel,
+  CRAFT_FACT_FIELDS,
+  isCustomAdminFactField,
+} from '@/lib/spec/research/verifyFacts'
 import { findProprietaryDetail } from '@/lib/validation/specificityGate'
 import type { SpecBuildLeadInput, SpecFact } from '@/lib/spec/types'
 
@@ -121,9 +125,16 @@ export function mapFactsToIntake(
       continue
     }
 
-    if (field === 'notes') {
-      const joined = group.map((f) => f.value.trim()).join('\n\n')
-      patch.notes = joined.slice(0, MAX_NOTE_CHARS)
+    if (field === 'notes' || isCustomAdminFactField(field)) {
+      const existing = typeof patch.notes === 'string' ? patch.notes : ''
+      const joined = group
+        .map((f) => isCustomAdminFactField(field)
+          ? `CUSTOM FACT — ${adminFactFieldLabel(field)}: ${f.value.trim()}`
+          : f.value.trim())
+        .filter(Boolean)
+        .join('\n\n')
+      const combined = [existing, joined].filter(Boolean).join('\n\n')
+      patch.notes = combined.slice(0, MAX_NOTE_CHARS)
       continue
     }
 
@@ -150,6 +161,7 @@ export function proprietaryText(patch: IntakePatch): string {
     else if (Array.isArray(value)) parts.push(value.filter((v) => typeof v === 'string').join(', '))
   }
   if (typeof patch.customer_quotes === 'string') parts.push(patch.customer_quotes)
+  if (typeof patch.notes === 'string') parts.push(patch.notes)
   return parts.join('\n')
 }
 

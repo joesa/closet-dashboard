@@ -26,6 +26,27 @@ const ACTIVE_STATUSES = new Set([
   'building',
 ])
 
+const POLL_INTERVAL_MS = 2000
+
+/** Excludes serverTime, whose only purpose is duration math and changes every request. */
+export function progressRevision(progress: SpecBuildProgressResponse): string {
+  return JSON.stringify({
+    status: progress.status,
+    updatedAt: progress.updatedAt,
+    statusReason: progress.statusReason,
+    lastError: progress.lastError,
+    stages: progress.timeline.stages.map(({ stage, state, attempts, currentStartedAt }) => ({
+      stage,
+      state,
+      attempts,
+      currentStartedAt,
+    })),
+    research: progress.research,
+    provisioning: progress.provisioning,
+    building: progress.building,
+  })
+}
+
 const STAGE_LABELS: Record<SpecBuildProgressStage, string> = {
   queued: 'Queued',
   researching: 'Research',
@@ -70,8 +91,10 @@ export default function SpecBuildProgress({
   const router = useRouter()
   const [progress, setProgress] = useState(initialProgress)
   const [now, setNow] = useState(() => Date.parse(initialProgress.serverTime))
+  const [lastCheckedAt, setLastCheckedAt] = useState(() => Date.parse(initialProgress.serverTime))
   const [pollError, setPollError] = useState<string | null>(null)
   const statusRef = useRef(initialProgress.status)
+  const revisionRef = useRef(progressRevision(initialProgress))
   const requestRef = useRef<AbortController | null>(null)
 
   const refresh = useCallback(async () => {
@@ -79,17 +102,25 @@ export default function SpecBuildProgress({
     const controller = new AbortController()
     requestRef.current = controller
     try {
-      const response = await fetch(`/api/admin/spec-builds/${buildId}/progress`, {
-        cache: 'no-store',
-        signal: controller.signal,
-      })
+      const response = await fetch(
+        `/api/admin/spec-builds/${buildId}/progress?at=${Date.now()}`,
+        {
+          cache: 'no-store',
+          credentials: 'same-origin',
+          signal: controller.signal,
+        }
+      )
       if (!response.ok) throw new Error(`Progress refresh failed (${response.status})`)
       const next = (await response.json()) as SpecBuildProgressResponse
       const statusChanged = statusRef.current !== next.status
+      const nextRevision = progressRevision(next)
+      const detailChanged = revisionRef.current !== nextRevision
       statusRef.current = next.status
+      revisionRef.current = nextRevision
       setProgress(next)
+      setLastCheckedAt(Date.now())
       setPollError(null)
-      if (statusChanged) router.refresh()
+      if (statusChanged || detailChanged) router.refresh()
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') return
       setPollError(error instanceof Error ? error.message : 'Progress refresh failed')
@@ -110,7 +141,7 @@ export default function SpecBuildProgress({
     const start = () => {
       if (document.visibilityState !== 'visible' || poll !== null) return
       void refresh()
-      poll = window.setInterval(() => void refresh(), 4000)
+      poll = window.setInterval(() => void refresh(), POLL_INTERVAL_MS)
     }
     const stop = () => {
       if (poll !== null) window.clearInterval(poll)
@@ -124,12 +155,15 @@ export default function SpecBuildProgress({
     start()
     document.addEventListener('visibilitychange', onVisibilityChange)
     window.addEventListener('focus', start)
+    const onOnline = () => void refresh()
+    window.addEventListener('online', onOnline)
     return () => {
       stop()
       requestRef.current?.abort()
       requestRef.current = null
       document.removeEventListener('visibilitychange', onVisibilityChange)
       window.removeEventListener('focus', start)
+      window.removeEventListener('online', onOnline)
     }
   }, [progress.status, refresh])
 
@@ -145,6 +179,8 @@ export default function SpecBuildProgress({
     ? progress.building.heartbeatAt
     : progress.updatedAt
   const lastUpdateAge = Math.max(0, now - Date.parse(freshnessAt))
+  const lastCheckAge = Math.max(0, now - lastCheckedAt)
+  const isLive = ACTIVE_STATUSES.has(progress.status)
 
   return (
     <section className="rounded-lg border border-gray-200 bg-white p-5" aria-label="Build progress">
@@ -163,10 +199,28 @@ export default function SpecBuildProgress({
                   : progress.status.replace(/_/g, ' ')}
           </p>
         </div>
-        <div className="flex items-center gap-1.5 text-xs text-gray-500">
-          <Clock3 className="h-3.5 w-3.5" aria-hidden="true" />
-          {progress.status === 'building' && progress.building?.heartbeatAt ? 'Heartbeat' : 'Updated'}{' '}
-          {formatDuration(lastUpdateAge)} ago
+        <div className="text-right text-xs text-gray-500">
+          <div
+            className={`flex items-center justify-end gap-1.5 font-medium ${
+              pollError ? 'text-amber-700' : isLive ? 'text-emerald-700' : 'text-gray-600'
+            }`}
+          >
+            {isLive && !pollError && (
+              <span className="relative flex h-2 w-2" aria-hidden="true">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+              </span>
+            )}
+            {pollError ? 'Reconnect pending' : isLive ? 'Live' : 'Snapshot'} · checked{' '}
+            {formatDuration(lastCheckAge)} ago
+          </div>
+          <div className="mt-1 flex items-center justify-end gap-1.5">
+            <Clock3 className="h-3.5 w-3.5" aria-hidden="true" />
+            {progress.status === 'building' && progress.building?.heartbeatAt
+              ? 'Worker heartbeat'
+              : 'Stage updated'}{' '}
+            {formatDuration(lastUpdateAge)} ago
+          </div>
         </div>
       </div>
 

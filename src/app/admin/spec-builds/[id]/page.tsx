@@ -6,6 +6,7 @@ import { SPEC_BUILD_SELECT, type SpecBuildRow, type SpecFact } from '@/lib/spec/
 import { firecrawlConfigured } from '@/lib/spec/research/fetchPage'
 import { resolveResearchSources } from '@/lib/spec/research/sources'
 import { ADMIN_FACT_FIELDS } from '@/lib/spec/addAdminFact'
+import { adminFactFieldLabel } from '@/lib/spec/research/verifyFacts'
 import {
   addFactAction,
   advanceSpecBuildAction,
@@ -474,7 +475,9 @@ export default async function SpecBuildDetailPage({
             <tbody className="divide-y divide-gray-100">
               {facts.map((fact, i) => (
                 <tr key={i}>
-                  <td className="px-3 py-2 font-mono text-xs text-gray-700">{fact.field}</td>
+                  <td className="px-3 py-2 font-mono text-xs text-gray-700">
+                    {ADMIN_FACT_LABELS[fact.field] ?? adminFactFieldLabel(fact.field)}
+                  </td>
                   <td className="px-3 py-2 text-gray-900">{fact.value}</td>
                   <td className="px-3 py-2">
                     {/*
@@ -527,8 +530,8 @@ export default async function SpecBuildDetailPage({
       {/*
         The escape hatch. Most cold leads publish nothing verifiable, so without
         a way to write down what the owner says on the phone those builds are
-        simply dead. Testimonials are absent from the field list on purpose: an
-        admin can authorise the business's own claims, not a customer's words.
+        simply dead. Testimonials remain prohibited: an admin can authorise the
+        business&apos;s own claims, not a customer&apos;s words.
       */}
       <section className="rounded-lg border border-gray-200 bg-white p-6">
         <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-gray-500">
@@ -546,18 +549,25 @@ export default async function SpecBuildDetailPage({
               <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-500">
                 What kind of fact
               </span>
-              <select
+              <input
                 name="field"
                 required
                 defaultValue="craft_spec"
+                list="admin-fact-kinds"
+                maxLength={60}
+                autoComplete="off"
                 className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-              >
+              />
+              <datalist id="admin-fact-kinds">
                 {ADMIN_FACT_FIELDS.map((field) => (
                   <option key={field} value={field}>
                     {ADMIN_FACT_LABELS[field] ?? field}
                   </option>
                 ))}
-              </select>
+              </datalist>
+              <span className="mt-1 block text-xs text-gray-500">
+                Choose a suggestion or type your own fact kind.
+              </span>
             </label>
             <label className="text-sm md:col-span-2">
               <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-500">

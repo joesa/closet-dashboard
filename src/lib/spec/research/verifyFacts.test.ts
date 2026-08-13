@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { normalizeForEvidence, verifyFacts } from '@/lib/spec/research/verifyFacts'
+import {
+  normalizeAdminFactField,
+  normalizeForEvidence,
+  verifyFacts,
+} from '@/lib/spec/research/verifyFacts'
 import type { SpecFact } from '@/lib/spec/types'
 
 /**
@@ -318,6 +322,20 @@ describe('verifyFacts — the admin escape hatch', () => {
     expect(result.accepted[0].verbatim).toBe(true)
     // The note becomes the evidence a reviewer reads to decide whether to believe it.
     expect(result.accepted[0].evidence).toBe('Owner said so on a call, 9 Aug 2026')
+  })
+
+  it('accepts a safe custom admin fact kind and keeps its human label', () => {
+    const field = normalizeAdminFactField('Equipment maintenance interval')
+    expect(field).toBe('custom:Equipment maintenance interval')
+
+    const result = verifyFacts([adminFact({ field: field! })], noPages)
+    expect(result.rejected).toHaveLength(0)
+    expect(result.accepted[0].field).toBe(field)
+  })
+
+  it('does not let custom kinds disguise testimonials', () => {
+    expect(normalizeAdminFactField('Customer review')).toBeNull()
+    expect(normalizeAdminFactField('Testimonials')).toBeNull()
   })
 
   it('refuses an admin fact with no source note — that is just an assertion', () => {

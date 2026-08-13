@@ -1,7 +1,11 @@
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { createSpecIntake } from '@/lib/spec/createSpecIntake'
 import { withoutPublicProfileResearch } from '@/lib/spec/research/publicProfileResearch'
-import { CRAFT_FACT_FIELDS, verifyFacts } from '@/lib/spec/research/verifyFacts'
+import {
+  CRAFT_FACT_FIELDS,
+  normalizeAdminFactField,
+  verifyFacts,
+} from '@/lib/spec/research/verifyFacts'
 import { getSpecBuild, transitionSpecBuild } from '@/lib/spec/specBuilds'
 import { kickSpecBuild } from '@/lib/spec/kickSpecBuild'
 import type { SpecBuildRow, SpecFact } from '@/lib/spec/types'
@@ -15,13 +19,13 @@ import type { SpecBuildRow, SpecFact } from '@/lib/spec/types'
  * spending on a site that would fail the copy gate with a finding no machine
  * can repair. Without a way to add a fact by hand, those leads are simply dead.
  *
- * This is deliberately narrow. An admin may add the business's own operational
- * claims — what they measure, what they refuse, what they use — because the
- * owner can authorise those. An admin may never add a testimonial, because a
- * testimonial is attributed to a third party nobody here can speak for.
+ * Suggested kinds map into dedicated intake fields. A custom kind is preserved
+ * in the ledger and carried into the brief as an attributed proprietary fact.
+ * An admin may never add a testimonial, because a testimonial is attributed to
+ * a third party nobody here can speak for.
  */
 
-/** Columns an admin may fill. Deliberately excludes customer_quotes. */
+/** Suggested kinds. Admins may also type a safe custom kind. */
 export const ADMIN_FACT_FIELDS = CRAFT_FACT_FIELDS
 
 export type AddAdminFactInput = {
@@ -41,14 +45,15 @@ export async function addAdminFact(input: AddAdminFactInput): Promise<AddAdminFa
   const build = await getSpecBuild(input.buildId)
   if (!build) return { ok: false, reason: 'Spec build not found.' }
 
-  if (!(ADMIN_FACT_FIELDS as readonly string[]).includes(input.field)) {
+  const field = normalizeAdminFactField(input.field)
+  if (!field) {
     // Testimonials are the field someone is most likely to reach for, and the
     // one with the worst failure mode, so it gets an explanation rather than a
     // shrug. (verifyFacts refuses it too — this is the friendlier of two guards.)
     return {
       ok: false,
       reason:
-        input.field === 'customer_quotes'
+        /customer[_\s-]*quotes?|testimonial|review/i.test(input.field)
           ? 'Testimonials can only come from real reviews we can link to. You can vouch for what the business tells you about its own work, but not for what one of their customers said.'
           : 'That column cannot be filled by hand.',
     }
@@ -61,7 +66,7 @@ export async function addAdminFact(input: AddAdminFactInput): Promise<AddAdminFa
   const { accepted, rejected } = verifyFacts(
     [
       {
-        field: input.field,
+        field,
         value: input.value,
         sourceKind: 'admin_manual',
         note: input.note,

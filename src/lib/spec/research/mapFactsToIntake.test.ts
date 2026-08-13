@@ -120,6 +120,20 @@ describe('mapFactsToIntake — fact placement', () => {
     expect(String(long.patch.notes).length).toBeLessThanOrEqual(1200)
   })
 
+  it('carries custom admin fact kinds into the intake and specificity gate', () => {
+    const { patch, unused } = map([
+      fact({
+        field: 'custom:Equipment maintenance interval',
+        value: 'Every 250 hours',
+        sourceKind: 'admin_manual',
+      }),
+    ])
+
+    expect(patch.notes).toBe('CUSTOM FACT — Equipment maintenance interval: Every 250 hours')
+    expect(unused).toHaveLength(0)
+    expect(hasProprietaryDetail(patch)).toBe(true)
+  })
+
   it('ignores facts targeting columns the lead already covers', () => {
     const { patch, unused } = map([
       fact({ field: 'business_name', value: 'Something Else LLC' }),
@@ -184,7 +198,7 @@ describe('hasProprietaryDetail', () => {
     ).toBe(false)
   })
 
-  it('is not fooled by notes alone, which never enter the facts block', () => {
+  it('is not fooled by a vague note with no concrete detail', () => {
     expect(
       hasProprietaryDetail(map([fact({ field: 'notes', value: 'Serves the Sango area' })]).patch)
     ).toBe(false)

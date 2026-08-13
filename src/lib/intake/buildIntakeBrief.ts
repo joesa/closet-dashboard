@@ -57,7 +57,14 @@ export function buildIntakeBrief(row: ProspectIntakeRow): string {
   add('Experience', row.experience)
   add('Primary CTA', row.primary_cta)
   add('Pricing notes', row.pricing_notes)
-  add('Additional notes', row.notes)
+  const noteLines = row.notes?.split('\n').map((line) => line.trim()).filter(Boolean) ?? []
+  const customFactPrefix = 'CUSTOM FACT — '
+  const customFacts = noteLines
+    .filter((line) => line.startsWith(customFactPrefix))
+    .map((line) => line.slice(customFactPrefix.length).trim())
+    .filter(Boolean)
+  const regularNotes = noteLines.filter((line) => !line.startsWith(customFactPrefix)).join('\n')
+  add('Additional notes', regularNotes)
 
   if (row.services?.length) {
     lines.push(`Services offered: ${row.services.join(', ')}`)
@@ -86,6 +93,7 @@ export function buildIntakeBrief(row: ProspectIntakeRow): string {
   if (row.signature_materials?.length) {
     addFact('Named materials / brands / equipment', row.signature_materials.join(', '))
   }
+  for (const customFact of customFacts) facts.push(`- ${customFact}`)
 
   if (row.customer_quotes?.trim()) {
     lines.push('')

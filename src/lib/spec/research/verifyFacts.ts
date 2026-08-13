@@ -46,6 +46,33 @@ export const ALLOWED_FACT_FIELDS = [
 
 export type AllowedFactField = (typeof ALLOWED_FACT_FIELDS)[number]
 
+export const CUSTOM_ADMIN_FACT_PREFIX = 'custom:'
+
+const FORBIDDEN_CUSTOM_FACT_KINDS = /(?:testimonials?|(?:customer|client|google|yelp)\s*(?:quotes?|reviews?)|social\s*security|owner[_\s-]*ssn|\bssn\b)/i
+
+/** Turn a free-form admin label into a ledger field without treating it as a DB column. */
+export function normalizeAdminFactField(input: string): string | null {
+  const field = input.trim().replace(/\s+/g, ' ')
+  if (!field || field.length > 60) return null
+  if ((CRAFT_FACT_FIELDS as readonly string[]).includes(field)) return field
+  if (field === 'customer_quotes' || FORBIDDEN_CUSTOM_FACT_KINDS.test(field)) return null
+  const label = field.startsWith(CUSTOM_ADMIN_FACT_PREFIX)
+    ? field.slice(CUSTOM_ADMIN_FACT_PREFIX.length).trim()
+    : field
+  if (!label || FORBIDDEN_CUSTOM_FACT_KINDS.test(label)) return null
+  return `${CUSTOM_ADMIN_FACT_PREFIX}${label}`
+}
+
+export function isCustomAdminFactField(field: string): boolean {
+  return field.startsWith(CUSTOM_ADMIN_FACT_PREFIX) && field.length > CUSTOM_ADMIN_FACT_PREFIX.length
+}
+
+export function adminFactFieldLabel(field: string): string {
+  return isCustomAdminFactField(field)
+    ? field.slice(CUSTOM_ADMIN_FACT_PREFIX.length)
+    : field
+}
+
 export type FactRejection = {
   fact: Partial<SpecFact>
   reason:
@@ -138,7 +165,12 @@ export function verifyFacts(
       reject(candidate, 'empty_value')
       continue
     }
-    if (!field || !(ALLOWED_FACT_FIELDS as readonly string[]).includes(field)) {
+    const isCustomAdminField = candidate.sourceKind === 'admin_manual' &&
+      !!field && isCustomAdminFactField(field)
+    if (
+      !field ||
+      (!(ALLOWED_FACT_FIELDS as readonly string[]).includes(field) && !isCustomAdminField)
+    ) {
       reject(candidate, 'unknown_field')
       continue
     }
