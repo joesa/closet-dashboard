@@ -19,9 +19,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "DitchTheForm — Instant Quote Widgets for Service Businesses",
+  title: "DitchTheForm | Instant Quote Calculators for Service Businesses",
   description:
-    "Embed a premium, interactive pricing calculator on your website in 60 seconds. Qualify leads, upsell finishes, and close more deals.",
+    "Put your rate sheet on your website. Customers configure the job and submit a calculated quote; you receive the details by SMS and email.",
 };
 
 export default function RootLayout({

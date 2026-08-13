@@ -4,6 +4,7 @@ import { useState, Suspense, useEffect } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { getBrowserSession, signOutBrowser, supabaseBrowser } from '@/lib/supabase-browser'
+import { DEMO_LOGIN } from '@/lib/demo'
 
 export default function LoginPage() {
   return (
@@ -21,12 +22,11 @@ export default function LoginPage() {
 
 function LoginForm() {
   const searchParams = useSearchParams()
-  // Pre-fill from URL query (used by the landing-page "try our demo" link to
-  // drop the demo creds straight into the form). The demo password is public
-  // on the marketing site, so prefilling via query string is intentional.
-  // Derived as lazy initial state so we never setState inside an effect.
-  const [email, setEmail] = useState(() => searchParams.get('email') ?? '')
-  const [password, setPassword] = useState(() => searchParams.get('password') ?? '')
+  // The public demo may be pre-filled, but never put a password in a URL: query
+  // strings leak into browser history, analytics and request logs.
+  const demo = searchParams.get('demo') === '1'
+  const [email, setEmail] = useState(() => demo ? DEMO_LOGIN.email : (searchParams.get('email') ?? ''))
+  const [password, setPassword] = useState(() => demo ? DEMO_LOGIN.password : '')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [failedAttempts, setFailedAttempts] = useState(0)

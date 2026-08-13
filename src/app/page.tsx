@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import Script from 'next/script'
@@ -47,6 +47,42 @@ function StartChoiceModal({
   onClose: () => void
 }) {
   const router = useRouter()
+  const dialogRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    const dialog = dialogRef.current
+    const focusable = () => Array.from(dialog?.querySelectorAll<HTMLElement>(
+      'button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])'
+    ) || [])
+    focusable()[0]?.focus()
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        onClose()
+        return
+      }
+      if (event.key !== 'Tab') return
+      const items = focusable()
+      if (items.length === 0) return
+      const first = items[0]
+      const last = items[items.length - 1]
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault()
+        first.focus()
+      }
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('keydown', onKeyDown)
+      previous?.focus()
+    }
+  }, [open, onClose])
 
   if (!open) return null
 
@@ -54,11 +90,12 @@ function StartChoiceModal({
     <div
       className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm"
       onClick={onClose}
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="start-choice-heading"
     >
       <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="start-choice-heading"
         className="landing-shadow-panel relative w-full max-w-lg rounded-2xl border bg-white p-8"
         style={{ borderColor: HAIRLINE }}
         onClick={(e) => e.stopPropagation()}
@@ -67,7 +104,7 @@ function StartChoiceModal({
           type="button"
           onClick={onClose}
           aria-label="Close"
-          className="absolute right-5 top-5 transition hover:opacity-70"
+          className="absolute right-3 top-3 inline-flex min-h-11 min-w-11 items-center justify-center transition hover:opacity-70"
           style={{ color: INK_3 }}
         >
           ✕
@@ -78,12 +115,12 @@ function StartChoiceModal({
           className="text-xl font-semibold tracking-tight"
           style={{ color: INK }}
         >
-          Which one are you?
+          What are you starting with?
         </h3>
         <p className="mt-2 text-sm leading-relaxed" style={{ color: INK_2 }}>
           The 30-day free trial is for the embeddable quote calculator widget.
           If you don&apos;t have a site to embed it on yet, we build one for
-          you — with the calculator already wired in.
+          you, with the calculator already wired in.
         </p>
 
         <div className="mt-6 grid gap-4 sm:grid-cols-2">
@@ -124,7 +161,7 @@ function StartChoiceModal({
               I don&apos;t have a website yet
             </span>
             <span className="text-xs leading-relaxed" style={{ color: INK_2 }}>
-              We&apos;ll design and build you a full marketing site — your
+              We&apos;ll design and build you a full marketing site. Your
               quote calculator comes built in. Compare plans below.
             </span>
           </button>
@@ -173,7 +210,7 @@ export default function LandingPage() {
     }
   }
 
-  const demoLoginHref = `/login?email=${encodeURIComponent(DEMO_LOGIN.email)}&password=${encodeURIComponent(DEMO_LOGIN.password)}`
+  const demoLoginHref = '/login?demo=1'
 
   return (
     <div
@@ -184,8 +221,8 @@ export default function LandingPage() {
 
       {/* ─── Nav ─── */}
       <nav
-        className="sticky top-0 z-50 border-b backdrop-blur-xl"
-        style={{ borderColor: HAIRLINE, background: 'rgba(251,251,250,0.85)' }}
+        className="sticky top-0 z-50 border-b"
+        style={{ borderColor: HAIRLINE, background: BG }}
       >
         <div className="mx-auto flex h-[60px] max-w-6xl items-center justify-between px-6">
           <span className="text-[16px] font-semibold tracking-tight">
@@ -194,14 +231,14 @@ export default function LandingPage() {
           <div className="flex items-center gap-6">
             <a
               href="#demo"
-              className="hidden text-[13.5px] font-medium transition hover:opacity-70 sm:inline"
+              className="hidden min-h-11 items-center text-[13.5px] font-medium transition hover:opacity-70 sm:inline-flex"
               style={{ color: INK_2 }}
             >
               Product
             </a>
             <a
               href="#pricing"
-              className="hidden text-[13.5px] font-medium transition hover:opacity-70 sm:inline"
+              className="hidden min-h-11 items-center text-[13.5px] font-medium transition hover:opacity-70 sm:inline-flex"
               style={{ color: INK_2 }}
             >
               Pricing
@@ -210,7 +247,7 @@ export default function LandingPage() {
               <>
                 <Link
                   href="/dashboard"
-                  className="text-[13.5px] font-medium transition hover:opacity-70"
+                  className="inline-flex min-h-11 items-center text-[13.5px] font-medium transition hover:opacity-70"
                   style={{ color: INK_2 }}
                 >
                   Dashboard
@@ -229,7 +266,7 @@ export default function LandingPage() {
               <>
                 <Link
                   href="/login"
-                  className="text-[13.5px] font-medium transition hover:opacity-70"
+                  className="inline-flex min-h-11 items-center text-[13.5px] font-medium transition hover:opacity-70"
                   style={{ color: INK_2 }}
                 >
                   Sign in
@@ -237,7 +274,7 @@ export default function LandingPage() {
                 <button
                   type="button"
                   onClick={() => setShowStartModal(true)}
-                  className="rounded-full px-4 py-2 text-[13px] font-medium text-white transition hover:opacity-85 active:scale-[0.98]"
+                  className="inline-flex min-h-11 items-center px-4 py-2 text-[13px] font-medium text-white transition hover:opacity-85 active:scale-[0.98]"
                   style={{ background: INK }}
                 >
                   Start free
@@ -253,62 +290,65 @@ export default function LandingPage() {
         onClose={() => setShowStartModal(false)}
       />
 
-      {/* ─── Hero ─── */}
-      <section className="mx-auto max-w-3xl px-6 pb-14 pt-24 text-center">
-        <span
-          className="landing-rise inline-flex items-center rounded-full px-4 py-1.5 text-[12.5px] font-medium"
-          style={{ background: ACCENT_SOFT, color: ACCENT }}
-        >
-          Instant quotes for service businesses
-        </span>
-        <h1
-          className="landing-rise mx-auto mt-7 max-w-[15ch] text-[44px] font-medium leading-[1.03] tracking-[-0.035em] sm:text-6xl md:text-7xl"
-          style={{ '--rise-d': 60 } as React.CSSProperties}
-        >
-          The quote happens on your site.{' '}
-          <span style={{ color: INK_3 }}>The lead lands on your phone.</span>
-        </h1>
-        <p
-          className="landing-rise mx-auto mt-6 max-w-[46ch] text-lg leading-relaxed"
-          style={{ color: INK_2, '--rise-d': 120 } as React.CSSProperties}
-        >
-          DitchTheForm replaces your contact form with an instant-quote
-          calculator. Visitors price their own job in about thirty seconds,
-          and the lead arrives by text before they&apos;ve called anyone else.
-        </p>
-        <div
-          className="landing-rise mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row"
-          style={{ '--rise-d': 180 } as React.CSSProperties}
-        >
-          <button
-            type="button"
-            onClick={() => setShowStartModal(true)}
-            className="rounded-full px-6 py-3.5 text-sm font-medium text-white transition hover:opacity-85 active:scale-[0.98]"
-            style={{ background: INK }}
-          >
-            Start free for 30 days
-          </button>
-          <a
-            href="#demo"
-            className="rounded-full border px-6 py-3.5 text-sm font-medium transition hover:border-[#8B939C]"
-            style={{ borderColor: HAIRLINE_2, color: INK }}
-          >
-            See it price a job
-          </a>
+      <main>
+      {/* ─── Hero: the product's quote-to-phone transaction ─── */}
+      <section className="mx-auto grid max-w-6xl gap-12 px-6 pb-16 pt-20 lg:grid-cols-[1.08fr_.92fr] lg:items-center lg:pt-24">
+        <div>
+          <div className="flex items-center gap-3 text-[12px] font-semibold uppercase tracking-[0.12em]" style={{ color: ACCENT }}>
+            <span className="h-px w-9" style={{ background: ACCENT }} aria-hidden="true" />
+            Quote to phone, on your domain
+          </div>
+          <h1 className="mt-7 max-w-[12ch] text-[46px] font-medium leading-[1.01] tracking-[-0.045em] sm:text-6xl lg:text-[72px]">
+            Price the job while they&apos;re still on your site.
+          </h1>
+          <p className="mt-6 max-w-[48ch] text-lg leading-relaxed" style={{ color: INK_2 }}>
+            Your customer chooses the work. Your rate sheet calculates the price.
+            Their number, job details, and quote arrive by SMS and email when they submit.
+          </p>
+          <div className="mt-9 flex flex-col gap-3 sm:flex-row">
+            <Link
+              href="/signup/pro"
+              className="inline-flex min-h-11 items-center justify-center px-6 py-3 text-sm font-semibold text-white transition hover:opacity-85"
+              style={{ background: INK, color: '#FFFFFF', minHeight: 44 }}
+            >
+              Add quoting to my site
+            </Link>
+            <Link
+              href="/get-started"
+              className="inline-flex min-h-11 items-center justify-center border px-6 py-3 text-sm font-semibold transition hover:border-[#626B75]"
+              style={{ borderColor: HAIRLINE_2, color: INK }}
+            >
+              Build my site with it
+            </Link>
+          </div>
+          <p className="mt-5 text-[12.5px]" style={{ color: INK_3 }}>
+            Widget trial: 30 days, no card, no per-lead fee.{' '}
+            <a href={demoLoginHref} className="inline-flex min-h-11 items-center underline underline-offset-4" style={{ color: INK_2 }}>
+              Open the demo account
+            </a>
+          </p>
         </div>
-        <p
-          className="landing-rise mt-5 text-[12.5px]"
-          style={{ color: INK_3, '--rise-d': 240 } as React.CSSProperties}
-        >
-          No card required · No per-lead fees ·{' '}
-          <a
-            href={demoLoginHref}
-            className="underline underline-offset-4 transition hover:opacity-70"
-            style={{ color: INK_2 }}
-          >
-            Try the live demo
-          </a>
-        </p>
+
+        <div className="border-y py-2" style={{ borderColor: INK }} aria-label="Example quote calculation and lead delivery">
+          <div className="flex items-center justify-between border-b px-1 py-4 text-xs font-semibold uppercase tracking-[0.12em]" style={{ borderColor: HAIRLINE_2 }}>
+            <span>Live quote trace</span><span style={{ color: ACCENT }}>Ready</span>
+          </div>
+          {[
+            ['ROOM', 'Walk-in closet · 96 sq ft'],
+            ['RATE', '96 × $75 / sq ft', '$7,200'],
+            ['OPTIONS', 'Soft-close + LED lighting', '+ $420'],
+          ].map(([label, detail, amount]) => (
+            <div key={label} className="grid grid-cols-[82px_1fr_auto] gap-3 border-b px-1 py-5 text-sm" style={{ borderColor: HAIRLINE }}>
+              <span className="font-mono text-[11px] font-semibold tracking-[0.1em]" style={{ color: INK_3 }}>{label}</span>
+              <span>{detail}</span>
+              {amount ? <span className="font-mono tabular-nums">{amount}</span> : null}
+            </div>
+          ))}
+          <div className="flex items-end justify-between px-1 py-6">
+            <div><div className="text-xs" style={{ color: INK_3 }}>QUOTE LOCKED</div><div className="mt-1 text-sm">Dana R. · SMS + email</div></div>
+            <div className="font-mono text-4xl tracking-[-0.04em] tabular-nums">$7,620</div>
+          </div>
+        </div>
       </section>
 
       {/* ─── Product collage: the live widget with floating lead layers ─── */}
@@ -388,7 +428,7 @@ export default function LandingPage() {
             <span className="font-semibold">$7,620</span>
           </div>
           <p className="mt-2 text-[11px]" style={{ color: INK_3 }}>
-            Delivered 8 seconds after the quote was locked in
+            Example run: delivered 8 seconds after submission
           </p>
         </div>
 
@@ -403,7 +443,7 @@ export default function LandingPage() {
             <span className="font-semibold" style={{ color: INK }}>
               {DEMO_RESET_NOTICE.short}
             </span>{' '}
-            This is the real widget wired to a shared demo business — pick a
+            This is the real widget wired to a shared demo business. Pick a
             service, size the job, and submit dummy info to see exactly how
             the lead is captured. Everything resets to the default demo
             configuration nightly.
@@ -431,37 +471,26 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ─── Proof strip ─── */}
-      <section className="border-y" style={{ borderColor: HAIRLINE }}>
-        <div className="mx-auto flex max-w-6xl flex-wrap items-baseline justify-center gap-x-14 gap-y-3 px-6 py-6">
-          <span className="text-xs" style={{ color: INK_3 }}>
-            Running on
-          </span>
-          <span
-            className="font-serif text-[15px] italic"
-            style={{ color: INK_3 }}
-          >
-            Lumina
-          </span>
-          <span
-            className="text-[13px] font-bold uppercase tracking-[0.14em]"
-            style={{ color: INK_3 }}
-          >
-            Ironclad
-          </span>
-          <span
-            className="font-serif text-[15px] italic"
-            style={{ color: INK_3 }}
-          >
-            Hearth &amp; Home
-          </span>
-          <span className="text-xs" style={{ color: INK_3 }}>
-            and service businesses across six trades
-          </span>
+      {/* ─── What the live demo proves (product facts, not simulated logos) ─── */}
+      <section className="border-y" style={{ borderColor: HAIRLINE }} aria-labelledby="demo-proves-heading">
+        <div className="mx-auto grid max-w-6xl px-6 sm:grid-cols-[180px_1fr] sm:gap-10">
+          <h2 id="demo-proves-heading" className="py-6 text-sm font-semibold">What the demo proves</h2>
+          <div className="grid border-t sm:grid-cols-3 sm:border-l sm:border-t-0" style={{ borderColor: HAIRLINE }}>
+            {[
+              ['YOUR RATES', 'The total comes from the rate sheet in the dashboard.'],
+              ['REAL CHOICES', 'Service, size, tier, and add-ons travel with the lead.'],
+              ['TWO DELIVERIES', 'The submitted quote is sent by SMS and copied to email.'],
+            ].map(([label, copy]) => (
+              <div key={label} className="border-b px-5 py-6 last:border-b-0 sm:border-b-0 sm:border-r" style={{ borderColor: HAIRLINE }}>
+                <div className="font-mono text-[10px] font-semibold tracking-[0.12em]" style={{ color: ACCENT }}>{label}</div>
+                <p className="mt-2 text-sm leading-relaxed" style={{ color: INK_2 }}>{copy}</p>
+              </div>
+            ))}
+          </div>
         </div>
       </section>
 
-      {/* ─── How it works — each card holds a product fragment ─── */}
+      {/* ─── How it works: one continuous operating record ─── */}
       <section className="mx-auto max-w-6xl px-6 pt-24">
         <p className="mb-3 text-[13px] font-semibold" style={{ color: ACCENT }}>
           How it works
@@ -473,151 +502,29 @@ export default function LandingPage() {
           className="mt-4 max-w-[56ch] text-[16px] leading-relaxed"
           style={{ color: INK_2 }}
         >
-          Everything the calculator quotes comes off a rate sheet you control —
+          Everything the calculator quotes comes off a rate sheet you control.
           change a number in the dashboard and the widget quotes the new price
           immediately. Nothing is averaged or marked up.
         </p>
 
-        <div className="mt-12 grid grid-cols-1 gap-5 md:grid-cols-3">
-          {/* Set your rates */}
-          <div
-            className="landing-shadow-card flex flex-col overflow-hidden rounded-2xl border bg-white"
-            style={{ borderColor: HAIRLINE }}
-          >
-            <div className="p-6 pb-5">
-              <h3 className="text-[17px] font-semibold tracking-tight">
-                Set your rates
-              </h3>
-              <p
-                className="mt-1.5 text-sm leading-relaxed"
-                style={{ color: INK_2 }}
-              >
-                Per square foot, flat tiers, or base plus distance — with the
-                add-ons you actually sell. Switch off anything you don&apos;t
-                carry.
-              </p>
-            </div>
-            <div
-              className="mt-auto border-t p-6 pt-5"
-              style={{ borderColor: HAIRLINE, background: SURFACE_2 }}
-              aria-hidden="true"
-            >
-              {[
-                { tier: 'Basic', rate: '$45 / sq ft', hot: false },
-                { tier: 'Standard', rate: '$75 / sq ft', hot: true },
-                { tier: 'Premium', rate: '$140 / sq ft', hot: false },
-              ].map(({ tier, rate, hot }) => (
-                <div
-                  key={tier}
-                  className="mb-2 flex items-baseline justify-between rounded-lg border bg-white px-3.5 py-2.5 text-[13px] last:mb-0"
-                  style={{ borderColor: hot ? ACCENT : HAIRLINE }}
-                >
-                  <span className="font-medium">{tier}</span>
-                  <span
-                    className="font-mono text-xs tabular-nums"
-                    style={{ color: hot ? ACCENT : INK_2, fontWeight: hot ? 600 : 400 }}
-                  >
-                    {rate}
-                  </span>
-                </div>
-              ))}
-            </div>
+        <div className="mt-12 border-y" style={{ borderColor: INK }}>
+          <div className="grid gap-6 border-b py-8 md:grid-cols-[210px_1fr_300px] md:items-center" style={{ borderColor: HAIRLINE }}>
+            <div><div className="font-mono text-[10px] font-semibold tracking-[0.12em]" style={{ color: ACCENT }}>RATE SHEET</div><h3 className="mt-2 text-xl font-semibold">Set the math</h3></div>
+            <p className="max-w-[48ch] text-sm leading-relaxed" style={{ color: INK_2 }}>Use per-square-foot rates, flat tiers, base-plus-distance pricing, and the add-ons you actually sell. Turn off anything you do not carry.</p>
+            <div className="font-mono text-xs" aria-label="Example rate sheet"><div className="flex justify-between border-b py-2" style={{ borderColor: HAIRLINE }}><span>Basic</span><span>$45 / sq ft</span></div><div className="flex justify-between border-b py-2 font-semibold" style={{ borderColor: ACCENT, color: ACCENT }}><span>Standard</span><span>$75 / sq ft</span></div><div className="flex justify-between py-2"><span>Premium</span><span>$140 / sq ft</span></div></div>
           </div>
-
-          {/* Embed it anywhere */}
-          <div
-            className="landing-shadow-card flex flex-col overflow-hidden rounded-2xl border bg-white"
-            style={{ borderColor: HAIRLINE }}
-          >
-            <div className="p-6 pb-5">
-              <h3 className="text-[17px] font-semibold tracking-tight">
-                Embed it anywhere
-              </h3>
-              <p
-                className="mt-1.5 text-sm leading-relaxed"
-                style={{ color: INK_2 }}
-              >
-                WordPress, Squarespace, Webflow, or plain HTML. The average
-                install takes about a minute, and it inherits your page.
-              </p>
-            </div>
-            <div
-              className="mt-auto border-t p-6 pt-5"
-              style={{ borderColor: HAIRLINE, background: SURFACE_2 }}
-              aria-hidden="true"
-            >
-              <pre
-                className="overflow-x-auto rounded-lg border bg-white px-4 py-3.5 font-mono text-[12.5px] leading-relaxed"
-                style={{ borderColor: HAIRLINE, color: INK_2 }}
-              >
-                <code>
-                  &lt;<span style={{ color: ACCENT }}>closet-quote-widget</span>
-                  {'\n'}
-                  {'  '}
-                  <span style={{ color: INK }}>data-contractor-id</span>
-                  =&quot;…&quot;
-                  {'\n'}/&gt;
-                </code>
-              </pre>
-            </div>
+          <div className="grid gap-6 border-b py-8 md:grid-cols-[210px_1fr_300px] md:items-center" style={{ borderColor: HAIRLINE }}>
+            <div><div className="font-mono text-[10px] font-semibold tracking-[0.12em]" style={{ color: ACCENT }}>YOUR WEBSITE</div><h3 className="mt-2 text-xl font-semibold">Place one embed</h3></div>
+            <p className="max-w-[48ch] text-sm leading-relaxed" style={{ color: INK_2 }}>Add the widget to WordPress, Squarespace, Webflow, or custom HTML. It uses your services and pricing as soon as the embed loads.</p>
+            <pre className="overflow-x-auto border-l-2 px-4 py-3 font-mono text-[12px] leading-relaxed" style={{ borderColor: ACCENT, background: SURFACE_2, color: INK_2 }} aria-label="Example embed code"><code>&lt;<span style={{ color: ACCENT }}>closet-quote-widget</span>{'\n'}  data-contractor-id=&quot;…&quot;{'\n'}/&gt;</code></pre>
           </div>
-
-          {/* Get the lead instantly */}
-          <div
-            className="landing-shadow-card flex flex-col overflow-hidden rounded-2xl border bg-white"
-            style={{ borderColor: HAIRLINE }}
-          >
-            <div className="p-6 pb-5">
-              <h3 className="text-[17px] font-semibold tracking-tight">
-                Get the lead instantly
-              </h3>
-              <p
-                className="mt-1.5 text-sm leading-relaxed"
-                style={{ color: INK_2 }}
-              >
-                Name, number, service, job size, and chosen options arrive by
-                text through Twilio, with an email copy for your records.
-              </p>
-            </div>
-            <div
-              className="mt-auto border-t p-6 pt-5"
-              style={{ borderColor: HAIRLINE, background: SURFACE_2 }}
-              aria-hidden="true"
-            >
-              <div
-                className="rounded-2xl rounded-bl-[4px] px-3.5 py-2.5 text-[12.5px]"
-                style={{ background: '#E9E9EB', color: '#1B1D21' }}
-              >
-                <span className="font-semibold">Dana R.</span> · Walk-in, 96 sq
-                ft · $7,620
-              </div>
-              <p className="mt-2 text-[10.5px]" style={{ color: INK_3 }}>
-                SMS · delivered in 8s · email copy sent
-              </p>
-            </div>
+          <div className="grid gap-6 py-8 md:grid-cols-[210px_1fr_300px] md:items-center">
+            <div><div className="font-mono text-[10px] font-semibold tracking-[0.12em]" style={{ color: ACCENT }}>DELIVERY</div><h3 className="mt-2 text-xl font-semibold">Receive the whole lead</h3></div>
+            <p className="max-w-[48ch] text-sm leading-relaxed" style={{ color: INK_2 }}>Name, number, selected service, job size, options, and quoted total arrive by SMS, with an email copy for your records.</p>
+            <div className="border-l-2 px-4 py-3 text-[12.5px]" style={{ borderColor: INK, background: SURFACE_2 }}><span className="font-semibold">Dana R.</span> · Walk-in, 96 sq ft<br />Soft-close + LED · $7,620<div className="mt-2 font-mono text-[10px]" style={{ color: INK_3 }}>EXAMPLE DELIVERY · SMS + EMAIL</div></div>
           </div>
         </div>
-
-        {/* Numbers band */}
-        <div
-          className="mt-14 grid grid-cols-1 gap-8 border-t pt-10 sm:grid-cols-3"
-          style={{ borderColor: HAIRLINE }}
-        >
-          {[
-            { value: '60s', label: 'Average install, paste to live' },
-            { value: '$0', label: 'For the first 30 days, no card' },
-            { value: '0', label: 'Per-lead fees, on any plan' },
-          ].map((stat) => (
-            <div key={stat.label}>
-              <div className="text-5xl font-medium tracking-[-0.035em] tabular-nums sm:text-6xl">
-                {stat.value}
-              </div>
-              <div className="mt-2 text-[13.5px]" style={{ color: INK_3 }}>
-                {stat.label}
-              </div>
-            </div>
-          ))}
-        </div>
+        <p className="mt-6 text-sm" style={{ color: INK_2 }}>The widget trial requires no card for 30 days. Every plan has zero per-lead fees.</p>
       </section>
 
       {/* ─── Pricing ─── */}
@@ -636,23 +543,23 @@ export default function LandingPage() {
           doesn&apos;t bring you leads, cancel and you&apos;ve spent nothing.
         </p>
         <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
-          <button
-            type="button"
-            onClick={() => setShowStartModal(true)}
-            className="rounded-full px-6 py-3.5 text-sm font-medium text-white transition hover:opacity-85 active:scale-[0.98]"
-            style={{ background: INK }}
+          <Link
+            href="/signup/pro"
+            className="inline-flex min-h-11 items-center justify-center px-6 py-3.5 text-sm font-semibold text-white transition hover:opacity-85"
+            style={{ background: INK, color: '#FFFFFF', minHeight: 44 }}
           >
-            Start free for 30 days
-          </button>
-          <a
-            href="#demo"
-            className="rounded-full border px-6 py-3.5 text-sm font-medium transition hover:border-[#8B939C]"
+            Add quoting to my site
+          </Link>
+          <Link
+            href="/get-started"
+            className="inline-flex min-h-11 items-center justify-center border px-6 py-3.5 text-sm font-semibold transition hover:border-[#626B75]"
             style={{ borderColor: HAIRLINE_2, color: INK }}
           >
-            Try the demo first
-          </a>
+            Build my site with it
+          </Link>
         </div>
       </section>
+      </main>
 
       {/* ─── Footer ─── */}
       <footer className="border-t" style={{ borderColor: HAIRLINE }}>
@@ -666,24 +573,23 @@ export default function LandingPage() {
                 className="mt-3 max-w-[200px] text-xs leading-relaxed"
                 style={{ color: INK_3 }}
               >
-                Instant quote calculators for service businesses. More leads,
-                less friction.
+                Rate-sheet quotes delivered by SMS and email from your own site.
               </p>
             </div>
 
             <div>
-              <h4
+              <p
                 className="mb-4 text-xs font-semibold"
                 style={{ color: INK_2 }}
               >
                 Product
-              </h4>
+              </p>
               <ul className="space-y-2.5">
                 <li>
                   <a
                     href="#demo"
-                    className="text-xs transition hover:opacity-70"
-                    style={{ color: INK_3 }}
+                    className="inline-flex min-h-11 items-center text-xs transition hover:opacity-70"
+                    style={{ color: INK_3, minHeight: 44, display: 'inline-flex' }}
                   >
                     Live Demo
                   </a>
@@ -691,8 +597,8 @@ export default function LandingPage() {
                 <li>
                   <a
                     href="#pricing"
-                    className="text-xs transition hover:opacity-70"
-                    style={{ color: INK_3 }}
+                    className="inline-flex min-h-11 items-center text-xs transition hover:opacity-70"
+                    style={{ color: INK_3, minHeight: 44, display: 'inline-flex' }}
                   >
                     Pricing
                   </a>
@@ -700,8 +606,8 @@ export default function LandingPage() {
                 <li>
                   <a
                     href="#portfolio"
-                    className="text-xs transition hover:opacity-70"
-                    style={{ color: INK_3 }}
+                    className="inline-flex min-h-11 items-center text-xs transition hover:opacity-70"
+                    style={{ color: INK_3, minHeight: 44, display: 'inline-flex' }}
                   >
                     Portfolio
                   </a>
@@ -710,18 +616,18 @@ export default function LandingPage() {
             </div>
 
             <div>
-              <h4
+              <p
                 className="mb-4 text-xs font-semibold"
                 style={{ color: INK_2 }}
               >
                 Company
-              </h4>
+              </p>
               <ul className="space-y-2.5">
                 <li>
                   <a
                     href="mailto:support@ditchtheform.com"
-                    className="text-xs transition hover:opacity-70"
-                    style={{ color: INK_3 }}
+                    className="inline-flex min-h-11 items-center text-xs transition hover:opacity-70"
+                    style={{ color: INK_3, minHeight: 44, display: 'inline-flex' }}
                   >
                     Contact
                   </a>
@@ -730,20 +636,20 @@ export default function LandingPage() {
             </div>
 
             <div>
-              <h4
+              <p
                 className="mb-4 text-xs font-semibold"
                 style={{ color: INK_2 }}
               >
                 Account
-              </h4>
+              </p>
               <ul className="space-y-2.5">
                 {isLoggedIn ? (
                   <>
                     <li>
                       <Link
                         href="/dashboard"
-                        className="text-xs transition hover:opacity-70"
-                        style={{ color: INK_3 }}
+                        className="inline-flex min-h-11 items-center text-xs transition hover:opacity-70"
+                        style={{ color: INK_3, minHeight: 44, display: 'inline-flex' }}
                       >
                         Dashboard
                       </Link>
@@ -753,8 +659,8 @@ export default function LandingPage() {
                         type="button"
                         onClick={() => void handleSignOut()}
                         disabled={signingOut}
-                        className="text-xs transition hover:opacity-70 disabled:opacity-50"
-                        style={{ color: INK_3 }}
+                        className="inline-flex min-h-11 items-center text-xs transition hover:opacity-70 disabled:opacity-50"
+                        style={{ color: INK_3, minHeight: 44, display: 'inline-flex' }}
                       >
                         {signingOut ? 'Signing out…' : 'Sign Out'}
                       </button>
@@ -765,8 +671,8 @@ export default function LandingPage() {
                     <li>
                       <Link
                         href="/login"
-                        className="text-xs transition hover:opacity-70"
-                        style={{ color: INK_3 }}
+                        className="inline-flex min-h-11 items-center text-xs transition hover:opacity-70"
+                        style={{ color: INK_3, minHeight: 44, display: 'inline-flex' }}
                       >
                         Sign In
                       </Link>
@@ -774,8 +680,8 @@ export default function LandingPage() {
                     <li>
                       <Link
                         href="/signup"
-                        className="text-xs transition hover:opacity-70"
-                        style={{ color: INK_3 }}
+                        className="inline-flex min-h-11 items-center text-xs transition hover:opacity-70"
+                        style={{ color: INK_3, minHeight: 44, display: 'inline-flex' }}
                       >
                         Sign Up
                       </Link>
@@ -804,7 +710,7 @@ export default function LandingPage() {
 
 const WIDGET_FEATURES = [
   'Interactive instant-quote widget for your existing site',
-  'One-line embed — WordPress, Squarespace, Webflow, or custom HTML',
+  'One-line embed for WordPress, Squarespace, Webflow, or custom HTML',
   'Unlimited SMS & email lead capture (no per-lead fees)',
   'Custom services, job types & pricing rules (per-unit, tiered, or distance)',
   'Dynamic add-on manager for upsells & extras',
@@ -814,7 +720,7 @@ const WIDGET_FEATURES = [
 
 const STANDARD_FEATURES = [
   'Custom marketing site + embedded quote calculator',
-  'Up to 5 pages — Home plus 4 you choose during setup',
+  'Up to 5 pages (Home plus 4 you choose during setup)',
   'Professional stock hero & service imagery',
   'Unlimited lead capture via SMS & email',
   'Custom service & option pricing',
@@ -823,13 +729,12 @@ const STANDARD_FEATURES = [
 
 const PREMIUM_FEATURES = [
   'Everything in Standard',
-  'Up to 10 pages — Home plus 9 you choose during setup',
-  'AI-written selling copy for every page — no blank or placeholder content',
-  'Custom AI hero & service photos (you pick during setup)',
-  'Photoreal, art-directed imagery — no generic AI-looking renders',
-  'Firecrawl-informed market pricing for your metro',
+  'Up to 10 pages (Home plus 9 you choose during setup)',
+  'Selling copy grounded in your services, process, and market',
+  'Original hero and service imagery directed for your business',
+  'Local competitor and pricing research for your metro',
   '2 revision rounds in the first 30 days after launch',
-  'Up to 3 generations per image (3 options each)',
+  'Up to 3 image rounds, with 3 options in each round',
 ]
 
 function HowSiteBuildPaymentWorks() {
@@ -849,15 +754,14 @@ function HowSiteBuildPaymentWorks() {
         className="mt-4 max-w-[60ch] text-[15px] leading-relaxed"
         style={{ color: INK_2 }}
       >
-        Start at{' '}
         <Link
           href="/get-started"
-          className="underline underline-offset-4"
+          className="inline-flex min-h-11 items-center font-semibold underline underline-offset-4"
           style={{ color: ACCENT }}
         >
-          /get-started
-        </Link>
-        . Intake shows the same options. After launch, site maintenance is{' '}
+          Start a site build
+        </Link>{' '}
+        to see the same options used at checkout. After launch, site maintenance is{' '}
         {formatUsd(maintenance.monthlyCents)}/mo or{' '}
         {formatUsd(maintenance.yearlyCents)}/yr (save{' '}
         {formatUsd(maintenance.yearlySavingsCents)}).
@@ -874,7 +778,7 @@ function HowSiteBuildPaymentWorks() {
           <p className="text-sm leading-relaxed" style={{ color: INK_2 }}>
             We build your site with stock imagery and send you the working
             preview. If you want it, you pay the full{' '}
-            {formatUsd(standard.totalCents)}{' '}and we launch it — full access to
+            {formatUsd(standard.totalCents)}{' '}and we launch it. Full access to
             your dashboard, leads, and settings handed over. If you
             don&apos;t, you owe nothing.
           </p>
@@ -894,11 +798,11 @@ function HowSiteBuildPaymentWorks() {
           style={{ borderColor: HAIRLINE }}
         >
           <h4 className="text-[15.5px] font-semibold tracking-tight">
-            AI Premium build
+            Custom Studio build
           </h4>
           <p className="text-sm leading-relaxed" style={{ color: INK_2 }}>
-            The {formatUsd(premium.depositCents)} deposit (30%) unlocks the AI
-            image studio on intake — we build with the shots you choose. You
+            The {formatUsd(premium.depositCents)} deposit (30%) covers the image
+            studio during intake. We build with the shots you choose. You
             review the finished site, and the {formatUsd(premium.remainderCents)}{' '}
             balance is due only if you approve it before launch. Not
             satisfied? The deposit is returned.
@@ -934,13 +838,13 @@ function PlanBillingToggle({
 }) {
   return (
     <div
-      className="inline-flex items-center gap-1 rounded-full border p-1"
+      className="inline-flex items-center gap-1 border p-1"
       style={{ borderColor: HAIRLINE_2 }}
     >
       <button
         type="button"
         onClick={() => onBillingChange('monthly')}
-        className="rounded-full px-3.5 py-1.5 text-xs font-medium transition"
+        className="min-h-11 px-3.5 py-1.5 text-xs font-medium transition"
         style={
           billing === 'monthly'
             ? { background: INK, color: '#fff' }
@@ -952,7 +856,7 @@ function PlanBillingToggle({
       <button
         type="button"
         onClick={() => onBillingChange('yearly')}
-        className="flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-medium transition"
+        className="flex min-h-11 items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium transition"
         style={
           billing === 'yearly'
             ? { background: INK, color: '#fff' }
@@ -1052,7 +956,7 @@ function PricingSection() {
           />
         </div>
         <p className="text-[11.5px]" style={{ color: INK_3 }}>
-          Applies to the Pro subscription and site maintenance — build fees are
+          Applies to the Pro subscription and site maintenance. Build fees are
           one-time.
           {billing === 'yearly' && (
             <>
@@ -1068,7 +972,7 @@ function PricingSection() {
       <div className="mt-10 grid grid-cols-1 gap-5 lg:grid-cols-3">
         {/* Pro — widget on an existing site */}
         <div
-          className="landing-shadow-card flex flex-col rounded-2xl border bg-white p-7"
+          className="flex flex-col border bg-white p-7"
           style={{ borderColor: HAIRLINE }}
         >
           <p className="mb-3 text-xs font-medium" style={{ color: INK_3 }}>
@@ -1095,14 +999,14 @@ function PricingSection() {
           <div className="mt-auto flex flex-col gap-2">
             <Link
               href="/signup/pro"
-              className="flex w-full items-center justify-center rounded-full border px-5 py-3 text-sm font-medium transition hover:border-[#8B939C]"
+              className="flex min-h-11 w-full items-center justify-center border px-5 py-3 text-sm font-medium transition hover:border-[#626B75]"
               style={{ borderColor: HAIRLINE_2, color: INK }}
             >
               Start the free month
             </Link>
             <Link
               href={`/signup/pro?subscribe=1&plan=${billing}`}
-              className="flex w-full items-center justify-center px-5 py-2 text-[13px] font-medium underline-offset-4 transition hover:underline"
+              className="flex min-h-11 w-full items-center justify-center px-5 py-2 text-[13px] font-medium underline-offset-4 transition hover:underline"
               style={{ color: INK_2 }}
             >
               Subscribe now — skip trial
@@ -1112,7 +1016,7 @@ function PricingSection() {
 
         {/* Standard site build */}
         <div
-          className="landing-shadow-card flex flex-col rounded-2xl border bg-white p-7"
+          className="flex flex-col border bg-white p-7"
           style={{ borderColor: HAIRLINE }}
         >
           <p className="mb-3 text-xs font-medium" style={{ color: INK_3 }}>
@@ -1134,7 +1038,7 @@ function PricingSection() {
           </div>
           <p className="mb-5 mt-2 text-[12.5px]" style={{ color: INK_3 }}>
             Then {formatUsd(siteMaint.perMonthCents)}/mo maintenance after
-            launch ({siteMaint.billedLabel}) — hosting, SSL, Pro widget, and 1
+            launch ({siteMaint.billedLabel}). Hosting, SSL, Pro widget, and 1
             content tweak/month included, no separate{' '}
             {formatUsd(widgetSub.monthlyCents)}/mo widget fee.
           </p>
@@ -1142,7 +1046,7 @@ function PricingSection() {
           <div className="mt-auto flex flex-col gap-2">
             <Link
               href="/get-started?tier=standard"
-              className="flex w-full items-center justify-center rounded-full border px-5 py-3 text-sm font-medium transition hover:border-[#8B939C]"
+              className="flex min-h-11 w-full items-center justify-center border px-5 py-3 text-sm font-medium transition hover:border-[#626B75]"
               style={{ borderColor: HAIRLINE_2, color: INK }}
             >
               Start a Standard build
@@ -1153,10 +1057,10 @@ function PricingSection() {
           </div>
         </div>
 
-        {/* AI Premium — featured, inverted ink card */}
+        {/* Custom Studio — featured, inverted ink card */}
         <div
-          className="landing-shadow-panel flex flex-col rounded-2xl p-7"
-          style={{ background: INK, color: BG }}
+          className="flex flex-col border p-7"
+          style={{ background: INK, color: BG, borderColor: INK }}
         >
           <p
             className="mb-3 text-xs font-medium"
@@ -1165,7 +1069,7 @@ function PricingSection() {
             Site build · Recommended
           </p>
           <h3 className="text-lg font-semibold tracking-tight">
-            {premium.label}
+            Custom Studio
           </h3>
           <p
             className="mb-5 text-[13.5px]"
@@ -1186,17 +1090,17 @@ function PricingSection() {
             style={{ color: 'rgba(251,251,250,0.6)' }}
           >
             Then {formatUsd(siteMaint.perMonthCents)}/mo maintenance after
-            launch ({siteMaint.billedLabel}) — same coverage as Standard, plus
+            launch ({siteMaint.billedLabel}). Same coverage as Standard, plus
             2 revision rounds in your first 30 days (included in the build).
           </p>
           <PricingFeatureList features={PREMIUM_FEATURES} inverted />
           <div className="mt-auto flex flex-col gap-2">
             <Link
               href="/get-started?tier=ai_premium"
-              className="flex w-full items-center justify-center rounded-full px-5 py-3 text-sm font-medium transition hover:opacity-90"
+              className="flex min-h-11 w-full items-center justify-center px-5 py-3 text-sm font-medium transition hover:opacity-90"
               style={{ background: BG, color: INK }}
             >
-              Start a Premium build
+              Start a Custom Studio build
             </Link>
             <p
               className="text-center text-[12px]"
@@ -1215,15 +1119,15 @@ function PricingSection() {
           Site builds
         </p>
         <h3 className="max-w-[26ch] text-2xl font-medium tracking-[-0.025em] sm:text-[32px] sm:leading-[1.15]">
-          Three looks, all live right now
+          Three working design studies
         </h3>
         <p
           className="mt-4 max-w-[60ch] text-[15px] leading-relaxed"
           style={{ color: INK_2 }}
         >
-          Each one is a working site for a demo business, not a screenshot.
-          Open it, click around, run a quote — your build starts from the one
-          you pick.
+          Each is a working demo, not customer proof and not a template we copy.
+          Open them, run a quote, and compare the range. Your site receives its
+          own structure, typography, imagery, and conversion path.
         </p>
 
         <div className="mt-10 grid grid-cols-1 gap-5 md:grid-cols-3">
@@ -1252,8 +1156,8 @@ function PricingSection() {
               href={demo.link}
               target="_blank"
               rel="noopener noreferrer"
-              className="landing-shadow-card group block overflow-hidden rounded-2xl border bg-white transition-transform duration-200 hover:-translate-y-1"
-              style={{ borderColor: HAIRLINE }}
+              className="group block overflow-hidden border bg-white transition-transform duration-200 hover:-translate-y-1"
+              style={{ borderColor: HAIRLINE, minHeight: 80, display: 'block' }}
             >
               <div className="relative aspect-[4/3] w-full overflow-hidden border-b" style={{ borderColor: HAIRLINE }}>
                 <Image
