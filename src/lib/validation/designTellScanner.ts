@@ -91,6 +91,9 @@ const GLOBAL_CSS_CODES: readonly DesignTellCode[] = [
   'design_dot_grid_texture',
   'design_banned_font_family',
   'design_no_design_tokens',
+  'design_missing_responsive_contract',
+  'design_missing_interaction_contract',
+  'design_direction_incoherent',
 ]
 
 /** Codes that need the whole site to judge — skipped on single-unit scans. */
@@ -275,6 +278,63 @@ function scanGlobalCss(
         'globalCss defines almost no design tokens, so there are no CSS variables to be consistent with — surfaces, text and accent are written inline per rule.',
         'Emit a :root token set (background, ink, muted, line, accent at minimum) and reference it with var() throughout.',
         customProps.slice(0, 4)
+      )
+    )
+  }
+
+  // Universal craft contract. These checks are deliberately style-neutral:
+  // they protect responsive composition and usable interaction without asking
+  // every site to share eyebrows, hairlines, card radii, or airy spacing.
+  if (!/@media\s*\([^)]*(?:max|min)-width/i.test(css) || !/clamp\(|min\(|max\(/i.test(css)) {
+    out.push(
+      finding(
+        'design_missing_responsive_contract',
+        GLOBAL_CSS_UNIT_ID,
+        'The stylesheet lacks a complete responsive composition contract (a real width breakpoint plus fluid sizing).',
+        'Add at least one width breakpoint and use clamp(), min(), or max() for fluid type or spacing; compose the narrow layout intentionally rather than merely shrinking it.'
+      )
+    )
+  }
+
+  const hasFocus = /:focus(?:-visible|-within)?/i.test(css)
+  const hasMotion = /@keyframes|animation\s*:|transition\s*:/i.test(css)
+  const respectsReducedMotion = !hasMotion || /prefers-reduced-motion\s*:\s*reduce/i.test(css)
+  if (!hasFocus || !respectsReducedMotion) {
+    const missing = [
+      !hasFocus ? 'visible keyboard focus' : '',
+      !respectsReducedMotion ? 'a prefers-reduced-motion override' : '',
+    ].filter(Boolean)
+    out.push(
+      finding(
+        'design_missing_interaction_contract',
+        GLOBAL_CSS_UNIT_ID,
+        `The interaction system is missing ${missing.join(' and ')}.`,
+        'Add a clearly visible :focus-visible treatment and, whenever transitions or animations exist, disable nonessential motion inside @media (prefers-reduced-motion: reduce).'
+      )
+    )
+  }
+
+  const directionSignals = [
+    // editorial
+    /column-count|columns\s*:|font-family[^;}]*(?:serif|Garamond|Baskerville|Caslon|Newsreader)|grid-template-columns\s*:[^;}]*(?:2fr|3fr)/i.test(css),
+    // cinematic / image-led
+    /min-height\s*:\s*(?:[7-9]\d|100)(?:vh|svh|dvh)|object-fit\s*:\s*cover/i.test(css),
+    // dense catalog / modular utility
+    /grid-template-columns\s*:\s*repeat\(|grid-auto-flow|subgrid/i.test(css),
+    // playful / expressive geometry
+    /clip-path|transform\s*:\s*(?:rotate|skew)|border-radius\s*:\s*(?:[2-9]\d|\d{3,})px/i.test(css),
+    // quiet / restrained editorial
+    /max-width\s*:\s*(?:5[5-9]|6\d|7[0-2])ch|padding[^;}]*(?:8vw|10vw)/i.test(css),
+    // decisive service utility
+    /position\s*:\s*sticky|border\s*:\s*(?:1|2|3)px\s+solid/i.test(css),
+  ].filter(Boolean).length
+  if (directionSignals < 2) {
+    out.push(
+      finding(
+        'design_direction_incoherent',
+        GLOBAL_CSS_UNIT_ID,
+        'The stylesheet has tokens but no strongly expressed spatial grammar; it risks reading as a recolored generic template.',
+        'Commit to at least two structural signals from one suitable direction (for example editorial rules plus asymmetric columns, cinematic scale plus image-led crops, dense catalog grids plus labeled data, or quiet measure plus deliberate negative space).'
       )
     )
   }

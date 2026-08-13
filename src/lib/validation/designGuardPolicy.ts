@@ -34,6 +34,9 @@ export type DesignTellCode =
   | 'design_hero_two_button_blob'
   | 'design_thin_home'
   | 'design_no_design_tokens'
+  | 'design_missing_responsive_contract'
+  | 'design_missing_interaction_contract'
+  | 'design_direction_incoherent'
   // chrome / copy-adjacent
   | 'design_emoji_in_ui'
   | 'design_em_dash_stack'
@@ -67,6 +70,10 @@ export const ADVISORY_TELL_CODES: readonly DesignTellCode[] = [
   'design_dual_lane_gateway',
   'design_hero_two_button_blob',
   'design_thin_home',
+  // Positive art-direction scoring is intentionally advisory while its signal
+  // thresholds are calibrated against the fleet. It must reward coherence,
+  // not force every site toward one preferred visual style.
+  'design_direction_incoherent',
 ]
 
 export function tellSeverity(code: DesignTellCode): 'error' | 'warning' {

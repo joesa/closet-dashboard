@@ -87,6 +87,48 @@ describe('design_no_design_tokens', () => {
   })
 })
 
+describe('style-neutral craft contract', () => {
+  const responsive = `${CLEAN_CSS}
+    .wrap{max-width:68ch;padding:clamp(1rem,4vw,4rem);border:1px solid var(--line)}
+    a:focus-visible{outline:3px solid var(--acc)}
+    @media(max-width:700px){.layout{grid-template-columns:1fr}}
+    @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+  `
+
+  it('blocks CSS that has tokens but no responsive composition contract', () => {
+    const found = scanDesignTells({ globalCss: CLEAN_CSS, pages: {} })
+    expect(codes(found)).toContain('design_missing_responsive_contract')
+    expect(found.find((f) => f.code === 'design_missing_responsive_contract')?.severity).toBe(
+      'error'
+    )
+  })
+
+  it('blocks missing focus and reduced-motion handling', () => {
+    const css = `${CLEAN_CSS}.card{padding:clamp(1rem,4vw,4rem);transition:transform .2s}
+      @media(max-width:700px){.card{padding:1rem}}`
+    expect(codes(scanDesignTells({ globalCss: css, pages: {} }))).toContain(
+      'design_missing_interaction_contract'
+    )
+  })
+
+  it('accepts distinct craft without requiring eyebrows, hairlines, or airy padding', () => {
+    const found = scanDesignTells({ globalCss: responsive, pages: {} })
+    expect(codes(found)).not.toContain('design_missing_responsive_contract')
+    expect(codes(found)).not.toContain('design_missing_interaction_contract')
+    expect(codes(found)).not.toContain('design_direction_incoherent')
+  })
+
+  it('keeps weak art-direction expression advisory while the fleet is calibrated', () => {
+    const css = `${CLEAN_CSS}
+      .wrap{padding:clamp(1rem,4vw,4rem)}a:focus-visible{outline:2px solid var(--acc)}
+      @media(max-width:700px){.wrap{padding:1rem}}`
+    const finding = scanDesignTells({ globalCss: css, pages: {} }).find(
+      (item) => item.code === 'design_direction_incoherent'
+    )
+    expect(finding?.severity).toBe('warning')
+  })
+})
+
 describe('design_saas_gradient_hue', () => {
   const css = `${CLEAN_CSS}\n.hero{background:linear-gradient(135deg,#6366f1,#8b5cf6)}`
 
@@ -468,7 +510,10 @@ describe('scanArtifactTells', () => {
 
   it('stays quiet on concrete copy that admits a limit', () => {
     const found = scanArtifactTells({
-      globalCss: CLEAN_CSS,
+      globalCss: `${CLEAN_CSS}
+        .wrap{max-width:68ch;padding:clamp(1rem,4vw,4rem);border:1px solid var(--line)}
+        a:focus-visible{outline:3px solid var(--acc)}
+        @media(max-width:700px){.wrap{padding:1rem}}`,
       pages: {
         '/': {
           html: `${FONTS_LINK}<header></header><main>${`<section><p>${CONCRETE_COPY}</p></section>`.repeat(5)}</main><footer></footer>`,
