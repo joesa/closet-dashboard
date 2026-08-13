@@ -28,12 +28,21 @@ type Viewport = 'desktop' | 'tablet' | 'mobile'
 type MediaTarget =
   | { path: string; mode: 'set' | 'insert'; index?: number }
   | { mode: 'custom' }
+type CustomTextStyle = {
+  fontFamily?: string
+  fontSize?: string
+  fontWeight?: string
+  color?: string
+  textAlign?: string
+}
 type CustomSelection = {
   element: string
   value: string
   alt?: string
   href: string | null
+  style?: CustomTextStyle
 }
+const TEXT_ELEMENT_TAGS = new Set(['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'a', 'li', 'span', 'figcaption', 'blockquote'])
 
 const HOME_SECTIONS = [
   { id: 'hero', label: 'Hero', path: '/hero_config' },
@@ -151,12 +160,12 @@ function previewNeedsReload(changes: ContentChange[]) {
   )
 }
 
-function sendCustomEditorCommand(action: string, value?: string) {
+function sendCustomEditorCommand(action: string, value?: string, style?: CustomTextStyle) {
   const frame = window.document.querySelector('iframe[title="Live website preview"]') as HTMLIFrameElement | null
   if (!frame?.contentWindow) return
   const token = new URL(frame.src).searchParams.get('content_editor_token')
   frame.contentWindow.postMessage(
-    { type: 'dtf:editor-command', action, value, sessionToken: token },
+    { type: 'dtf:editor-command', action, value, style, sessionToken: token },
     new URL(frame.src).origin
   )
 }
@@ -394,6 +403,10 @@ export default function WebsiteStudioPage() {
                 value: typeof event.data.value === 'string' ? event.data.value : '',
                 alt: typeof event.data.alt === 'string' ? event.data.alt : undefined,
                 href: typeof event.data.href === 'string' ? event.data.href : null,
+                style:
+                  event.data.style && typeof event.data.style === 'object'
+                    ? (event.data.style as CustomTextStyle)
+                    : undefined,
               }
             : null
         )
@@ -778,8 +791,8 @@ function CustomInspector({
   selection: CustomSelection | null
   onChooseMedia: () => void
 }) {
-  const send = (action: string, value?: string) => {
-    sendCustomEditorCommand(action, value)
+  const send = (action: string, value?: string, style?: CustomTextStyle) => {
+    sendCustomEditorCommand(action, value, style)
   }
   const moveControls = (
     <div className="grid grid-cols-2 gap-2">
@@ -797,6 +810,18 @@ function CustomInspector({
         key={`${selection.value}|${selection.alt ?? ''}|${selection.href ?? ''}`}
         selection={selection}
         onChooseMedia={onChooseMedia}
+        send={send}
+        moveControls={moveControls}
+        pathFooter={pathFooter}
+      />
+    )
+  }
+
+  if (selection && TEXT_ELEMENT_TAGS.has(selection.element)) {
+    return (
+      <TextInspector
+        key={`${selection.element}|${selection.value}|${selection.href ?? ''}`}
+        selection={selection}
         send={send}
         moveControls={moveControls}
         pathFooter={pathFooter}
@@ -834,7 +859,7 @@ function ImageInspector({
 }: {
   selection: CustomSelection
   onChooseMedia: () => void
-  send: (action: string, value?: string) => void
+  send: (action: string, value?: string, style?: CustomTextStyle) => void
   moveControls: React.ReactNode
   pathFooter: React.ReactNode
 }) {
@@ -884,6 +909,116 @@ function ImageInspector({
           <button onClick={() => send('setAlign', 'right')} className="rounded-lg border border-white/10 py-2 text-xs">Right</button>
         </div>
       </div>
+
+      {moveControls}
+      {pathFooter}
+    </div>
+  )
+}
+
+const FONT_FAMILY_CHOICES = [
+  { label: 'Site default', value: '' },
+  { label: 'Sans-serif (system)', value: 'system-ui, -apple-system, "Segoe UI", sans-serif' },
+  { label: 'Serif', value: 'Georgia, "Times New Roman", serif' },
+  { label: 'Monospace', value: '"SF Mono", Menlo, monospace' },
+]
+const FONT_WEIGHT_CHOICES = [
+  { label: 'Normal', value: '400' },
+  { label: 'Medium', value: '500' },
+  { label: 'Semibold', value: '600' },
+  { label: 'Bold', value: '700' },
+  { label: 'Extra bold', value: '800' },
+]
+
+function TextInspector({
+  selection,
+  send,
+  moveControls,
+  pathFooter,
+}: {
+  selection: CustomSelection
+  send: (action: string, value?: string, style?: CustomTextStyle) => void
+  moveControls: React.ReactNode
+  pathFooter: React.ReactNode
+}) {
+  const [text, setText] = useState(selection.value)
+  const [href, setHref] = useState(selection.href ?? '')
+  const [fontFamily, setFontFamily] = useState('')
+  const [fontSize, setFontSize] = useState(selection.style?.fontSize ?? '')
+  const [fontWeight, setFontWeight] = useState(selection.style?.fontWeight ?? '400')
+  const [color, setColor] = useState(selection.style?.color ?? '#000000')
+  const [textAlign, setTextAlign] = useState(selection.style?.textAlign ?? 'left')
+
+  return (
+    <div className="space-y-4">
+      <p className="text-sm leading-relaxed text-zinc-400">Text selected ({selection.element}).</p>
+
+      <div>
+        <label className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-zinc-500">Text content</label>
+        <textarea value={text} onChange={(event) => setText(event.target.value)} rows={4} className="w-full rounded-lg border border-white/10 bg-white/5 p-3 text-sm outline-none focus:border-indigo-400" />
+        <button onClick={() => send('setValue', text)} className="mt-2 w-full rounded-lg bg-indigo-500 py-2 text-sm font-medium">Apply text</button>
+      </div>
+
+      {selection.element === 'a' && (
+        <div>
+          <label className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-zinc-500">Link</label>
+          <input value={href} onChange={(event) => setHref(event.target.value)} className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none focus:border-indigo-400" placeholder="https:// or /path" />
+          <button onClick={() => send('setHref', href)} className="mt-2 w-full rounded-lg border border-white/10 py-2 text-xs">Apply link</button>
+        </div>
+      )}
+
+      <div>
+        <label className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-zinc-500">Font</label>
+        <select value={fontFamily} onChange={(event) => setFontFamily(event.target.value)} className="w-full rounded-lg border border-white/10 bg-[#171920] px-3 py-2 text-sm">
+          {FONT_FAMILY_CHOICES.map((choice) => <option key={choice.label} value={choice.value}>{choice.label}</option>)}
+        </select>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-zinc-500">Size (px)</label>
+          <input value={fontSize.replace(/px$/, '')} onChange={(event) => setFontSize(event.target.value ? `${event.target.value}px` : '')} type="number" min={8} max={200} className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none focus:border-indigo-400" />
+        </div>
+        <div>
+          <label className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-zinc-500">Weight</label>
+          <select value={fontWeight} onChange={(event) => setFontWeight(event.target.value)} className="w-full rounded-lg border border-white/10 bg-[#171920] px-3 py-2 text-sm">
+            {FONT_WEIGHT_CHOICES.map((choice) => <option key={choice.value} value={choice.value}>{choice.label}</option>)}
+          </select>
+        </div>
+      </div>
+
+      <div>
+        <label className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-zinc-500">Color</label>
+        <input value={color} onChange={(event) => setColor(event.target.value)} type="color" className="h-10 w-full rounded-lg border border-white/10 bg-white/5" />
+      </div>
+
+      <div>
+        <label className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-zinc-500">Alignment</label>
+        <div className="grid grid-cols-3 gap-2">
+          {(['left', 'center', 'right'] as const).map((align) => (
+            <button
+              key={align}
+              onClick={() => setTextAlign(align)}
+              className={`rounded-lg border py-2 text-xs capitalize ${textAlign === align ? 'border-indigo-400 bg-indigo-500/15 text-indigo-100' : 'border-white/10'}`}
+            >
+              {align}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <button
+        onClick={() => send('setTextStyle', undefined, {
+          fontFamily: fontFamily || undefined,
+          fontSize: fontSize || undefined,
+          fontWeight,
+          color,
+          textAlign,
+        })}
+        className="w-full rounded-lg bg-indigo-500 py-2 text-sm font-medium"
+      >
+        Apply style
+      </button>
 
       {moveControls}
       {pathFooter}
