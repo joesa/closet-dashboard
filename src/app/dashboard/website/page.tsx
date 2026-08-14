@@ -455,6 +455,20 @@ export default function WebsiteStudioPage() {
         const pagePath = encodePointer(event.data.path)
         queueChange({ op: 'set', path: `/custom_config/pages/${pagePath}/html`, value: event.data.html })
       }
+      if (
+        payload.renderMode === 'engine' &&
+        event.data.type === 'dtf:engine-move' &&
+        typeof event.data.path === 'string' &&
+        Number.isFinite(Number(event.data.from)) &&
+        Number.isFinite(Number(event.data.to))
+      ) {
+        queueChange({
+          op: 'move',
+          path: event.data.path,
+          from: Number(event.data.from),
+          to: Number(event.data.to),
+        }, true)
+      }
     }
     window.addEventListener('message', onMessage)
     return () => window.removeEventListener('message', onMessage)
@@ -879,7 +893,7 @@ function CustomInspector({
   return (
     <div className="space-y-3">
       <p className="text-sm leading-relaxed text-zinc-400">Click text, links, images, or sections in the preview. Changes are serialized from the custom page while its CSS remains untouched.</p>
-      <p className="rounded-lg border border-indigo-400/15 bg-indigo-500/5 px-3 py-2 text-[11px] leading-relaxed text-indigo-200">Selected images have eight draggable resize points directly in the preview.</p>
+      <p className="rounded-lg border border-indigo-400/15 bg-indigo-500/5 px-3 py-2 text-[11px] leading-relaxed text-indigo-200">Drag sections, text, or images in the preview to reorder them. Selected images also have eight resize handles.</p>
       <textarea
         id="custom-editor-value"
         key={selection?.value ?? selectedPath}
@@ -916,7 +930,7 @@ function ImageInspector({
 
   return (
     <div className="space-y-4">
-      <p className="text-sm leading-relaxed text-zinc-400">Image selected. Drag the eight resize handles in the preview to resize, or set properties below.</p>
+      <p className="text-sm leading-relaxed text-zinc-400">Image selected. Drag it in the preview to reorder among siblings, or use the eight resize handles. Brand/logo images should link home — use the control below if needed.</p>
       {src && (
         <img src={src} alt="" className="max-h-40 w-full rounded-lg border border-white/10 object-contain bg-white/5" />
       )}
@@ -939,11 +953,19 @@ function ImageInspector({
       <div>
         <label className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-zinc-500">Link</label>
         {selection.href === null ? (
-          <p className="mb-2 text-[11px] text-zinc-600">This image isn&apos;t wrapped in a link.</p>
+          <>
+            <p className="mb-2 text-[11px] text-zinc-600">This image isn&apos;t wrapped in a link.</p>
+            <button onClick={() => send('linkHome')} className="w-full rounded-lg border border-indigo-400/30 py-2 text-xs text-indigo-300">
+              Link to homepage (logo)
+            </button>
+          </>
         ) : (
           <>
             <input value={href} onChange={(event) => setHref(event.target.value)} className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none focus:border-indigo-400" placeholder="https:// or /path" />
-            <button onClick={() => send('setHref', href)} className="mt-2 w-full rounded-lg border border-white/10 py-2 text-xs">Apply link</button>
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              <button onClick={() => send('setHref', href)} className="rounded-lg border border-white/10 py-2 text-xs">Apply link</button>
+              <button onClick={() => send('linkHome')} className="rounded-lg border border-indigo-400/30 py-2 text-xs text-indigo-300">Set to homepage</button>
+            </div>
           </>
         )}
       </div>

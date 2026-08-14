@@ -47,14 +47,14 @@ function isChromeImage($: cheerio.CheerioAPI, el: Element): boolean {
   const $img = $(el)
   if (
     $img.closest(
-      'header, nav, footer, .site-header, .site-nav, .site-footer, .logo, .brand'
+      'header, nav, footer, .site-header, .site-nav, .site-footer, .logo, .brand, .cs-brand, a.cs-brand'
     ).length
   ) {
     return true
   }
   const cls =
     `${$img.attr('class') || ''} ${$img.parent().attr('class') || ''}`.toLowerCase()
-  if (/\b(logo|icon|avatar|badge|sprite)\b/.test(cls)) return true
+  if (/\b(logo|icon|avatar|badge|sprite|cs-brand)\b/.test(cls)) return true
   const alt = ($img.attr('alt') || '').toLowerCase()
   if (/\blogo\b/.test(alt)) return true
   const src = ($img.attr('src') || '').toLowerCase()
@@ -83,8 +83,71 @@ function shouldSkipImage($: cheerio.CheerioAPI, el: Element): boolean {
 }
 
 /**
+ * Logos must navigate home — never enlarge. Unwrap chrome images that were
+ * wrongly lightbox-wrapped, and ensure brand marks are `<a href="/">`.
+ */
+export function normalizeBrandLogoLinks(html: string): {
+  html: string
+  fixed: number
+} {
+  if (!html) return { html: html || '', fixed: 0 }
+
+  const $ = cheerio.load(html, { xml: false }, false)
+  let fixed = 0
+
+  // Snapshot matching nodes first — unwrapping mutates the tree mid-iteration.
+  const chromeImgs = $('img')
+    .toArray()
+    .filter((el) => isChromeImage($, el))
+
+  for (const el of chromeImgs) {
+    let $img = $(el)
+    if (!$img.length) continue
+
+    const $wrap = $img.closest('label.img-lightbox')
+    if ($wrap.length) {
+      const outer = $.html($img)
+      if (outer) {
+        $wrap.replaceWith(outer)
+        fixed += 1
+        // Find the replacement img (same src) nearest to prior context.
+        const src = $img.attr('src') || ''
+        $img = $('img')
+          .filter((_, candidate) => ($(candidate).attr('src') || '') === src)
+          .first()
+        if (!$img.length) continue
+      }
+    }
+
+    let $anchor = $img.closest('a[href]')
+    if (!$anchor.length) {
+      $img.wrap('<a class="cs-brand" href="/"></a>')
+      fixed += 1
+      continue
+    }
+
+    const href = ($anchor.attr('href') || '').trim()
+    if (!href || href === '#' || /^javascript:/i.test(href)) {
+      $anchor.attr('href', '/')
+      fixed += 1
+    }
+    const cls = $anchor.attr('class') || ''
+    if (
+      !/\bcs-brand\b/.test(cls) &&
+      ($anchor.closest('header, nav, .site-header, .site-nav, .logo, .brand').length ||
+        /\b(logo|brand)\b/i.test(cls))
+    ) {
+      $anchor.attr('class', `${cls} cs-brand`.trim())
+    }
+  }
+
+  return { html: $.root().html() || '', fixed }
+}
+
+/**
  * Wrap bare content <img> tags in CSS-only lightbox labels.
  * Idempotent for images already inside .img-lightbox.
+ * Also repairs brand/logo images so they link home instead of enlarging.
  */
 export function wireImageLightboxes(html: string): {
   html: string
@@ -92,7 +155,8 @@ export function wireImageLightboxes(html: string): {
 } {
   if (!html) return { html: html || '', count: 0 }
 
-  const $ = cheerio.load(html, { xml: false }, false)
+  const normalized = normalizeBrandLogoLinks(html)
+  const $ = cheerio.load(normalized.html, { xml: false }, false)
   let count = 0
 
   $('img').each((_, el) => {

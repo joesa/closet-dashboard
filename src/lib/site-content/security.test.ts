@@ -42,4 +42,16 @@ describe('sanitizeUntrustedCustomHtml', () => {
     expect(output).not.toMatch(/javascript:/i)
     expect(output).toContain(WIDGET_PLACEHOLDER)
   })
+
+  it('keeps CSS lightbox markup but repairs brand logos to home links', () => {
+    const output = sanitizeUntrustedCustomHtml(
+      `<header><label class="img-lightbox"><input type="checkbox" class="lightbox-toggle" aria-label="Enlarge image"><img src="https://cdn.example/logo.png" alt="Logo"></label></header><main><label class="img-lightbox"><input type="checkbox" class="lightbox-toggle"><img src="https://cdn.example/work.jpg" alt="Work"></label>${WIDGET_PLACEHOLDER}</main>`
+    )
+    expect(output).toContain('work.jpg')
+    expect(output).toMatch(/img-lightbox/)
+    expect(output).toContain('logo.png')
+    expect(output).toMatch(/href="\/"/)
+    // Brand logo must not remain inside a lightbox.
+    expect(output).not.toMatch(/header[\s\S]*img-lightbox[\s\S]*logo\.png/i)
+  })
 })

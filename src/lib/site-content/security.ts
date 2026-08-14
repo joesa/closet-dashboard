@@ -6,6 +6,7 @@ import {
   WIDGET_PLACEHOLDER,
   type CustomSiteConfig,
 } from '@/lib/customSite'
+import { normalizeBrandLogoLinks } from '@/lib/ai/surgicalImageLightbox'
 
 const MAX_DOCUMENT_BYTES = 4 * 1024 * 1024
 const MAX_NODES = 20_000
@@ -108,6 +109,8 @@ export function sanitizeUntrustedCustomHtml(html: string): string {
       'blockquote', 'pre', 'code', 'time', 'address', 'details', 'summary',
       'table', 'thead', 'tbody', 'tfoot', 'tr', 'th', 'td', 'colgroup', 'col',
       'video', 'audio', 'track',
+      // CSS-only image lightbox + service drawers need these (no scripts).
+      'label', 'input',
       'svg', 'g', 'path', 'circle', 'ellipse', 'rect', 'line', 'polyline',
       'polygon', 'defs', 'linearGradient', 'radialGradient', 'stop', 'clipPath',
       'mask', 'pattern', 'symbol', 'use', 'text', 'tspan', 'title', 'desc',
@@ -124,6 +127,8 @@ export function sanitizeUntrustedCustomHtml(html: string): string {
       video: ['src', 'poster', 'controls', 'autoplay', 'muted', 'loop', 'playsinline', 'preload', 'width', 'height'],
       audio: ['src', 'controls', 'autoplay', 'muted', 'loop', 'preload'],
       track: ['src', 'kind', 'srclang', 'label', 'default'],
+      input: ['type', 'class', 'id', 'aria-label', 'aria-hidden', 'tabindex', 'hidden', 'checked', 'name', 'value'],
+      label: ['class', 'id', 'for', 'aria-label'],
       th: ['colspan', 'rowspan', 'scope'],
       td: ['colspan', 'rowspan'],
       col: ['span'],
@@ -148,6 +153,20 @@ export function sanitizeUntrustedCustomHtml(html: string): string {
     disallowedTagsMode: 'discard',
     parser: { lowerCaseAttributeNames: false },
     transformTags: {
+      input: (tagName, attribs) => {
+        const type = String(attribs.type || '').toLowerCase()
+        // Only inert checkbox toggles for CSS lightbox / drawers — never text/password/submit.
+        if (type && type !== 'checkbox' && type !== 'hidden') {
+          return { tagName: 'span', attribs: { class: attribs.class || '' } }
+        }
+        return {
+          tagName,
+          attribs: {
+            ...attribs,
+            type: type || 'checkbox',
+          },
+        }
+      },
       '*': (tagName, attribs) => {
         const next = { ...attribs }
         if (next.style && /expression\s*\(|url\s*\(\s*['"]?\s*(?:javascript|data):|-moz-binding\s*:|behavior\s*:|@import/i.test(next.style)) {
@@ -168,7 +187,8 @@ export function sanitizeUntrustedCustomHtml(html: string): string {
     new RegExp(`<${PLACEHOLDER_TAG}(?:\\s[^>]*)?></${PLACEHOLDER_TAG}>`, 'gi'),
     WIDGET_PLACEHOLDER
   )
-  return normalizeDuplicateHtmlIds(restored).html
+  const withIds = normalizeDuplicateHtmlIds(restored).html
+  return normalizeBrandLogoLinks(withIds).html
 }
 
 /** Regex sanitizer remains defense-in-depth; sanitize-html is the parser-backed gate. */

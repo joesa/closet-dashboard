@@ -3,6 +3,7 @@ import {
   ensureImageLightboxCss,
   lightboxPriorityPaths,
   looksLikeImageLightboxRequest,
+  normalizeBrandLogoLinks,
   wireImageLightboxes,
 } from './surgicalImageLightbox'
 
@@ -32,6 +33,18 @@ describe('image lightbox surgical', () => {
     expect(out).not.toMatch(
       /header[\s\S]*img-lightbox[\s\S]*logo/i
     )
+    // Bare header logo becomes a home link, not a lightbox.
+    expect(out).toMatch(/<a[^>]*href="\/"[^>]*>[\s\S]*logo\.png/i)
+  })
+
+  it('unwraps wrongly lightboxed brand logos and links them home', () => {
+    const html =
+      `<header><label class="img-lightbox"><input type="checkbox" class="lightbox-toggle"><img src="https://cdn.example/brand.png" alt="Acme Logo"></label></header>`
+    const { html: out, fixed } = normalizeBrandLogoLinks(html)
+    expect(fixed).toBeGreaterThan(0)
+    expect(out).not.toContain('img-lightbox')
+    expect(out).toMatch(/href="\/"/)
+    expect(out).toContain('brand.png')
   })
 
   it('is idempotent', () => {
