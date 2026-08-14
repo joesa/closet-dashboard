@@ -186,6 +186,38 @@ describe('site content document operations', () => {
     expect(html).not.toContain('<h1>')
   })
 
+  it('propagates a header edit to every other page on save', () => {
+    const page = (brand: string, body: string) =>
+      `<header class="site-header"><a class="brand" href="/">${brand}</a></header>` +
+      `<main>${body}</main><footer><p>Alvarado's</p></footer>`
+    const source = {
+      ...engineDocument(),
+      custom_config: {
+        mode: 'inline' as const,
+        pages: {
+          '/': { html: page('Old Brand', '<h1>Home</h1><!-- CLOSET_WIDGET -->') },
+          '/about': { html: page('Old Brand', '<h1>About</h1>') },
+          '/services': { html: page('Old Brand', '<h1>Services</h1>') },
+        },
+      },
+    }
+
+    const next = applyContentChanges(source, [{
+      op: 'set',
+      path: '/custom_config/pages/~1/html',
+      value: page('<img src="/logo.png" alt="Logo">', '<h1>Home</h1><!-- CLOSET_WIDGET -->'),
+    }], 'custom')
+
+    const pages = (next.custom_config as { pages: Record<string, { html: string }> }).pages
+    for (const path of ['/about', '/services']) {
+      expect(pages[path].html, path).toContain('<img src="/logo.png"')
+      expect(pages[path].html, path).not.toContain('Old Brand')
+    }
+    // Body content of the other pages is untouched.
+    expect(pages['/about'].html).toContain('<h1>About</h1>')
+    expect(pages['/services'].html).toContain('<h1>Services</h1>')
+  })
+
   it('rejects all core-system roots from website content operations', () => {
     for (const path of [
       '/theme', '/theme_tokens', '/layout_style', '/design_variant',

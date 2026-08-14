@@ -7,6 +7,7 @@ import type { CustomSiteConfig } from '@/lib/customSite'
 import type { ContentChange, SiteContentDocument } from './types'
 import { assertSafeContentValue, hardenCustomConfig } from './security'
 import { ContentLossError, detectCustomContentLoss } from './contentLossGuard'
+import { propagateSharedChrome } from './sharedChrome'
 
 export const SITE_CONTENT_COLUMNS = [
   'brand_name',
@@ -187,7 +188,7 @@ export function applyContentChanges(
   source: SiteContentDocument,
   changes: ContentChange[],
   renderMode: 'engine' | 'custom',
-  options: { allowContentLoss?: boolean } = {}
+  options: { allowContentLoss?: boolean; propagateSharedChrome?: boolean } = {}
 ): SiteContentDocument {
   if (!Array.isArray(changes) || changes.length === 0 || changes.length > 100) {
     throw new Error('Between 1 and 100 content changes are required')
@@ -234,7 +235,24 @@ export function applyContentChanges(
     }
   }
   if (renderMode === 'custom') preserveCustomSiteDesign(source, document)
-  const normalized = normalizeAndValidateDocument(document, renderMode)
+  let normalized = normalizeAndValidateDocument(document, renderMode)
+
+  // Header/footer live in every page's HTML, so editing the logo or footer on
+  // one page would otherwise leave the rest of the site on the old version.
+  // Skipped for restores, where a whole-config rewrite is the point.
+  if (renderMode === 'custom' && options.propagateSharedChrome !== false) {
+    const { config, propagations } = propagateSharedChrome(
+      source.custom_config as CustomSiteConfig | null,
+      normalized.custom_config as CustomSiteConfig
+    )
+    if (propagations.length > 0) {
+      normalized = normalizeAndValidateDocument(
+        { ...normalized, custom_config: config } as SiteContentDocument,
+        renderMode
+      )
+    }
+  }
+
   // Compare post-harden against the stored (already hardened) config, so
   // sanitizer normalization is never mistaken for the user deleting content.
   if (renderMode === 'custom' && !options.allowContentLoss) {
