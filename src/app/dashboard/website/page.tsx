@@ -28,6 +28,7 @@ type Viewport = 'desktop' | 'tablet' | 'mobile'
 type MediaTarget =
   | { path: string; mode: 'set' | 'insert'; index?: number }
   | { mode: 'custom' }
+  | { mode: 'custom-convert' }
 type CustomTextStyle = {
   fontFamily?: string
   fontSize?: string
@@ -619,6 +620,7 @@ export default function WebsiteStudioPage() {
               selectedPath={selectedPath}
               selection={selectedElement}
               onChooseMedia={() => { setMediaTarget({ mode: 'custom' }); setMediaOpen(true) }}
+              onChooseConvertImage={() => { setMediaTarget({ mode: 'custom-convert' }); setMediaOpen(true) }}
             />
           ) : (
             <ValueEditor
@@ -655,6 +657,8 @@ export default function WebsiteStudioPage() {
           if (!mediaTarget) return
           if (mediaTarget.mode === 'custom') {
             sendCustomEditorCommand('setValue', url)
+          } else if (mediaTarget.mode === 'custom-convert') {
+            sendCustomEditorCommand('convertToImage', url)
           } else if (mediaTarget.mode === 'insert') {
             queueChange({ op: 'insert', path: mediaTarget.path, index: mediaTarget.index ?? 0, value: url }, true)
           } else {
@@ -786,10 +790,12 @@ function CustomInspector({
   selectedPath,
   selection,
   onChooseMedia,
+  onChooseConvertImage,
 }: {
   selectedPath: string
   selection: CustomSelection | null
   onChooseMedia: () => void
+  onChooseConvertImage: () => void
 }) {
   const send = (action: string, value?: string, style?: CustomTextStyle) => {
     sendCustomEditorCommand(action, value, style)
@@ -823,6 +829,7 @@ function CustomInspector({
         key={`${selection.element}|${selection.value}|${selection.href ?? ''}`}
         selection={selection}
         send={send}
+        onChooseConvertImage={onChooseConvertImage}
         moveControls={moveControls}
         pathFooter={pathFooter}
       />
@@ -933,11 +940,13 @@ const FONT_WEIGHT_CHOICES = [
 function TextInspector({
   selection,
   send,
+  onChooseConvertImage,
   moveControls,
   pathFooter,
 }: {
   selection: CustomSelection
   send: (action: string, value?: string, style?: CustomTextStyle) => void
+  onChooseConvertImage: () => void
   moveControls: React.ReactNode
   pathFooter: React.ReactNode
 }) {
@@ -948,6 +957,7 @@ function TextInspector({
   const [fontWeight, setFontWeight] = useState(selection.style?.fontWeight ?? '400')
   const [color, setColor] = useState(selection.style?.color ?? '#000000')
   const [textAlign, setTextAlign] = useState(selection.style?.textAlign ?? 'left')
+  const [convertImageUrl, setConvertImageUrl] = useState('')
 
   return (
     <div className="space-y-4">
@@ -1020,6 +1030,16 @@ function TextInspector({
         Apply style
       </button>
 
+      <div className="border-t border-white/10 pt-4">
+        <label className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-zinc-500">Use image instead</label>
+        <p className="mb-2 text-[11px] leading-relaxed text-zinc-600">Replace this text (e.g. a text logo) with an image. Applies immediately — you can still resize, align, and swap it afterward like any other image.</p>
+        <input value={convertImageUrl} onChange={(event) => setConvertImageUrl(event.target.value)} className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none focus:border-indigo-400" placeholder="https://…" />
+        <div className="mt-2 grid grid-cols-2 gap-2">
+          <button onClick={() => convertImageUrl && send('convertToImage', convertImageUrl)} className="rounded-lg border border-white/10 py-2 text-xs">Use this URL</button>
+          <button onClick={onChooseConvertImage} className="rounded-lg border border-indigo-400/30 py-2 text-xs text-indigo-300">Choose from media</button>
+        </div>
+      </div>
+
       {moveControls}
       {pathFooter}
     </div>
@@ -1055,7 +1075,7 @@ function MediaDialog({ target, onClose, onUse }: { target: MediaTarget | null; o
     setBusy(true)
     setError('')
     const form = new FormData(); form.append('file', file)
-    if (target && target.mode !== 'custom' && /\/backgroundImage$/.test(target.path)) {
+    if (target && target.mode !== 'custom' && target.mode !== 'custom-convert' && /\/backgroundImage$/.test(target.path)) {
       form.append('imageUploadKind', 'hero')
     }
     const res = await fetch('/api/dashboard/site-media', { method: 'POST', body: form })
