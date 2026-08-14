@@ -17,6 +17,7 @@ import {
   refundDepositAction,
   enableTempPreviewAction,
   disableTempPreviewAction,
+  markPaidInFullAction,
 } from './actions'
 import IntakeAdminAlerts from './IntakeAdminAlerts'
 import IntakeDomainPurchase from '@/components/IntakeDomainPurchase'
@@ -383,6 +384,54 @@ export default async function IntakeDetailPage({
                   Temporary Approve
                 </button>
               </form>
+            </>
+          )}
+        </div>
+      )}
+
+      {data.status !== 'draft' && (
+        <div className="mt-6 rounded-lg border border-gray-200 bg-white p-6">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">
+            Free / comped build
+          </h2>
+          {launchPaid ? (
+            <p className="mt-2 rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
+              Launch payment is already settled — the owner will not be asked to pay.
+            </p>
+          ) : (
+            <>
+              <p className="mt-2 text-sm text-gray-500">
+                Give this build away: marks the launch payment (and any outstanding deposit)
+                settled, takes the site live, and expires any open Stripe checkout session so
+                the customer can never be charged for it later.
+              </p>
+              <details className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-4 py-3">
+                <summary className="cursor-pointer text-sm font-medium text-amber-900">
+                  Mark paid in full…
+                </summary>
+                <p className="mt-2 text-sm text-amber-900">
+                  No money moves in Stripe — Stripe has no way to mark a session paid without a
+                  real charge. This records the build as comped ($0) in the payment ledger.
+                </p>
+                <form action={markPaidInFullAction} className="mt-3 space-y-3">
+                  <input type="hidden" name="intake_id" value={data.id} />
+                  <label className="block text-sm">
+                    <span className="mb-1 block text-amber-900">Reason (optional, for the audit log)</span>
+                    <input
+                      type="text"
+                      name="reason"
+                      placeholder="e.g. free build for referral partner"
+                      className="w-full rounded-md border border-amber-300 bg-white px-3 py-2 text-sm"
+                    />
+                  </label>
+                  <button
+                    type="submit"
+                    className="w-full rounded-md bg-amber-700 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-600"
+                  >
+                    Mark paid in full (comp this build)
+                  </button>
+                </form>
+              </details>
             </>
           )}
         </div>

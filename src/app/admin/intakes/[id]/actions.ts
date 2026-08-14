@@ -8,6 +8,7 @@ import { sendIntakeLaunchPaymentEmail } from '@/lib/intake/sendIntakeLaunchEmail
 import { getIntakePaymentSummary } from '@/lib/intake/intakePaymentStage'
 import { syncTenantLaunchAccess } from '@/lib/intake/syncTenantLaunchAccess'
 import { grantTempPreview, revertTempPreviewNow } from '@/lib/intake/tempPreviewAccess'
+import { markIntakePaidInFull } from '@/lib/intake/markPaidInFull'
 import type { ProspectIntakeRow } from '@/lib/intake/getIntakeByToken'
 import { publicAppOrigin } from '@/lib/urls'
 
@@ -23,7 +24,8 @@ async function loadIntake(id: string) {
       `id, token, status, business_name, contact_email, notification_email,
        intake_tier, tier_total_cents, deposit_required_cents, deposit_paid_cents,
        deposit_status, build_paid_at, balance_paid_at, maintenance_plan,
-       preview_approved_at, site_live_at, provisioned_contractor_id, maintenance_started_at`
+       preview_approved_at, site_live_at, provisioned_contractor_id, maintenance_started_at,
+       stripe_checkout_session_id`
     )
     .eq('id', id)
     .maybeSingle()
@@ -195,6 +197,43 @@ export async function enableTempPreviewAction(formData: FormData) {
     targetType: 'intake',
     targetId: intakeId,
     metadata: { hours, expires_at: expiresAt, tenant_id: row.provisioned_contractor_id },
+  })
+
+  revalidatePath('/admin/intakes')
+  revalidatePath(`/admin/intakes/${intakeId}`)
+}
+
+/**
+ * Comp the build: settle every launch payment and take the site live, for when
+ * the owner is giving the build away rather than collecting for it.
+ */
+export async function markPaidInFullAction(formData: FormData) {
+  const me = await requireAdmin()
+  const intakeId = String(formData.get('intake_id') ?? '')
+  const reason = String(formData.get('reason') ?? '').trim()
+  if (!intakeId) throw new Error('intake_id required')
+
+  const row = await loadIntake(intakeId)
+  if (row.status === 'draft') {
+    throw new Error('Intake must be submitted before it can be marked paid in full')
+  }
+
+  const result = await markIntakePaidInFull({ intakeId, row })
+
+  await logAdminAction({
+    actor: me,
+    action: 'intake.marked_paid_in_full',
+    targetType: 'intake',
+    targetId: intakeId,
+    metadata: {
+      reason: reason || null,
+      comped: !result.alreadyPaid,
+      launch_kind: result.launchKind,
+      deposit_waived: result.depositWaived,
+      expired_stripe_sessions: result.expiredSessionIds,
+      stripe_warnings: result.stripeWarnings,
+      tenant_id: row.provisioned_contractor_id,
+    },
   })
 
   revalidatePath('/admin/intakes')
