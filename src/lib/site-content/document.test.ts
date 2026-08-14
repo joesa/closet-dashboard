@@ -159,6 +159,33 @@ describe('site content document operations', () => {
     expect(html).toContain('CLOSET_WIDGET')
   })
 
+  it('blocks a save that deletes the hero carrying the only h1, unless explicitly allowed', () => {
+    const hero =
+      '<section class="hero"><h1>Cleaner Tile.</h1><p>Measured chemistry, timed dwell, agitation and ' +
+      'controlled hot-water extraction for tile and grout across Middle Tennessee.</p></section>'
+    const rest =
+      '<section class="services"><h2>Services</h2><p>We inspect the surface before quoting, then agree ' +
+      'the scope in writing before any work starts on the tiled area.</p></section>'
+    const source = {
+      ...engineDocument(),
+      custom_config: {
+        mode: 'inline' as const,
+        pages: { '/': { html: `<main>${hero}${rest}<!-- CLOSET_WIDGET --></main>` } },
+      },
+    }
+    const deleteHero = [{
+      op: 'set' as const,
+      path: '/custom_config/pages/~1/html',
+      value: `<main>${rest}<!-- CLOSET_WIDGET --></main>`,
+    }]
+
+    expect(() => applyContentChanges(source, deleteHero, 'custom')).toThrow(/removes a large part/i)
+
+    const forced = applyContentChanges(source, deleteHero, 'custom', { allowContentLoss: true })
+    const html = (forced.custom_config as { pages: Record<string, { html: string }> }).pages['/'].html
+    expect(html).not.toContain('<h1>')
+  })
+
   it('rejects all core-system roots from website content operations', () => {
     for (const path of [
       '/theme', '/theme_tokens', '/layout_style', '/design_variant',

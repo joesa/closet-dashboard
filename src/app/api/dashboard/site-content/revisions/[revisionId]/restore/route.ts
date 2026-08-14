@@ -31,7 +31,11 @@ export async function POST(
       ? applyContentChanges(
           loaded.value.document,
           restoreDocumentChanges(snapshot, 'custom'),
-          'custom'
+          'custom',
+          // Rolling back to an earlier version is a deliberate act, and the
+          // most likely reason to do it is undoing a deletion. The guard must
+          // not block the very recovery it exists to make possible.
+          { allowContentLoss: true }
         )
       : snapshot
   } catch (validationError) {

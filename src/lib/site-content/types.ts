@@ -26,5 +26,8 @@ export type SiteContentRevisionSummary = {
   version: number
   changedPaths: string[]
   createdAt: string
+  /** Session-start snapshot, exempt from ordinary revision eviction. */
+  pinned?: boolean
+  pinReason?: string | null
 }
 

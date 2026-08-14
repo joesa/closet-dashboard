@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ContentChange, SiteContentDocument, SiteContentRevisionSummary } from '@/lib/site-content/types'
+import type { ContentLossReason } from '@/lib/site-content/contentLossGuard'
 import { coupledEngineChanges, engineEditorPages, imagePresentationChange, restoreDocumentChanges } from '@/lib/site-content/editorChanges'
 
 type StudioPayload = {
@@ -184,6 +185,8 @@ export default function WebsiteStudioPage() {
   const [previewNonce, setPreviewNonce] = useState(0)
   const [previewPath, setPreviewPath] = useState('/')
   const [historyOpen, setHistoryOpen] = useState(false)
+  const [contentLoss, setContentLoss] = useState<ContentLossReason[] | null>(null)
+  const confirmLossRef = useRef(false)
   const [mediaOpen, setMediaOpen] = useState(false)
   const [mediaTarget, setMediaTarget] = useState<MediaTarget | null>(null)
   const [sessionUndo, setSessionUndo] = useState<SiteContentDocument[]>([])
@@ -249,9 +252,21 @@ export default function WebsiteStudioPage() {
           baseVersion: versionRef.current,
           idempotencyKey: crypto.randomUUID(),
           changes,
+          confirmContentLoss: confirmLossRef.current,
         }),
       })
       const json = await res.json().catch(() => ({}))
+      // Must precede the version-conflict branch (both are 409) and the generic
+      // 4xx branch, which resets the document — that would discard the very
+      // edit we are asking the user to confirm.
+      if (res.status === 409 && json.code === 'content_loss_guard') {
+        pendingRef.current.unshift(...changes)
+        shouldContinue = false
+        setState('unsaved')
+        setMessage('')
+        setContentLoss((json.reasons || []) as ContentLossReason[])
+        return
+      }
       if (res.status === 409) {
         pendingRef.current.unshift(...changes)
         shouldContinue = false
@@ -270,6 +285,8 @@ export default function WebsiteStudioPage() {
         return
       }
       if (!res.ok) throw new Error(json.error || 'Save failed')
+      // One confirmation covers one destructive save, so the next one re-prompts.
+      confirmLossRef.current = false
       versionRef.current = json.version
       if (json.document) {
         // Keystrokes can arrive while this request is in flight. Rebase those
@@ -649,6 +666,29 @@ export default function WebsiteStudioPage() {
         </aside>
       </div>
 
+      {contentLoss && <ContentLossDialog
+        reasons={contentLoss}
+        onKeep={() => {
+          confirmLossRef.current = true
+          setContentLoss(null)
+          void flush()
+        }}
+        onUndo={() => {
+          confirmLossRef.current = false
+          setContentLoss(null)
+          pendingRef.current = []
+          try { localStorage.removeItem(`site-content-pending:${payload.tenant.id}`) } catch { /* ignore */ }
+          if (payload.document) {
+            setDocument(payload.document)
+            documentRef.current = payload.document
+          }
+          // Repaint the preview from the server's copy — the iframe is still
+          // showing the deletion the user just rejected.
+          setPreviewNonce((n) => n + 1)
+          setState('live')
+          setMessage('Change discarded. Your site is unchanged.')
+        }}
+      />}
       {historyOpen && <HistoryDialog revisions={payload.revisions} onClose={() => setHistoryOpen(false)} onRestored={() => { setHistoryOpen(false); void load(); setPreviewNonce((n) => n + 1) }} />}
       {mediaOpen && <MediaDialog
         target={mediaTarget}
@@ -1046,15 +1086,109 @@ function TextInspector({
   )
 }
 
+function ContentLossDialog({ reasons, onKeep, onUndo }: {
+  reasons: ContentLossReason[]
+  onKeep: () => void
+  onUndo: () => void
+}) {
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/75 p-6">
+      <div className="w-full max-w-lg rounded-2xl border border-amber-400/25 bg-[#12151c] p-6">
+        <h2 className="text-xl font-semibold text-amber-200">This edit removes a lot of the page</h2>
+        <ul className="mt-4 space-y-2">
+          {reasons.map((reason, index) => (
+            <li key={`${reason.code}-${index}`} className="rounded-lg border border-amber-400/15 bg-amber-500/5 px-3 py-2 text-sm text-amber-100">
+              {reason.message}
+            </li>
+          ))}
+        </ul>
+        <p className="mt-4 text-xs leading-relaxed text-zinc-500">
+          Your site has not been changed yet. If this was intentional, keep it — you can still roll
+          back later from History.
+        </p>
+        <div className="mt-5 grid grid-cols-2 gap-3">
+          <button onClick={onUndo} className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-black">
+            Undo it
+          </button>
+          <button onClick={onKeep} className="rounded-lg border border-amber-400/40 px-4 py-2 text-sm font-medium text-amber-200">
+            Keep this change
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function RevisionRow({ revision, busy, onRestore }: {
+  revision: SiteContentRevisionSummary
+  busy: string
+  onRestore: (id: string) => void
+}) {
+  return (
+    <div className={`flex items-center gap-3 rounded-xl border p-3 ${revision.pinned ? 'border-emerald-400/25 bg-emerald-500/5' : 'border-white/8'}`}>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm">Version {revision.version}</p>
+        <p className="truncate text-xs text-zinc-500">{revision.changedPaths.join(', ') || 'Website content'}</p>
+        <p className="text-[10px] text-zinc-600">{new Date(revision.createdAt).toLocaleString()}</p>
+      </div>
+      <button
+        disabled={!!busy}
+        onClick={() => onRestore(revision.id)}
+        className="rounded-lg border border-white/10 px-3 py-2 text-xs disabled:opacity-40"
+      >
+        {busy === revision.id ? 'Restoring…' : 'Restore'}
+      </button>
+    </div>
+  )
+}
+
 function HistoryDialog({ revisions, onClose, onRestored }: { revisions: SiteContentRevisionSummary[]; onClose: () => void; onRestored: () => void }) {
   const [busy, setBusy] = useState('')
+  // The list handed down from the initial page load goes stale the moment you
+  // edit, which is exactly when you need it. Re-fetch on open (50 rows, vs the
+  // 10 carried in the page payload).
+  const [rows, setRows] = useState<SiteContentRevisionSummary[]>(revisions)
+  const loadRevisions = useCallback(async () => {
+    const res = await fetch('/api/dashboard/site-content/revisions', { cache: 'no-store' })
+    const json = await res.json().catch(() => ({}))
+    if (res.ok && Array.isArray(json.revisions)) setRows(json.revisions)
+  }, [])
+  useEffect(() => {
+    const timer = setTimeout(() => void loadRevisions(), 0)
+    return () => clearTimeout(timer)
+  }, [loadRevisions])
+
   const restore = async (id: string) => {
+    if (!window.confirm('Restore this version? Your current content will be replaced (this is itself undoable from history).')) return
     setBusy(id)
     const res = await fetch(`/api/dashboard/site-content/revisions/${id}/restore`, { method: 'POST' })
     setBusy('')
     if (res.ok) onRestored()
   }
-  return <div className="fixed inset-0 z-50 grid place-items-center bg-black/75 p-6"><div className="max-h-[80vh] w-full max-w-xl overflow-y-auto rounded-2xl border border-white/10 bg-[#12151c] p-6"><div className="mb-5 flex items-center"><h2 className="text-xl font-semibold">Revision history</h2><button onClick={onClose} className="ml-auto text-zinc-400">Close</button></div><div className="space-y-2">{revisions.length ? revisions.map((revision) => <div key={revision.id} className="flex items-center gap-3 rounded-xl border border-white/8 p-3"><div className="min-w-0 flex-1"><p className="text-sm">Version {revision.version}</p><p className="truncate text-xs text-zinc-500">{revision.changedPaths.join(', ') || 'Website content'}</p><p className="text-[10px] text-zinc-600">{new Date(revision.createdAt).toLocaleString()}</p></div><button disabled={!!busy} onClick={() => void restore(revision.id)} className="rounded-lg border border-white/10 px-3 py-2 text-xs disabled:opacity-40">{busy === revision.id ? 'Restoring…' : 'Restore'}</button></div>) : <p className="text-sm text-zinc-500">Revisions appear after the first edit.</p>}</div></div></div>
+
+  const pinned = rows.filter((row) => row.pinned)
+  const recent = rows.filter((row) => !row.pinned)
+
+  return <div className="fixed inset-0 z-50 grid place-items-center bg-black/75 p-6"><div className="max-h-[80vh] w-full max-w-xl overflow-y-auto rounded-2xl border border-white/10 bg-[#12151c] p-6">
+    <div className="mb-5 flex items-center"><h2 className="text-xl font-semibold">Revision history</h2><button onClick={onClose} className="ml-auto text-zinc-400">Close</button></div>
+    {pinned.length > 0 && (
+      <div className="mb-5">
+        <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-emerald-300/80">Safe restore points</p>
+        <p className="mb-2 text-[11px] text-zinc-500">How the site looked at the start of an editing session. These are kept even after a lot of edits.</p>
+        <div className="space-y-2">
+          {pinned.map((revision) => <RevisionRow key={revision.id} revision={revision} busy={busy} onRestore={restore} />)}
+        </div>
+      </div>
+    )}
+    <div className="space-y-2">
+      {pinned.length > 0 && recent.length > 0 && (
+        <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-500">Recent edits</p>
+      )}
+      {rows.length
+        ? recent.map((revision) => <RevisionRow key={revision.id} revision={revision} busy={busy} onRestore={restore} />)
+        : <p className="text-sm text-zinc-500">Revisions appear after the first edit.</p>}
+    </div>
+  </div></div>
 }
 
 function MediaDialog({ target, onClose, onUse }: { target: MediaTarget | null; onClose: () => void; onUse: (url: string) => void }) {

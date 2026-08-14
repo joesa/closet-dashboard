@@ -3,8 +3,10 @@ import {
   isCustomSiteConfig,
   stripLiveWidgetsToPlaceholder,
 } from '@/lib/customSite'
+import type { CustomSiteConfig } from '@/lib/customSite'
 import type { ContentChange, SiteContentDocument } from './types'
 import { assertSafeContentValue, hardenCustomConfig } from './security'
+import { ContentLossError, detectCustomContentLoss } from './contentLossGuard'
 
 export const SITE_CONTENT_COLUMNS = [
   'brand_name',
@@ -184,7 +186,8 @@ function syncPageNavigation(
 export function applyContentChanges(
   source: SiteContentDocument,
   changes: ContentChange[],
-  renderMode: 'engine' | 'custom'
+  renderMode: 'engine' | 'custom',
+  options: { allowContentLoss?: boolean } = {}
 ): SiteContentDocument {
   if (!Array.isArray(changes) || changes.length === 0 || changes.length > 100) {
     throw new Error('Between 1 and 100 content changes are required')
@@ -231,7 +234,17 @@ export function applyContentChanges(
     }
   }
   if (renderMode === 'custom') preserveCustomSiteDesign(source, document)
-  return normalizeAndValidateDocument(document, renderMode)
+  const normalized = normalizeAndValidateDocument(document, renderMode)
+  // Compare post-harden against the stored (already hardened) config, so
+  // sanitizer normalization is never mistaken for the user deleting content.
+  if (renderMode === 'custom' && !options.allowContentLoss) {
+    const reasons = detectCustomContentLoss(
+      source.custom_config as CustomSiteConfig | null,
+      normalized.custom_config as CustomSiteConfig | null
+    )
+    if (reasons.length > 0) throw new ContentLossError(reasons)
+  }
+  return normalized
 }
 
 export function normalizeAndValidateDocument(

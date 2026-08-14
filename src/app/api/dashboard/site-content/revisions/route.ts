@@ -9,7 +9,7 @@ export async function GET() {
   if (!loaded.ok) return NextResponse.json({ error: loaded.error }, { status: loaded.status })
   const { data, error } = await getSupabaseAdmin()
     .from('site_content_revisions')
-    .select('id, version, changed_paths, created_at')
+    .select('id, version, changed_paths, created_at, pinned, pin_reason')
     .eq('tenant_id', loaded.value.tenantId)
     .order('created_at', { ascending: false })
     .limit(50)
@@ -20,6 +20,8 @@ export async function GET() {
       version: Number(row.version),
       changedPaths: row.changed_paths || [],
       createdAt: row.created_at,
+      pinned: Boolean(row.pinned),
+      pinReason: row.pin_reason ?? null,
     })),
   })
 }

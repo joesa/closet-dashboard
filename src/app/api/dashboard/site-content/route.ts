@@ -1,8 +1,10 @@
 import { after, NextResponse } from 'next/server'
+import * as Sentry from '@sentry/nextjs'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { checkRateLimit, hashRateKey } from '@/lib/rateLimit'
 import { revalidateTenantSiteCache } from '@/lib/tenants/revalidateTenantSite'
 import { applyContentChanges } from '@/lib/site-content/document'
+import { ContentLossError } from '@/lib/site-content/contentLossGuard'
 import { engineEditorPages } from '@/lib/site-content/editorChanges'
 import type { SiteContentDocument } from '@/lib/site-content/types'
 import { assertSameOriginMutation, loadOwnedSiteContent } from '@/lib/site-content/server'
@@ -35,7 +37,7 @@ function pageTree(document: Record<string, unknown>, renderMode: 'engine' | 'cus
 async function recentRevisions(tenantId: string) {
   const { data } = await getSupabaseAdmin()
     .from('site_content_revisions')
-    .select('id, version, changed_paths, created_at')
+    .select('id, version, changed_paths, created_at, pinned, pin_reason')
     .eq('tenant_id', tenantId)
     .order('created_at', { ascending: false })
     .limit(10)
@@ -44,6 +46,8 @@ async function recentRevisions(tenantId: string) {
     version: Number(row.version),
     changedPaths: row.changed_paths || [],
     createdAt: row.created_at,
+    pinned: Boolean(row.pinned),
+    pinReason: row.pin_reason ?? null,
   }))
 }
 
@@ -84,6 +88,7 @@ export async function PATCH(req: Request) {
     baseVersion?: unknown
     changes?: ContentChange[]
     idempotencyKey?: unknown
+    confirmContentLoss?: unknown
   } | null
   const baseVersion = Number(body?.baseVersion)
   const idempotencyKey = typeof body?.idempotencyKey === 'string' ? body.idempotencyKey : ''
@@ -113,8 +118,19 @@ export async function PATCH(req: Request) {
 
   let nextDocument
   try {
-    nextDocument = applyContentChanges(value.document, body?.changes || [], value.renderMode)
+    nextDocument = applyContentChanges(value.document, body?.changes || [], value.renderMode, {
+      allowContentLoss: body?.confirmContentLoss === true,
+    })
   } catch (error) {
+    // Distinct code, not just a message: the studio's generic 4xx branch resets
+    // the local document, which would throw away the edit we want the user to
+    // be able to confirm.
+    if (error instanceof ContentLossError) {
+      return NextResponse.json(
+        { error: error.message, code: 'content_loss_guard', reasons: error.reasons },
+        { status: 409 }
+      )
+    }
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Invalid content change' }, { status: 400 })
   }
   const changedPaths = [...new Set((body?.changes || []).map((change) => change.path))]
@@ -157,8 +173,22 @@ export async function PATCH(req: Request) {
     try {
       const report = await validateTenantSite(value.tenantId)
       await saveValidationReport(value.tenantId, report)
+      // A failing report no longer takes the site offline (see siteGate.ts), so
+      // it has to be loud somewhere or a real defect ships unnoticed.
+      if (report.status === 'failed') {
+        Sentry.captureMessage('Tenant site failed validation after a content save', {
+          level: 'warning',
+          tags: { tenant_id: value.tenantId },
+          extra: {
+            businessName: value.tenant.businessName,
+            issues: report.issues,
+            changedPaths,
+          },
+        })
+      }
     } catch (qualityError) {
       console.warn('[site-content] post-save quality validation failed', qualityError)
+      Sentry.captureException(qualityError)
     }
   })
   return NextResponse.json({
