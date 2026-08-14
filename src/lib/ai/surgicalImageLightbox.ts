@@ -119,7 +119,7 @@ export function normalizeBrandLogoLinks(html: string): {
       }
     }
 
-    let $anchor = $img.closest('a[href]')
+    const $anchor = $img.closest('a[href]')
     if (!$anchor.length) {
       $img.wrap('<a class="cs-brand" href="/"></a>')
       fixed += 1

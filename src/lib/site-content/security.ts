@@ -153,7 +153,7 @@ export function sanitizeUntrustedCustomHtml(html: string): string {
     disallowedTagsMode: 'discard',
     parser: { lowerCaseAttributeNames: false },
     transformTags: {
-      input: (tagName, attribs) => {
+      input: (tagName, attribs): sanitizeHtml.Tag => {
         const type = String(attribs.type || '').toLowerCase()
         // Only inert checkbox toggles for CSS lightbox / drawers — never text/password/submit.
         if (type && type !== 'checkbox' && type !== 'hidden') {
