@@ -9,6 +9,7 @@
 
 import * as cheerio from 'cheerio'
 import type { Element } from 'domhandler'
+import { isNonNavigationalHref } from '@/lib/site-content/brandLink'
 
 export const IMAGE_LIGHTBOX_SUPPORT_CSS = `/* surgical: image lightbox (CSS-only, inline-safe) */
 .img-lightbox{display:block;cursor:zoom-in;margin:0;}
@@ -126,8 +127,7 @@ export function normalizeBrandLogoLinks(html: string): {
       continue
     }
 
-    const href = ($anchor.attr('href') || '').trim()
-    if (!href || href === '#' || /^javascript:/i.test(href)) {
+    if (isNonNavigationalHref($anchor.attr('href'))) {
       $anchor.attr('href', '/')
       fixed += 1
     }

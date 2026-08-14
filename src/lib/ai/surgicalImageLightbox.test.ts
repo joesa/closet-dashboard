@@ -47,6 +47,32 @@ describe('image lightbox surgical', () => {
     expect(out).toContain('brand.png')
   })
 
+  it('repoints a brand logo whose href was set to an asset URL', () => {
+    // Verbatim shape of the Alvarado header: "Apply to selection" on the
+    // selected brand link wrote a media-proxy URL into href, so clicking the
+    // logo downloaded a JPEG. The old check only caught empty/#/javascript:.
+    const proxy = '/api/a/2ZHZfz747te3HkVNFiPLAUGp38rCpwwLntEFnj7QOxvm'
+    const html =
+      `<header class="site-header"><div class="shell header-main">` +
+      `<a class="brand" href="${proxy}"><img src="${proxy}" alt="Alvarado's Tile Installations"></a>` +
+      `<nav class="nav"><a href="/about">About Us</a></nav></div></header>`
+    const { html: out, fixed } = normalizeBrandLogoLinks(html)
+
+    expect(fixed).toBeGreaterThan(0)
+    expect(out).toMatch(/<a class="brand[^"]*" href="\/"/)
+    // Only the link is repaired — the image itself still points at the asset.
+    expect(out).toContain(`src="${proxy}"`)
+    // Unrelated navigation is untouched.
+    expect(out).toContain('href="/about"')
+  })
+
+  it('leaves a brand logo that already links somewhere real alone', () => {
+    const html =
+      `<header><a class="cs-brand" href="/home"><img src="/logo.png" alt="Logo"></a></header>`
+    const { html: out } = normalizeBrandLogoLinks(html)
+    expect(out).toContain('href="/home"')
+  })
+
   it('is idempotent', () => {
     const html =
       '<div class="plate"><img src="https://cdn.example/a.jpg" alt="A"></div>'
