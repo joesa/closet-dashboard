@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ContentChange, SiteContentDocument, SiteContentRevisionSummary } from '@/lib/site-content/types'
 import type { ContentLossReason } from '@/lib/site-content/contentLossGuard'
+import { buildDetailSyncChanges, type BusinessDetailChange } from '@/lib/site-content/businessDetails'
 import { coupledEngineChanges, engineEditorPages, imagePresentationChange, restoreDocumentChanges } from '@/lib/site-content/editorChanges'
 
 type StudioPayload = {
@@ -187,6 +188,9 @@ export default function WebsiteStudioPage() {
   const [historyOpen, setHistoryOpen] = useState(false)
   const [contentLoss, setContentLoss] = useState<ContentLossReason[] | null>(null)
   const confirmLossRef = useRef(false)
+  const [detailSync, setDetailSync] = useState<{ changes: BusinessDetailChange[]; page: string } | null>(null)
+  const declinedSyncRef = useRef<Set<string>>(new Set())
+  const skipDetailPromptRef = useRef(false)
   const [mediaOpen, setMediaOpen] = useState(false)
   const [mediaTarget, setMediaTarget] = useState<MediaTarget | null>(null)
   const [sessionUndo, setSessionUndo] = useState<SiteContentDocument[]>([])
@@ -253,6 +257,7 @@ export default function WebsiteStudioPage() {
           idempotencyKey: crypto.randomUUID(),
           changes,
           confirmContentLoss: confirmLossRef.current,
+          skipDetailSyncPrompt: skipDetailPromptRef.current,
         }),
       })
       const json = await res.json().catch(() => ({}))
@@ -297,6 +302,16 @@ export default function WebsiteStudioPage() {
         documentRef.current = rebased
       }
       setPayload((current) => current ? { ...current, version: json.version, document: json.document || current.document } : current)
+      // The edit is already saved; this only offers to carry it to the rest of
+      // the site. Declined pairs are remembered so continuing to type in the
+      // same field does not re-ask on every autosave.
+      const sync = json.detailSync as { page: string; changes: BusinessDetailChange[] } | null
+      if (sync?.changes?.length) {
+        const offers = sync.changes.filter(
+          (detail) => !declinedSyncRef.current.has(`${detail.from} ${detail.to}`)
+        )
+        if (offers.length > 0) setDetailSync({ changes: offers, page: sync.page })
+      }
       // Text and image edits are painted into the iframe optimistically. Only
       // structural changes require a full navigation/remount.
       if (previewNeedsReload(changes)) setPreviewNonce(json.version)
@@ -680,6 +695,26 @@ export default function WebsiteStudioPage() {
         </aside>
       </div>
 
+      {detailSync && <DetailSyncDialog
+        changes={detailSync.changes}
+        onApply={() => {
+          const pages = (documentRef.current?.custom_config as { pages?: Record<string, { html?: string }> } | undefined)?.pages
+          const ops = buildDetailSyncChanges(pages, detailSync.changes, detailSync.page)
+          setDetailSync(null)
+          if (ops.length === 0) return
+          // Applying the sync is itself a save; don't let it prompt about the
+          // same values all over again.
+          skipDetailPromptRef.current = true
+          for (const op of ops) queueChange(op, true)
+          setTimeout(() => { skipDetailPromptRef.current = false }, 0)
+        }}
+        onDismiss={() => {
+          for (const change of detailSync.changes) {
+            declinedSyncRef.current.add(`${change.from} ${change.to}`)
+          }
+          setDetailSync(null)
+        }}
+      />}
       {contentLoss && <ContentLossDialog
         reasons={contentLoss}
         onKeep={() => {
@@ -1104,6 +1139,48 @@ function TextInspector({
 
       {moveControls}
       {pathFooter}
+    </div>
+  )
+}
+
+function DetailSyncDialog({ changes, onApply, onDismiss }: {
+  changes: BusinessDetailChange[]
+  onApply: () => void
+  onDismiss: () => void
+}) {
+  const pages = new Set(changes.flatMap((change) => change.occurrences.map((item) => item.page)))
+  const total = changes.reduce((sum, change) => sum + change.totalOccurrences, 0)
+  const pageLabel = (path: string) => (path === '/' ? 'Home' : path.replace(/^\//, ''))
+
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/75 p-6">
+      <div className="w-full max-w-lg rounded-2xl border border-indigo-400/25 bg-[#12151c] p-6">
+        <h2 className="text-xl font-semibold">Update this everywhere?</h2>
+        <p className="mt-2 text-sm leading-relaxed text-zinc-400">
+          The old {changes.length > 1 ? 'values are' : 'value is'} still used {total} other{' '}
+          {total === 1 ? 'time' : 'times'} on {pages.size} {pages.size === 1 ? 'page' : 'pages'}.
+        </p>
+        <ul className="mt-4 space-y-2">
+          {changes.map((change) => (
+            <li key={`${change.from}|${change.to}`} className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-sm">
+              <span className="text-zinc-500 line-through">{change.from}</span>
+              <span className="mx-2 text-zinc-600">→</span>
+              <span className="text-zinc-100">{change.to}</span>
+              <span className="mt-1 block text-[11px] text-zinc-600">
+                {change.occurrences.map((item) => `${pageLabel(item.page)} (${item.count})`).join(', ')}
+              </span>
+            </li>
+          ))}
+        </ul>
+        <div className="mt-5 grid grid-cols-2 gap-3">
+          <button onClick={onDismiss} className="rounded-lg border border-white/10 px-4 py-2 text-sm text-zinc-300">
+            Just this page
+          </button>
+          <button onClick={onApply} className="rounded-lg bg-indigo-500 px-4 py-2 text-sm font-semibold">
+            Update everywhere
+          </button>
+        </div>
+      </div>
     </div>
   )
 }

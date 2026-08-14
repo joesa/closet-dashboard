@@ -5,6 +5,7 @@ import { checkRateLimit, hashRateKey } from '@/lib/rateLimit'
 import { revalidateTenantSiteCache } from '@/lib/tenants/revalidateTenantSite'
 import { applyContentChanges } from '@/lib/site-content/document'
 import { ContentLossError } from '@/lib/site-content/contentLossGuard'
+import { detectBusinessDetailChanges, type BusinessDetailChange } from '@/lib/site-content/businessDetails'
 import { engineEditorPages } from '@/lib/site-content/editorChanges'
 import type { SiteContentDocument } from '@/lib/site-content/types'
 import { assertSameOriginMutation, loadOwnedSiteContent } from '@/lib/site-content/server'
@@ -89,6 +90,7 @@ export async function PATCH(req: Request) {
     changes?: ContentChange[]
     idempotencyKey?: unknown
     confirmContentLoss?: unknown
+    skipDetailSyncPrompt?: unknown
   } | null
   const baseVersion = Number(body?.baseVersion)
   const idempotencyKey = typeof body?.idempotencyKey === 'string' ? body.idempotencyKey : ''
@@ -134,6 +136,25 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Invalid content change' }, { status: 400 })
   }
   const changedPaths = [...new Set((body?.changes || []).map((change) => change.path))]
+
+  // A detail like a phone number or address is repeated through page bodies,
+  // which shared-chrome propagation cannot reach. Report the edit so the studio
+  // can offer to carry it across the site; the save itself is valid either way,
+  // so this never blocks it. Suppressed when the client is applying a sync it
+  // already confirmed, otherwise accepting would immediately re-ask.
+  let detailSync: { page: string; changes: BusinessDetailChange[] } | null = null
+  if (value.renderMode === 'custom' && body?.skipDetailSyncPrompt !== true) {
+    const editedPages = changedPaths
+      .map((path) => path.match(/^\/custom_config\/pages\/([^/]+)\/html$/)?.[1])
+      .filter((segment): segment is string => Boolean(segment))
+      .map((segment) => segment.replace(/~1/g, '/').replace(/~0/g, '~'))
+    if (editedPages.length === 1) {
+      const previousPages = (value.document.custom_config as { pages?: Record<string, { html?: string }> } | undefined)?.pages
+      const nextPages = (nextDocument.custom_config as { pages?: Record<string, { html?: string }> } | undefined)?.pages
+      const changes = detectBusinessDetailChanges(previousPages, nextPages, editedPages[0])
+      if (changes.length > 0) detailSync = { page: editedPages[0], changes }
+    }
+  }
   const { data: nextVersion, error } = await admin.rpc('publish_site_content', {
     p_tenant_id: value.tenantId,
     p_expected_version: value.version,
@@ -196,6 +217,7 @@ export async function PATCH(req: Request) {
     version: Number(nextVersion),
     document: nextDocument,
     cacheInvalidated,
+    detailSync,
     warnings: cacheInvalidated ? [] : ['The website cache is retrying; the saved content remains safe.'],
   })
 }
