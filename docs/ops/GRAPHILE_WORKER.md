@@ -315,7 +315,9 @@ Reading the output:
 
 - **ALIVE** — heartbeat within 90s (three beats; one missed beat while a Full
   redesign pegs the event loop must not flap the status).
-- **stopped** — clean shutdown, `stopped_at` set.
+- **stopped** — shutdown was requested (`stopped_at` set). Written when the
+  signal arrives rather than when the drain completes, so a deliberate stop that
+  outran docker's 60s grace period still reads as deliberate.
 - **STALE** — no heartbeat and no shutdown record: killed, OOMed, or the host
   went away. This is the case the queue cannot show you, since a container that
   dies with nothing runnable leaves `graphile_worker.jobs` looking healthy.

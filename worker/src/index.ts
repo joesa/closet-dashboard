@@ -93,6 +93,11 @@ async function main() {
     pollInterval: 1000,
     // Install / upgrade graphile_worker schema on boot.
     taskList,
+    // We handle SIGTERM/SIGINT ourselves (see shutdown below). Graphile's own
+    // handler exits the process as soon as the drain finishes, which killed the
+    // registry's "this was a clean stop" write before it reached Postgres — so
+    // every redeploy looked identical to a crash.
+    noHandleSignals: true,
   })
 
   // Publish which build is running. Best-effort: a registry write must never
@@ -111,14 +116,61 @@ async function main() {
   }, WORKER_HEARTBEAT_MS)
   heartbeat.unref()
 
+  let shuttingDown = false
+
+  /**
+   * Ordered so the record survives the worst case.
+   *
+   * `stopped_at` means "shutdown was requested", not "drain finished". A Full
+   * redesign can run for minutes while docker's stop_grace_period is 60s, so
+   * waiting for the drain before writing would lose the record in exactly the
+   * case worth distinguishing — a deliberate stop that ran long and got
+   * SIGKILLed looks the same as an OOM.
+   */
+  async function shutdown(signal: string): Promise<void> {
+    if (shuttingDown) return
+    shuttingDown = true
+    clearInterval(heartbeat)
+    console.log(`[worker] ${signal} received — draining`)
+
+    const marked = await markWorkerInstanceStopped(pgPool, identity.id)
+    if (!marked.ok) {
+      console.warn(`[worker] could not record shutdown: ${marked.error}`)
+    }
+
+    try {
+      // Waits for in-flight jobs. Bounded below docker's 60s grace so we exit
+      // on our own terms rather than being killed mid-write.
+      await Promise.race([
+        runner.stop(),
+        new Promise((resolve) => setTimeout(resolve, 45_000)).then(() => {
+          console.warn('[worker] drain still running after 45s — exiting anyway')
+        }),
+      ])
+    } catch (err) {
+      console.warn('[worker] error during drain:', err)
+    }
+
+    await pgPool.end().catch(() => undefined)
+    process.exit(0)
+  }
+
+  for (const signal of ['SIGTERM', 'SIGINT'] as const) {
+    process.on(signal, () => {
+      void shutdown(signal)
+    })
+  }
+
   console.log('[worker] connected — listening for jobs')
   try {
     await runner.promise
   } finally {
     clearInterval(heartbeat)
-    // Graceful exit only. A SIGKILL skips this and leaves the heartbeat to go
-    // stale, which is the distinction the registry is meant to show.
-    await markWorkerInstanceStopped(pgPool, identity.id)
+    // Non-signal exit (the runner stopped on its own). The UPDATE is
+    // idempotent, so overlapping with shutdown() above is harmless.
+    if (!shuttingDown) {
+      await markWorkerInstanceStopped(pgPool, identity.id)
+    }
   }
 }
 

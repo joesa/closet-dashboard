@@ -136,7 +136,12 @@ export async function heartbeatWorkerInstance(
   }
 }
 
-/** Mark a clean exit. A killed worker never gets here — that is the point. */
+/**
+ * Record that shutdown was requested. Written when the signal arrives, not when
+ * the drain finishes: a job can outlive docker's 60s stop grace, and a
+ * deliberate stop that got SIGKILLed mid-drain should still read as deliberate.
+ * A crash or OOM never reaches this and shows up as a stale heartbeat instead.
+ */
 export async function markWorkerInstanceStopped(
   pool: Pool,
   id: string
