@@ -171,6 +171,8 @@ import {
 } from '@/lib/design/directionReservation'
 import { createSerializer, mapWithConcurrency } from '@/lib/ai/concurrency'
 import { timePass, type PassTiming } from '@/lib/ai/aiCallContext'
+import { getRecordedPrompts, withPromptRecording } from '@/lib/ai/promptRecorder'
+import { saveFullRedesignPrompts } from '@/lib/ai/fullRedesignPrompts'
 
 export type CustomBuildIntent = 'full' | 'surgical'
 
@@ -1350,7 +1352,12 @@ export async function generateCustomSiteDraft(opts: {
           context,
           images: attachmentImages,
         })
-      : await runFullGenerate({
+      : // Recording wraps the whole run so every call is captured — the brief
+        // and foundation passes are not inside a timePass scope, so a
+        // context-keyed recorder would miss exactly the prompts that matter
+        // most.
+        await withPromptRecording(async () =>
+          runFullGenerate({
           brandName,
           tenantId: opts.tenantId,
           jobKey: opts.jobKey,
@@ -1383,7 +1390,8 @@ export async function generateCustomSiteDraft(opts: {
             navLinks: Array.isArray(cfg.nav_links) ? cfg.nav_links : undefined,
           },
           images: attachmentImages,
-        })
+          })
+        )
 
   // Never mark Full redesign succeeded with an incomplete draft — missing
   // pages fall through to the old engine (or blank / 404) on Preview.
@@ -2976,6 +2984,16 @@ Output JSON for ${path} only.`
   const reply =
     foundationReply ||
     'Custom draft generated across multiple passes. Preview it, then publish when ready.'
+
+  // Persist the inputs that produced this draft. Best-effort: a build that
+  // succeeded must not be reported as failed because its audit trail did not
+  // save.
+  await saveFullRedesignPrompts({
+    tenantId: opts.tenantId,
+    runId,
+    brandName: opts.brandName,
+    prompts: getRecordedPrompts(),
+  })
 
   return {
     config: configOut,

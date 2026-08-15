@@ -4,6 +4,7 @@ import OpenAI from 'openai'
 import { createSemaphore, type Semaphore } from '@/lib/ai/concurrency'
 import { currentAiCallContext } from '@/lib/ai/aiCallContext'
 import { resolvePurposeChain, type ResolvedEndpoint } from '@/lib/ai/modelRouting'
+import { recordPrompt } from '@/lib/ai/promptRecorder'
 import { AI_PURPOSES, type AiPurpose } from '@/lib/ai/purposes'
 
 /**
@@ -545,6 +546,19 @@ async function generateWithProvider(
       totalTokens: result.totalTokens,
       estimatedCostUsd: estimateAiTextCostUsd(provider, result.inputTokens, result.outputTokens),
     }
+    // Capture the exact inputs when a Full redesign is recording. No-op
+    // otherwise, so every other caller is untouched.
+    recordPrompt({
+      pass: ctx?.pass ?? null,
+      provider,
+      model: result.model,
+      endpoint: opts.endpoint?.providerSlug ?? null,
+      systemPrompt: opts.systemPrompt ?? null,
+      userPrompt: opts.prompt,
+      imageCount: opts.images?.length ?? 0,
+      durationMs: Date.now() - startedAt,
+      ok: true,
+    })
     console.info(JSON.stringify({
       event: 'ai_text_call',
       provider,

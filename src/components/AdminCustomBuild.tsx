@@ -7,6 +7,7 @@ import {
   MAX_ADMIN_IMAGE_ATTACHMENTS,
 } from '@/lib/adminImageAttach';
 import AdminCollapsibleCard from '@/components/AdminCollapsibleCard';
+import RedesignPrompts from '@/components/RedesignPrompts';
 
 type CustomBuildJob = {
   status: 'queued' | 'processing' | 'succeeded' | 'failed';
@@ -1619,6 +1620,9 @@ export default function AdminCustomBuild({
           {reply}
         </div>
       ) : null}
+      {/* Collapsed by design: the payload runs to tens of thousands of
+          characters and is only wanted when a build comes out wrong. */}
+      <RedesignPrompts tenantId={tenantId} />
       {warnings.length > 0 ? (
         <ul className="text-xs text-amber-300/90 space-y-1 list-disc list-inside">
           {warnings.map((w) => (
