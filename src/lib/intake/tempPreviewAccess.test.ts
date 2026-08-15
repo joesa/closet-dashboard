@@ -17,7 +17,12 @@ vi.mock('@/lib/tenants/revalidateTenantSite', () => ({
   revalidateTenantSiteCache: mocks.revalidate,
 }))
 
-import { grantTempPreview, revertTempPreviewIfDue, revertTempPreviewNow } from './tempPreviewAccess'
+import {
+  grantTempPreview,
+  isTempPreviewActive,
+  revertTempPreviewIfDue,
+  revertTempPreviewNow,
+} from './tempPreviewAccess'
 
 type Row = Record<string, unknown>
 
@@ -216,5 +221,20 @@ describe('revertTempPreviewIfDue', () => {
 
     const result = await revertTempPreviewIfDue('t1')
     expect(result.reverted).toBe(false)
+  })
+})
+
+describe('isTempPreviewActive', () => {
+  it('is false without a granted window', () => {
+    expect(isTempPreviewActive(null)).toBe(false)
+    expect(isTempPreviewActive(undefined)).toBe(false)
+    expect(isTempPreviewActive('')).toBe(false)
+  })
+
+  it('is true before the deadline and false after it', () => {
+    const future = new Date(Date.now() + 60_000).toISOString()
+    const past = new Date(Date.now() - 60_000).toISOString()
+    expect(isTempPreviewActive(future)).toBe(true)
+    expect(isTempPreviewActive(past)).toBe(false)
   })
 })

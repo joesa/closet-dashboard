@@ -15,6 +15,20 @@ export const TEMP_PREVIEW_DURATIONS: readonly { hours: number; label: string }[]
   { hours: 168, label: '7 days' },
 ]
 
+/**
+ * Whether a granted temp-preview window is still open.
+ *
+ * Deliberately a module-level helper rather than an inline comparison: the
+ * admin intake page is a dynamic Server Component that renders once per
+ * request, so reading the clock there is correct, but `react-hooks/purity`
+ * rejects a bare `Date.now()` in a component body. Keeping the comparison here
+ * also gives the page and the revert worker one definition to agree on.
+ */
+export function isTempPreviewActive(expiresAt: string | null | undefined): boolean {
+  if (!expiresAt) return false
+  return new Date(expiresAt).getTime() > Date.now()
+}
+
 const INTAKE_COLUMNS =
   'id, token, intake_tier, build_paid_at, balance_paid_at, preview_approved_at, provisioned_contractor_id'
 
@@ -172,9 +186,7 @@ export async function revertTempPreviewIfDue(tenantId: string): Promise<{ revert
     .maybeSingle()
 
   if (!tenant?.temp_preview_expires_at) return { reverted: false }
-  if (new Date(tenant.temp_preview_expires_at).getTime() > Date.now()) {
-    return { reverted: false }
-  }
+  if (isTempPreviewActive(tenant.temp_preview_expires_at)) return { reverted: false }
 
   const result = await revertTempPreviewNow({ tenantId })
   return { reverted: result.reverted }

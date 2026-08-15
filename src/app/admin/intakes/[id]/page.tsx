@@ -10,7 +10,7 @@ import {
 import { getIntakePaymentSummary, isLaunchBuildPaid } from '@/lib/intake/intakePaymentStage'
 import { syncTenantLaunchAccess } from '@/lib/intake/syncTenantLaunchAccess'
 import { formatUsd } from '@/lib/intake/tiers'
-import { TEMP_PREVIEW_DURATIONS } from '@/lib/intake/tempPreviewAccess'
+import { TEMP_PREVIEW_DURATIONS, isTempPreviewActive } from '@/lib/intake/tempPreviewAccess'
 import {
   approvePreviewAction,
   markSiteLiveAction,
@@ -141,9 +141,7 @@ export default async function IntakeDetailPage({
     ? buildPlatformFallbackPreviewUrl(domainRows[0].hostname)
     : null
 
-  const tempPreviewActive = Boolean(
-    tempPreviewExpiresAt && new Date(tempPreviewExpiresAt).getTime() > Date.now()
-  )
+  const tempPreviewActive = isTempPreviewActive(tempPreviewExpiresAt)
 
   return (
     <div>
