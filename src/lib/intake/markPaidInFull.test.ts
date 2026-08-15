@@ -4,7 +4,14 @@ import type { ProspectIntakeRow } from '@/lib/intake/getIntakeByToken'
 
 const mocks = vi.hoisted(() => ({
   admin: null as unknown as SupabaseClient,
-  syncTenantLaunchAccess: vi.fn(async () => ({ siteStatus: 'active', launchPayUrl: null })),
+  // Annotated so a test can return a pay URL: inferring from this initial
+  // value would pin launchPayUrl to null.
+  syncTenantLaunchAccess: vi.fn(
+    async (): Promise<{ siteStatus: string; launchPayUrl: string | null }> => ({
+      siteStatus: 'active',
+      launchPayUrl: null,
+    })
+  ),
   retrieve: vi.fn(async () => ({ status: 'open' })),
   expire: vi.fn(async () => ({})),
   stripeThrows: false,
