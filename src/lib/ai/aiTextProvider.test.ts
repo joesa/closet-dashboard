@@ -16,6 +16,7 @@ import {
   resolveGeminiModel,
   resolveOpenAiModel,
   estimateAiTextCostUsd,
+  retryableProviderDelayMs,
 } from './aiTextProvider'
 
 describe('full redesign model defaults', () => {
@@ -129,5 +130,52 @@ describe('estimateAiTextCostUsd', () => {
     process.env.AI_COST_ANTHROPIC_INPUT_PER_MILLION_USD = '3'
     process.env.AI_COST_ANTHROPIC_OUTPUT_PER_MILLION_USD = '15'
     expect(estimateAiTextCostUsd('anthropic', 1_000, 2_000)).toBeCloseTo(0.033)
+  })
+})
+
+describe('retryableProviderDelayMs', () => {
+  it('honors a Retry-After header when it is a sane number of seconds', () => {
+    const delay = retryableProviderDelayMs(
+      { status: 429, headers: { 'retry-after': '2' } },
+      0
+    )
+    expect(delay).toBe(2000)
+  })
+
+  it('ignores an absurd Retry-After and falls back to jittered backoff', () => {
+    const delay = retryableProviderDelayMs(
+      { status: 429, headers: { 'retry-after': '3600' } },
+      0
+    )!
+    // 2000ms base at attempt 0, ±25% jitter.
+    expect(delay).toBeGreaterThanOrEqual(1500)
+    expect(delay).toBeLessThanOrEqual(2500)
+  })
+
+  it('backs off further on later attempts, capped at 20s', () => {
+    const later = retryableProviderDelayMs({ status: 503 }, 5)!
+    expect(later).toBeGreaterThanOrEqual(15_000)
+    expect(later).toBeLessThanOrEqual(25_000)
+  })
+
+  it('treats overload and rate-limit wording as retryable even without a status', () => {
+    for (const message of [
+      'Rate limit reached for gpt-5.6-sol',
+      'RESOURCE_EXHAUSTED: quota',
+      'Overloaded',
+      '429 Too Many Requests',
+    ]) {
+      expect(retryableProviderDelayMs({ message }, 0), message).not.toBeNull()
+    }
+  })
+
+  it('does not retry ordinary failures', () => {
+    for (const err of [
+      { status: 400, message: 'invalid request' },
+      { status: 401, message: 'bad key' },
+      new Error('context length exceeded'),
+    ]) {
+      expect(retryableProviderDelayMs(err, 0)).toBeNull()
+    }
   })
 })

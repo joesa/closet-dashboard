@@ -8,6 +8,7 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { sanitizeCustomConfig } from '@/lib/customSite'
 import { parseServiceUpdates } from '@/lib/ai/mergeBriefServices'
 import { releaseDesignDirectionReservation } from '@/lib/design/directionReservation'
+import { appendPassTiming, type PassTiming } from '@/lib/ai/aiCallContext'
 
 const HEARTBEAT_MS = 45_000
 
@@ -66,12 +67,23 @@ export async function processCustomBuildJob(tenantId: string): Promise<void> {
   }, HEARTBEAT_MS)
   heartbeat.unref?.()
 
-  const patchProgress = async (patch: Partial<CustomBuildJob>) => {
+  // Accumulated for the end-of-run summary log; also persisted on the job row.
+  const passTimings: PassTiming[] = []
+
+  const patchProgress = async (
+    patch: Partial<CustomBuildJob>,
+    extras?: { appendTiming?: PassTiming }
+  ) => {
     const live = await getCustomBuildJob(tenantId)
     if (!live || live.status !== 'processing') return
     await setCustomBuildJob(tenantId, {
       ...live,
       ...patch,
+      // Append against the row we just read, so a concurrent page's timing is
+      // not clobbered by this one.
+      ...(extras?.appendTiming
+        ? { pass_timings: appendPassTiming(live.pass_timings, extras.appendTiming) }
+        : {}),
       heartbeat_at: new Date().toISOString(),
     })
   }
@@ -113,7 +125,8 @@ export async function processCustomBuildJob(tenantId: string): Promise<void> {
                 locked_brief: p.lockedBrief ?? undefined,
                 service_updates: p.serviceUpdates ?? undefined,
                 foundation_reply: p.foundationReply ?? undefined,
-              })
+              }, p.passTiming ? { appendTiming: p.passTiming } : undefined)
+              if (p.passTiming) passTimings.push(p.passTiming)
             }
           : async (p) => {
               await patchProgress({
@@ -163,6 +176,15 @@ export async function processCustomBuildJob(tenantId: string): Promise<void> {
     })
     stopped = true
     clearInterval(heartbeat)
+    if (passTimings.length > 0) {
+      console.info(JSON.stringify({
+        event: 'full_redesign_pass_summary',
+        tenantId,
+        runId: claimed.started_at,
+        totalMs: passTimings.reduce((sum, t) => sum + t.ms, 0),
+        passes: passTimings.map((t) => ({ pass: t.pass, ms: t.ms, ok: t.ok })),
+      }))
+    }
     await setCustomBuildJob(tenantId, {
       ...claimed,
       status: 'succeeded',

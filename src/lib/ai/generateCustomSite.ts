@@ -166,8 +166,25 @@ import {
   reserveDesignDirection,
   type DirectionReservation,
 } from '@/lib/design/directionReservation'
+import { createSerializer, mapWithConcurrency } from '@/lib/ai/concurrency'
+import { timePass, type PassTiming } from '@/lib/ai/aiCallContext'
 
 export type CustomBuildIntent = 'full' | 'surgical'
+
+/**
+ * How many pages generate at once.
+ *
+ * 3 by default: pages run withImages:false so each in-flight task is only a
+ * prompt plus a ≤16k-token response, and the per-provider semaphore in
+ * aiTextProvider caps total model concurrency anyway. Set to 1 to restore the
+ * original strictly-serial behaviour — that is the rollback.
+ */
+export function resolveFullRedesignPageConcurrency(): number {
+  const raw = process.env.FULL_REDESIGN_PAGE_CONCURRENCY?.trim()
+  const parsed = Number(raw)
+  if (Number.isFinite(parsed) && parsed > 0) return Math.min(Math.floor(parsed), 8)
+  return 3
+}
 
 export type GenerateCustomSiteResult = {
   draft: CustomSiteConfig
@@ -998,6 +1015,8 @@ export async function generateCustomSiteDraft(opts: {
     lockedBrief?: CustomBuildLockedBrief
     serviceUpdates?: ServiceUpdates
     foundationReply?: string
+    /** Wall clock for the pass that just finished, appended to the job row. */
+    passTiming?: PassTiming
   }) => Promise<void>
   /** Persist partial draft after each pass (resume after worker crash). */
   onCheckpoint?: (draft: CustomSiteConfig) => Promise<void>
@@ -1798,6 +1817,8 @@ async function runFullGenerate(opts: {
     lockedBrief?: CustomBuildLockedBrief
     serviceUpdates?: ServiceUpdates
     foundationReply?: string
+    /** Wall clock for the pass that just finished, appended to the job row. */
+    passTiming?: PassTiming
   }) => Promise<void>
   onCheckpoint?: (draft: CustomSiteConfig) => Promise<void>
 }): Promise<{
@@ -2214,6 +2235,7 @@ DIRECTION LOCK:
     extras?: {
       serviceUpdates?: ServiceUpdates
       foundationReply?: string
+      passTiming?: PassTiming
     }
   ) => {
     const passesDone = passesDoneFromDraft(opts.requiredPaths, draftCfg)
@@ -2225,6 +2247,7 @@ DIRECTION LOCK:
       lockedBrief: lockedBriefForJob,
       serviceUpdates: extras?.serviceUpdates,
       foundationReply: extras?.foundationReply,
+      passTiming: extras?.passTiming,
     })
   }
 
@@ -2242,6 +2265,9 @@ DIRECTION LOCK:
   // therefore leaves the raw page checkpointed, the resume correctly skips it,
   // and the finalize scan still catches whatever was not repaired.
   const guardStartedAt = Date.now()
+  // Correlates every ai_text_call to this run. Derived from the job key (the
+  // job's started_at) so a Graphile resume reports under the same run id.
+  const runId = opts.jobKey || `run-${guardStartedAt}`
   const briefTextForScan = `${adminBrief}\n${enhanced.optimizedBrief}`
   const unresolvedTells: DesignTellFinding[] = []
 
@@ -2260,21 +2286,28 @@ DIRECTION LOCK:
    * model for those units back with the exact violations named. Returns the
    * draft — repaired if the repair was accepted, unchanged otherwise.
    */
-  const runGuard = async (
+  /**
+   * Ask the model to repair the given units and hand back only what changed.
+   *
+   * Deliberately does NOT touch `draft`: pages are generated concurrently, so a
+   * repair that captured a draft snapshot and returned a modified copy would
+   * resurrect stale state and silently drop sibling pages merged meanwhile.
+   * Callers apply the result to the *current* draft inside the serializer.
+   */
+  const computeGuardRepair = async (
     label: string,
-    draftCfg: CustomSiteConfig,
     units: RepairUnits,
     findings: DesignTellFinding[]
-  ): Promise<CustomSiteConfig> => {
+  ): Promise<RepairUnits | null> => {
     const blocking = findings.filter((f) => f.severity === 'error')
-    if (blocking.length === 0) return draftCfg
+    if (blocking.length === 0) return null
 
     if (!repairBudgetLeft()) {
       noteUnresolved(blocking)
       extraWarnings.push(
         `Design guard (${label}): ${blocking.length} issue(s) left unrepaired — repair budget for this run is spent.`
       )
-      return draftCfg
+      return null
     }
 
     const scan = (candidate: RepairUnits) =>
@@ -2314,9 +2347,7 @@ DIRECTION LOCK:
           repair.report.failedUnitIds.includes(repairUnitIdForFinding(f.unitId))
       )
       noteUnresolved(stillFailing)
-      return repair.repairedUnitIds.length > 0
-        ? applyRepairedUnits(draftCfg, repair.units)
-        : draftCfg
+      return repair.repairedUnitIds.length > 0 ? repair.units : null
     } catch (err) {
       // A repair failure must never fail the build — the draft is already
       // checkpointed and the publish gate will still catch what survived.
@@ -2324,8 +2355,19 @@ DIRECTION LOCK:
       console.warn('[runFullGenerate] design repair failed', label, msg)
       extraWarnings.push(`Design repair pass (${label}) failed: ${msg.slice(0, 140)}`)
       noteUnresolved(blocking)
-      return draftCfg
+      return null
     }
+  }
+
+  /** Serial call sites (foundation): repair and apply in one step. */
+  const runGuard = async (
+    label: string,
+    draftCfg: CustomSiteConfig,
+    units: RepairUnits,
+    findings: DesignTellFinding[]
+  ): Promise<CustomSiteConfig> => {
+    const repaired = await computeGuardRepair(label, units, findings)
+    return repaired ? applyRepairedUnits(draftCfg, repaired) : draftCfg
   }
 
   let draft: CustomSiteConfig =
@@ -2341,9 +2383,14 @@ DIRECTION LOCK:
       ? opts.resumeState.foundationReply
       : ''
   const remaining = () => remainingFullRedesignPaths(opts.requiredPaths, draft)
+  // Captured before the foundation pass fills home. Gates the uniqueness
+  // repair: on a resume, earlier pages are already checkpointed against the
+  // existing CSS, so rewriting it now would strand exactly the pages we are
+  // resuming to keep.
+  const builtHomeThisRun = remaining().includes('/')
 
   // —— Pass: foundation (globalCss + home) ——————————————
-  if (remaining().includes('/')) {
+  if (builtHomeThisRun) {
     await report('foundation:/', draft)
     const foundationSystem = `${systemPrompt}
 
@@ -2471,12 +2518,159 @@ Build globalCss + home "/" only. Output JSON.`
     )
   }
 
-  // —— Passes: one remaining page at a time ——————————————
+  // ── uniqueness: decided BEFORE the pages are built ───────────────────
+  // This repair rewrites globalCss and home. Running it after the page
+  // loop (as it used to) left every other page styled by CSS that had just
+  // been replaced, and nothing re-ran them. Deciding it here means the
+  // chrome sample and every page inherit the final CSS.
+  const homePageKey = draft.pages['/'] ? '/' : ''
+  const homeUnitId = unitIdForPage(homePageKey || '/')
+  const cssUnitId = unitIdForGlobalCss()
+
+  const assessUniqueness = (cfg: CustomSiteConfig) => {
+    const fp = extractCustomDesignFingerprint(cfg)
+    const collisions = findDesignCollisions(fp, opts.avoidList.taken)
+    const convergence = findFleetConvergence(fp, opts.avoidList.taken)
+    const family = findFamilyConvergence(fp, opts.avoidList.taken)
+    const convergenceBlocking =
+      convergence.length >= FLEET_CONVERGENCE_BLOCK_COUNT || family !== null
+    return {
+      fp,
+      collisions,
+      convergence,
+      family,
+      convergenceBlocking,
+      blocking: collisions.length > 0 || convergenceBlocking,
+    }
+  }
+
+  const uniquenessFindings = (
+    a: ReturnType<typeof assessUniqueness>
+  ): DesignTellFinding[] => {
+    const out: DesignTellFinding[] = []
+    // Target BOTH foundation units: palette, typography and geometry live in
+    // the global CSS — sending only home HTML back could never change the
+    // visual system the repair was told to replace.
+    const emit = (message: string, fix: string, samples: string[]) => {
+      for (const unitId of [cssUnitId, homeUnitId]) {
+        out.push({
+          code: 'design_duplicate_visual',
+          unitId,
+          severity: 'error',
+          message,
+          fix,
+          samples,
+        })
+      }
+    }
+    if (a.collisions.length > 0) {
+      emit(
+        `This redesign is visually too similar to another design already on the platform${
+          a.collisions[0].signatureConcept ? ` ("${a.collisions[0].signatureConcept}")` : ''
+        }.`,
+        'Rebuild the foundation with a different composition family, typography pairing, palette relationship, geometry and signature motif. Regenerate BOTH the global CSS design tokens and the home HTML together. Preserve business facts, services, links and the widget mount, but do not merely reorder or recolor the same sections.',
+        [`visual similarity ${a.collisions[0].score.toFixed(2)}`]
+      )
+    }
+    if (a.convergenceBlocking) {
+      const saturated: FleetConvergenceFinding[] = [
+        ...a.convergence,
+        ...(a.family ? [a.family] : []),
+      ]
+      emit(
+        `This redesign stacks design choices most of the platform already uses${
+          a.family ? ` and lands in the saturated "${a.family.value}" design family` : ''
+        } — it will read as the house style even though no single prior site matches it.`,
+        `Replace the saturated choices with a genuinely different direction: ${saturated
+          .map((c) => `${c.axis} "${c.value}" (${Math.round(c.share * 100)}% of fleet)`)
+          .join(', ')}. Change tone, geometry and chrome register together in the global CSS and home HTML — not just one of them.`,
+        saturated.slice(0, 6).map((c) => `${c.axis}:${c.value}@${Math.round(c.share * 100)}%`)
+      )
+    }
+    return out
+  }
+
+  let assessment = assessUniqueness(draft)
+  if (assessment.blocking && repairBudgetLeft() && builtHomeThisRun) {
+    const units: RepairUnits = {
+      [cssUnitId]: draft.globalCss || '',
+      [homeUnitId]: draft.pages['/']?.html || draft.pages['']?.html || '',
+    }
+    // The scan re-checks regular design tells on the candidate units AND the
+    // uniqueness/convergence verdict on the assembled artifact, so the retry
+    // loop keeps iterating until the visual system actually differs. (The
+    // previous scan could not see uniqueness at all, which made this repair a
+    // structural no-op.)
+    const uniquenessScan = (candidate: RepairUnits) => {
+      const candidateCfg: CustomSiteConfig = {
+        ...draft,
+        globalCss: candidate[cssUnitId] ?? draft.globalCss,
+        pages: {
+          ...draft.pages,
+          [homePageKey || '/']: {
+            ...(draft.pages[homePageKey || '/'] || {}),
+            html: candidate[homeUnitId] ?? units[homeUnitId],
+          },
+        },
+      }
+      const tellFindings = Object.entries(candidate).flatMap(([unitId, content]) => {
+        const path = unitId.startsWith('html:') ? unitId.slice('html:'.length) : null
+        const scanned = path
+          ? scanUnitTells(path, { html: content }, { briefText: briefTextForScan })
+          : scanArtifactTells({
+              globalCss: content,
+              pages: {},
+              briefText: briefTextForScan,
+            })
+        return scanned.map((f) => ({ ...f, unitId: repairUnitIdForFinding(f.unitId) }))
+      })
+      return toUnitQualityReport([
+        ...tellFindings,
+        ...uniquenessFindings(assessUniqueness(candidateCfg)),
+      ])
+    }
+
+    try {
+      const repair = await repairDesignTells({
+        units,
+        findings: uniquenessFindings(assessment),
+        brandName: opts.brandName,
+        directionBlock,
+        pageHints: opts.pageHints,
+        callModel: modelJson,
+        scan: uniquenessScan,
+        maxRetries: MAX_REPAIR_ATTEMPTS_PER_UNIT,
+      })
+      extraWarnings.push(...repair.warnings)
+      if (repair.repairedUnitIds.length > 0) {
+        console.info(
+          '[runFullGenerate] uniqueness repair',
+          repair.repairedUnitIds.join(',')
+        )
+        draft = applyRepairedUnits(draft, repair.units)
+        await checkpoint(draft)
+        assessment = assessUniqueness(draft)
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      console.warn('[runFullGenerate] uniqueness repair failed', msg)
+      extraWarnings.push(`Design repair pass (uniqueness) failed: ${msg.slice(0, 140)}`)
+    }
+  }
+
+  // —— Passes: remaining pages, fanned out ——————————————
+  // Pages have no data dependency on each other: each one reads only the
+  // locked globalCss and the chrome sample, both fixed before the fan-out.
+  // Model calls therefore run concurrently while every mutation of `draft`
+  // (and of the job row, via report → patchProgress, which is a
+  // read-modify-write) is funnelled through `serializePageWrite`.
   const chrome = extractChromeSample(
     draft.pages['/']?.html || draft.pages['']?.html || ''
   )
-  for (const path of remaining()) {
-    await report(path, draft, foundationReply)
+  const lockedGlobalCss = draft.globalCss || ''
+  const serializePageWrite = createSerializer()
+
+  const buildOnePage = async (path: string): Promise<void> => {
     const intakePage = Array.isArray(opts.context.intakePages)
       ? (opts.context.intakePages as Array<Record<string, unknown>>).find((p) => {
           const slug = typeof p.slug === 'string' ? p.slug : ''
@@ -2502,7 +2696,7 @@ Emit only "${path}" — no other pages, no globalCss.`
 ${directionBlock}
 
 LOCKED globalCss (do not redefine; pages link the same fonts via <link> as home):
-${(draft.globalCss || '').slice(0, 6000)}
+${lockedGlobalCss.slice(0, 6000)}
 
 CHROME SAMPLE (match structure/classes/nav hrefs):
 ${chrome || '(see home facts in context)'}
@@ -2546,10 +2740,12 @@ Output JSON for ${path} only.`
       )
     }
 
-    draft = mergePageIntoDraft(draft, path, pageArt!, draft.globalCss)
-    await checkpoint(draft)
-    await report(path, draft, foundationReply)
-    console.info('[runFullGenerate] checkpoint', path)
+    await serializePageWrite(async () => {
+      draft = mergePageIntoDraft(draft, path, pageArt!, draft.globalCss)
+      await checkpoint(draft)
+      await report(pagesPassLabel(), draft, foundationReply)
+      console.info('[runFullGenerate] checkpoint', path)
+    })
 
     // Guard this page. scanUnitTells deliberately skips globalCss-owned and
     // whole-site codes, so a page is never blamed — or regenerated — for a
@@ -2559,16 +2755,61 @@ Output JSON for ${path} only.`
       { html: pageArt!.html || '' },
       { briefText: briefTextForScan, businessName: opts.brandName }
     )
-    const guardedPage = await runGuard(
+    // Repair is computed off the draft so it can overlap other pages; only the
+    // apply touches shared state, and it targets just this page's unit.
+    const repairedUnits = await computeGuardRepair(
       path,
-      draft,
       { [unitIdForPage(path)]: pageArt!.html || '' },
       pageFindings
     )
-    if (guardedPage !== draft) {
-      draft = guardedPage
-      await checkpoint(draft)
-      await report(`${path}:repair`, draft, foundationReply)
+    if (repairedUnits) {
+      await serializePageWrite(async () => {
+        draft = applyRepairedUnits(draft, repairedUnits)
+        await checkpoint(draft)
+        await report(`${pagesPassLabel()} · ${path}:repair`, draft, foundationReply)
+      })
+    }
+  }
+
+  const pageTargets = remaining()
+  const pagesPassLabel = () =>
+    `pages:${passesDoneFromDraft(opts.requiredPaths, draft).length}/${opts.requiredPaths.length}`
+
+  if (pageTargets.length > 0) {
+    await report(pagesPassLabel(), draft, foundationReply)
+    const pageConcurrency = resolveFullRedesignPageConcurrency()
+    console.info(
+      '[runFullGenerate] page fan-out',
+      JSON.stringify({ runId, pages: pageTargets.length, concurrency: pageConcurrency })
+    )
+
+    const runPage = async (path: string) => {
+      const { timing } = await timePass(runId, `page:${path}`, () => buildOnePage(path))
+      await serializePageWrite(() => report(pagesPassLabel(), draft, foundationReply, { passTiming: timing }))
+    }
+
+    const settled = await mapWithConcurrency(pageTargets, pageConcurrency, (path) => runPage(path))
+
+    // A page that failed must not take its siblings down: every page that did
+    // land is already checkpointed. Retry the stragglers once, serially —
+    // cheaper than a Graphile re-attempt that re-claims and re-reads the job.
+    const failedPaths = settled.filter((r) => !r.ok).map((r) => r.item)
+    const stillFailing: Array<{ path: string; error: unknown }> = []
+    for (const path of failedPaths) {
+      console.warn('[runFullGenerate] page retry', path)
+      try {
+        await runPage(path)
+      } catch (err) {
+        stillFailing.push({ path, error: err })
+      }
+    }
+    if (stillFailing.length > 0) {
+      const detail = stillFailing
+        .map(({ path, error }) => `${path}: ${(error instanceof Error ? error.message : String(error)).slice(0, 120)}`)
+        .join('; ')
+      throw new Error(
+        `Page pass failed for ${stillFailing.length} page(s) — completed pages remain checkpointed for Graphile resume. ${detail}`
+      )
     }
   }
 
@@ -2645,140 +2886,12 @@ Output JSON for ${path} only.`
   // recurring motifs still make the result look like the same template — and
   // pairwise similarity alone is not enough when the fleet has slowly
   // converged on the same motifs or design family.
-  const homePageKey = draft.pages['/'] ? '/' : ''
-  const homeUnitId = unitIdForPage(homePageKey || '/')
-  const cssUnitId = unitIdForGlobalCss()
+  // Re-assess against the finished site. The fingerprint reads fonts and
+  // motifs from every page (not just CSS + home), so a sub-page can shift the
+  // verdict — but this pass only produces warnings and makes no model calls.
+  // Repairing here would strand the pages that were already built.
+  assessment = assessUniqueness(draft)
 
-  const assessUniqueness = (cfg: CustomSiteConfig) => {
-    const fp = extractCustomDesignFingerprint(cfg)
-    const collisions = findDesignCollisions(fp, opts.avoidList.taken)
-    const convergence = findFleetConvergence(fp, opts.avoidList.taken)
-    const family = findFamilyConvergence(fp, opts.avoidList.taken)
-    const convergenceBlocking =
-      convergence.length >= FLEET_CONVERGENCE_BLOCK_COUNT || family !== null
-    return {
-      fp,
-      collisions,
-      convergence,
-      family,
-      convergenceBlocking,
-      blocking: collisions.length > 0 || convergenceBlocking,
-    }
-  }
-
-  const uniquenessFindings = (
-    a: ReturnType<typeof assessUniqueness>
-  ): DesignTellFinding[] => {
-    const out: DesignTellFinding[] = []
-    // Target BOTH foundation units: palette, typography and geometry live in
-    // the global CSS — sending only home HTML back could never change the
-    // visual system the repair was told to replace.
-    const emit = (message: string, fix: string, samples: string[]) => {
-      for (const unitId of [cssUnitId, homeUnitId]) {
-        out.push({
-          code: 'design_duplicate_visual',
-          unitId,
-          severity: 'error',
-          message,
-          fix,
-          samples,
-        })
-      }
-    }
-    if (a.collisions.length > 0) {
-      emit(
-        `This redesign is visually too similar to another design already on the platform${
-          a.collisions[0].signatureConcept ? ` ("${a.collisions[0].signatureConcept}")` : ''
-        }.`,
-        'Rebuild the foundation with a different composition family, typography pairing, palette relationship, geometry and signature motif. Regenerate BOTH the global CSS design tokens and the home HTML together. Preserve business facts, services, links and the widget mount, but do not merely reorder or recolor the same sections.',
-        [`visual similarity ${a.collisions[0].score.toFixed(2)}`]
-      )
-    }
-    if (a.convergenceBlocking) {
-      const saturated: FleetConvergenceFinding[] = [
-        ...a.convergence,
-        ...(a.family ? [a.family] : []),
-      ]
-      emit(
-        `This redesign stacks design choices most of the platform already uses${
-          a.family ? ` and lands in the saturated "${a.family.value}" design family` : ''
-        } — it will read as the house style even though no single prior site matches it.`,
-        `Replace the saturated choices with a genuinely different direction: ${saturated
-          .map((c) => `${c.axis} "${c.value}" (${Math.round(c.share * 100)}% of fleet)`)
-          .join(', ')}. Change tone, geometry and chrome register together in the global CSS and home HTML — not just one of them.`,
-        saturated.slice(0, 6).map((c) => `${c.axis}:${c.value}@${Math.round(c.share * 100)}%`)
-      )
-    }
-    return out
-  }
-
-  let assessment = assessUniqueness(draft)
-  if (assessment.blocking && repairBudgetLeft()) {
-    const units: RepairUnits = {
-      [cssUnitId]: draft.globalCss || '',
-      [homeUnitId]: draft.pages['/']?.html || draft.pages['']?.html || '',
-    }
-    // The scan re-checks regular design tells on the candidate units AND the
-    // uniqueness/convergence verdict on the assembled artifact, so the retry
-    // loop keeps iterating until the visual system actually differs. (The
-    // previous scan could not see uniqueness at all, which made this repair a
-    // structural no-op.)
-    const uniquenessScan = (candidate: RepairUnits) => {
-      const candidateCfg: CustomSiteConfig = {
-        ...draft,
-        globalCss: candidate[cssUnitId] ?? draft.globalCss,
-        pages: {
-          ...draft.pages,
-          [homePageKey || '/']: {
-            ...(draft.pages[homePageKey || '/'] || {}),
-            html: candidate[homeUnitId] ?? units[homeUnitId],
-          },
-        },
-      }
-      const tellFindings = Object.entries(candidate).flatMap(([unitId, content]) => {
-        const path = unitId.startsWith('html:') ? unitId.slice('html:'.length) : null
-        const scanned = path
-          ? scanUnitTells(path, { html: content }, { briefText: briefTextForScan })
-          : scanArtifactTells({
-              globalCss: content,
-              pages: {},
-              briefText: briefTextForScan,
-            })
-        return scanned.map((f) => ({ ...f, unitId: repairUnitIdForFinding(f.unitId) }))
-      })
-      return toUnitQualityReport([
-        ...tellFindings,
-        ...uniquenessFindings(assessUniqueness(candidateCfg)),
-      ])
-    }
-
-    try {
-      const repair = await repairDesignTells({
-        units,
-        findings: uniquenessFindings(assessment),
-        brandName: opts.brandName,
-        directionBlock,
-        pageHints: opts.pageHints,
-        callModel: modelJson,
-        scan: uniquenessScan,
-        maxRetries: MAX_REPAIR_ATTEMPTS_PER_UNIT,
-      })
-      extraWarnings.push(...repair.warnings)
-      if (repair.repairedUnitIds.length > 0) {
-        console.info(
-          '[runFullGenerate] uniqueness repair',
-          repair.repairedUnitIds.join(',')
-        )
-        draft = applyRepairedUnits(draft, repair.units)
-        await checkpoint(draft)
-        assessment = assessUniqueness(draft)
-      }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      console.warn('[runFullGenerate] uniqueness repair failed', msg)
-      extraWarnings.push(`Design repair pass (uniqueness) failed: ${msg.slice(0, 140)}`)
-    }
-  }
   const collisions = assessment.collisions
   if (collisions.length > 0) {
     extraWarnings.push(

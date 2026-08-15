@@ -1,3 +1,4 @@
+import type { PassTiming } from '@/lib/ai/aiCallContext'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import type { FullRedesignPreflight } from '@/lib/ai/fullRedesignDesignSystem'
 
@@ -63,6 +64,12 @@ export type CustomBuildJob = {
   pass?: string | null
   /** Paths already checkpointed with usable HTML. */
   passes_done?: string[]
+  /**
+   * Wall-clock per pass, so a slow run can be attributed to a phase instead of
+   * guessed at. Bounded to MAX_PASS_TIMINGS entries — this rides in the JSONB
+   * job row, so it must not grow without limit on a retry-heavy run.
+   */
+  pass_timings?: PassTiming[]
   /** Intake paths this run must produce. */
   required_paths?: string[]
   /** Foundation service adds/removes — restored on resume after skip-home. */

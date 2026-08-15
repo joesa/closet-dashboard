@@ -272,9 +272,62 @@ describe('full redesign design guard', () => {
     expect(foundationGuard).toBeGreaterThan(foundationCheckpoint)
 
     const pageCheckpoint = src.indexOf("console.info('[runFullGenerate] checkpoint', path)")
-    const pageGuard = src.indexOf('const guardedPage = await runGuard(')
+    const pageGuard = src.indexOf('const repairedUnits = await computeGuardRepair(')
     expect(pageCheckpoint).toBeGreaterThan(0)
     expect(pageGuard).toBeGreaterThan(pageCheckpoint)
+  })
+
+  it('keeps page fan-out safe: model calls parallel, shared-state writes serialized', () => {
+    // The page loop runs concurrently, so every mutation of `draft` and of the
+    // job row (report → patchProgress is a read-modify-write) must sit inside
+    // the serializer. A bare `draft =` in the page path would lose pages.
+    expect(src).toContain('const serializePageWrite = createSerializer()')
+    expect(src).toContain('mapWithConcurrency(pageTargets, pageConcurrency')
+
+    const fanOutStart = src.indexOf('const buildOnePage = async')
+    const fanOutEnd = src.indexOf('const added = serviceUpdates.added')
+    expect(fanOutStart).toBeGreaterThan(0)
+    expect(fanOutEnd).toBeGreaterThan(fanOutStart)
+
+    const pageSection = src.slice(fanOutStart, fanOutEnd)
+    for (const mutation of pageSection.match(/^\s*draft = .*$/gm) || []) {
+      // Every draft mutation in the fan-out region is inside a serialized block.
+      const at = pageSection.indexOf(mutation)
+      const enclosing = pageSection.lastIndexOf('serializePageWrite(async () => {', at)
+      expect(enclosing, `unserialized draft mutation: ${mutation.trim()}`).toBeGreaterThan(-1)
+    }
+  })
+
+  it('decides uniqueness before the pages are built, not after', () => {
+    // The repair rewrites globalCss and home. Running it after the page loop
+    // left every other page styled by CSS that had just been replaced, with
+    // nothing re-running them — a silent visual break, not just wasted calls.
+    const repair = src.indexOf("'[runFullGenerate] uniqueness repair'")
+    const chrome = src.indexOf('const chrome = extractChromeSample(')
+    const fanOut = src.indexOf('mapWithConcurrency(pageTargets, pageConcurrency')
+    expect(repair).toBeGreaterThan(0)
+    expect(chrome).toBeGreaterThan(repair)
+    expect(fanOut).toBeGreaterThan(repair)
+  })
+
+  it('skips the uniqueness repair on a resume so it cannot strand earlier pages', () => {
+    expect(src).toContain('const builtHomeThisRun = remaining().includes(\'/\')')
+    expect(src).toContain('repairBudgetLeft() && builtHomeThisRun')
+  })
+
+  it('re-assesses uniqueness after the pages, for warnings only', () => {
+    const fanOut = src.indexOf('mapWithConcurrency(pageTargets, pageConcurrency')
+    const reassess = src.lastIndexOf('assessment = assessUniqueness(draft)')
+    const collisions = src.indexOf('const collisions = assessment.collisions')
+    expect(reassess).toBeGreaterThan(fanOut)
+    expect(collisions).toBeGreaterThan(reassess)
+    // No repair may follow the fan-out — that is the bug this replaced.
+    expect(src.slice(fanOut).includes('repairDesignTells(')).toBe(false)
+  })
+
+  it('retries a failed page once in-run instead of discarding its siblings', () => {
+    expect(src).toContain("console.warn('[runFullGenerate] page retry', path)")
+    expect(src).toContain('completed pages remain checkpointed for Graphile resume')
   })
 
   it('blocks publish on a duplicated home rhythm', () => {
