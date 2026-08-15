@@ -25,6 +25,8 @@ export type ProspectIntakeRow = {
   site_live_at: string | null
   provisioned_contractor_id: string | null
   maintenance_started_at: string | null
+  /** When set, ongoing site maintenance checkout is not required. */
+  maintenance_waived_at: string | null
   ai_site_config: Record<string, unknown> | null
   widget_config_hints: Record<string, unknown> | null
   image_selections: unknown
@@ -95,6 +97,7 @@ const INTAKE_SELECT = `
   deposit_status, stripe_checkout_session_id, tier_selected_at,
   build_paid_at, balance_paid_at, maintenance_plan, preview_approved_at,
   site_live_at, provisioned_contractor_id, maintenance_started_at,
+  maintenance_waived_at,
   ai_site_config, widget_config_hints, image_selections, background_job,
   services, vibe, tone, customers, experience, differentiators, primary_cta, notes,
   pricing_notes, primary_color_hex, logo_url, contact_name, contact_phone,

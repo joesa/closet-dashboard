@@ -43,13 +43,16 @@ export function resolveLaunchAccess(row: ProspectIntakeRow): {
  * Prevents custom domains and subdomains from serving the full site before pay-to-launch.
  *
  * Important: never *downgrade* an already-`active` site back to a holding
- * status. Admin "Approve & Go Live" is an explicit override; opening the
- * intake detail page (which calls this sync) used to wipe that approval
+ * status by default. Admin "Approve & Go Live" is an explicit override; opening
+ * the intake detail page (which calls this sync) used to wipe that approval
  * whenever launch payment fields were still empty.
+ *
+ * Pass `allowDowngrade: true` only for explicit admin undos of a comped build.
  */
 export async function syncTenantLaunchAccess(opts: {
   tenantId: string
   intakeId?: string | null
+  allowDowngrade?: boolean
 }): Promise<{ siteStatus: TenantSiteStatus; launchPayUrl: string | null }> {
   const admin = getSupabaseAdmin()
 
@@ -88,7 +91,9 @@ export async function syncTenantLaunchAccess(opts: {
     .maybeSingle()
   const current = (tenant?.site_status || '') as TenantSiteStatus | ''
 
-  const siteStatus = pickSyncedSiteStatus(current, resolved.siteStatus)
+  const siteStatus = opts.allowDowngrade
+    ? resolved.siteStatus
+    : pickSyncedSiteStatus(current, resolved.siteStatus)
   const launchPayUrl =
     siteStatus === 'active' ? null : resolved.launchPayUrl
 

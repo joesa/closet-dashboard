@@ -18,10 +18,14 @@ import {
   enableTempPreviewAction,
   disableTempPreviewAction,
   markPaidInFullAction,
+  undoPaidInFullAction,
+  waiveMaintenanceAction,
+  undoWaiveMaintenanceAction,
 } from './actions'
 import IntakeAdminAlerts from './IntakeAdminAlerts'
 import IntakeDomainPurchase from '@/components/IntakeDomainPurchase'
 import { publicAppOrigin } from '@/lib/urls'
+import { hasCompLaunchPayment, listCompPayments } from '@/lib/intake/markPaidInFull'
 
 export const dynamic = 'force-dynamic'
 
@@ -45,7 +49,8 @@ export default async function IntakeDetailPage({
       `id, token, status, business_name, contact_email, notification_email,
        intake_tier, tier_total_cents, deposit_status, deposit_paid_cents,
        build_paid_at, balance_paid_at, maintenance_plan, preview_approved_at,
-       site_live_at, maintenance_started_at, provisioned_contractor_id, submitted_at,
+       site_live_at, maintenance_started_at, maintenance_waived_at,
+       provisioned_contractor_id, submitted_at,
        ai_site_config, desired_domain, domain_purchase_requested`
     )
     .eq('id', id)
@@ -59,6 +64,10 @@ export default async function IntakeDetailPage({
   const launchPaid = isLaunchBuildPaid(
     data as unknown as Parameters<typeof isLaunchBuildPaid>[0]
   )
+  const compPayments = data.status !== 'draft' ? await listCompPayments(data.id) : []
+  const launchWasComped = hasCompLaunchPayment(compPayments)
+  const maintenanceWaived = Boolean(data.maintenance_waived_at)
+  const maintenanceStarted = Boolean(data.maintenance_started_at)
   const intakeUrl = `${publicAppOrigin()}/intake/${data.token}`
 
   let tenantSiteStatus: string | null = null
@@ -395,9 +404,46 @@ export default async function IntakeDetailPage({
             Free / comped build
           </h2>
           {launchPaid ? (
-            <p className="mt-2 rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
-              Launch payment is already settled — the owner will not be asked to pay.
-            </p>
+            <div className="mt-2 space-y-3">
+              <p className="rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
+                Launch payment is already settled — the owner will not be asked to pay
+                {launchWasComped ? ' (comped / $0 ledger).' : '.'}
+              </p>
+              {launchWasComped ? (
+                <details className="rounded-md border border-rose-200 bg-rose-50 px-4 py-3">
+                  <summary className="cursor-pointer text-sm font-medium text-rose-900">
+                    Undo mark paid in full…
+                  </summary>
+                  <p className="mt-2 text-sm text-rose-900">
+                    Clears the comp ledger and puts launch payment due again. The public site
+                    will return to awaiting-payment access. This only works for comps — not for
+                    real Stripe charges.
+                  </p>
+                  <form action={undoPaidInFullAction} className="mt-3 space-y-3">
+                    <input type="hidden" name="intake_id" value={data.id} />
+                    <label className="block text-sm">
+                      <span className="mb-1 block text-rose-900">Reason (optional, for the audit log)</span>
+                      <input
+                        type="text"
+                        name="reason"
+                        placeholder="e.g. owner changed mind — collect payment"
+                        className="w-full rounded-md border border-rose-300 bg-white px-3 py-2 text-sm"
+                      />
+                    </label>
+                    <button
+                      type="submit"
+                      className="w-full rounded-md bg-rose-700 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-600"
+                    >
+                      Undo mark paid in full
+                    </button>
+                  </form>
+                </details>
+              ) : (
+                <p className="text-xs text-gray-500">
+                  Settled via Stripe (or another non-comp path) — undo is not available here.
+                </p>
+              )}
+            </div>
           ) : (
             <>
               <p className="mt-2 text-sm text-gray-500">
@@ -434,6 +480,83 @@ export default async function IntakeDetailPage({
               </details>
             </>
           )}
+
+          <div className="mt-6 border-t border-gray-100 pt-5">
+            <h3 className="text-sm font-semibold text-gray-700">Monthly service fees</h3>
+            {maintenanceStarted ? (
+              <p className="mt-2 rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
+                Site maintenance has already started
+                {data.maintenance_plan ? ` (${data.maintenance_plan})` : ''}. Cancel or change
+                the Stripe subscription separately if needed.
+              </p>
+            ) : maintenanceWaived ? (
+              <div className="mt-2 space-y-3">
+                <p className="rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
+                  Monthly / yearly site maintenance is not required for this intake.
+                </p>
+                <details className="rounded-md border border-rose-200 bg-rose-50 px-4 py-3">
+                  <summary className="cursor-pointer text-sm font-medium text-rose-900">
+                    Undo maintenance waiver…
+                  </summary>
+                  <p className="mt-2 text-sm text-rose-900">
+                    Makes the ongoing maintenance checkout required again once the site is live.
+                  </p>
+                  <form action={undoWaiveMaintenanceAction} className="mt-3 space-y-3">
+                    <input type="hidden" name="intake_id" value={data.id} />
+                    <label className="block text-sm">
+                      <span className="mb-1 block text-rose-900">Reason (optional, for the audit log)</span>
+                      <input
+                        type="text"
+                        name="reason"
+                        placeholder="e.g. owner wants to bill maintenance after all"
+                        className="w-full rounded-md border border-rose-300 bg-white px-3 py-2 text-sm"
+                      />
+                    </label>
+                    <button
+                      type="submit"
+                      className="w-full rounded-md bg-rose-700 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-600"
+                    >
+                      Require monthly service fees again
+                    </button>
+                  </form>
+                </details>
+              </div>
+            ) : (
+              <>
+                <p className="mt-2 text-sm text-gray-500">
+                  By default the owner is asked for ongoing site maintenance after launch. Waive
+                  it when this build should not require those monthly / yearly fees.
+                </p>
+                <details className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-4 py-3">
+                  <summary className="cursor-pointer text-sm font-medium text-amber-900">
+                    Do not require monthly service fees…
+                  </summary>
+                  <p className="mt-2 text-sm text-amber-900">
+                    Skips the maintenance checkout for this intake. You can undo this later if
+                    the owner changes their mind.
+                  </p>
+                  <form action={waiveMaintenanceAction} className="mt-3 space-y-3">
+                    <input type="hidden" name="intake_id" value={data.id} />
+                    <label className="block text-sm">
+                      <span className="mb-1 block text-amber-900">Reason (optional, for the audit log)</span>
+                      <input
+                        type="text"
+                        name="reason"
+                        placeholder="e.g. included in partnership deal"
+                        className="w-full rounded-md border border-amber-300 bg-white px-3 py-2 text-sm"
+                      />
+                    </label>
+                    <button
+                      type="submit"
+                      className="w-full rounded-md bg-amber-700 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-600"
+                    >
+                      Waive monthly service fees
+                    </button>
+                  </form>
+                </details>
+              </>
+            )}
+          </div>
         </div>
       )}
 

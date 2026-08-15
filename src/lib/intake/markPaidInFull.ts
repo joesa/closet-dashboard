@@ -169,3 +169,165 @@ export async function markIntakePaidInFull(opts: {
 
   return { alreadyPaid, launchKind, depositWaived: depositOutstanding, expiredSessionIds, stripeWarnings }
 }
+
+export type CompPaymentRow = {
+  id: string
+  kind: string
+  stripe_session_id: string
+  status: string
+}
+
+/** Paid ledger rows minted by markIntakePaidInFull / waiveIntakeMaintenance. */
+export async function listCompPayments(intakeId: string): Promise<CompPaymentRow[]> {
+  const admin = getSupabaseAdmin()
+  const { data, error } = await admin
+    .from('intake_payments')
+    .select('id, kind, stripe_session_id, status')
+    .eq('intake_id', intakeId)
+    .eq('status', 'paid')
+    .like('stripe_session_id', 'comp:%')
+  if (error) throw error
+  return (Array.isArray(data) ? data : []) as CompPaymentRow[]
+}
+
+export function hasCompLaunchPayment(comps: CompPaymentRow[]): boolean {
+  return comps.some((row) => row.kind === 'standard_build' || row.kind === 'balance')
+}
+
+export function hasCompMaintenanceWaiver(comps: CompPaymentRow[]): boolean {
+  return comps.some((row) => row.kind === 'maintenance')
+}
+
+export type UndoPaidInFullResult = {
+  launchKind: 'standard_build' | 'balance'
+  clearedLaunchPayment: boolean
+  restoredDeposit: boolean
+  deletedCompKinds: string[]
+  siteStatus: string | null
+}
+
+/**
+ * Undo a prior markIntakePaidInFull. Only works when the launch was settled via
+ * a synthetic `comp:` ledger row — never reverses a real Stripe charge.
+ */
+export async function undoIntakePaidInFull(opts: {
+  intakeId: string
+  row: ProspectIntakeRow & { stripe_checkout_session_id?: string | null }
+}): Promise<UndoPaidInFullResult> {
+  const { intakeId, row } = opts
+  const admin = getSupabaseAdmin()
+  const launchKind = launchKindFor(row)
+  const comps = await listCompPayments(intakeId)
+  const launchComps = comps.filter((c) => c.kind === 'standard_build' || c.kind === 'balance')
+  if (launchComps.length === 0) {
+    throw new Error(
+      'This launch payment was not marked as a comp (no comp ledger row). Undo is only available for free/comped builds, not Stripe-paid ones.'
+    )
+  }
+
+  const depositComps = comps.filter((c) => c.kind === 'deposit')
+  const now = new Date().toISOString()
+  const patch: Record<string, unknown> = { updated_at: now }
+
+  if (launchKind === 'balance') patch.balance_paid_at = null
+  else patch.build_paid_at = null
+
+  let restoredDeposit = false
+  if (depositComps.length > 0 && row.deposit_status === 'waived') {
+    patch.deposit_status = (row.deposit_required_cents || 0) > 0 ? 'pending' : 'not_required'
+    restoredDeposit = true
+  }
+
+  const { error } = await admin.from('prospect_intakes').update(patch).eq('id', intakeId)
+  if (error) throw error
+
+  const toDelete = [...launchComps, ...(restoredDeposit ? depositComps : [])]
+  const deletedCompKinds: string[] = []
+  for (const payment of toDelete) {
+    const { error: delErr } = await admin.from('intake_payments').delete().eq('id', payment.id)
+    if (delErr) throw delErr
+    deletedCompKinds.push(String(payment.kind))
+  }
+
+  let siteStatus: string | null = null
+  if (row.provisioned_contractor_id) {
+    const synced = await syncTenantLaunchAccess({
+      tenantId: row.provisioned_contractor_id,
+      intakeId,
+      allowDowngrade: true,
+    })
+    siteStatus = synced.siteStatus
+  }
+
+  return {
+    launchKind,
+    clearedLaunchPayment: true,
+    restoredDeposit,
+    deletedCompKinds,
+    siteStatus,
+  }
+}
+
+export type MaintenanceWaiverResult = {
+  alreadyWaived: boolean
+  alreadyStarted: boolean
+}
+
+/** Waive ongoing site maintenance so the customer is never asked for the monthly/yearly fee. */
+export async function waiveIntakeMaintenance(opts: {
+  intakeId: string
+  row: ProspectIntakeRow
+}): Promise<MaintenanceWaiverResult> {
+  const { intakeId, row } = opts
+  if (row.maintenance_waived_at) {
+    return { alreadyWaived: true, alreadyStarted: Boolean(row.maintenance_started_at) }
+  }
+  if (row.maintenance_started_at) {
+    return { alreadyWaived: false, alreadyStarted: true }
+  }
+
+  const admin = getSupabaseAdmin()
+  const now = new Date().toISOString()
+  const { error } = await admin
+    .from('prospect_intakes')
+    .update({ maintenance_waived_at: now, updated_at: now })
+    .eq('id', intakeId)
+  if (error) throw error
+
+  await recordCompPayment(intakeId, 'maintenance')
+  return { alreadyWaived: false, alreadyStarted: false }
+}
+
+export type UndoMaintenanceWaiverResult = {
+  restored: boolean
+}
+
+/** Undo a maintenance waiver so the monthly/yearly checkout is required again. */
+export async function undoWaiveIntakeMaintenance(opts: {
+  intakeId: string
+  row: ProspectIntakeRow
+}): Promise<UndoMaintenanceWaiverResult> {
+  const { intakeId, row } = opts
+  if (!row.maintenance_waived_at) {
+    throw new Error('Maintenance is not currently waived for this intake')
+  }
+  if (row.maintenance_started_at) {
+    throw new Error('Maintenance already started via a real subscription — cannot restore a waiver over an active plan')
+  }
+
+  const admin = getSupabaseAdmin()
+  const now = new Date().toISOString()
+  const { error } = await admin
+    .from('prospect_intakes')
+    .update({ maintenance_waived_at: null, updated_at: now })
+    .eq('id', intakeId)
+  if (error) throw error
+
+  const comps = await listCompPayments(intakeId)
+  for (const payment of comps.filter((c) => c.kind === 'maintenance')) {
+    const { error: delErr } = await admin.from('intake_payments').delete().eq('id', payment.id)
+    if (delErr) throw delErr
+  }
+
+  return { restored: true }
+}

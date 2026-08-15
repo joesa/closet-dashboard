@@ -88,6 +88,7 @@ export async function buildIntakePublicJson(row: ProspectIntakeRow) {
     buildPaidAt: row.build_paid_at,
     balancePaidAt: row.balance_paid_at,
     maintenanceStartedAt: row.maintenance_started_at,
+    maintenanceWaivedAt: row.maintenance_waived_at,
     paymentStage: payment.stage,
     paymentDueLabel: payment.label,
     paymentCheckoutKind: payment.checkoutKind,

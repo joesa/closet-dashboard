@@ -107,6 +107,7 @@ export function getIntakePaymentSummary(row: ProspectIntakeRow): IntakePaymentSu
     row.site_live_at &&
     row.maintenance_plan &&
     !row.maintenance_started_at &&
+    !row.maintenance_waived_at &&
     row.provisioned_contractor_id
   ) {
     return {
@@ -115,6 +116,16 @@ export function getIntakePaymentSummary(row: ProspectIntakeRow): IntakePaymentSu
       checkoutKind: 'maintenance',
       amountCents: 0,
       canCheckout: true,
+    }
+  }
+
+  if (buildPaid(row) && row.maintenance_waived_at) {
+    return {
+      stage: 'complete',
+      label: 'Paid — maintenance waived',
+      checkoutKind: null,
+      amountCents: 0,
+      canCheckout: false,
     }
   }
 

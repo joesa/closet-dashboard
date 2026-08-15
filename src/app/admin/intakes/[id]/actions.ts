@@ -8,7 +8,7 @@ import { sendIntakeLaunchPaymentEmail } from '@/lib/intake/sendIntakeLaunchEmail
 import { getIntakePaymentSummary } from '@/lib/intake/intakePaymentStage'
 import { syncTenantLaunchAccess } from '@/lib/intake/syncTenantLaunchAccess'
 import { grantTempPreview, revertTempPreviewNow } from '@/lib/intake/tempPreviewAccess'
-import { markIntakePaidInFull } from '@/lib/intake/markPaidInFull'
+import { markIntakePaidInFull, undoIntakePaidInFull, waiveIntakeMaintenance, undoWaiveIntakeMaintenance } from '@/lib/intake/markPaidInFull'
 import type { ProspectIntakeRow } from '@/lib/intake/getIntakeByToken'
 import { publicAppOrigin } from '@/lib/urls'
 
@@ -25,7 +25,7 @@ async function loadIntake(id: string) {
        intake_tier, tier_total_cents, deposit_required_cents, deposit_paid_cents,
        deposit_status, build_paid_at, balance_paid_at, maintenance_plan,
        preview_approved_at, site_live_at, provisioned_contractor_id, maintenance_started_at,
-       stripe_checkout_session_id`
+       maintenance_waived_at, stripe_checkout_session_id`
     )
     .eq('id', id)
     .maybeSingle()
@@ -232,6 +232,96 @@ export async function markPaidInFullAction(formData: FormData) {
       deposit_waived: result.depositWaived,
       expired_stripe_sessions: result.expiredSessionIds,
       stripe_warnings: result.stripeWarnings,
+      tenant_id: row.provisioned_contractor_id,
+    },
+  })
+
+  revalidatePath('/admin/intakes')
+  revalidatePath(`/admin/intakes/${intakeId}`)
+}
+
+/**
+ * Undo a prior free/comped mark-paid-in-full. Refuses real Stripe-paid launches.
+ */
+export async function undoPaidInFullAction(formData: FormData) {
+  const me = await requireAdmin()
+  const intakeId = String(formData.get('intake_id') ?? '')
+  const reason = String(formData.get('reason') ?? '').trim()
+  if (!intakeId) throw new Error('intake_id required')
+
+  const row = await loadIntake(intakeId)
+  const result = await undoIntakePaidInFull({ intakeId, row })
+
+  await logAdminAction({
+    actor: me,
+    action: 'intake.undid_paid_in_full',
+    targetType: 'intake',
+    targetId: intakeId,
+    metadata: {
+      reason: reason || null,
+      launch_kind: result.launchKind,
+      restored_deposit: result.restoredDeposit,
+      deleted_comp_kinds: result.deletedCompKinds,
+      site_status: result.siteStatus,
+      tenant_id: row.provisioned_contractor_id,
+    },
+  })
+
+  revalidatePath('/admin/intakes')
+  revalidatePath(`/admin/intakes/${intakeId}`)
+}
+
+/** Waive ongoing monthly/yearly site maintenance for this intake. */
+export async function waiveMaintenanceAction(formData: FormData) {
+  const me = await requireAdmin()
+  const intakeId = String(formData.get('intake_id') ?? '')
+  const reason = String(formData.get('reason') ?? '').trim()
+  if (!intakeId) throw new Error('intake_id required')
+
+  const row = await loadIntake(intakeId)
+  if (row.status === 'draft') {
+    throw new Error('Intake must be submitted before maintenance can be waived')
+  }
+
+  const result = await waiveIntakeMaintenance({ intakeId, row })
+  if (result.alreadyStarted) {
+    throw new Error('Maintenance already started — cancel the Stripe subscription separately if needed')
+  }
+
+  await logAdminAction({
+    actor: me,
+    action: 'intake.maintenance_waived',
+    targetType: 'intake',
+    targetId: intakeId,
+    metadata: {
+      reason: reason || null,
+      already_waived: result.alreadyWaived,
+      tenant_id: row.provisioned_contractor_id,
+    },
+  })
+
+  revalidatePath('/admin/intakes')
+  revalidatePath(`/admin/intakes/${intakeId}`)
+}
+
+/** Undo a maintenance waiver so monthly/yearly fees are required again. */
+export async function undoWaiveMaintenanceAction(formData: FormData) {
+  const me = await requireAdmin()
+  const intakeId = String(formData.get('intake_id') ?? '')
+  const reason = String(formData.get('reason') ?? '').trim()
+  if (!intakeId) throw new Error('intake_id required')
+
+  const row = await loadIntake(intakeId)
+  const result = await undoWaiveIntakeMaintenance({ intakeId, row })
+
+  await logAdminAction({
+    actor: me,
+    action: 'intake.maintenance_waiver_undone',
+    targetType: 'intake',
+    targetId: intakeId,
+    metadata: {
+      reason: reason || null,
+      restored: result.restored,
       tenant_id: row.provisioned_contractor_id,
     },
   })
