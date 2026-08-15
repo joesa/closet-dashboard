@@ -590,3 +590,72 @@ describe('report adapters', () => {
     expect(text).toContain('Offending:')
   })
 })
+
+describe('structural defects', () => {
+  const codes = (css: string) =>
+    scanArtifactTells({ globalCss: css, pages: {}, briefText: null }).map((f) => f.code)
+
+  describe('design_uncentered_shell', () => {
+    it('flags a fixed max-width with no auto inline margin', () => {
+      const css = `${CLEAN_CSS}
+.wrap{max-width:1180px;padding:30px}`
+      expect(codes(css)).toContain('design_uncentered_shell')
+    })
+
+    it('accepts the same cap once it is centred', () => {
+      for (const centring of ['margin:0 auto', 'margin-inline:auto', 'margin:0 auto 40px']) {
+        const css = `${CLEAN_CSS}
+.wrap{max-width:1180px;${centring};padding:30px}`
+        expect(codes(css)).not.toContain('design_uncentered_shell')
+      }
+    })
+
+    it('ignores a ch/% measure cap, which limits text rather than the shell', () => {
+      const css = `${CLEAN_CSS}
+main{max-width:74ch}
+.lede{max-width:44ch}
+body{max-width:100%}`
+      expect(codes(css)).not.toContain('design_uncentered_shell')
+    })
+
+    it('ignores a cap on something that is not a shell', () => {
+      const css = `${CLEAN_CSS}
+.card-photo{max-width:420px}`
+      expect(codes(css)).not.toContain('design_uncentered_shell')
+    })
+  })
+
+  describe('design_hairline_box_grid', () => {
+    const bordered = (n: number) =>
+      Array.from({ length: n }, (_, i) => `.b${i}{border-bottom:1px solid var(--line)}`).join('\n')
+
+    it('leaves a restrained use of hairlines alone', () => {
+      // The fleet median is 2 border declarations; 9 must still pass.
+      expect(codes(`${CLEAN_CSS}\n${bordered(9)}`)).not.toContain('design_hairline_box_grid')
+    })
+
+    it('flags a page where hairlines carry all the structure', () => {
+      expect(codes(`${CLEAN_CSS}\n${bordered(10)}`)).toContain('design_hairline_box_grid')
+    })
+
+    it('flags fewer rules when they are full outlines', () => {
+      const boxes = Array.from({ length: 5 }, (_, i) => `.c${i}{border:1px solid var(--line)}`).join('\n')
+      expect(codes(`${CLEAN_CSS}\n${boxes}`)).toContain('design_hairline_box_grid')
+    })
+
+    it('stands down when the brief actually asked for a ruled grid', () => {
+      const findings = scanArtifactTells({
+        globalCss: `${CLEAN_CSS}\n${bordered(14)}`,
+        pages: {},
+        briefText: 'A ruled ledger grid, hairline rules throughout, like graph paper.',
+      })
+      expect(findings.map((f) => f.code)).not.toContain('design_hairline_box_grid')
+    })
+
+    it('does not count zeroed or coloured borders', () => {
+      const css = `${CLEAN_CSS}
+${Array.from({ length: 12 }, (_, i) => `.z${i}{border:0;border-color:var(--acc)}`).join('\n')}`
+      expect(codes(css)).not.toContain('design_hairline_box_grid')
+    })
+  })
+})

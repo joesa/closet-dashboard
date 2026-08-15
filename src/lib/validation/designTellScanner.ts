@@ -218,6 +218,25 @@ function ruleBlocks(css: string): string[] {
   return blocks
 }
 
+/**
+ * Selector + body per rule. `ruleBlocks` above deliberately returns bodies
+ * only, which is all most tells need; the structural checks have to know what
+ * a declaration is being applied TO.
+ */
+function ruleEntries(css: string): { selector: string; body: string }[] {
+  const out: { selector: string; body: string }[] = []
+  const re = /([^{}]+)\{([^{}]*)\}/g
+  for (const match of (css || '').matchAll(re)) {
+    const selector = match[1].trim()
+    const body = match[2].trim()
+    // Skip at-rule preludes (@media ...) — their braces wrap nested rules,
+    // which this regex already surfaces separately.
+    if (!selector || selector.startsWith('@') || !body) continue
+    out.push({ selector, body })
+  }
+  return out
+}
+
 function briefMentions(briefText: string | null | undefined, re: RegExp): boolean {
   return !!briefText && re.test(briefText)
 }
@@ -414,6 +433,72 @@ function scanGlobalCss(
           'Floating blurred orbs are decoration with no subject behind them — the single most recognisable AI-generated background.',
           'Delete the orb elements and their CSS. If the section needs atmosphere, derive it from the trade (paper grain, a photo bleed, a hairline grid).',
           orbs.slice(0, 2).map((b) => b.slice(0, 120))
+        )
+      )
+    }
+  }
+
+  // ── Structure defects ─────────────────────────────────────────────────────
+  // Not style opinions: both of these produce a page that reads as unfinished
+  // regardless of what direction the brief asked for.
+
+  /**
+   * A shell that neither fills the viewport nor centres in it.
+   *
+   * `max-width` without an auto inline margin pins the whole composition to the
+   * left edge and leaves a dead gutter on every wide screen. It is always a
+   * mistake — a design that wants an off-centre composition expresses that with
+   * an explicit asymmetric margin, not by forgetting one.
+   */
+  const SHELL_SELECTOR_RE =
+    /(?:^|,)\s*(?:body|main|\.(?:wrap|wrapper|shell|page|container|layout|site|content|inner))\b/i
+  const uncentered = ruleEntries(css).filter(({ selector, body }) => {
+    if (!SHELL_SELECTOR_RE.test(selector)) return false
+    // Only fixed caps strand the layout. A ch/% cap is a measure limit on text.
+    if (!/max-width\s*:\s*\d+(?:\.\d+)?(?:px|rem|em)/i.test(body)) return false
+    if (/margin[^;:]*:\s*[^;]*\bauto\b/i.test(body)) return false
+    if (/margin-inline\s*:\s*auto/i.test(body)) return false
+    // A grid/flex parent can centre the child instead.
+    if (/justify-self\s*:\s*center|place-self\s*:\s*center/i.test(body)) return false
+    return true
+  })
+  if (uncentered.length > 0) {
+    out.push(
+      finding(
+        'design_uncentered_shell',
+        GLOBAL_CSS_UNIT_ID,
+        'The page shell has a fixed max-width but no auto inline margin, so the whole composition sits against the left edge and leaves a dead gutter on any wide screen.',
+        'Add `margin-inline:auto` to the capped container, or drop the cap and let the shell fill its column. If the composition is meant to be asymmetric, say so with an explicit margin rather than an omitted one.',
+        uncentered.slice(0, 2).map((r) => `${r.selector} { ${r.body} }`.slice(0, 120))
+      )
+    )
+  }
+
+  /**
+   * Hairlines as the entire structural language.
+   *
+   * A few rules do editorial work. Past that the page stops looking designed
+   * and starts looking like a wireframe: every band, card and cell outlined in
+   * the same 1px token, which is what a model reaches for when it has no real
+   * spatial idea. The threshold is deliberately generous so a genuine
+   * hairline-led direction survives — this fires on outlining everything.
+   */
+  if (!briefMentions(briefText, /hairline|wireframe|grid[- ]?lines?|ruled|graph paper/i)) {
+    const borderRules = blocks.filter((body) =>
+      /border(?:-(?:top|right|bottom|left))?\s*:\s*(?:1|1\.5|2)px\s+solid/i.test(body)
+    )
+    // Full-box outlines are the ones that read as boxes-around-everything.
+    const boxed = borderRules.filter((body) =>
+      /(?:^|;)\s*border\s*:\s*(?:1|1\.5|2)px\s+solid/i.test(body)
+    )
+    if (borderRules.length >= 10 || boxed.length >= 5) {
+      out.push(
+        finding(
+          'design_hairline_box_grid',
+          GLOBAL_CSS_UNIT_ID,
+          `Structure is carried almost entirely by 1px rules (${borderRules.length} border declarations, ${boxed.length} full outlines). Every band and cell ends up boxed, which reads as a wireframe rather than a designed page.`,
+          'Let space, surface colour and type weight separate most sections. Keep hairlines for the two or three places where a real edge is meant to be read, and delete the rest.',
+          borderRules.slice(0, 3).map((b) => b.slice(0, 120))
         )
       )
     }

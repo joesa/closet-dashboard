@@ -37,6 +37,8 @@ export type DesignTellCode =
   | 'design_missing_responsive_contract'
   | 'design_missing_interaction_contract'
   | 'design_direction_incoherent'
+  | 'design_hairline_box_grid'
+  | 'design_uncentered_shell'
   // chrome / copy-adjacent
   | 'design_emoji_in_ui'
   | 'design_em_dash_stack'
