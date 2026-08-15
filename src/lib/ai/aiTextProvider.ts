@@ -1,6 +1,8 @@
 import { GoogleGenerativeAI, type GenerationConfig } from '@google/generative-ai'
 import Anthropic from '@anthropic-ai/sdk'
 import OpenAI from 'openai'
+import { createSemaphore, type Semaphore } from '@/lib/ai/concurrency'
+import { currentAiCallContext } from '@/lib/ai/aiCallContext'
 
 /**
  * Shared text-generation provider.
@@ -409,33 +411,107 @@ export function estimateAiTextCostUsd(
   return (((inputTokens ?? 0) * inputRate) + ((outputTokens ?? 0) * outputRate)) / 1_000_000
 }
 
+/** Status/message shapes the providers use for "slow down" or "try again". */
+export function retryableProviderDelayMs(err: unknown, attempt: number): number | null {
+  const e = err as { status?: number; statusCode?: number; headers?: Record<string, unknown>; message?: unknown }
+  const status = Number(e?.status ?? e?.statusCode)
+  const message = typeof e?.message === 'string' ? e.message : String(err ?? '')
+  const retryableStatus = status === 429 || status === 529 || (status >= 500 && status < 600)
+  const retryableMessage = /rate.?limit|429|RESOURCE_EXHAUSTED|overloaded|too many requests|503|service unavailable/i.test(message)
+  if (!retryableStatus && !retryableMessage) return null
+
+  const header = e?.headers?.['retry-after'] ?? e?.headers?.['Retry-After']
+  const retryAfterSec = Number(Array.isArray(header) ? header[0] : header)
+  if (Number.isFinite(retryAfterSec) && retryAfterSec > 0 && retryAfterSec <= 60) {
+    return Math.round(retryAfterSec * 1000)
+  }
+  const backoff = Math.min(2000 * 2 ** attempt, 20_000)
+  // ±25% jitter so parallel page calls do not retry in lockstep.
+  return Math.round(backoff * (0.75 + Math.random() * 0.5))
+}
+
+const PROVIDER_RETRY_LIMIT = 2
+
+function providerConcurrencyLimit(provider: AiTextProvider): number {
+  const raw = process.env[`AI_PROVIDER_MAX_CONCURRENCY_${provider.toUpperCase()}`]?.trim()
+  const parsed = Number(raw)
+  if (Number.isFinite(parsed) && parsed > 0) return Math.floor(parsed)
+  // One above the default page fan-out, so a guard repair running alongside
+  // three page calls does not have to queue behind them.
+  return 4
+}
+
+const providerSlots = new Map<AiTextProvider, Semaphore>()
+function providerSemaphore(provider: AiTextProvider): Semaphore {
+  let slot = providerSlots.get(provider)
+  if (!slot) {
+    slot = createSemaphore(providerConcurrencyLimit(provider))
+    providerSlots.set(provider, slot)
+  }
+  return slot
+}
+
+async function callProvider(
+  provider: AiTextProvider,
+  opts: TextGenerationOpts
+): Promise<ProviderGenerationResult> {
+  if (provider === 'anthropic') return generateWithClaude(opts)
+  if (provider === 'openai') return generateWithOpenAI(opts)
+  return generateWithGemini(opts)
+}
+
 async function generateWithProvider(
   provider: AiTextProvider,
   opts: TextGenerationOpts
 ): Promise<TextGenerationResult> {
+  const ctx = currentAiCallContext()
+  // Cap concurrent calls per provider regardless of caller, so fanning pages
+  // out (or image generation's unbounded Promise.allSettled) cannot stampede.
+  const release = await providerSemaphore(provider).acquire()
   const startedAt = Date.now()
-  let result: ProviderGenerationResult
-  if (provider === 'anthropic') {
-    result = await generateWithClaude(opts)
-  } else if (provider === 'openai') {
-    result = await generateWithOpenAI(opts)
-  } else {
-    result = await generateWithGemini(opts)
+  try {
+    let result: ProviderGenerationResult | null = null
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        result = await callProvider(provider, opts)
+        break
+      } catch (err) {
+        const delayMs = attempt < PROVIDER_RETRY_LIMIT ? retryableProviderDelayMs(err, attempt) : null
+        // Don't burn the caller's abort budget on a retry that cannot finish;
+        // throwing here lets the provider chain fall through as it does today.
+        const budgetLeft = opts.abortMs ? opts.abortMs - (Date.now() - startedAt) : Infinity
+        if (delayMs === null || delayMs >= budgetLeft) throw err
+        console.warn(JSON.stringify({
+          event: 'ai_text_retry',
+          provider,
+          attempt: attempt + 1,
+          delayMs,
+          runId: ctx?.runId,
+          pass: ctx?.pass,
+          reason: String((err as { message?: unknown })?.message ?? err).slice(0, 200),
+        }))
+        await new Promise((resolve) => setTimeout(resolve, delayMs))
+      }
+    }
+    const telemetry: AiTextTelemetry = {
+      durationMs: Date.now() - startedAt,
+      inputTokens: result.inputTokens,
+      outputTokens: result.outputTokens,
+      totalTokens: result.totalTokens,
+      estimatedCostUsd: estimateAiTextCostUsd(provider, result.inputTokens, result.outputTokens),
+    }
+    console.info(JSON.stringify({
+      event: 'ai_text_call',
+      provider,
+      model: result.model,
+      runId: ctx?.runId,
+      pass: ctx?.pass,
+      ...telemetry,
+    }))
+    return { text: result.text, provider, model: result.model, telemetry }
+  } finally {
+    release()
   }
-  const telemetry: AiTextTelemetry = {
-    durationMs: Date.now() - startedAt,
-    inputTokens: result.inputTokens,
-    outputTokens: result.outputTokens,
-    totalTokens: result.totalTokens,
-    estimatedCostUsd: estimateAiTextCostUsd(provider, result.inputTokens, result.outputTokens),
-  }
-  console.info(JSON.stringify({
-    event: 'ai_text_call',
-    provider,
-    model: result.model,
-    ...telemetry,
-  }))
-  return { text: result.text, provider, model: result.model, telemetry }
 }
 
 /**
