@@ -57,6 +57,13 @@ export type TextGenerationOpts = {
    */
   abortMs?: number
   /**
+   * Which named purpose this call serves. Set by generateTextForPurpose and
+   * used only to label a recorded prompt when the caller is not inside a
+   * timePass scope — the brief and foundation passes are not, and they are
+   * precisely the prompts worth reading afterwards.
+   */
+  purposeLabel?: string
+  /**
    * An admin-configured endpoint to call instead of the env-configured vendor
    * default. Set by generateTextForPurpose; leave unset to keep the historical
    * env behavior. Its model, key, base URL and headers win over every
@@ -549,7 +556,7 @@ async function generateWithProvider(
     // Capture the exact inputs when a Full redesign is recording. No-op
     // otherwise, so every other caller is untouched.
     recordPrompt({
-      pass: ctx?.pass ?? null,
+      pass: ctx?.pass ?? opts.purposeLabel ?? null,
       provider,
       model: result.model,
       endpoint: opts.endpoint?.providerSlug ?? null,
@@ -712,14 +719,16 @@ export async function generateTextForPurpose(
     throw new Error(`Purpose "${purpose}" is an image purpose — use the image path instead`)
   }
 
+  const labelled = { ...opts, purposeLabel: opts.purposeLabel ?? purpose }
+
   const configured = await resolvePurposeChain(purpose)
   if (configured && configured.length > 0) {
-    return generateWithConfiguredChain(purpose, configured, opts)
+    return generateWithConfiguredChain(purpose, configured, labelled)
   }
 
-  if (def.fallback === 'full_redesign') return generateTextFullRedesign(opts)
-  if (def.fallback === 'surgical') return generateTextSurgical(opts)
-  return generateTextWithFallback(opts)
+  if (def.fallback === 'full_redesign') return generateTextFullRedesign(labelled)
+  if (def.fallback === 'surgical') return generateTextSurgical(labelled)
+  return generateTextWithFallback(labelled)
 }
 
 /**

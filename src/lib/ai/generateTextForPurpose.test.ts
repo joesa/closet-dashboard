@@ -213,3 +213,63 @@ describe('generateTextForPurpose', () => {
     ).rejects.toThrow(/image purpose/)
   })
 })
+
+describe('recorded prompt labelling', () => {
+  const env = { ...process.env }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    process.env.ANTHROPIC_API_KEY = 'env-anthropic'
+    process.env.OPENAI_API_KEY = 'env-openai'
+    process.env.GEMINI_API_KEY = 'env-gemini'
+  })
+
+  afterEach(() => {
+    process.env = { ...env }
+  })
+
+  it('labels a call with its purpose when no timePass scope named it', async () => {
+    const { withPromptRecording, getRecordedPrompts } = await import('./promptRecorder')
+    mocks.resolvePurposeChain.mockResolvedValue(null)
+    anthropicReply('ok')
+
+    const captured = await withPromptRecording(async () => {
+      await generateTextForPurpose('full_redesign_foundation', {
+        prompt: 'USER',
+        systemPrompt: 'SYSTEM',
+        jsonMode: false,
+      })
+      return getRecordedPrompts()
+    })
+
+    // The brief and foundation passes run outside timePass, so without this
+    // the most important prompts in a run show up as "unnamed pass".
+    expect(captured).toHaveLength(1)
+    expect(captured[0].pass).toBe('full_redesign_foundation')
+    expect(captured[0].systemPrompt).toBe('SYSTEM')
+    expect(captured[0].userPrompt).toBe('USER')
+  })
+
+  it('labels a configured endpoint call too', async () => {
+    const { withPromptRecording, getRecordedPrompts } = await import('./promptRecorder')
+    mocks.resolvePurposeChain.mockResolvedValue([
+      {
+        providerSlug: 'openai-platform',
+        label: 'OpenAI',
+        kind: 'openai',
+        model: 'gpt-5.6-sol',
+        baseUrl: null,
+        apiKey: null,
+        headers: {},
+      },
+    ])
+    openaiReply('ok')
+
+    const captured = await withPromptRecording(async () => {
+      await generateTextForPurpose('full_redesign_page', { prompt: 'P', jsonMode: false })
+      return getRecordedPrompts()
+    })
+    expect(captured[0].pass).toBe('full_redesign_page')
+    expect(captured[0].endpoint).toBe('openai-platform')
+  })
+})
