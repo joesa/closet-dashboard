@@ -39,15 +39,15 @@ describe('full redesign model defaults', () => {
     else process.env.CUSTOM_SITE_CLAUDE_MODEL = prevClaude
   })
 
-  it('uses GPT-5.6 Sol, Gemini 3.1 Pro, then Opus 5', () => {
+  it('uses Opus 5, then GPT-5.6 Sol, then Gemini 3.1 Pro', () => {
     delete process.env.FULL_REDESIGN_OPENAI_MODEL
     delete process.env.FULL_REDESIGN_GEMINI_MODEL
     delete process.env.FULL_REDESIGN_ANTHROPIC_MODEL
     delete process.env.CUSTOM_SITE_CLAUDE_MODEL
     expect([...FULL_REDESIGN_PROVIDER_CHAIN]).toEqual([
+      'anthropic',
       'openai',
       'gemini',
-      'anthropic',
     ])
     expect(resolveFullRedesignOpenAiModel()).toBe(OPENAI_FULL_REDESIGN_MODEL)
     expect(resolveFullRedesignGeminiModel()).toBe(GEMINI_FULL_REDESIGN_MODEL)

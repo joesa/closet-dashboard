@@ -7,7 +7,7 @@ import { currentAiCallContext } from '@/lib/ai/aiCallContext'
 /**
  * Shared text-generation provider.
  *
- * - Full redesign: GPT-5.6 Sol → Gemini 3.1 Pro → Claude Opus 5.
+ * - Full redesign: Claude Opus 5 → GPT-5.6 Sol → Gemini 3.1 Pro.
  * - Surgical edits: Gemini → OpenAI → Anthropic (see generateTextSurgical).
  *
  * Server-only — never import in client components.
@@ -87,11 +87,11 @@ export const CLAUDE_FABLE_MODEL = 'claude-fable-5'
 /**
  * Default OpenAI model for everything that does not ask for something else.
  *
- * GPT-5.6 Sol rather than a cheaper chat model because this is now the primary
- * provider: Anthropic is no longer the preferred choice for site generation, so
- * whatever sits here is what writes customer-facing copy. It is the same model
- * already used for full redesign, which keeps the first build and any later
- * redesign speaking with one voice.
+ * GPT-5.6 Sol rather than a cheaper chat model because this leads
+ * DEFAULT_PROVIDER_CHAIN, so whatever sits here is what writes customer-facing
+ * copy for callers that express no preference. Full redesign runs its own
+ * chain (Claude first) and keeps GPT-5.6 Sol as its second choice, so the two
+ * paths still fall back onto the same model rather than diverging.
  *
  * Note gpt-5.6-* rejects `temperature`; generateWithOpenAI already omits it for
  * that family.
@@ -101,11 +101,11 @@ export const OPENAI_DEFAULT_MODEL = 'gpt-5.6-sol'
 export const OPENAI_SURGICAL_MODEL = 'gpt-4.1'
 /** Best Gemini model alias for surgical edits (env-overridable). */
 export const GEMINI_SURGICAL_MODEL = 'gemini-pro-latest'
-/** Primary model for Full redesign. */
-export const OPENAI_FULL_REDESIGN_MODEL = 'gpt-5.6-sol'
 /** Second-choice model for Full redesign. */
-export const GEMINI_FULL_REDESIGN_MODEL = 'gemini-3.1-pro-preview'
+export const OPENAI_FULL_REDESIGN_MODEL = 'gpt-5.6-sol'
 /** Last-resort model for Full redesign. */
+export const GEMINI_FULL_REDESIGN_MODEL = 'gemini-3.1-pro-preview'
+/** Primary model for Full redesign. */
 export const CLAUDE_FULL_REDESIGN_MODEL = CLAUDE_OPUS_MODEL
 
 /**
@@ -121,11 +121,11 @@ export const SURGICAL_PROVIDER_CHAIN: readonly AiTextProvider[] = [
   'anthropic',
 ] as const
 
-/** Full redesign provider order: OpenAI → Gemini → Anthropic. */
+/** Full redesign provider order: Anthropic → OpenAI → Gemini. */
 export const FULL_REDESIGN_PROVIDER_CHAIN: readonly AiTextProvider[] = [
+  'anthropic',
   'openai',
   'gemini',
-  'anthropic',
 ] as const
 
 /**
@@ -586,7 +586,7 @@ export async function generateTextWithFallback(
   throw new Error(`AI generation failed on all providers: ${msg}`);
 }
 
-/** Full redesign only: GPT-5.6 Sol → Gemini 3.1 Pro → Claude Opus 5. */
+/** Full redesign only: Claude Opus 5 → GPT-5.6 Sol → Gemini 3.1 Pro. */
 export function generateTextFullRedesign(
   opts: TextGenerationOpts
 ): Promise<TextGenerationResult> {
