@@ -23,6 +23,16 @@ RUN npm ci
 
 COPY . .
 
+# Which commit this image contains. Declared AFTER the copy so changing it does
+# not invalidate the (slow) npm ci layer. The worker writes these to
+# public.worker_instances on boot, which is how "did the VM pick up my commit?"
+# is answerable without SSHing to the box. redeploy.sh sets both; a hand-run
+# `docker compose up --build` leaves them empty and the row reports unknown.
+ARG GIT_SHA=""
+ARG IMAGE_BUILT_AT=""
+ENV WORKER_GIT_SHA=$GIT_SHA
+ENV WORKER_IMAGE_BUILT_AT=$IMAGE_BUILT_AT
+
 # npm run worker -> tsx --tsconfig worker/tsconfig.json worker/src/index.ts
 # Run as the node user rather than root; /app is only ever read at runtime.
 USER node

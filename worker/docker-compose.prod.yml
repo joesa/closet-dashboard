@@ -14,6 +14,12 @@ services:
       # Repo root — the worker imports out of src/ via the @/* alias.
       context: ..
       dockerfile: worker/Dockerfile
+      # Stamped into the image so the running build is visible in
+      # public.worker_instances. Substitution reads the SHELL environment —
+      # redeploy.sh exports both. Empty is fine; the row then says unknown.
+      args:
+        GIT_SHA: ${GIT_SHA:-}
+        IMAGE_BUILT_AT: ${IMAGE_BUILT_AT:-}
     env_file:
       # Same secrets the Next app uses. See worker/worker.env.example.
       - ../.env.local

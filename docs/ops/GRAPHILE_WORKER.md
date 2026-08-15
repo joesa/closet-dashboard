@@ -292,6 +292,41 @@ Bootstrap installs the units but leaves the timer **disabled** — on a fresh bo
 that crash-loops on a missing `DATABASE_URL`. Enable it after the first good
 manual deploy.
 
+### Which build is running
+
+The worker registers each boot in `public.worker_instances` — the commit baked
+into the image, hostname, concurrency, start time — then heartbeats every 30s.
+That makes "did the VM pick up my commit?" answerable without SSH:
+
+```bash
+npm run worker:status          # from any machine with DATABASE_URL
+```
+
+```
+ALIVE                build=2482b3d  host=worker-vm  concurrency=3  started=...  last_seen=12s ago
+```
+
+Admins get the same data from `GET /api/admin/worker-status` (`workerAlive`,
+`runningBuilds`, per-instance rows). `/api/health/graphile` remains the
+unauthenticated probe and only reports whether *enqueue* works — it says nothing
+about the worker process.
+
+Reading the output:
+
+- **ALIVE** — heartbeat within 90s (three beats; one missed beat while a Full
+  redesign pegs the event loop must not flap the status).
+- **stopped** — clean shutdown, `stopped_at` set.
+- **STALE** — no heartbeat and no shutdown record: killed, OOMed, or the host
+  went away. This is the case the queue cannot show you, since a container that
+  dies with nothing runnable leaves `graphile_worker.jobs` looking healthy.
+- **build=unknown** — the image was built without the `GIT_SHA` build arg, i.e.
+  by a hand-run `docker compose up --build`. `redeploy.sh` always stamps it, so
+  prefer that.
+
+One row per boot, not per host, so a redeploy leaves the previous row in place
+and a crash-loop is visible as a run of short-lived instances. Rows are pruned
+after 30 days on boot.
+
 ### Stale locks after a restart
 
 A worker that dies mid-job keeps the row lock. Graphile hands that job to nobody

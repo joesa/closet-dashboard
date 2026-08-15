@@ -61,6 +61,15 @@ git pull --ff-only
 export WORKER_MEM_LIMIT="${WORKER_MEM_LIMIT:-4g}"
 echo "mem_limit=$WORKER_MEM_LIMIT"
 
+# Stamp the commit into the image. Read AFTER the pull so it names what is
+# actually being built, and exported because compose substitution reads the
+# shell, not .env.local. The worker writes this to public.worker_instances on
+# boot, so "did the VM pick up that commit?" is answerable with a query instead
+# of an SSH session.
+export GIT_SHA="$(git rev-parse HEAD)"
+export IMAGE_BUILT_AT="$(date -Is)"
+echo "build=$GIT_SHA"
+
 docker compose -f "$COMPOSE" up -d --build
 
 # Prune AFTER the new container is up, never before: an image still referenced

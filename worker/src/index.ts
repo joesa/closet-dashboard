@@ -1,5 +1,14 @@
+import { hostname } from 'node:os'
 import { run, type TaskList } from 'graphile-worker'
 import { createGraphilePool } from '@/lib/jobs/databaseUrl'
+import {
+  buildWorkerIdentity,
+  heartbeatWorkerInstance,
+  markWorkerInstanceStopped,
+  pruneWorkerInstances,
+  registerWorkerInstance,
+  WORKER_HEARTBEAT_MS,
+} from '@/lib/jobs/workerInstance'
 import { loadWorkerEnv } from './loadEnv'
 import {
   TASK_ADMIN_GENERATE_BEFORE,
@@ -65,9 +74,14 @@ const taskList: TaskList = {
 
 async function main() {
   const concurrency = getWorkerConcurrency()
+  const identity = buildWorkerIdentity({
+    hostname: hostname(),
+    concurrency,
+    taskIds: Object.keys(taskList),
+  })
 
   console.log(
-    `[worker] starting Graphile Worker (concurrency=${concurrency}). Tasks:`,
+    `[worker] starting Graphile Worker (concurrency=${concurrency}, build=${identity.gitSha ?? 'unknown'}, instance=${identity.id}). Tasks:`,
     Object.keys(taskList).join(', ')
   )
 
@@ -81,8 +95,31 @@ async function main() {
     taskList,
   })
 
+  // Publish which build is running. Best-effort: a registry write must never
+  // keep a healthy worker from claiming jobs, so failures only log.
+  const registered = await registerWorkerInstance(pgPool, identity)
+  if (!registered.ok) {
+    console.warn(`[worker] could not register instance: ${registered.error}`)
+  }
+  await pruneWorkerInstances(pgPool)
+
+  // unref so a pending beat cannot hold the process open during shutdown.
+  const heartbeat = setInterval(() => {
+    void heartbeatWorkerInstance(pgPool, identity.id).then((res) => {
+      if (!res.ok) console.warn(`[worker] heartbeat failed: ${res.error}`)
+    })
+  }, WORKER_HEARTBEAT_MS)
+  heartbeat.unref()
+
   console.log('[worker] connected — listening for jobs')
-  await runner.promise
+  try {
+    await runner.promise
+  } finally {
+    clearInterval(heartbeat)
+    // Graceful exit only. A SIGKILL skips this and leaves the heartbeat to go
+    // stale, which is the distinction the registry is meant to show.
+    await markWorkerInstanceStopped(pgPool, identity.id)
+  }
 }
 
 main().catch((err) => {
