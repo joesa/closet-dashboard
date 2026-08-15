@@ -497,7 +497,7 @@ function scanGlobalCss(
           'design_hairline_box_grid',
           GLOBAL_CSS_UNIT_ID,
           `Structure is carried almost entirely by 1px rules (${borderRules.length} border declarations, ${boxed.length} full outlines). Every band and cell ends up boxed, which reads as a wireframe rather than a designed page.`,
-          'Let space, surface colour and type weight separate most sections. Keep hairlines for the two or three places where a real edge is meant to be read, and delete the rest.',
+          'Mechanical fix: keep at most 3 border declarations in globalCss and delete the rest, replacing each with space (padding/margin), a surface colour change, or type weight. Priority to delete: outlines on grid cells and list rows; keep an edge only where two surfaces genuinely meet. Do not swap them for box-shadow or outline — that reads the same.',
           borderRules.slice(0, 3).map((b) => b.slice(0, 120))
         )
       )

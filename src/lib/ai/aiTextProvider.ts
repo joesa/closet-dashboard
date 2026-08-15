@@ -479,9 +479,11 @@ function providerConcurrencyLimit(provider: AiTextProvider): number {
   const raw = process.env[`AI_PROVIDER_MAX_CONCURRENCY_${provider.toUpperCase()}`]?.trim()
   const parsed = Number(raw)
   if (Number.isFinite(parsed) && parsed > 0) return Math.floor(parsed)
-  // One above the default page fan-out, so a guard repair running alongside
-  // three page calls does not have to queue behind them.
-  return 4
+  // One above the default page fan-out (5), so a guard repair running alongside
+  // a full wave of page calls does not have to queue behind them. Raising this
+  // costs nothing locally — the worker sits at ~0% CPU during a redesign — so
+  // the only real ceiling is the vendor's own rate limit.
+  return 6
 }
 
 const providerSlots = new Map<AiTextProvider, Semaphore>()

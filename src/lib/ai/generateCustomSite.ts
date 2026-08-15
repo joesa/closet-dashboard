@@ -177,16 +177,24 @@ export type CustomBuildIntent = 'full' | 'surgical'
 /**
  * How many pages generate at once.
  *
- * 3 by default: pages run withImages:false so each in-flight task is only a
- * prompt plus a ≤16k-token response, and the per-provider semaphore in
- * aiTextProvider caps total model concurrency anyway. Set to 1 to restore the
- * original strictly-serial behaviour — that is the rollback.
+ * 5 by default, which covers a typical site's interior pages in ONE wave.
+ *
+ * Measured on the production worker: the box is not the constraint — 1 vCPU at
+ * 0.33%, 120MB of a 4GB limit, load 0.00 during a redesign. Every second is
+ * spent waiting on a model API, so the only levers are fewer calls, faster
+ * models, and more of them in flight. At 3, a 5-page site ran two waves and
+ * paid for the slowest page twice (~110s + ~107s); at 5 it pays once.
+ *
+ * Pages run withImages:false, so each in-flight task is a prompt plus a ≤16k
+ * response — memory is not the limit either. The per-provider semaphore in
+ * aiTextProvider is the real ceiling. Set to 1 to restore strictly-serial
+ * behaviour; that is the rollback.
  */
 export function resolveFullRedesignPageConcurrency(): number {
   const raw = process.env.FULL_REDESIGN_PAGE_CONCURRENCY?.trim()
   const parsed = Number(raw)
   if (Number.isFinite(parsed) && parsed > 0) return Math.min(Math.floor(parsed), 8)
-  return 3
+  return 5
 }
 
 export type GenerateCustomSiteResult = {
