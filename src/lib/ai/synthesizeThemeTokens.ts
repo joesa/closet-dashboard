@@ -1,4 +1,4 @@
-import { generateTextWithFallback, type AiTextProvider } from '@/lib/ai/aiTextProvider'
+import { generateTextForPurpose, type AiTextProvider } from '@/lib/ai/aiTextProvider'
 import {
   SURFACE_TOKENS,
   SHAPE_TOKENS,
@@ -90,7 +90,7 @@ ${input.primary_color_hex ? `Preferred brand color (nudge swatch toward the clos
 Pick values that feel authentic and trustworthy for this specific trade — avoid generic default combos.`
 
   try {
-    const { text: raw, provider } = await generateTextWithFallback({
+    const { text: raw, provider } = await generateTextForPurpose('theme_tokens', {
       prompt,
       jsonMode: true,
       temperature: 0.6,

@@ -1,4 +1,4 @@
-import { generateTextWithFallback } from '@/lib/ai/aiTextProvider'
+import { generateTextForPurpose } from '@/lib/ai/aiTextProvider'
 import { resolveSitePresentationRules } from '@/lib/ai/resolveSitePresentation'
 import {
   listIndustries,
@@ -132,7 +132,7 @@ Rules:
 - services must reflect what the brief actually offers, not unrelated defaults.
 - suggestedPageCount defaults to 3-4 for established multi-service trades unless the brief says "single page" or "landing page only".`
 
-  const { text } = await generateTextWithFallback({
+  const { text } = await generateTextForPurpose('business_brief_parse', {
     systemPrompt,
     prompt: trimmed,
     jsonMode: true,

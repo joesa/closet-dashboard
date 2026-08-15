@@ -1,4 +1,4 @@
-import { generateTextWithFallback } from '@/lib/ai/aiTextProvider'
+import { generateTextForPurpose } from '@/lib/ai/aiTextProvider'
 import { resolveIndustrySlug } from '@/lib/catalog/serviceCatalog'
 import { getEngineProfile } from '@/lib/catalog/engineProfiles'
 import { formatServiceSeedPricing, resolveServiceTiers } from '@/lib/catalog/servicePriceCatalog'
@@ -321,7 +321,7 @@ RULES:
 14. Return ONLY valid JSON — no markdown, no explanation.
 `
 
-    const { text } = await generateTextWithFallback({
+    const { text } = await generateTextForPurpose('widget_config', {
       prompt,
       jsonMode: true,
       temperature: 0.5,

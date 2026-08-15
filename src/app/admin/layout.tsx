@@ -12,6 +12,7 @@ const NAV = [
   { href: '/admin/spec-builds',   label: 'Spec Builds' },
   { href: '/admin/provision-jobs', label: 'Provision Jobs' },
   { href: '/admin/background-jobs', label: 'Background Jobs' },
+  { href: '/admin/ai-models',     label: 'AI Models' },
   { href: '/admin/sandbox/onboarding', label: 'Sandbox Emulator' },
   { href: '/admin/scraper',       label: 'Scraper' },
   { href: '/admin/subscriptions', label: 'Subscriptions' },

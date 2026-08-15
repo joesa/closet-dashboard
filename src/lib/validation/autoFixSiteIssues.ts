@@ -1,4 +1,4 @@
-import { generateTextWithFallback } from '@/lib/ai/aiTextProvider'
+import { generateTextForPurpose } from '@/lib/ai/aiTextProvider'
 import { generateWithQualityRetry } from '@/lib/ai/generateWithQualityRetry'
 import { findAiTellPhrases, HUMAN_COPY_VOICE_RULES } from '@/lib/ai/humanCopyVoice'
 import { isCustomSiteConfig } from '@/lib/customSite'
@@ -286,7 +286,7 @@ ${input.remainingIssues.length > 0 ? input.remainingIssues.map((i) => `- ${i}`).
 
 Write a short (2-4 sentence) plain-English summary for the admin: what was fixed, and what (if anything) still needs their attention. No markdown, no headers.`
 
-    const { text } = await generateTextWithFallback({
+    const { text } = await generateTextForPurpose('autofix_site_issues', {
       prompt,
       jsonMode: false,
       temperature: 0.3,
@@ -542,7 +542,7 @@ Input strings (JSON array):
 ${JSON.stringify(texts)}
 
 Output ONLY a JSON object shaped as {"rewrites":["..."]}. The rewrites array must have the same length and order as the input array.`
-    const { text } = await generateTextWithFallback({
+    const { text } = await generateTextForPurpose('autofix_site_issues', {
       prompt,
       jsonMode: true,
       temperature: 0.4,
@@ -692,7 +692,7 @@ Please output a corrected, premium 3-step process configuration as a valid JSON 
 Use '01', '02', '03' only as internal ordering metadata in that order; never include those numbers in visitor-facing titles or descriptions. Keep the copy specific to their trade (e.g. beauty/grooming vs HVAC vs construction) and consistent with any existing valid steps.
 Only output JSON.`
 
-    const { text } = await generateTextWithFallback({
+    const { text } = await generateTextForPurpose('autofix_site_issues', {
       prompt,
       jsonMode: true,
       temperature: 0.3,

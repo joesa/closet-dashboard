@@ -1,7 +1,7 @@
 import * as cheerio from 'cheerio'
 import {
   CLAUDE_SONNET_MODEL,
-  generateTextWithFallback,
+  generateTextForPurpose,
 } from '@/lib/ai/aiTextProvider'
 import { DESIGN_CRAFT_PERSONA } from '@/lib/ai/craftStandards'
 import { HUMAN_COPY_VOICE_RULES } from '@/lib/ai/humanCopyVoice'
@@ -308,7 +308,7 @@ export function parseAiSiteJson(raw: string): Record<string, unknown> | null {
  */
 async function repairJsonWithAi(raw: string): Promise<Record<string, unknown> | null> {
   try {
-    const { text } = await generateTextWithFallback({
+    const { text } = await generateTextForPurpose('site_config_generate', {
       // Cap the payload so a runaway response can't blow the repair prompt.
       prompt: `Fix the following malformed JSON. Preserve every field and value exactly as written; only correct the syntax (unclosed strings/brackets, trailing commas, unescaped characters, surrounding prose). If the JSON is truncated, close it at the last complete field. Return ONLY the corrected JSON object — no commentary, no markdown fences.\n\n${raw.slice(0, 200_000)}`,
       jsonMode: true,
@@ -561,7 +561,7 @@ ${Object.entries(pageContents)
 
   systemPrompt += `\n\nOUTPUT: valid JSON only:\n${JSON.stringify(GENERATE_SITE_JSON_SCHEMA.parameters, null, 2)}`
 
-  const { text: rawText, provider } = await generateTextWithFallback({
+  const { text: rawText, provider } = await generateTextForPurpose('site_config_generate', {
     prompt: `User: Business Information:\n\n${scrapedText}`,
     systemPrompt,
     jsonMode: true,

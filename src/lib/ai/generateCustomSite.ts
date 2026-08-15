@@ -1,8 +1,11 @@
 import { hydrateAdminImagesForModel } from '@/lib/ai/hydrateAdminImages'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import type { AiPurpose } from '@/lib/ai/purposes'
+import { resolvePurposeChain } from '@/lib/ai/modelRouting'
 import {
   CLAUDE_SONNET_MODEL,
   configuredSurgicalProviders,
+  generateTextForPurpose,
   generateTextFullRedesign,
   generateTextWithFallback,
 } from '@/lib/ai/aiTextProvider'
@@ -2216,8 +2219,15 @@ DIRECTION LOCK:
     abortMs: number
     temperature?: number
     withImages?: boolean
+    /**
+     * Admin-routable purpose. Defaults to the page pass, which is what every
+     * caller that does not say otherwise is doing; the foundation pass names
+     * itself so it can be pointed at a different model.
+     */
+    purpose?: AiPurpose
   }): Promise<Record<string, unknown>> {
     return callModelJson({
+      purpose: args.purpose ?? 'full_redesign_page',
       systemPrompt: args.systemPrompt,
       userPrompt: args.userPrompt,
       temperature: args.temperature ?? 0.7,
@@ -2425,6 +2435,7 @@ ${JSON.stringify(opts.context)}
 Build globalCss + home "/" only. Output JSON.`
 
     const parsed = await modelJson({
+      purpose: 'full_redesign_foundation',
       systemPrompt: foundationSystem,
       userPrompt: foundationUser,
       maxOutputTokens: 24576,
@@ -2721,6 +2732,7 @@ ${JSON.stringify({
 Output JSON for ${path} only.`
 
     const parsed = await modelJson({
+      purpose: 'full_redesign_page',
       systemPrompt: pageSystem,
       userPrompt: pageUser,
       maxOutputTokens: 16384,
@@ -3021,6 +3033,7 @@ ${JSON.stringify(digest, null, 2)}`
     temperature: 0.2,
     maxOutputTokens: 4096,
     useSurgicalProviderChain: true,
+    purpose: 'surgical_edit',
     anthropicModel: CLAUDE_SONNET_MODEL,
   })
 
@@ -3218,6 +3231,7 @@ ${JSON.stringify(opts.context, null, 2)}`
     maxOutputTokens: 24576,
     // Surgical only: Gemini → OpenAI → Anthropic (credits / API failures).
     useSurgicalProviderChain: true,
+    purpose: 'surgical_edit',
     anthropicModel: CLAUDE_SONNET_MODEL,
     images: opts.images,
   })
@@ -3362,12 +3376,24 @@ async function callModelJson(opts: {
   /** Full redesign only: Opus 5 → GPT-5.6 Sol → Gemini 3.1 Pro. */
   useFullRedesignProviderChain?: boolean
   /**
+   * Which admin-configurable purpose this call belongs to. When an admin has
+   * assigned providers to it, that assignment wins; otherwise the chain flags
+   * above still decide, exactly as before.
+   */
+  purpose?: AiPurpose
+  /**
   * Surgical edits only: Gemini → OpenAI → Anthropic across credit/API/JSON failures.
    */
   useSurgicalProviderChain?: boolean
 }): Promise<Record<string, unknown>> {
   if (opts.useSurgicalProviderChain) {
-    return callSurgicalModelJson(opts)
+    // Only hand off to the bespoke surgical walker when no admin routing
+    // applies. With a configured chain, the generic loop below runs it — and
+    // still does the same two-attempt JSON repair.
+    const configured = opts.purpose ? await resolvePurposeChain(opts.purpose) : null
+    if (!configured || configured.length === 0) {
+      return callSurgicalModelJson(opts)
+    }
   }
 
   let lastText = ''
@@ -3378,9 +3404,12 @@ async function callModelJson(opts: {
   for (let attempt = 0; attempt < 2; attempt++) {
     let text: string
     try {
-      const generateText = opts.useFullRedesignProviderChain
-        ? generateTextFullRedesign
-        : generateTextWithFallback
+      const generateText = opts.purpose
+        ? (args: Parameters<typeof generateTextWithFallback>[0]) =>
+            generateTextForPurpose(opts.purpose!, args)
+        : opts.useFullRedesignProviderChain
+          ? generateTextFullRedesign
+          : generateTextWithFallback
       const result = await generateText({
         prompt: opts.userPrompt,
         systemPrompt:

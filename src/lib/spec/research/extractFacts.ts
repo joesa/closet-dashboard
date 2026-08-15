@@ -1,4 +1,4 @@
-import { generateTextWithFallback } from '@/lib/ai/aiTextProvider'
+import { generateTextForPurpose } from '@/lib/ai/aiTextProvider'
 import { parseAiSiteJson } from '@/lib/ai/generateSiteConfig'
 import type { SpecFact } from '@/lib/spec/types'
 import type { FetchedPage } from '@/lib/spec/research/fetchPage'
@@ -103,7 +103,7 @@ ${page.text}
 --- END PAGE TEXT ---`
 
   try {
-    const result = await generateTextWithFallback({
+    const result = await generateTextForPurpose('spec_research_facts', {
       prompt,
       systemPrompt: SYSTEM,
       jsonMode: true,

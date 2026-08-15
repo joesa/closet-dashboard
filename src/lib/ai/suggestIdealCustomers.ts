@@ -1,4 +1,4 @@
-import { generateTextWithFallback } from '@/lib/ai/aiTextProvider'
+import { generateTextForPurpose } from '@/lib/ai/aiTextProvider'
 import { HUMAN_COPY_VOICE_RULES } from '@/lib/ai/humanCopyVoice'
 import { validateGeneratedUnits } from '@/lib/validation/generatedContentQuality'
 
@@ -80,7 +80,7 @@ Services offered: ${services.length > 0 ? services.join(', ') : '(not specified)
 ${other ? `Other/custom services: ${other}\n` : ''}${input.business_name ? `Business name: ${input.business_name}\n` : ''}${input.differentiators?.length ? `Differentiators: ${input.differentiators.join(', ')}\n` : ''}`
 
   try {
-    const { text: rawText, provider } = await generateTextWithFallback({
+    const { text: rawText, provider } = await generateTextForPurpose('ideal_customers', {
       prompt,
       jsonMode: false,
       temperature: 0.5,

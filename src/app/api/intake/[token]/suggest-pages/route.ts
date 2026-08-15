@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { generateTextWithFallback } from '@/lib/ai/aiTextProvider';
+import { generateTextForPurpose } from '@/lib/ai/aiTextProvider';
 import { getIntakeByToken } from '@/lib/intake/getIntakeByToken';
 import { assertDraftIntake, assertDepositPaid } from '@/lib/intake/intakeTierGates';
 import { checkRateLimit, hashRateKey } from '@/lib/rateLimit';
@@ -185,7 +185,7 @@ Already-selected pages (do NOT suggest these): ${existing.length ? existing.join
 
 Provide exactly 5 service offerings tailored to THIS business. They will appear as sub-items beneath Services, not as pages.`;
 
-    const { text } = await generateTextWithFallback({
+    const { text } = await generateTextForPurpose('intake_suggest_pages', {
       prompt: userPrompt,
       systemPrompt: systemPrompt,
       jsonMode: true,

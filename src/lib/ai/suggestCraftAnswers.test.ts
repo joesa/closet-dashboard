@@ -1,5 +1,5 @@
 import { afterEach, describe, it, expect, vi } from 'vitest';
-import { generateTextWithFallback } from './aiTextProvider';
+import { generateTextForPurpose } from './aiTextProvider';
 import {
   detectVertical,
   getCraftFieldsForVertical,
@@ -11,10 +11,10 @@ import {
 } from './suggestCraftAnswers';
 
 vi.mock('./aiTextProvider', () => ({
-  generateTextWithFallback: vi.fn(),
+  generateTextForPurpose: vi.fn(),
 }));
 
-const mockedGenerate = vi.mocked(generateTextWithFallback);
+const mockedGenerate = vi.mocked(generateTextForPurpose);
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -105,10 +105,10 @@ describe('suggestCraftAnswers universal dynamic logic', () => {
     expect(result.answers.craftSpec).toBe('We record vitals before the pediatrician enters.');
     expect(result.answers.clientArtifact).toBe(initial.clientArtifact);
     expect(mockedGenerate).toHaveBeenCalledTimes(2);
-    expect(mockedGenerate.mock.calls[1]?.[0].prompt).toContain(
+    expect(mockedGenerate.mock.calls[1]?.[1].prompt).toContain(
       'exactly these keys: craftSpec'
     );
-    expect(mockedGenerate.mock.calls[1]?.[0].prompt).not.toContain(
+    expect(mockedGenerate.mock.calls[1]?.[1].prompt).not.toContain(
       `clientArtifact: ${initial.clientArtifact}`
     );
   });

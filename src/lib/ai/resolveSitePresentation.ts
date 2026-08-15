@@ -15,7 +15,7 @@ import {
 } from '@/lib/catalog/serviceCatalog'
 import { buildIntakeBrief } from '@/lib/intake/buildIntakeBrief'
 import type { ProspectIntakeRow } from '@/lib/intake/getIntakeByToken'
-import { generateTextWithFallback, type AiTextProvider } from '@/lib/ai/aiTextProvider'
+import { generateTextForPurpose, type AiTextProvider } from '@/lib/ai/aiTextProvider'
 import {
   synthesizeThemeTokens,
   type ThemeTokenSelection,
@@ -129,7 +129,7 @@ ${input.other_services?.trim() ? `\nCustom services (Other): ${input.other_servi
 Rules suggestion (use unless clearly wrong): theme=${rules.theme}, layout=${rules.layoutStyle}, room=${rules.defaultRoom}`
 
   try {
-    const { text: raw } = await generateTextWithFallback({
+    const { text: raw } = await generateTextForPurpose('site_presentation', {
       prompt,
       jsonMode: true,
       temperature: 0.4,

@@ -1,4 +1,4 @@
-import { generateTextWithFallback } from '@/lib/ai/aiTextProvider';
+import { generateTextForPurpose } from '@/lib/ai/aiTextProvider';
 import { generateWithQualityRetry } from '@/lib/ai/generateWithQualityRetry';
 import { HUMAN_COPY_VOICE_RULES } from '@/lib/ai/humanCopyVoice';
 import { validateGeneratedUnits } from '@/lib/validation/generatedContentQuality';
@@ -331,7 +331,7 @@ ${singleField ? `Focus especially on generating a brilliant, industry-specific a
 Generate tailored answers for ALL fields matching ${industry || 'this business'}.`;
 
   try {
-    const { text: rawText, provider } = await generateTextWithFallback({
+    const { text: rawText, provider } = await generateTextForPurpose('craft_answers', {
       prompt,
       jsonMode: true,
       temperature: 0.5,
@@ -362,7 +362,7 @@ Current failed values:
 ${failedUnitIds.map((unitId) => `- ${unitId}: ${current[unitId as CraftAnswerKey]}`).join('\n')}
 
 ${HUMAN_COPY_VOICE_RULES}`;
-        const { text } = await generateTextWithFallback({
+        const { text } = await generateTextForPurpose('craft_answers', {
           prompt: repairPrompt,
           jsonMode: true,
           temperature: 0.3,

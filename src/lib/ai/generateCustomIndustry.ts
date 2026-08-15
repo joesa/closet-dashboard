@@ -1,4 +1,4 @@
-import { generateTextWithFallback, type AiTextProvider } from '@/lib/ai/aiTextProvider'
+import { generateTextForPurpose, type AiTextProvider } from '@/lib/ai/aiTextProvider'
 import { HUMAN_COPY_VOICE_RULES } from '@/lib/ai/humanCopyVoice'
 import { validateGeneratedUnits } from '@/lib/validation/generatedContentQuality'
 import { THEME_SLUGS, LAYOUT_SLUGS } from '@/lib/catalog/sitePresentationCatalog'
@@ -98,7 +98,7 @@ Trade/industry as typed by the contractor: "${industryText}"
 ${input.businessName ? `Business name: ${input.businessName}\n` : ''}${input.otherServices ? `Services they already described: ${input.otherServices}\n` : ''}`
 
   try {
-    const { text, provider } = await generateTextWithFallback({
+    const { text, provider } = await generateTextForPurpose('custom_industry', {
       prompt,
       jsonMode: true,
       temperature: 0.4,

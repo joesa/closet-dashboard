@@ -3,6 +3,8 @@ import Anthropic from '@anthropic-ai/sdk'
 import OpenAI from 'openai'
 import { createSemaphore, type Semaphore } from '@/lib/ai/concurrency'
 import { currentAiCallContext } from '@/lib/ai/aiCallContext'
+import { resolvePurposeChain, type ResolvedEndpoint } from '@/lib/ai/modelRouting'
+import { AI_PURPOSES, type AiPurpose } from '@/lib/ai/purposes'
 
 /**
  * Shared text-generation provider.
@@ -53,6 +55,13 @@ export type TextGenerationOpts = {
    * dedicated 800s processor can raise this so long generations finish.
    */
   abortMs?: number
+  /**
+   * An admin-configured endpoint to call instead of the env-configured vendor
+   * default. Set by generateTextForPurpose; leave unset to keep the historical
+   * env behavior. Its model, key, base URL and headers win over every
+   * env-derived value below.
+   */
+  endpoint?: ResolvedEndpoint
 }
 
 export type TextGenerationResult = {
@@ -197,13 +206,19 @@ function providerConfigured(provider: AiTextProvider): boolean {
 }
 
 async function generateWithClaude(opts: TextGenerationOpts): Promise<ProviderGenerationResult> {
-  const apiKey = process.env.ANTHROPIC_API_KEY
+  const apiKey = opts.endpoint?.apiKey ?? process.env.ANTHROPIC_API_KEY
   if (!apiKey) {
     throw new Error('Missing ANTHROPIC_API_KEY for text generation')
   }
 
-  const model = resolveClaudeModel(opts.anthropicModel)
-  const client = new Anthropic({ apiKey })
+  const model = opts.endpoint?.model ?? resolveClaudeModel(opts.anthropicModel)
+  const client = new Anthropic({
+    apiKey,
+    ...(opts.endpoint?.baseUrl ? { baseURL: opts.endpoint.baseUrl } : {}),
+    ...(opts.endpoint?.headers && Object.keys(opts.endpoint.headers).length
+      ? { defaultHeaders: opts.endpoint.headers }
+      : {}),
+  })
   const abortMs = Math.max(60_000, opts.abortMs ?? CLAUDE_ABORT_MS)
 
   const content: Anthropic.ContentBlockParam[] = [
@@ -283,12 +298,12 @@ async function generateWithClaude(opts: TextGenerationOpts): Promise<ProviderGen
 }
 
 async function generateWithGemini(opts: TextGenerationOpts): Promise<ProviderGenerationResult> {
-  const apiKey = process.env.GEMINI_API_KEY
+  const apiKey = opts.endpoint?.apiKey ?? process.env.GEMINI_API_KEY
   if (!apiKey) {
     throw new Error('Missing GEMINI_API_KEY for text generation')
   }
 
-  const modelName = resolveGeminiModel(opts.geminiModel)
+  const modelName = opts.endpoint?.model ?? resolveGeminiModel(opts.geminiModel)
   const genAI = new GoogleGenerativeAI(apiKey)
   const generationConfig: Record<string, unknown> = {
     temperature: opts.temperature ?? 0.5,
@@ -298,10 +313,13 @@ async function generateWithGemini(opts: TextGenerationOpts): Promise<ProviderGen
     generationConfig.responseMimeType = 'application/json'
   }
 
-  const model = genAI.getGenerativeModel({
-    model: modelName,
-    generationConfig: generationConfig as GenerationConfig,
-  })
+  const model = genAI.getGenerativeModel(
+    {
+      model: modelName,
+      generationConfig: generationConfig as GenerationConfig,
+    },
+    opts.endpoint?.baseUrl ? { baseUrl: opts.endpoint.baseUrl } : undefined
+  )
 
   // Gemini doesn't have a separate system role in the simple API — prepend
   // the system prompt to the user prompt if provided.
@@ -352,13 +370,23 @@ async function generateWithGemini(opts: TextGenerationOpts): Promise<ProviderGen
 }
 
 async function generateWithOpenAI(opts: TextGenerationOpts): Promise<ProviderGenerationResult> {
-  const apiKey = process.env.OPENAI_API_KEY
+  // Local runtimes (Ollama, LM Studio, vLLM) speak this same API and mostly
+  // ignore the key, so a placeholder is enough when an endpoint supplies none.
+  const apiKey =
+    opts.endpoint?.apiKey ??
+    (opts.endpoint?.baseUrl ? 'not-required' : process.env.OPENAI_API_KEY)
   if (!apiKey) {
     throw new Error('Missing OPENAI_API_KEY for text generation')
   }
 
-  const model = resolveOpenAiModel(opts.openaiModel)
-  const client = new OpenAI({ apiKey })
+  const model = opts.endpoint?.model ?? resolveOpenAiModel(opts.openaiModel)
+  const client = new OpenAI({
+    apiKey,
+    ...(opts.endpoint?.baseUrl ? { baseURL: opts.endpoint.baseUrl } : {}),
+    ...(opts.endpoint?.headers && Object.keys(opts.endpoint.headers).length
+      ? { defaultHeaders: opts.endpoint.headers }
+      : {}),
+  })
   const abortMs = Math.max(60_000, opts.abortMs ?? CLAUDE_ABORT_MS)
 
   const userContent: OpenAI.Chat.ChatCompletionContentPart[] = [
@@ -518,6 +546,9 @@ async function generateWithProvider(
     console.info(JSON.stringify({
       event: 'ai_text_call',
       provider,
+      // Which configured endpoint served this, when admin routing is in play.
+      // 'openai' alone cannot distinguish OpenAI from a local llama.cpp box.
+      ...(opts.endpoint ? { endpoint: opts.endpoint.providerSlug } : {}),
       model: result.model,
       runId: ctx?.runId,
       pass: ctx?.pass,
@@ -598,6 +629,81 @@ export function generateTextFullRedesign(
     geminiModel: resolveFullRedesignGeminiModel(opts.geminiModel),
     anthropicModel: resolveFullRedesignClaudeModel(opts.anthropicModel),
   })
+}
+
+/** Which SDK path serves a configured endpoint. Local runtimes use the OpenAI one. */
+function providerForKind(kind: ResolvedEndpoint['kind']): AiTextProvider {
+  if (kind === 'anthropic') return 'anthropic'
+  if (kind === 'gemini') return 'gemini'
+  // 'openai' and 'openai_compatible' both speak the OpenAI wire format.
+  return 'openai'
+}
+
+/**
+ * Run an admin-configured chain, falling through on failure exactly as the
+ * built-in chains do. Logs the provider slug, not just the vendor, so a run
+ * against three different local endpoints is still readable afterwards.
+ */
+async function generateWithConfiguredChain(
+  purpose: AiPurpose,
+  endpoints: ResolvedEndpoint[],
+  opts: TextGenerationOpts
+): Promise<TextGenerationResult> {
+  let lastErr: unknown = null
+  for (let i = 0; i < endpoints.length; i++) {
+    const endpoint = endpoints[i]!
+    try {
+      const result = await generateWithProvider(providerForKind(endpoint.kind), {
+        ...opts,
+        endpoint,
+        maxOutputTokens: endpoint.maxOutputTokens ?? opts.maxOutputTokens,
+      })
+      if (i > 0) {
+        console.warn(
+          `[aiTextProvider] purpose=${purpose} succeeded on fallback endpoint=${endpoint.providerSlug} model=${result.model ?? '?'}`
+        )
+      }
+      return result
+    } catch (err) {
+      lastErr = err
+      const msg = err instanceof Error ? err.message : String(err)
+      const next = endpoints[i + 1]
+      console.warn(
+        `[aiTextProvider] purpose=${purpose} endpoint=${endpoint.providerSlug} (${endpoint.model}) failed${next ? ` — trying ${next.providerSlug}` : ''}: ${msg.slice(0, 300)}`
+      )
+    }
+  }
+  const msg = lastErr instanceof Error ? lastErr.message : String(lastErr)
+  throw new Error(
+    `AI generation failed on every endpoint configured for "${purpose}": ${msg}`
+  )
+}
+
+/**
+ * The entry point every text call site should use.
+ *
+ * Runs whatever an admin assigned to this purpose; with nothing configured it
+ * runs the exact chain that purpose has always used, so adopting it is not a
+ * behavior change. Resolution never throws — an unreachable config database
+ * degrades to the built-in chain.
+ */
+export async function generateTextForPurpose(
+  purpose: AiPurpose,
+  opts: TextGenerationOpts
+): Promise<TextGenerationResult> {
+  const def = AI_PURPOSES[purpose]
+  if (def.category !== 'text') {
+    throw new Error(`Purpose "${purpose}" is an image purpose — use the image path instead`)
+  }
+
+  const configured = await resolvePurposeChain(purpose)
+  if (configured && configured.length > 0) {
+    return generateWithConfiguredChain(purpose, configured, opts)
+  }
+
+  if (def.fallback === 'full_redesign') return generateTextFullRedesign(opts)
+  if (def.fallback === 'surgical') return generateTextSurgical(opts)
+  return generateTextWithFallback(opts)
 }
 
 /**

@@ -1,4 +1,4 @@
-import { generateTextFullRedesign } from '@/lib/ai/aiTextProvider'
+import { generateTextForPurpose } from '@/lib/ai/aiTextProvider'
 import { extractServicesNamedInBrief } from '@/lib/ai/extractBriefServices'
 import {
   EMPTY_SEED_DIRECTION_INSTRUCTIONS,
@@ -488,7 +488,7 @@ ${opts.adminBrief.trim() || '(EMPTY — invent a complete self-authored design-d
 Produce the optimized brief JSON.`
 
   try {
-    const { text, provider } = await generateTextFullRedesign({
+    const { text, provider } = await generateTextForPurpose('full_redesign_brief', {
       systemPrompt,
       prompt: userPrompt,
       jsonMode: true,
@@ -518,7 +518,7 @@ ${JSON.stringify(candidate)}
 
 BUSINESS:
 ${userPrompt}`
-      const { text: reviewedText, provider: reviewProvider } = await generateTextFullRedesign({
+      const { text: reviewedText, provider: reviewProvider } = await generateTextForPurpose('full_redesign_preflight', {
         systemPrompt: `You are the independent principal design-engineering reviewer. No site build has started and none may start until you approve a complete, coherent, original, anti-AI design system. Output JSON only.\n\n${FULL_REDESIGN_DESIGN_SYSTEM}\n${avoidBlock}\nReturn ONLY JSON:\n${JSON_SHAPE}`,
         prompt: reviewPrompt,
         jsonMode: true,

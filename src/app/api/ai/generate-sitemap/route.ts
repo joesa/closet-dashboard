@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import * as cheerio from 'cheerio'
-import { generateTextWithFallback } from '@/lib/ai/aiTextProvider'
+import { generateTextForPurpose } from '@/lib/ai/aiTextProvider'
 import { getCurrentAdmin } from '@/lib/admin'
 import { extractJson, sanitizeJsonString } from '@/lib/ai/generateSiteConfig'
 import { SITE_PAGE_OPTIONS } from '@/lib/catalog/sitePages'
@@ -116,7 +116,7 @@ No markdown, no commentary.`
 
 ${scrapedText}`
 
-    const { text } = await generateTextWithFallback({
+    const { text } = await generateTextForPurpose('sitemap', {
       prompt,
       systemPrompt,
       jsonMode: true,

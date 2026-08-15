@@ -382,7 +382,11 @@ falling back to `CUSTOM_SITE_CLAUDE_MODEL`) → OpenAI (`gpt-5.6-sol` /
 `FULL_REDESIGN_OPENAI_MODEL`) → Gemini (`gemini-3.1-pro-preview` /
 `FULL_REDESIGN_GEMINI_MODEL`). Providers without API keys are skipped; API,
 credit, timeout, and empty-response failures advance to the next configured
-provider. This chain applies to brief creation, independent
+provider. These are the **built-in defaults** — an admin can override any of it
+per job at `/admin/ai-models`, including routing to a local model. See
+[AI_MODEL_CONFIG.md](./AI_MODEL_CONFIG.md); note `AI_CONFIG_KEY` must be set in
+the worker's `.env.local` too, or the worker keeps using these defaults while
+the web app uses the configured ones. This chain applies to brief creation, independent
 preflight review, foundation generation, and every page pass.
 
 1. **Foundation** — `globalCss` + home `/` (locked brief + `serviceUpdates` stored on the job)

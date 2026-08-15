@@ -31,8 +31,9 @@ function inferLogoPrompt(opts: {
 
 async function generateLogoVariant(prompt: string): Promise<Buffer> {
   // OpenAI is preferred by generateSquareImage(); Gemini is automatic fallback
-  // only when OpenAI is unavailable or quota/billing limited.
-  return generateSquareImage(prompt)
+  // only when OpenAI is unavailable or quota/billing limited. An admin can
+  // reroute the 'image_logo' purpose to override both.
+  return generateSquareImage(prompt, 'image_logo')
 }
 
 async function executeIntakeGenerateLogo(

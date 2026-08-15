@@ -118,7 +118,7 @@ async function generateOne(
   }
 
   try {
-    const urls = await generateImageVariants(prompt, storagePrefix, key, variantsPerSlot())
+    const urls = await generateImageVariants(prompt, storagePrefix, key, variantsPerSlot(), 'image_spec')
     if (!urls[0]) {
       return { ok: false, reason: 'Image generation returned nothing.', retryable: true }
     }

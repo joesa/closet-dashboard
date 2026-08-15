@@ -1,7 +1,7 @@
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import {
   CLAUDE_SONNET_MODEL,
-  generateTextWithFallback,
+  generateTextForPurpose,
 } from '@/lib/ai/aiTextProvider'
 import {
   extractJson,
@@ -694,7 +694,7 @@ export async function runAdminSiteChat(
 
   let text = ''
   try {
-    const first = await generateTextWithFallback({
+    const first = await generateTextForPurpose('admin_chat', {
       systemPrompt,
       prompt: userPrompt,
       jsonMode: true,
@@ -707,7 +707,7 @@ export async function runAdminSiteChat(
     text = first.text
   } catch (err) {
     console.warn('[adminSiteChat] primary model failed, retrying Gemini:', err)
-    const fallback = await generateTextWithFallback({
+    const fallback = await generateTextForPurpose('admin_chat', {
       systemPrompt,
       prompt: userPrompt,
       jsonMode: true,
@@ -726,7 +726,7 @@ export async function runAdminSiteChat(
       text.slice(0, 400).replace(/\s+/g, ' ')
     )
     try {
-      const retry = await generateTextWithFallback({
+      const retry = await generateTextForPurpose('admin_chat', {
         systemPrompt:
           systemPrompt +
           '\n\nCRITICAL: Respond with a single minified JSON object only. No markdown fences, no prose outside JSON.',
@@ -826,7 +826,7 @@ export async function runAdminSiteChat(
       .join('\n')
     let retried: Record<string, unknown> = {}
     try {
-      const retry = await generateTextWithFallback({
+      const retry = await generateTextForPurpose('admin_chat', {
         systemPrompt:
           systemPrompt +
           `\n\nCOPY QUALITY RETRY: your previous "changes" contained banned AI-marketing copy. Return the SAME JSON shape with corrected values for ONLY these columns (${Array.from(copyViolationsByColumn.keys()).join(', ')}). Violations to fix:\n${feedback}`,

@@ -1,4 +1,4 @@
-import { generateAndUpload, editImageFromUrl } from '@/lib/openai-images'
+import { generateAndUpload, editImageFromUrl, type ImagePurpose } from '@/lib/openai-images'
 
 export function describeImageError(error: unknown): { status: number; message: string } {
   const err = error as { status?: number; code?: string; message?: string }
@@ -42,12 +42,13 @@ export async function generateImageVariants(
   prompt: string,
   storagePrefix: string,
   keyPrefix: string,
-  count = 3
+  count = 3,
+  purpose: ImagePurpose = 'image_service'
 ): Promise<string[]> {
   const urls: string[] = []
   await Promise.all(
     Array.from({ length: count }, (_, i) =>
-      generateAndUpload(prompt, storagePrefix, `${keyPrefix}-${i + 1}`).then((url) => {
+      generateAndUpload(prompt, storagePrefix, `${keyPrefix}-${i + 1}`, purpose).then((url) => {
         urls[i] = url
       })
     )
@@ -66,12 +67,13 @@ export async function generateImageEditVariants(
   prompt: string,
   storagePrefix: string,
   keyPrefix: string,
-  count = 3
+  count = 3,
+  purpose: ImagePurpose = 'image_edit'
 ): Promise<string[]> {
   const urls: string[] = []
   await Promise.all(
     Array.from({ length: count }, (_, i) =>
-      editImageFromUrl(referenceUrl, prompt, storagePrefix, `${keyPrefix}-${i + 1}`).then(
+      editImageFromUrl(referenceUrl, prompt, storagePrefix, `${keyPrefix}-${i + 1}`, purpose).then(
         (url) => {
           urls[i] = url
         }

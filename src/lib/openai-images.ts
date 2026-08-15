@@ -1,4 +1,6 @@
 import OpenAI, { toFile } from 'openai'
+import { resolvePurposeChain, type ResolvedEndpoint } from '@/lib/ai/modelRouting'
+import type { AiPurpose } from '@/lib/ai/purposes'
 import {
   buildBeforeImagePrompt,
   type BeforeAfterContext,
@@ -112,16 +114,22 @@ function shapePromptPrefix(shape: ImageShape): string {
     : ''
 }
 
-async function generateImageWithGemini(prompt: string, shape: ImageShape): Promise<Buffer> {
-  const apiKey = process.env.GEMINI_API_KEY
+async function generateImageWithGemini(
+  prompt: string,
+  shape: ImageShape,
+  override?: { apiKey?: string; models?: string[] }
+): Promise<Buffer> {
+  const apiKey = override?.apiKey ?? process.env.GEMINI_API_KEY
   if (!apiKey) {
     throw new Error('Missing GEMINI_API_KEY for fallback image generation')
   }
 
-  const configured = (process.env.GEMINI_IMAGE_MODELS || '')
-    .split(',')
-    .map((m) => m.trim())
-    .filter(Boolean)
+  const configured =
+    override?.models ??
+    (process.env.GEMINI_IMAGE_MODELS || '')
+      .split(',')
+      .map((m) => m.trim())
+      .filter(Boolean)
   // NOTE: Imagen models (imagen-*) are only served via the `:predict` endpoint
   // and 404 on `:generateContent`. The models below are the image-capable
   // Gemini models that DO support `:generateContent` with an IMAGE modality.
@@ -215,7 +223,102 @@ async function generateImageWithOpenAI(prompt: string, shape: ImageShape): Promi
   return Buffer.from(b64, 'base64')
 }
 
-async function generateImageWithProvider(prompt: string, shape: ImageShape): Promise<Buffer> {
+/** Image purposes an admin can route. Text purposes never reach this module. */
+export type ImagePurpose = Extract<AiPurpose, `image_${string}`>
+
+/**
+ * Generate against one admin-configured endpoint.
+ *
+ * Anthropic has no image-generation API, so an anthropic provider assigned to
+ * an image purpose is rejected rather than attempted — it would fail on every
+ * call with a error that does not explain itself.
+ */
+async function generateImageWithEndpoint(
+  endpoint: ResolvedEndpoint,
+  prompt: string,
+  shape: ImageShape
+): Promise<Buffer> {
+  if (endpoint.kind === 'anthropic') {
+    throw new Error(
+      `Provider "${endpoint.providerSlug}" is Anthropic, which does not generate images`
+    )
+  }
+
+  if (endpoint.kind === 'gemini') {
+    return generateImageWithGemini(prompt, shape, {
+      apiKey: endpoint.apiKey ?? undefined,
+      models: [endpoint.model],
+    })
+  }
+
+  // 'openai' and 'openai_compatible'. Note that most local TEXT runtimes
+  // (Ollama, LM Studio) do not implement /v1/images/generations at all — this
+  // path works against LocalAI-style gateways that do.
+  const client = new OpenAI({
+    apiKey: endpoint.apiKey ?? (endpoint.baseUrl ? 'not-required' : process.env.OPENAI_API_KEY),
+    ...(endpoint.baseUrl ? { baseURL: endpoint.baseUrl } : {}),
+    ...(Object.keys(endpoint.headers).length ? { defaultHeaders: endpoint.headers } : {}),
+  })
+  const result = await client.images.generate({
+    model: endpoint.model,
+    prompt: `${shapePromptPrefix(shape)}${enrichImagePrompt(prompt)}`,
+    n: 1,
+    size: imageSize(shape),
+  })
+  const b64 = result.data?.[0]?.b64_json
+  if (!b64) {
+    throw new Error(`${endpoint.model} returned no image data`)
+  }
+  return Buffer.from(b64, 'base64')
+}
+
+/**
+ * Run the chain an admin assigned to this purpose, in order. Returns null when
+ * nothing is configured, which puts the caller back on the env chain.
+ */
+async function generateImageWithConfiguredChain(
+  purpose: ImagePurpose,
+  prompt: string,
+  shape: ImageShape
+): Promise<Buffer | null> {
+  const endpoints = await resolvePurposeChain(purpose)
+  if (!endpoints || endpoints.length === 0) return null
+
+  let lastErr: unknown = null
+  for (let i = 0; i < endpoints.length; i++) {
+    const endpoint = endpoints[i]!
+    try {
+      return await generateImageWithEndpoint(endpoint, prompt, shape)
+    } catch (err) {
+      lastErr = err
+      const next = endpoints[i + 1]
+      console.warn(
+        `[openai-images] purpose=${purpose} endpoint=${endpoint.providerSlug} (${endpoint.model}) failed${next ? ` — trying ${next.providerSlug}` : ''}:`,
+        err
+      )
+    }
+  }
+  // Deliberately does NOT fall back to the env chain: an admin who pointed a
+  // purpose at their own hardware should not get a surprise vendor bill when
+  // that hardware is down.
+  throw Object.assign(
+    new Error(
+      `Image generation failed on every endpoint configured for "${purpose}": ${lastErr instanceof Error ? lastErr.message : String(lastErr)}`
+    ),
+    { status: 502, code: 'configured_image_error' }
+  )
+}
+
+async function generateImageWithProvider(
+  prompt: string,
+  shape: ImageShape,
+  purpose?: ImagePurpose
+): Promise<Buffer> {
+  if (purpose) {
+    const configured = await generateImageWithConfiguredChain(purpose, prompt, shape)
+    if (configured) return configured
+  }
+
   if (process.env.GEMINI_API_KEY) {
     try {
       return await generateImageWithGemini(prompt, shape)
@@ -290,17 +393,20 @@ async function generateImageEditWithOpenAI(
 async function generateImageEditWithGemini(
   imageBuffer: Buffer,
   prompt: string,
-  shape: ImageShape
+  shape: ImageShape,
+  override?: { apiKey?: string; models?: string[] }
 ): Promise<Buffer> {
-  const apiKey = process.env.GEMINI_API_KEY
+  const apiKey = override?.apiKey ?? process.env.GEMINI_API_KEY
   if (!apiKey) {
     throw new Error('Missing GEMINI_API_KEY for fallback image editing')
   }
 
-  const configured = (process.env.GEMINI_IMAGE_MODELS || '')
-    .split(',')
-    .map((m) => m.trim())
-    .filter(Boolean)
+  const configured =
+    override?.models ??
+    (process.env.GEMINI_IMAGE_MODELS || '')
+      .split(',')
+      .map((m) => m.trim())
+      .filter(Boolean)
   // NOTE: Imagen models (imagen-*) are only served via the `:predict` endpoint
   // and 404 on `:generateContent`. The models below are the image-capable
   // Gemini models that DO support `:generateContent` with an IMAGE modality.
@@ -383,8 +489,29 @@ async function generateImageEditWithGemini(
 async function generateImageEditWithProvider(
   imageBuffer: Buffer,
   prompt: string,
-  shape: ImageShape
+  shape: ImageShape,
+  purpose?: ImagePurpose
 ): Promise<Buffer> {
+  if (purpose) {
+    const endpoints = await resolvePurposeChain(purpose)
+    if (endpoints && endpoints.length > 0) {
+      // Image-to-image is far less uniform across vendors than text-to-image:
+      // only the Gemini path is implemented for configured endpoints today, so
+      // an endpoint of another kind falls through to the env chain below rather
+      // than silently producing an unrelated image.
+      const gemini = endpoints.find((e) => e.kind === 'gemini')
+      if (gemini) {
+        return generateImageEditWithGemini(imageBuffer, prompt, shape, {
+          apiKey: gemini.apiKey ?? undefined,
+          models: [gemini.model],
+        })
+      }
+      console.warn(
+        `[openai-images] purpose=${purpose} has no gemini endpoint configured for image editing — using the built-in chain`
+      )
+    }
+  }
+
   if (process.env.GEMINI_API_KEY) {
     try {
       return await generateImageEditWithGemini(imageBuffer, prompt, shape)
@@ -430,13 +557,19 @@ function getOpenAI(): OpenAI {
  * decodes straight to a Buffer for upload. `quality: 'high'` keeps the
  * architectural photos crisp and photorealistic.
  */
-export async function generateImage(prompt: string): Promise<Buffer> {
-  return generateImageWithProvider(prompt, 'landscape')
+export async function generateImage(
+  prompt: string,
+  purpose: ImagePurpose = 'image_service'
+): Promise<Buffer> {
+  return generateImageWithProvider(prompt, 'landscape', purpose)
 }
 
 /** Generate a square image (used by logo generation) with provider fallback. */
-export async function generateSquareImage(prompt: string): Promise<Buffer> {
-  return generateImageWithProvider(prompt, 'square')
+export async function generateSquareImage(
+  prompt: string,
+  purpose: ImagePurpose = 'image_service'
+): Promise<Buffer> {
+  return generateImageWithProvider(prompt, 'square', purpose)
 }
 
 /**
@@ -462,9 +595,10 @@ export async function uploadSiteAsset(
 export async function generateAndUpload(
   prompt: string,
   slug: string,
-  key: string
+  key: string,
+  purpose: ImagePurpose = 'image_service'
 ): Promise<string> {
-  const buffer = await generateImage(prompt)
+  const buffer = await generateImage(prompt, purpose)
   return uploadSiteAsset(buffer, slug, key)
 }
 
@@ -483,10 +617,16 @@ export async function editImageFromUrl(
   referenceUrl: string,
   prompt: string,
   slug: string,
-  key: string
+  key: string,
+  purpose: ImagePurpose = 'image_edit'
 ): Promise<string> {
   const referenceBuffer = await fetchImageBuffer(referenceUrl)
-  const buffer = await generateImageEditWithProvider(referenceBuffer, prompt, 'landscape')
+  const buffer = await generateImageEditWithProvider(
+    referenceBuffer,
+    prompt,
+    'landscape',
+    purpose
+  )
   return uploadSiteAsset(buffer, slug, key)
 }
 
@@ -509,5 +649,5 @@ export async function generateBeforeImage(
   context?: BeforeAfterContext
 ): Promise<string> {
   const prompt = buildBeforeImagePrompt(afterImageUrl, context)
-  return editImageFromUrl(afterImageUrl, prompt, slug, 'before')
+  return editImageFromUrl(afterImageUrl, prompt, slug, 'before', 'image_before_after')
 }

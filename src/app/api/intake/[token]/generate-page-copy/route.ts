@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { generateTextWithFallback } from '@/lib/ai/aiTextProvider'
+import { generateTextForPurpose } from '@/lib/ai/aiTextProvider'
 import { getIntakeByToken } from '@/lib/intake/getIntakeByToken'
 import { assertDraftIntake, assertDepositPaid } from '@/lib/intake/intakeTierGates'
 import { checkRateLimit, hashRateKey } from '@/lib/rateLimit'
@@ -68,7 +68,7 @@ function parsePlainTextContent(rawText: string): string {
 async function generatePageCopy(prompt: string): Promise<string> {
   // Primary path: structured JSON output via unified fallback provider
   try {
-    const { text: primaryText } = await generateTextWithFallback({
+    const { text: primaryText } = await generateTextForPurpose('intake_page_copy', {
       prompt,
       jsonMode: true,
       temperature: 0.75,
@@ -85,7 +85,7 @@ async function generatePageCopy(prompt: string): Promise<string> {
       'Fallback mode: if JSON output is unavailable, return only raw page body text (no JSON, no markdown, no headings).'
 
     try {
-      const { text: fallbackText } = await generateTextWithFallback({
+      const { text: fallbackText } = await generateTextForPurpose('intake_page_copy', {
         prompt: fallbackPrompt,
         jsonMode: false,
         temperature: 0.75,

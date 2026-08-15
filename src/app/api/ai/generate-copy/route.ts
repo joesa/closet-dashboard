@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { generateTextWithFallback } from '@/lib/ai/aiTextProvider'
+import { generateTextForPurpose } from '@/lib/ai/aiTextProvider'
 import { getCurrentAdmin } from '@/lib/admin'
 import { DESIGN_CRAFT_PERSONA } from '@/lib/ai/craftStandards'
 import { HUMAN_COPY_VOICE_RULES } from '@/lib/ai/humanCopyVoice'
@@ -146,7 +146,7 @@ User brief:
 ${input.trim()}`
 
     const generateOnce = async (fullPrompt: string) => {
-      const { text: rawText } = await generateTextWithFallback({
+      const { text: rawText } = await generateTextForPurpose('copy_generate', {
         prompt: fullPrompt,
         systemPrompt,
         jsonMode: true,
