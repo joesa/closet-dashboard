@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import {
   CLAUDE_FABLE_MODEL,
+  CLAUDE_OPUS_MODEL,
   CLAUDE_SONNET_MODEL,
+  CLAUDE_FULL_REDESIGN_MODEL,
   FULL_REDESIGN_PROVIDER_CHAIN,
   GEMINI_FULL_REDESIGN_MODEL,
   GEMINI_SURGICAL_MODEL,
@@ -11,6 +13,7 @@ import {
   OPENAI_SURGICAL_MODEL,
   SURGICAL_PROVIDER_CHAIN,
   resolveClaudeModel,
+  resolveFullRedesignClaudeModel,
   resolveFullRedesignGeminiModel,
   resolveFullRedesignOpenAiModel,
   resolveGeminiModel,
@@ -22,17 +25,25 @@ import {
 describe('full redesign model defaults', () => {
   const prevOpenAi = process.env.FULL_REDESIGN_OPENAI_MODEL
   const prevGemini = process.env.FULL_REDESIGN_GEMINI_MODEL
+  const prevAnthropic = process.env.FULL_REDESIGN_ANTHROPIC_MODEL
+  const prevClaude = process.env.CUSTOM_SITE_CLAUDE_MODEL
 
   afterEach(() => {
     if (prevOpenAi === undefined) delete process.env.FULL_REDESIGN_OPENAI_MODEL
     else process.env.FULL_REDESIGN_OPENAI_MODEL = prevOpenAi
     if (prevGemini === undefined) delete process.env.FULL_REDESIGN_GEMINI_MODEL
     else process.env.FULL_REDESIGN_GEMINI_MODEL = prevGemini
+    if (prevAnthropic === undefined) delete process.env.FULL_REDESIGN_ANTHROPIC_MODEL
+    else process.env.FULL_REDESIGN_ANTHROPIC_MODEL = prevAnthropic
+    if (prevClaude === undefined) delete process.env.CUSTOM_SITE_CLAUDE_MODEL
+    else process.env.CUSTOM_SITE_CLAUDE_MODEL = prevClaude
   })
 
-  it('uses GPT-5.6 Sol, Gemini 3.1 Pro, then Sonnet 5', () => {
+  it('uses GPT-5.6 Sol, Gemini 3.1 Pro, then Opus 5', () => {
     delete process.env.FULL_REDESIGN_OPENAI_MODEL
     delete process.env.FULL_REDESIGN_GEMINI_MODEL
+    delete process.env.FULL_REDESIGN_ANTHROPIC_MODEL
+    delete process.env.CUSTOM_SITE_CLAUDE_MODEL
     expect([...FULL_REDESIGN_PROVIDER_CHAIN]).toEqual([
       'openai',
       'gemini',
@@ -40,6 +51,9 @@ describe('full redesign model defaults', () => {
     ])
     expect(resolveFullRedesignOpenAiModel()).toBe(OPENAI_FULL_REDESIGN_MODEL)
     expect(resolveFullRedesignGeminiModel()).toBe(GEMINI_FULL_REDESIGN_MODEL)
+    expect(resolveFullRedesignClaudeModel()).toBe(CLAUDE_FULL_REDESIGN_MODEL)
+    expect(CLAUDE_FULL_REDESIGN_MODEL).toBe(CLAUDE_OPUS_MODEL)
+    expect(CLAUDE_OPUS_MODEL).toBe('claude-opus-5')
     expect(CLAUDE_SONNET_MODEL).toBe('claude-sonnet-5')
   })
 
@@ -49,6 +63,15 @@ describe('full redesign model defaults', () => {
     expect(resolveFullRedesignOpenAiModel()).toBe('gpt-full-override')
     expect(resolveFullRedesignGeminiModel()).toBe('gemini-full-override')
     expect(resolveFullRedesignOpenAiModel('gpt-explicit')).toBe('gpt-explicit')
+  })
+
+  it('falls back to CUSTOM_SITE_CLAUDE_MODEL, then the dedicated override', () => {
+    delete process.env.FULL_REDESIGN_ANTHROPIC_MODEL
+    process.env.CUSTOM_SITE_CLAUDE_MODEL = CLAUDE_SONNET_MODEL
+    expect(resolveFullRedesignClaudeModel()).toBe(CLAUDE_SONNET_MODEL)
+    process.env.FULL_REDESIGN_ANTHROPIC_MODEL = 'claude-full-override'
+    expect(resolveFullRedesignClaudeModel()).toBe('claude-full-override')
+    expect(resolveFullRedesignClaudeModel('claude-explicit')).toBe('claude-explicit')
   })
 })
 

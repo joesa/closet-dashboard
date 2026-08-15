@@ -7,7 +7,7 @@ import { currentAiCallContext } from '@/lib/ai/aiCallContext'
 /**
  * Shared text-generation provider.
  *
- * - Full redesign: GPT-5.6 Sol → Gemini 3.1 Pro → Claude Sonnet 5.
+ * - Full redesign: GPT-5.6 Sol → Gemini 3.1 Pro → Claude Opus 5.
  * - Surgical edits: Gemini → OpenAI → Anthropic (see generateTextSurgical).
  *
  * Server-only — never import in client components.
@@ -41,7 +41,7 @@ export type TextGenerationOpts = {
   providerChain?: readonly AiTextProvider[]
   /**
    * Override Claude model id. Defaults to CUSTOM_SITE_CLAUDE_MODEL or
-   * claude-sonnet-5 (fast enough for Full redesign inside Vercel limits).
+   * claude-sonnet-5; Full redesign resolves its own default (claude-opus-5).
    */
   anthropicModel?: string
   /** Override OpenAI chat model. Defaults to CUSTOM_SITE_OPENAI_MODEL or gpt-4.1. */
@@ -80,6 +80,8 @@ type ProviderGenerationResult = {
 
 /** Fast production default — finishes Full redesign inside the 5m budget. */
 export const CLAUDE_SONNET_MODEL = 'claude-sonnet-5'
+/** Frontier Claude — Full redesign's Anthropic slot. */
+export const CLAUDE_OPUS_MODEL = 'claude-opus-5'
 /** Slower frontier model — deep craft, often too slow for one-shot site JSON. */
 export const CLAUDE_FABLE_MODEL = 'claude-fable-5'
 /**
@@ -103,6 +105,8 @@ export const GEMINI_SURGICAL_MODEL = 'gemini-pro-latest'
 export const OPENAI_FULL_REDESIGN_MODEL = 'gpt-5.6-sol'
 /** Second-choice model for Full redesign. */
 export const GEMINI_FULL_REDESIGN_MODEL = 'gemini-3.1-pro-preview'
+/** Last-resort model for Full redesign. */
+export const CLAUDE_FULL_REDESIGN_MODEL = CLAUDE_OPUS_MODEL
 
 /**
  * Default Claude abort (~8.3 min). Dedicated Full redesign worker has 800s;
@@ -173,6 +177,17 @@ export function resolveFullRedesignGeminiModel(override?: string): string {
   return override?.trim() ||
     process.env.FULL_REDESIGN_GEMINI_MODEL?.trim() ||
     GEMINI_FULL_REDESIGN_MODEL
+}
+
+/**
+ * Full redesign's Anthropic slot. Still honours CUSTOM_SITE_CLAUDE_MODEL so the
+ * timeout message's "set it to claude-sonnet-5" escape hatch keeps working.
+ */
+export function resolveFullRedesignClaudeModel(override?: string): string {
+  return override?.trim() ||
+    process.env.FULL_REDESIGN_ANTHROPIC_MODEL?.trim() ||
+    process.env.CUSTOM_SITE_CLAUDE_MODEL?.trim() ||
+    CLAUDE_FULL_REDESIGN_MODEL
 }
 
 function providerConfigured(provider: AiTextProvider): boolean {
@@ -571,7 +586,7 @@ export async function generateTextWithFallback(
   throw new Error(`AI generation failed on all providers: ${msg}`);
 }
 
-/** Full redesign only: GPT-5.6 Sol → Gemini 3.1 Pro → Claude Sonnet 5. */
+/** Full redesign only: GPT-5.6 Sol → Gemini 3.1 Pro → Claude Opus 5. */
 export function generateTextFullRedesign(
   opts: TextGenerationOpts
 ): Promise<TextGenerationResult> {
@@ -581,7 +596,7 @@ export function generateTextFullRedesign(
     providerChain: FULL_REDESIGN_PROVIDER_CHAIN,
     openaiModel: resolveFullRedesignOpenAiModel(opts.openaiModel),
     geminiModel: resolveFullRedesignGeminiModel(opts.geminiModel),
-    anthropicModel: resolveClaudeModel(opts.anthropicModel),
+    anthropicModel: resolveFullRedesignClaudeModel(opts.anthropicModel),
   })
 }
 

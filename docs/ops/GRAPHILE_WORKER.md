@@ -344,7 +344,8 @@ Full redesign no longer asks the model for every page in one JSON blob.
 
 **Model chain:** OpenAI (`gpt-5.6-sol` / `FULL_REDESIGN_OPENAI_MODEL`) →
 Gemini (`gemini-3.1-pro-preview` / `FULL_REDESIGN_GEMINI_MODEL`) → Anthropic
-(`claude-sonnet-5` / `CUSTOM_SITE_CLAUDE_MODEL`). Providers without API keys
+(`claude-opus-5` / `FULL_REDESIGN_ANTHROPIC_MODEL`, falling back to
+`CUSTOM_SITE_CLAUDE_MODEL`). Providers without API keys
 are skipped; API, credit, timeout, and empty-response failures advance to the
 next configured provider. This chain applies to brief creation, independent
 preflight review, foundation generation, and every page pass.

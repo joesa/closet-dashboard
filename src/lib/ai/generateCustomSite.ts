@@ -3359,7 +3359,7 @@ async function callModelJson(opts: {
   images?: Array<{ mimeType: string; data: string }>
   /** Provider abort budget; Full redesign runs on the dedicated 800s worker. */
   abortMs?: number
-  /** Full redesign only: GPT-5.6 Sol → Gemini 3.1 Pro → Sonnet 5. */
+  /** Full redesign only: GPT-5.6 Sol → Gemini 3.1 Pro → Opus 5. */
   useFullRedesignProviderChain?: boolean
   /**
   * Surgical edits only: Gemini → OpenAI → Anthropic across credit/API/JSON failures.
