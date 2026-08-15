@@ -132,6 +132,10 @@ Notes:
   maps `@/*` → `../src/*`, so the tasks import out of `src/lib`.
 - `tsx` / `dotenv` are production `dependencies`, so they survive the
   `NODE_ENV=production` install in the image. Keep them there.
+- The image execs `tsx` directly; it must **not** go back to `npm run worker`.
+  npm does not forward SIGTERM to the script it spawns, so as PID 1 it swallowed
+  docker's stop signal: the worker never drained and never recorded a clean
+  shutdown, it just got SIGKILLed when the grace period expired.
 - Only this repo is needed on the host. The `custom-closets-websites` checkout
   in CI is for the shared-lib drift check, not a runtime dependency.
 - Redeploy is `git pull && docker compose -f worker/docker-compose.prod.yml up -d --build`.

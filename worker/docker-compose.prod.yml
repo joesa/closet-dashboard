@@ -24,6 +24,9 @@ services:
       # Same secrets the Next app uses. See worker/worker.env.example.
       - ../.env.local
     restart: unless-stopped
+    # tini as PID 1: reaps zombies and keeps signal delivery well-defined even
+    # if the entrypoint ever gains another layer.
+    init: true
     # Render rotated logs for you; a bare VM does not. Without this the JSON
     # job events fill the boot volume and the worker dies with ENOSPC.
     logging:

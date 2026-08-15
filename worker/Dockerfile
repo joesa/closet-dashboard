@@ -33,8 +33,15 @@ ARG IMAGE_BUILT_AT=""
 ENV WORKER_GIT_SHA=$GIT_SHA
 ENV WORKER_IMAGE_BUILT_AT=$IMAGE_BUILT_AT
 
-# npm run worker -> tsx --tsconfig worker/tsconfig.json worker/src/index.ts
 # Run as the node user rather than root; /app is only ever read at runtime.
 USER node
 
-CMD ["npm", "run", "worker"]
+# Exec tsx directly rather than `npm run worker`.
+#
+# npm does NOT forward SIGTERM to the script it spawns. As PID 1 it absorbed
+# docker's stop signal, so the worker never ran its shutdown handler and was
+# SIGKILLed at the end of the grace period — every clean redeploy looked like a
+# crash in worker_instances, and a long job got no chance to drain. Verified by
+# sending SIGTERM to both forms: via npm the handler never fires, exec'd
+# directly it does. tsx itself relays signals to the process it loads.
+CMD ["./node_modules/.bin/tsx", "--tsconfig", "worker/tsconfig.json", "worker/src/index.ts"]
