@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { isPublishBlockedError } from '@/lib/ai/publishBlocked'
 import { getCurrentAdmin, logAdminAction } from '@/lib/admin'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import {
@@ -430,6 +431,15 @@ export async function POST(
 
     return NextResponse.json({ error: `Unknown action: ${action}` }, { status: 400 })
   } catch (error) {
+    // A gate refusal is the expected answer to "publish this draft", not a
+    // fault: 409 keeps it out of error monitoring and gives the UI the issues
+    // to render.
+    if (isPublishBlockedError(error)) {
+      return NextResponse.json(
+        { error: error.message, blocked: true, issues: error.issues },
+        { status: 409 }
+      )
+    }
     console.error('custom-build error:', error)
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Custom build failed' },

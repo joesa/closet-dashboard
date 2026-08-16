@@ -172,6 +172,7 @@ import {
 import { createSerializer, mapWithConcurrency } from '@/lib/ai/concurrency'
 import { timePass, type PassTiming } from '@/lib/ai/aiCallContext'
 import { getRecordedPrompts, withPromptRecording } from '@/lib/ai/promptRecorder'
+import { PublishBlockedError } from '@/lib/ai/publishBlocked'
 import { saveFullRedesignPrompts } from '@/lib/ai/fullRedesignPrompts'
 
 export type CustomBuildIntent = 'full' | 'surgical'
@@ -3684,7 +3685,9 @@ export async function publishCustomSiteDraft(tenantId: string): Promise<{
       .slice(0, 3)
       .map((issue) => issue.message)
       .join('; ')
-    throw new Error(`Cannot publish: ${summary}`)
+    // Typed so the API answers 409 rather than 500 — the draft is not
+    // publishable, which is a routine outcome, not a server fault.
+    throw new PublishBlockedError(`Cannot publish: ${summary}`, blocking)
   }
 
   const keys = fingerprintKeys(fingerprint)
