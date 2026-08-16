@@ -235,6 +235,50 @@ describe('fallbackEnhancedBrief', () => {
   })
 })
 
+describe('fallback signature concept', () => {
+  const base = {
+    brandName: 'Ridgeline Closets',
+    adminBrief: '',
+    hasImages: false,
+    engagementLabel: 'quote calculator',
+    services: ['Closets'],
+    city: 'Nashville',
+  }
+
+  it('walks past every taken variant instead of returning a colliding concept', () => {
+    // Take the concept the seed would produce, then the one it falls back to,
+    // and confirm it keeps going rather than handing back a known string.
+    const first = fallbackEnhancedBrief(base)
+    const withFirstTaken = fallbackEnhancedBrief({
+      ...base,
+      avoid: {
+        taken: [{ signatureConcept: first.signatureConcept }],
+        takenSkeletonKeys: [],
+        takenPaletteKeys: [],
+        takenFontKeys: [],
+        promptBlock: '',
+      } as never,
+    })
+    expect(withFirstTaken.signatureConcept).not.toBe(first.signatureConcept)
+
+    const withBothTaken = fallbackEnhancedBrief({
+      ...base,
+      avoid: {
+        taken: [
+          { signatureConcept: first.signatureConcept },
+          { signatureConcept: withFirstTaken.signatureConcept },
+        ],
+        takenSkeletonKeys: [],
+        takenPaletteKeys: [],
+        takenFontKeys: [],
+        promptBlock: '',
+      } as never,
+    })
+    expect(withBothTaken.signatureConcept).not.toBe(first.signatureConcept)
+    expect(withBothTaken.signatureConcept).not.toBe(withFirstTaken.signatureConcept)
+  })
+})
+
 describe('normalizeEnhanced collision handling', () => {
   const opts = {
     brandName: "Alvarado's Tile Installations",

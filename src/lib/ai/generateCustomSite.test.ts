@@ -304,6 +304,26 @@ describe('full redesign prompt layering', () => {
   })
 })
 
+describe('full redesign novelty gate', () => {
+  const src = readFileSync(join(__dirname, 'generateCustomSite.ts'), 'utf8')
+
+  it('regenerates the brief before failing a run on a novelty rejection', () => {
+    // A concept collision used to throw immediately, killing a run that had
+    // already paid for two frontier calls.
+    expect(src).toContain('rejectedConcepts: [enhanced.signatureConcept]')
+    expect(src).toContain('preflightFailures = runPreflight(enhanced)')
+    const retryAt = src.indexOf('rejectedConcepts: [enhanced.signatureConcept]')
+    const throwAt = src.indexOf('preflight failed before generation')
+    expect(retryAt).toBeGreaterThan(0)
+    expect(throwAt).toBeGreaterThan(retryAt) // retry precedes the hard failure
+  })
+
+  it('tells the operator the direction was regenerated', () => {
+    expect(src).toContain('noveltyRetryWarning')
+    expect(src).toContain('rejected for novelty')
+  })
+})
+
 describe('full redesign design guard', () => {
   const src = readFileSync(join(__dirname, 'generateCustomSite.ts'), 'utf8')
 

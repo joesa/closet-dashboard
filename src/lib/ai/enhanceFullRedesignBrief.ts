@@ -61,6 +61,12 @@ type EnhanceOpts = {
    * which does not accept a temperature.
    */
   avoid?: DesignAvoidList | null
+  /**
+   * Concepts a previous attempt produced that the novelty gate rejected. Named
+   * back to the model so a retry moves off them instead of re-proposing the
+   * same line, which is what a plain re-roll tends to do.
+   */
+  rejectedConcepts?: string[]
 }
 
 /** Keep user-authored Full redesign input intact through enhancement and review. */
@@ -217,11 +223,19 @@ export function fallbackEnhancedBrief(opts: EnhanceOpts): EnhancedFullRedesignBr
       .map((taken) => taken.signatureConcept?.trim().toLowerCase().replace(/\s+/g, ' '))
       .filter(Boolean)
   )
-  const signatureConcept = takenConcepts.has(
-    baseSignatureConcept.toLowerCase().replace(/\s+/g, ' ')
-  )
-    ? `${opts.brandName} — ${direction.signatureElement}; ${direction.composition}`
-    : baseSignatureConcept
+  // Walk to a concept nothing has claimed. The composed variant used to be
+  // returned unchecked, so when it collided too the run hit the hard novelty
+  // gate with a concept the fallback itself had just invented.
+  const isTaken = (concept: string) =>
+    takenConcepts.has(concept.toLowerCase().replace(/\s+/g, ' '))
+  const conceptCandidates = [
+    baseSignatureConcept,
+    `${opts.brandName} — ${direction.signatureElement}; ${direction.composition}`,
+    `${opts.brandName} — ${direction.composition}; ${materialWorld.slice(0, 60)}`,
+  ]
+  const signatureConcept =
+    conceptCandidates.find((concept) => !isTaken(concept)) ??
+    `${conceptCandidates[1]} (${direction.typography.display} variant)`
   const designSystem: FullRedesignPreflight = {
     composition: direction.composition,
     colorStrategy: `Use ${palette.map((color) => `${color.role} ${color.hex}`).join(', ')} only in their named roles; preserve readable bg/ink contrast and reserve acc for decisions.`,
@@ -590,7 +604,13 @@ Designs already shipped on this platform: ${
 
 ADMIN SEED:
 ${opts.adminBrief.trim() || '(EMPTY — invent a complete self-authored design-direction prompt from intake + design system)'}
-
+${
+  opts.rejectedConcepts?.length
+    ? `\nALREADY REJECTED THIS RUN — do not propose these signature concepts or a reworded variant of them:\n${opts.rejectedConcepts
+        .map((concept) => `- ${concept}`)
+        .join('\n')}\nChange the underlying spatial idea, not just the wording.\n`
+    : ''
+}
 Produce the optimized brief JSON.`
 
   try {

@@ -2111,13 +2111,42 @@ async function runFullGenerate(opts: {
     },
   })
 
-  const preflightFailures = validateFullRedesignPreflight(
-    enhanced,
-    opts.avoidList.takenFontKeys,
-    opts.avoidList.taken
-      .map((taken) => taken.signatureConcept || '')
-      .filter(Boolean)
-  )
+  const takenConceptStrings = opts.avoidList.taken
+    .map((taken) => taken.signatureConcept || '')
+    .filter(Boolean)
+  const runPreflight = (brief: EnhancedFullRedesignBrief) =>
+    validateFullRedesignPreflight(brief, opts.avoidList.takenFontKeys, takenConceptStrings)
+
+  let noveltyRetryWarning: string | null = null
+  let preflightFailures = runPreflight(enhanced)
+  // A rejected concept is worth another brief, not a dead run. The gate fires
+  // on an exact string match against the whole fleet — including this tenant's
+  // own abandoned drafts — so the better the brief gets at naming the obvious
+  // idea for a business, the more often a repeat redesign lands on a line
+  // somebody already used. Ask once more, naming what was rejected, and only
+  // fail if the second attempt cannot move off it.
+  if (preflightFailures.length > 0 && !resumeLocked) {
+    console.warn(
+      '[runFullGenerate] preflight rejected the locked direction, retrying the brief:',
+      preflightFailures
+    )
+    noveltyRetryWarning = `First design direction was rejected for novelty (${preflightFailures.join('; ')}) — regenerated before building.`
+    enhanced = await enhanceFullRedesignBrief({
+      brandName: opts.brandName,
+      adminBrief,
+      hasImages,
+      engagementLabel,
+      services,
+      city: typeof seoCtx.city === 'string' ? seoCtx.city : undefined,
+      region: typeof seoCtx.region === 'string' ? seoCtx.region : undefined,
+      themeHint:
+        typeof opts.context.themeHint === 'string' ? opts.context.themeHint : undefined,
+      intakeHints: buildIntakeHintsForBrief(opts.context),
+      avoid: opts.avoidList,
+      rejectedConcepts: [enhanced.signatureConcept].filter(Boolean),
+    })
+    preflightFailures = runPreflight(enhanced)
+  }
   if (preflightFailures.length > 0) {
     throw new Error(
       `Full redesign design-system preflight failed before generation: ${preflightFailures.join('; ')}`
@@ -2234,6 +2263,7 @@ DIRECTION LOCK:
         : `Creative brief enhanced from your prompt + intake (${enhanced.source}) before generation — palette/type/signature locked for bespoke, non-AI look.`,
     'Full redesign runs multi-pass (home, then each page) with draft checkpoints so Graphile retries can resume.',
   ]
+  if (noveltyRetryWarning) extraWarnings.push(noveltyRetryWarning)
   if (!hasBrief) {
     extraWarnings.push(
       'No admin text or reference image — self-authored direction used studio design-system rules + intake facts. Add a short seed next time to steer.'
