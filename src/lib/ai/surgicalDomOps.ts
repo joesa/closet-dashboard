@@ -35,6 +35,21 @@ export type AppendCssOp = {
   css: string
 }
 
+/**
+ * Literal find/replace inside globalCss — the only op that can change or remove
+ * a rule that already exists.
+ *
+ * Without it "delete the counter-increment declarations" was inexpressible:
+ * appendCss is additive, so a request to REMOVE css could only ever be answered
+ * by piling an override on top, and a model that could not comply still
+ * reported that it had. An empty `replace` is the deletion form.
+ */
+export type EditCssOp = {
+  op: 'editCss'
+  find: string
+  replace: string
+}
+
 export type WrapOp = {
   op: 'wrap'
   selector: string
@@ -51,6 +66,7 @@ export type SurgicalDomOp =
   | SetAttrOp
   | SetHtmlOp
   | AppendCssOp
+  | EditCssOp
   | WrapOp
   | UnwrapOp
 
@@ -64,6 +80,10 @@ export type ApplyOpsPagesResult = {
   hits: number
   changedPages: string[]
   globalCssAppend: string | null
+  /** Rewritten globalCss when editCss ops matched; null when untouched. */
+  globalCssEdited: string | null
+  /** editCss ops whose `find` was not present, so the caller can say so. */
+  unmatchedCssEdits: string[]
 }
 
 const ALLOWED_OPS = new Set([
@@ -71,6 +91,7 @@ const ALLOWED_OPS = new Set([
   'setAttr',
   'setHtml',
   'appendCss',
+  'editCss',
   'wrap',
   'unwrap',
 ])
@@ -187,6 +208,22 @@ export function parseSurgicalOps(raw: unknown): {
           break
         }
         ops.push({ op: 'appendCss', css })
+        break
+      }
+      case 'editCss': {
+        const find = asNonEmptyString(item.find, MAX_OP_STRING)
+        if (!find) {
+          errors.push(`ops[${i}]: editCss needs a non-empty find string`)
+          break
+        }
+        // Deletion is the point, so an empty replace is valid — but it has to
+        // be a string, not a missing key that silently becomes "undefined".
+        const replaceRaw = item.replace
+        if (typeof replaceRaw !== 'string' || replaceRaw.length > MAX_OP_STRING) {
+          errors.push(`ops[${i}]: editCss needs a replace string (use "" to delete)`)
+          break
+        }
+        ops.push({ op: 'editCss', find, replace: replaceRaw })
         break
       }
       case 'wrap': {
@@ -361,13 +398,34 @@ export function applyOpsToHtml(
  */
 export function applyOpsToPages(
   pages: Record<string, CustomPageArtifact>,
-  ops: SurgicalDomOp[]
+  ops: SurgicalDomOp[],
+  /** Current globalCss, required for editCss to have anything to edit. */
+  baseGlobalCss = ''
 ): ApplyOpsPagesResult {
   const cssParts: string[] = []
   for (const op of ops) {
     if (op.op === 'appendCss') cssParts.push(op.css)
   }
-  const pageOps = ops.filter((o) => o.op !== 'appendCss')
+
+  // editCss rewrites the existing sheet; every occurrence of `find` is
+  // replaced, because a declaration a model wants gone usually appears in more
+  // than one rule.
+  let editedCss: string | null = null as string | null
+  const unmatchedCssEdits: string[] = []
+  let cssHits = 0
+  for (const op of ops) {
+    if (op.op !== 'editCss') continue
+    const current: string = editedCss ?? baseGlobalCss
+    if (!current.includes(op.find)) {
+      unmatchedCssEdits.push(op.find)
+      continue
+    }
+    const occurrences = current.split(op.find).length - 1
+    editedCss = current.split(op.find).join(op.replace)
+    cssHits += occurrences
+  }
+
+  const pageOps = ops.filter((o) => o.op !== 'appendCss' && o.op !== 'editCss')
 
   const next: Record<string, CustomPageArtifact> = {}
   let hits = 0
@@ -395,11 +453,15 @@ export function applyOpsToPages(
     hits += cssParts.length
   }
 
+  hits += cssHits
+
   return {
     pages: next,
     hits,
     changedPages,
     globalCssAppend: cssParts.length ? cssParts.join('\n\n') : null,
+    globalCssEdited: editedCss,
+    unmatchedCssEdits,
   }
 }
 
@@ -456,15 +518,22 @@ export function applyOpsToConfig(
   hits: number
   changedPages: string[]
   globalCssAppend: string | null
+  globalCssChanged: boolean
+  unmatchedCssEdits: string[]
 } {
-  const applied = applyOpsToPages(base.pages, ops)
+  const applied = applyOpsToPages(base.pages, ops, base.globalCss || '')
   return {
     config: {
       ...base,
       pages: applied.pages,
+      // editCss rewrites the sheet in place; appendCss is merged later by the
+      // caller, which owns the full-replace policy.
+      ...(applied.globalCssEdited !== null ? { globalCss: applied.globalCssEdited } : {}),
     },
     hits: applied.hits,
     changedPages: applied.changedPages,
     globalCssAppend: applied.globalCssAppend,
+    globalCssChanged: applied.globalCssEdited !== null,
+    unmatchedCssEdits: applied.unmatchedCssEdits,
   }
 }

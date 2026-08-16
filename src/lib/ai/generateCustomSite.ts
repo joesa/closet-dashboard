@@ -3043,7 +3043,7 @@ Allowed ops only: replaceText, setAttr, setHtml, appendCss, wrap, unwrap.
 Hard rules:
 1. Max 20 ops. Prefer replaceText / setAttr. Use setHtml only for a single small node (under 4000 chars).
 2. Never invent redesigns. Apply ONLY the admin request.
-3. Do NOT return pages HTML. Do NOT replace globalCss wholesale — use appendCss for additive rules only.
+3. Do NOT return pages HTML. Do NOT replace globalCss wholesale. To ADD css use appendCss. To CHANGE or REMOVE css that already exists you MUST use editCss {find, replace} — a literal find/replace on the stylesheet, with replace:"" to delete. appendCss cannot remove anything, so never answer a removal request with an override; quote the existing declaration exactly in the find string. Every occurrence of find is replaced, and an unmatched find is reported as a failure rather than silently ignored.
 4. find/replace strings must match the digest text exactly (case-insensitive apply is fine).
 5. If you cannot identify a concrete edit, return { "reply": "…need specifics…", "ops": [] }.
 6. NEVER output spec-sheet metadata, artificial reference codes (e.g. "DOC: INQ-LOG", "REV: 2024", "REF: 01 / 02"), or code comment syntax ("//") in public UI content.`
@@ -3085,10 +3085,16 @@ ${JSON.stringify(digest, null, 2)}`
   }
 
   const applied = applyOpsToConfig(opts.base, ops)
+  // An editCss that matched nothing is the failure mode this whole op exists to
+  // stop being silent: the model asked to change CSS that is not there.
+  const cssEditWarnings = applied.unmatchedCssEdits.map(
+    (find) =>
+      `Surgical editCss found no match for ${JSON.stringify(find.slice(0, 80))} — that CSS was left unchanged.`
+  )
   if (applied.hits === 0 || applied.changedPages.length === 0) {
-    // appendCss-only still counts as a change
+    // appendCss- or editCss-only still counts as a change
     const cssOnly =
-      applied.globalCssAppend &&
+      (applied.globalCssAppend || applied.globalCssChanged) &&
       applied.changedPages.length === 0 &&
       applied.hits > 0
     if (!cssOnly) {
@@ -3099,6 +3105,7 @@ ${JSON.stringify(digest, null, 2)}`
         changedPages: [],
         extraWarnings: [
           'Surgical ops executor reported zero hits.',
+          ...cssEditWarnings,
           ...parseErrors,
         ],
       }
@@ -3164,6 +3171,29 @@ ${JSON.stringify(digest, null, 2)}`
     (finalChanged.length
       ? `Applied ${ops.length} structured op(s) on ${finalChanged.join(', ')}.`
       : 'No pages changed.')
+
+  extraWarnings.push(...cssEditWarnings)
+
+  /**
+   * A reply that claims CSS work when globalCss is byte-identical.
+   *
+   * The existing check below only fires when NOTHING changed, so a run that
+   * touched one page while failing the CSS request the admin actually made
+   * reported unqualified success. That happened: "Removed decorative numbering
+   * ... in global CSS" against a stylesheet that came back identical.
+   */
+  const cssUnchanged = (merged.globalCss || '') === (opts.base.globalCss || '')
+  const claimsCssWork =
+    /\b(css|stylesheet|global styles?)\b/i.test(reply) ||
+    /\b(removed|deleted|collapsed|stripped)\b.*\b(rule|declaration|counter|grid|column|style)/i.test(
+      reply
+    )
+  if (cssUnchanged && claimsCssWork && finalChanged.length > 0) {
+    extraWarnings.push(
+      'The reply describes CSS changes, but globalCss is unchanged. Removing or altering an existing rule needs an editCss op — appendCss can only add.'
+    )
+    reply = `${reply}\n\n[Note: no CSS was actually changed in this edit — see warnings.]`
+  }
 
   if (finalChanged.length === 0) {
     extraWarnings.push('Surgical ops edit produced no page changes — draft unchanged.')
