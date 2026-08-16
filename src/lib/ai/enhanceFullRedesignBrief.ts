@@ -127,6 +127,63 @@ function parsePalette(v: unknown): EnhancedFullRedesignBrief['palette'] {
   return out
 }
 
+/**
+ * Output budget for the brief and preflight calls.
+ *
+ * The schema alone — full designSystem, palette, typography, plus a 350-650
+ * word optimizedBrief — runs to several thousand tokens. The old 2,200 could
+ * not hold it, so Opus ran past the limit and returned JSON cut off mid-object,
+ * which `extractJsonObject` could only throw on. That throw is indistinguishable
+ * from "the model is unavailable": the run silently dropped to the deterministic
+ * template and shipped a generic direction after paying for a frontier call.
+ */
+const BRIEF_MAX_OUTPUT_TOKENS = 12_000
+
+/**
+ * Ask the model once more when a response cannot be parsed.
+ *
+ * A truncated or fenced response is transient and worth one colder retry; the
+ * deterministic fallback is a real quality drop and should be the last resort,
+ * not the first response to a malformed brace.
+ */
+async function generateBriefJson(opts: {
+  purpose: 'full_redesign_brief' | 'full_redesign_preflight'
+  systemBlocks: Array<{ text: string; cache?: boolean }>
+  prompt: string
+  temperature: number
+  maxOutputTokens: number
+}): Promise<{ parsed: unknown; provider: 'openai' | 'gemini' | 'anthropic' }> {
+  let lastErr: unknown = null
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const { text, provider } = await generateTextForPurpose(opts.purpose, {
+      // The nudge is its own trailing block so the cached prefix is untouched.
+      systemBlocks:
+        attempt === 0
+          ? opts.systemBlocks
+          : [
+              ...opts.systemBlocks,
+              {
+                text: 'IMPORTANT: Your previous attempt returned invalid or incomplete JSON. Return one COMPLETE, strictly valid JSON object and nothing else. Keep optimizedBrief within its stated word limit so the object closes.',
+              },
+            ],
+      prompt: opts.prompt,
+      jsonMode: true,
+      temperature: attempt === 0 ? opts.temperature : 0.2,
+      maxOutputTokens: opts.maxOutputTokens,
+    })
+    try {
+      return { parsed: extractJsonObject(text), provider }
+    } catch (err) {
+      lastErr = err
+      console.warn(
+        `[enhanceFullRedesignBrief] ${opts.purpose} attempt ${attempt + 1} returned unparseable JSON`,
+        err instanceof Error ? err.message : err
+      )
+    }
+  }
+  throw lastErr
+}
+
 /** Deterministic, trade-aware brief when the enhancer model is unavailable. */
 export function fallbackEnhancedBrief(opts: EnhanceOpts): EnhancedFullRedesignBrief {
   const place = [opts.city, opts.region].filter(Boolean).join(', ') || 'the local market'
@@ -504,11 +561,18 @@ ${JSON_SHAPE}
 
 optimizedBrief: 200-450 words; must include a REQUIRED SERVICE ADDS line listing servicesToAdd. Do not invent testimonials or fake stats.`
 
-  /** Shared doctrine first, then the per-call role, then this run's fleet block. */
+  /**
+   * Shared doctrine first (cached, byte-identical to the build calls), then
+   * this run's fleet block, then the role and output contract.
+   *
+   * The contract goes last on purpose: it carries the JSON schema and the
+   * optimizedBrief length limit, and burying those behind a long fleet block
+   * is how a brief runs past its token budget and truncates mid-JSON.
+   */
   const briefSystemBlocks = [
     { text: FULL_REDESIGN_DESIGN_SYSTEM, cache: true },
-    { text: briefRole },
     ...(avoidBlock.trim() ? [{ text: avoidBlock.trim() }] : []),
+    { text: briefRole },
   ]
 
   const userPrompt = `Brand: ${opts.brandName}
@@ -530,14 +594,13 @@ ${opts.adminBrief.trim() || '(EMPTY — invent a complete self-authored design-d
 Produce the optimized brief JSON.`
 
   try {
-    const { text, provider } = await generateTextForPurpose('full_redesign_brief', {
+    const { parsed, provider } = await generateBriefJson({
+      purpose: 'full_redesign_brief',
       systemBlocks: briefSystemBlocks,
       prompt: userPrompt,
-      jsonMode: true,
       temperature: seedEmpty ? 0.75 : 0.65,
-      maxOutputTokens: seedEmpty ? 2200 : 1400,
+      maxOutputTokens: seedEmpty ? BRIEF_MAX_OUTPUT_TOKENS : 8_000,
     })
-    const parsed = extractJsonObject(text)
     const firstDraft = normalizeEnhanced(
       parsed,
       opts,
@@ -560,21 +623,21 @@ ${JSON.stringify(candidate)}
 
 BUSINESS:
 ${userPrompt}`
-      const { text: reviewedText, provider: reviewProvider } = await generateTextForPurpose('full_redesign_preflight', {
+      const { parsed: reviewed, provider: reviewProvider } = await generateBriefJson({
+        purpose: 'full_redesign_preflight',
         systemBlocks: [
           { text: FULL_REDESIGN_DESIGN_SYSTEM, cache: true },
+          ...(avoidBlock.trim() ? [{ text: avoidBlock.trim() }] : []),
           {
             text: `You are the independent principal design-engineering reviewer. No site build has started and none may start until you approve a complete, coherent, original, anti-AI design system. Output JSON only.\n\nReturn ONLY JSON:\n${JSON_SHAPE}`,
           },
-          ...(avoidBlock.trim() ? [{ text: avoidBlock.trim() }] : []),
         ],
         prompt: reviewPrompt,
-        jsonMode: true,
         temperature: 0.45 + reviewAttempt * 0.1,
-        maxOutputTokens: seedEmpty ? 2600 : 2200,
+        maxOutputTokens: BRIEF_MAX_OUTPUT_TOKENS,
       })
       candidate = lockAdminSeedInBrief(normalizeEnhanced(
-        extractJsonObject(reviewedText),
+        reviewed,
         opts,
         reviewProvider
       ), opts.adminBrief)

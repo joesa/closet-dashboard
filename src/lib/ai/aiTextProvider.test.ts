@@ -163,6 +163,19 @@ describe('estimateAiTextCostUsd', () => {
     expect(cost).toBeCloseTo((1_000 * 3 + 10_000 * 3.75 + 10_000 * 0.3 + 2_000 * 15) / 1e6)
   })
 
+  it('uses each provider’s own cache discount', () => {
+    for (const p of ['anthropic', 'openai'] as const) {
+      process.env[`AI_COST_${p.toUpperCase()}_INPUT_PER_MILLION_USD`] = '3'
+      process.env[`AI_COST_${p.toUpperCase()}_OUTPUT_PER_MILLION_USD`] = '15'
+    }
+    // Anthropic reads at 0.1x, OpenAI at 0.25x — same tokens, different bill.
+    const anthropic = estimateAiTextCostUsd('anthropic', 0, 0, 0, 10_000) ?? 0
+    const openai = estimateAiTextCostUsd('openai', 0, 0, 0, 10_000) ?? 0
+    expect(anthropic).toBeCloseTo((10_000 * 3 * 0.1) / 1e6)
+    expect(openai).toBeCloseTo((10_000 * 3 * 0.25) / 1e6)
+    expect(openai).toBeGreaterThan(anthropic)
+  })
+
   it('does not silently drop cached prompt tokens from the estimate', () => {
     process.env.AI_COST_ANTHROPIC_INPUT_PER_MILLION_USD = '3'
     process.env.AI_COST_ANTHROPIC_OUTPUT_PER_MILLION_USD = '15'

@@ -438,9 +438,14 @@ async function generateWithGemini(opts: TextGenerationOpts): Promise<ProviderGen
   return {
     text: text.trim(),
     model: modelName,
-    inputTokens: usage?.promptTokenCount,
+    // Gemini likewise folds cached tokens into promptTokenCount.
+    inputTokens: Math.max(
+      0,
+      (usage?.promptTokenCount ?? 0) - (usage?.cachedContentTokenCount ?? 0)
+    ),
     outputTokens: usage?.candidatesTokenCount,
     totalTokens: usage?.totalTokenCount,
+    cacheReadTokens: usage?.cachedContentTokenCount || undefined,
   }
 }
 
@@ -507,18 +512,35 @@ async function generateWithOpenAI(opts: TextGenerationOpts): Promise<ProviderGen
       `OpenAI returned no content (finish: ${completion.choices[0]?.finish_reason ?? 'unknown'})`
     )
   }
+  // Automatic prefix caching — no cache_control to send, but the hit only
+  // happens when the prompt prefix is byte-identical, which is what the
+  // layered system prompt is built to guarantee.
+  const openAiCachedTokens = completion.usage?.prompt_tokens_details?.cached_tokens ?? 0
   return {
     text,
     model,
-    inputTokens: completion.usage?.prompt_tokens,
+    // OpenAI counts cached tokens inside prompt_tokens, unlike Anthropic which
+    // reports them separately. Split them out so the cost estimate applies the
+    // cached rate once rather than billing the same tokens twice.
+    inputTokens: Math.max(0, (completion.usage?.prompt_tokens ?? 0) - openAiCachedTokens),
     outputTokens: completion.usage?.completion_tokens,
     totalTokens: completion.usage?.total_tokens,
+    cacheReadTokens: openAiCachedTokens || undefined,
   }
 }
 
-/** Anthropic prompt-cache multipliers against the base input rate. */
-const CACHE_WRITE_RATE_MULTIPLIER = 1.25
-const CACHE_READ_RATE_MULTIPLIER = 0.1
+/**
+ * Prompt-cache multipliers against each provider's base input rate.
+ *
+ * Anthropic charges a premium to write a cache entry and reads it at a tenth.
+ * OpenAI and Gemini cache prefixes automatically with no write premium and a
+ * shallower read discount, so a single shared multiplier would misreport both.
+ */
+const CACHE_RATE_MULTIPLIERS: Record<AiTextProvider, { write: number; read: number }> = {
+  anthropic: { write: 1.25, read: 0.1 },
+  openai: { write: 1, read: 0.25 },
+  gemini: { write: 1, read: 0.25 },
+}
 
 export function estimateAiTextCostUsd(
   provider: AiTextProvider,
@@ -538,10 +560,11 @@ export function estimateAiTextCostUsd(
   const inputRate = Number(inputRaw)
   const outputRate = Number(outputRaw)
   if (!Number.isFinite(inputRate) || !Number.isFinite(outputRate)) return undefined
+  const multiplier = CACHE_RATE_MULTIPLIERS[provider]
   return (
     ((inputTokens ?? 0) * inputRate +
-      (cacheWriteTokens ?? 0) * inputRate * CACHE_WRITE_RATE_MULTIPLIER +
-      (cacheReadTokens ?? 0) * inputRate * CACHE_READ_RATE_MULTIPLIER +
+      (cacheWriteTokens ?? 0) * inputRate * multiplier.write +
+      (cacheReadTokens ?? 0) * inputRate * multiplier.read +
       (outputTokens ?? 0) * outputRate) /
     1_000_000
   )
