@@ -3,6 +3,7 @@ import { extractServicesNamedInBrief } from '@/lib/ai/extractBriefServices'
 import {
   EMPTY_SEED_DIRECTION_INSTRUCTIONS,
   FULL_REDESIGN_DESIGN_SYSTEM,
+  isDarkSurface,
   validateFullRedesignPreflight,
   type FullRedesignPreflight,
 } from '@/lib/ai/fullRedesignDesignSystem'
@@ -188,11 +189,19 @@ export function fallbackEnhancedBrief(opts: EnhanceOpts): EnhancedFullRedesignBr
     },
   }
 
+  // Describe the surface the seed actually picked. A fixed "Prefer light/mid
+  // surfaces" printed next to a dark bg hex told the builder to ignore half of
+  // its own locked direction.
+  const backgroundHex = palette.find((color) => color.role === 'bg')?.hex || ''
+  const surfaceNote = isDarkSurface(backgroundHex)
+    ? 'This is a deliberate dark-surface direction: hold the dark ground throughout and earn contrast with ink and accent, never by lightening the page.'
+    : 'Hold these light/mid surfaces throughout; do not drift to a dark ground.'
+
   const optimizedBrief = inventedFromIntake
     ? [
         `1. DESIGN DIRECTION — ${signatureConcept}. Educated guess from intake for ${place}: one conversion job via ${opts.engagementLabel}; look must feel decided for ${opts.brandName}, not a template.`,
         `2. MATERIAL WORLD — ${materialWorld}`,
-        `3. PALETTE — ${palette.map((p) => `${p.role} ${p.hex} (${p.use})`).join('; ')}. Prefer light/mid surfaces. Reject purple SaaS, cream+terracotta serif, and dark+neon auto defaults.`,
+        `3. PALETTE — ${palette.map((p) => `${p.role} ${p.hex} (${p.use})`).join('; ')}. ${surfaceNote} Reject purple SaaS, cream+terracotta serif, and dark+neon auto defaults.`,
         `4. TYPOGRAPHY — Display = ${direction.typography.display}, Body = ${direction.typography.body} (${direction.typography.why}). Load both from Google Fonts. Never Inter/Poppins/Roboto/Syne-by-habit.`,
         `5. SIGNATURE ELEMENT — ${direction.signatureElement}. Reuse it in header/hero/footer rather than bolting on decoration.`,
         `6. LAYOUT & HIERARCHY — ${direction.composition}. Invent the order and proportions from this grammar. Include all services and the ${opts.engagementLabel} conversion, but do not fall back to hero → card grid → alternating image/text bands → centered CTA.`,
@@ -287,7 +296,8 @@ function mergeExtractedServices(
   return { ...brief, servicesToAdd: merged, optimizedBrief }
 }
 
-function normalizeEnhanced(
+/** Exported for tests: merges a model brief with the deterministic seed. */
+export function normalizeEnhanced(
   raw: unknown,
   opts: EnhanceOpts,
   source: EnhancedFullRedesignBrief['source']
@@ -324,7 +334,6 @@ function normalizeEnhanced(
   const modelPalette = palette.length ? palette : fallback.palette
   const modelPaletteKey = paletteFingerprintKey(modelPalette).toLowerCase()
   const paletteCollides = takenPalettes.has(modelPaletteKey)
-  const directionCollides = fontCollides || paletteCollides
   const avoidDefaults = asStringList(o.avoidDefaults).length
     ? asStringList(o.avoidDefaults)
     : fallback.avoidDefaults
@@ -367,9 +376,30 @@ function normalizeEnhanced(
       rationale: asString(rawValidation.rationale),
     },
   }
-  const designSystem = directionCollides ? fallback.designSystem : modelDesignSystem
-  const resolvedOptimizedBrief = directionCollides
-    ? `${optimizedBrief}\n\nCOLLISION OVERRIDE — the proposed visual direction reused a platform design. Use this replacement as the final authority for every visual axis:\nPALETTE: ${fallback.palette.map((p) => `${p.role} ${p.hex}`).join(', ')}\nTYPE: ${fallback.typography.display} + ${fallback.typography.body}\nSIGNATURE: ${fallback.signatureElement}\nCOMPOSITION: ${fallback.designSystem.composition}\nDo not retain the rejected palette, geometry, motif system, or composition family.`
+  // Substitute only the axis that actually collided. A palette-bucket match is
+  // coarse (12 hues × 10 lightness × 3 chroma), so it fires often; replacing
+  // composition, imagery, motion, and components alongside it threw away the
+  // whole model direction over a colour-bucket near-miss and shipped the
+  // deterministic template instead.
+  const designSystem: FullRedesignPreflight = {
+    ...modelDesignSystem,
+    colorStrategy: paletteCollides
+      ? fallback.designSystem.colorStrategy
+      : modelDesignSystem.colorStrategy,
+    typeSystem: fontCollides
+      ? fallback.designSystem.typeSystem
+      : modelDesignSystem.typeSystem,
+  }
+  const collisionOverrides = [
+    paletteCollides
+      ? `PALETTE (replaces the proposed palette): ${fallback.palette.map((p) => `${p.role} ${p.hex}`).join(', ')}`
+      : '',
+    fontCollides
+      ? `TYPE (replaces the proposed pairing): ${fallback.typography.display} + ${fallback.typography.body}`
+      : '',
+  ].filter(Boolean)
+  const resolvedOptimizedBrief = collisionOverrides.length
+    ? `${optimizedBrief}\n\nCOLLISION OVERRIDE — the axes below reused a design already shipped on this platform and have been replaced. They are the final authority for their axis; every other axis of the direction above stands unchanged.\n${collisionOverrides.join('\n')}\nRe-derive the affected axis from the same concept and material world — do not retreat to a generic direction, and do not retain the rejected values.`
     : optimizedBrief
 
   return lockAdminSeedInBrief(mergeExtractedServices(
@@ -378,14 +408,20 @@ function normalizeEnhanced(
       materialWorld: asString(o.materialWorld, fallback.materialWorld),
       palette: paletteCollides ? fallback.palette : modelPalette,
       typography: fontCollides ? fallback.typography : modelTypography,
-      signatureElement: directionCollides
-        ? fallback.signatureElement
-        : asString(o.signatureElement, fallback.signatureElement),
+      // Derived from the business's own work, not from the colliding axis —
+      // a repeated palette bucket is no reason to discard it.
+      signatureElement: asString(o.signatureElement, fallback.signatureElement),
       copyRegister: asString(o.copyRegister, fallback.copyRegister),
       servicesToAdd: asStringList(o.servicesToAdd),
-      avoidDefaults: fontCollides
-        ? [...avoidDefaults, `type pairing "${modelFontKey}" — already used on this platform`]
-        : avoidDefaults,
+      avoidDefaults: [
+        ...avoidDefaults,
+        ...(fontCollides
+          ? [`type pairing "${modelFontKey}" — already used on this platform`]
+          : []),
+        ...(paletteCollides
+          ? [`palette bucket "${modelPaletteKey}" — already used on this platform`]
+          : []),
+      ],
       designSystem,
       optimizedBrief: resolvedOptimizedBrief,
       inventedFromIntake: fallback.inventedFromIntake,
@@ -442,11 +478,12 @@ export async function enhanceFullRedesignBrief(
   const seedEmpty = !opts.adminBrief.trim()
   const avoidBlock = opts.avoid?.promptBlock ? `\n${opts.avoid.promptBlock}\n` : ''
 
-  const systemPrompt = seedEmpty
+  // Layered so the shared design system sits in its own cached block, byte
+  // identical to the one the foundation and page calls send. Every call of
+  // every build then reads it from cache instead of paying for it eight times.
+  const briefRole = seedEmpty
     ? `You invent complete Full redesign creative prompts for bespoke local-business websites. Output JSON only.
 
-${FULL_REDESIGN_DESIGN_SYSTEM}
-${avoidBlock}
 ${EMPTY_SEED_DIRECTION_INSTRUCTIONS}
 
 Return ONLY JSON:
@@ -455,8 +492,6 @@ ${JSON_SHAPE}
 optimizedBrief length: 350-650 words. It IS the admin prompt — write it so a site generator can execute it without further invention of direction.`
     : `You optimize creative briefs for bespoke local-business websites. Output JSON only.
 
-${FULL_REDESIGN_DESIGN_SYSTEM}
-${avoidBlock}
 Given an admin seed (one sentence or a long checklist) plus intake facts, produce an OPTIMIZED creative brief that:
 1. Honors every specific admin instruction (colors named, layout asks, services to add).
 2. Fills every free axis from the business's real world (trade materials, tools, locality, audience) — never from AI design defaults.
@@ -468,6 +503,13 @@ Return ONLY JSON:
 ${JSON_SHAPE}
 
 optimizedBrief: 200-450 words; must include a REQUIRED SERVICE ADDS line listing servicesToAdd. Do not invent testimonials or fake stats.`
+
+  /** Shared doctrine first, then the per-call role, then this run's fleet block. */
+  const briefSystemBlocks = [
+    { text: FULL_REDESIGN_DESIGN_SYSTEM, cache: true },
+    { text: briefRole },
+    ...(avoidBlock.trim() ? [{ text: avoidBlock.trim() }] : []),
+  ]
 
   const userPrompt = `Brand: ${opts.brandName}
 Place: ${[opts.city, opts.region].filter(Boolean).join(', ') || 'unknown'}
@@ -489,7 +531,7 @@ Produce the optimized brief JSON.`
 
   try {
     const { text, provider } = await generateTextForPurpose('full_redesign_brief', {
-      systemPrompt,
+      systemBlocks: briefSystemBlocks,
       prompt: userPrompt,
       jsonMode: true,
       temperature: seedEmpty ? 0.75 : 0.65,
@@ -519,7 +561,13 @@ ${JSON.stringify(candidate)}
 BUSINESS:
 ${userPrompt}`
       const { text: reviewedText, provider: reviewProvider } = await generateTextForPurpose('full_redesign_preflight', {
-        systemPrompt: `You are the independent principal design-engineering reviewer. No site build has started and none may start until you approve a complete, coherent, original, anti-AI design system. Output JSON only.\n\n${FULL_REDESIGN_DESIGN_SYSTEM}\n${avoidBlock}\nReturn ONLY JSON:\n${JSON_SHAPE}`,
+        systemBlocks: [
+          { text: FULL_REDESIGN_DESIGN_SYSTEM, cache: true },
+          {
+            text: `You are the independent principal design-engineering reviewer. No site build has started and none may start until you approve a complete, coherent, original, anti-AI design system. Output JSON only.\n\nReturn ONLY JSON:\n${JSON_SHAPE}`,
+          },
+          ...(avoidBlock.trim() ? [{ text: avoidBlock.trim() }] : []),
+        ],
         prompt: reviewPrompt,
         jsonMode: true,
         temperature: 0.45 + reviewAttempt * 0.1,

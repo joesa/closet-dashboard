@@ -23,6 +23,20 @@ export type TextGenerationOpts = {
   prompt: string
   /** Optional system prompt — prepended to prompt for Gemini. */
   systemPrompt?: string
+  /**
+   * System prompt split into ordered layers, most stable first. Blocks marked
+   * `cache: true` get an Anthropic cache breakpoint, so every later call that
+   * shares the same prefix reads them at ~0.1× instead of paying full price.
+   *
+   * Order matters: a cached block is only a hit when every byte before it is
+   * identical, so put global doctrine first, per-run facts second, and
+   * per-call detail in the user message. Providers without an explicit cache
+   * API receive the blocks joined into one string (OpenAI caches matching
+   * prefixes automatically, so the same ordering still pays off there).
+   *
+   * Takes precedence over `systemPrompt` when both are set.
+   */
+  systemBlocks?: Array<{ text: string; cache?: boolean }>
   /** When true, request structured JSON output. */
   jsonMode: boolean
   /** Sampling temperature (default 0.5). Ignored for Claude — Sonnet/Fable reject it. */
@@ -84,6 +98,10 @@ export type AiTextTelemetry = {
   inputTokens?: number
   outputTokens?: number
   totalTokens?: number
+  /** Prompt tokens written to cache on this call (billed at 1.25×). */
+  cacheWriteTokens?: number
+  /** Prompt tokens served from cache on this call (billed at ~0.1×). */
+  cacheReadTokens?: number
   estimatedCostUsd?: number
 }
 
@@ -93,6 +111,29 @@ type ProviderGenerationResult = {
   inputTokens?: number
   outputTokens?: number
   totalTokens?: number
+  /** Prompt tokens written to cache on this call (Anthropic, billed at 1.25×). */
+  cacheWriteTokens?: number
+  /** Prompt tokens served from cache on this call (billed at ~0.1×). */
+  cacheReadTokens?: number
+}
+
+/** The JSON-only rule, appended after the cached layers so it never splits one. */
+const JSON_ONLY_RULE =
+  'Output MUST be a single valid JSON object only — no markdown fences, no commentary.'
+
+/**
+ * The system prompt as one string, for providers with no explicit cache API.
+ * Preserves block order so automatic prefix caching still lines up.
+ */
+function flattenSystemPrompt(opts: TextGenerationOpts): string | undefined {
+  if (opts.systemBlocks?.length) {
+    const joined = opts.systemBlocks
+      .map((block) => block.text.trim())
+      .filter(Boolean)
+      .join('\n\n')
+    return joined || undefined
+  }
+  return opts.systemPrompt
 }
 
 /** Fast production default — finishes Full redesign inside the 5m budget. */
@@ -249,16 +290,39 @@ async function generateWithClaude(opts: TextGenerationOpts): Promise<ProviderGen
 
   // Stream so long generations don't hit the SDK's non-streaming time limit.
   // Do not send temperature — Claude Sonnet 5 / Fable 5 reject it as deprecated.
-  const system =
-    opts.jsonMode && opts.systemPrompt
-      ? `${opts.systemPrompt}\n\nOutput MUST be a single valid JSON object only — no markdown fences, no commentary.`
-      : opts.systemPrompt
+  // Layered system prompt: each `cache: true` block ends with a breakpoint, so
+  // Anthropic reuses everything up to it on later calls that share the prefix.
+  // The JSON-only rule goes in its own trailing block rather than concatenated
+  // onto the last layer, which would otherwise change that layer's bytes
+  // between jsonMode and non-jsonMode calls and miss the cache.
+  let system: string | Anthropic.TextBlockParam[] | undefined
+  if (opts.systemBlocks?.length) {
+    const blocks: Anthropic.TextBlockParam[] = []
+    for (const block of opts.systemBlocks) {
+      const text = block.text.trim()
+      if (!text) continue
+      blocks.push({
+        type: 'text',
+        text,
+        ...(block.cache ? { cache_control: { type: 'ephemeral' as const } } : {}),
+      })
+    }
+    if (opts.jsonMode && blocks.length) {
+      blocks.push({ type: 'text', text: JSON_ONLY_RULE })
+    }
+    system = blocks.length ? blocks : undefined
+  } else {
+    system =
+      opts.jsonMode && opts.systemPrompt
+        ? `${opts.systemPrompt}\n\n${JSON_ONLY_RULE}`
+        : opts.systemPrompt
+  }
 
   const stream = client.messages.stream(
     {
       model,
       max_tokens: Math.max(opts.maxOutputTokens ?? 8192, 8192),
-      system,
+      ...(system ? { system } : {}),
       messages: [{ role: 'user', content }],
     },
     { signal: AbortSignal.timeout(abortMs) }
@@ -285,6 +349,8 @@ async function generateWithClaude(opts: TextGenerationOpts): Promise<ProviderGen
       inputTokens: message.usage.input_tokens,
       outputTokens: message.usage.output_tokens,
       totalTokens: message.usage.input_tokens + message.usage.output_tokens,
+      cacheWriteTokens: message.usage.cache_creation_input_tokens ?? undefined,
+      cacheReadTokens: message.usage.cache_read_input_tokens ?? undefined,
     }
   } catch (err) {
     const name = err instanceof Error ? err.name : ''
@@ -331,8 +397,9 @@ async function generateWithGemini(opts: TextGenerationOpts): Promise<ProviderGen
 
   // Gemini doesn't have a separate system role in the simple API — prepend
   // the system prompt to the user prompt if provided.
-  const fullPrompt = opts.systemPrompt
-    ? `System: ${opts.systemPrompt}\n\nUser: ${opts.prompt}`
+  const geminiSystem = flattenSystemPrompt(opts)
+  const fullPrompt = geminiSystem
+    ? `System: ${geminiSystem}\n\nUser: ${opts.prompt}`
     : opts.prompt
 
   const parts: Array<
@@ -410,12 +477,14 @@ async function generateWithOpenAI(opts: TextGenerationOpts): Promise<ProviderGen
   }
 
   const messages: OpenAI.Chat.ChatCompletionMessageParam[] = []
-  if (opts.systemPrompt) {
-    const system =
-      opts.jsonMode
-        ? `${opts.systemPrompt}\n\nOutput MUST be a single valid JSON object only — no markdown fences, no commentary.`
-        : opts.systemPrompt
-    messages.push({ role: 'system', content: system })
+  const openaiSystem = flattenSystemPrompt(opts)
+  if (openaiSystem) {
+    // OpenAI caches matching prompt prefixes automatically, so the block
+    // ordering carries over without an explicit breakpoint.
+    messages.push({
+      role: 'system',
+      content: opts.jsonMode ? `${openaiSystem}\n\n${JSON_ONLY_RULE}` : openaiSystem,
+    })
   }
   messages.push({ role: 'user', content: userContent })
 
@@ -447,10 +516,20 @@ async function generateWithOpenAI(opts: TextGenerationOpts): Promise<ProviderGen
   }
 }
 
+/** Anthropic prompt-cache multipliers against the base input rate. */
+const CACHE_WRITE_RATE_MULTIPLIER = 1.25
+const CACHE_READ_RATE_MULTIPLIER = 0.1
+
 export function estimateAiTextCostUsd(
   provider: AiTextProvider,
   inputTokens?: number,
-  outputTokens?: number
+  outputTokens?: number,
+  /**
+   * Cached prompt tokens, which Anthropic reports separately from
+   * `input_tokens`. Omitting them would make every cache hit look free.
+   */
+  cacheWriteTokens?: number,
+  cacheReadTokens?: number
 ): number | undefined {
   const prefix = `AI_COST_${provider.toUpperCase()}_`
   const inputRaw = process.env[`${prefix}INPUT_PER_MILLION_USD`]?.trim()
@@ -459,7 +538,13 @@ export function estimateAiTextCostUsd(
   const inputRate = Number(inputRaw)
   const outputRate = Number(outputRaw)
   if (!Number.isFinite(inputRate) || !Number.isFinite(outputRate)) return undefined
-  return (((inputTokens ?? 0) * inputRate) + ((outputTokens ?? 0) * outputRate)) / 1_000_000
+  return (
+    ((inputTokens ?? 0) * inputRate +
+      (cacheWriteTokens ?? 0) * inputRate * CACHE_WRITE_RATE_MULTIPLIER +
+      (cacheReadTokens ?? 0) * inputRate * CACHE_READ_RATE_MULTIPLIER +
+      (outputTokens ?? 0) * outputRate) /
+    1_000_000
+  )
 }
 
 /** Status/message shapes the providers use for "slow down" or "try again". */
@@ -551,7 +636,15 @@ async function generateWithProvider(
       inputTokens: result.inputTokens,
       outputTokens: result.outputTokens,
       totalTokens: result.totalTokens,
-      estimatedCostUsd: estimateAiTextCostUsd(provider, result.inputTokens, result.outputTokens),
+      cacheWriteTokens: result.cacheWriteTokens,
+      cacheReadTokens: result.cacheReadTokens,
+      estimatedCostUsd: estimateAiTextCostUsd(
+        provider,
+        result.inputTokens,
+        result.outputTokens,
+        result.cacheWriteTokens,
+        result.cacheReadTokens
+      ),
     }
     // Capture the exact inputs when a Full redesign is recording. No-op
     // otherwise, so every other caller is untouched.
@@ -560,7 +653,7 @@ async function generateWithProvider(
       provider,
       model: result.model,
       endpoint: opts.endpoint?.providerSlug ?? null,
-      systemPrompt: opts.systemPrompt ?? null,
+      systemPrompt: flattenSystemPrompt(opts) ?? null,
       userPrompt: opts.prompt,
       imageCount: opts.images?.length ?? 0,
       durationMs: Date.now() - startedAt,

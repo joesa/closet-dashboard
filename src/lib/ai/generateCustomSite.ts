@@ -1698,6 +1698,57 @@ export async function generateCustomSiteDraft(opts: {
 }
 
 /** Pull --acc / --accent from generated globalCss for widget theme matching. */
+/**
+ * Layer B of the Full redesign system prompt: the build role, workflow, and
+ * platform constraints, with zero interpolation.
+ *
+ * Layer A is FULL_REDESIGN_DESIGN_SYSTEM, sent as its own cached block ahead of
+ * this one so the brief, preflight, foundation, and page calls all share a
+ * byte-identical first block and therefore one warm cache entry.
+ *
+ * Kept free of site-specific text on purpose. Every byte here is identical for
+ * every call of every build, which is what lets it sit behind a prompt-cache
+ * breakpoint and stay warm across sites instead of dying the moment a new
+ * business name is interpolated into it.
+ *
+ * Anything referencing a service, path, engine, or fleet fingerprint belongs in
+ * the per-run layer below it, not here.
+ */
+export const FULL_REDESIGN_DOCTRINE = `You produce production-ready marketing sites as raw HTML + CSS for real local businesses on this platform. The complete design language supplied with each build was created, independently reviewed, deterministically validated, and locked before the build began. Execute it precisely; do not fall back to a familiar house style.
+
+# Core rule: nothing you produce may look AI-generated
+
+AI design clusters around recognizable defaults. Know the tells and design away from them unless the brief explicitly asks for one. The substitute for defaults is subject-derived design — the product's materials, tools, artifacts, vernacular, locality, and audience. Name the subject, audience, and the page's single job first; derive every choice from those.
+
+Final check: if any part could be find-and-replaced onto a different product, redo that part.
+
+# Workflow (internal only — never print the analysis)
+
+Pass 1 — Direction (before tokens or HTML):
+1. Understand the product: type, audience, business goal, the one action this site drives (always the engagement engine named below — never invent HTML forms / multi-step estimators / booking wizards).
+2. Lock the OPTIMIZED CREATIVE BRIEF: signature concept, material world, palette hexes, type pairing, signature element. Reference images (if any) refine that direction — absorb mood/composition, do not copy trademarks.
+3. Self-check: would ten AI tools given this brief plausibly produce the same direction? If yes, revise before coding. State the winning signature concept in the JSON "reply".
+
+Pass 2 — System + site (then emit JSON only):
+4. Tokens in globalCss :root — implement the optimized palette (adjust only for AA contrast / brief overrides); --df/--bf from the brief's Google Fonts; optional mono only if it fits; one --acc (second accent ONLY for true dual-lane); spacing/radius/shadow consistent with direction (precision brands ≠ soft 24px radii).
+5. Shared chrome: header with real shop name + nav + phone + primary CTA; designed footer with real contact; reusable layout and button primitives. Header behavior, labels, dividers, spacing density, and geometry MUST follow the locked direction — do not add sticky chrome, eyebrow labels, hairlines, oversized whitespace, or rounded cards by habit. Use one atmospheric device only when it comes from the subject (paper grain, material texture, documentary photo bleed, painted rule, open air), never as generic decoration.
+5b. Layout shell: whatever the composition, the page must either fill its column or be centred in it. A fixed \`max-width\` with no \`margin-inline:auto\` pins everything to the left edge and leaves a dead gutter on wide screens — that is a bug, not a style. If the composition is deliberately asymmetric, write the asymmetry explicitly (a named offset, a fixed rail with a matching content margin), never as an omitted margin. Check the widest case: at 1920px nothing may strand in the left third.
+6. Home composition must be invented for this direction, not selected from a house template. Choose a fundamentally distinct spatial grammar (for example immersive image-led, typographic poster, dense catalog, asymmetric editorial, modular utility, horizontal narrative, restrained single-column, stacked full-width color-field bands, dark cinematic showcase, playful rounded-geometry, or utility dashboard with no marketing hero), then derive section order and proportions from it. Include services and the engagement engine, but do NOT default to hero → card grid → alternating image/text bands → centered CTA — and do NOT default to the light editorial register (hairline grids + uppercase eyebrow labels + wide letter-spacing on a pale ground) that AI site builders habitually produce.
+7. Build EVERY required path with the same header/footer. Services page: deep coverage of every service. Contact: tel:/mailto: + hours/address + optional second widget mount — never an HTML form. Use ALL intakePages + services copy; sharpen, don't invent.
+8. Motion: one deliberate CSS moment (load or signature reveal). Respect prefers-reduced-motion. Excess animation is an AI tell.
+9. Quality floor (do not announce): responsive ~768/~420, visible :focus, WCAG AA contrast, performance-conscious (no decorative assets that cost load without purpose).
+
+# Platform (violations are stripped and break the site)
+
+- Body HTML only (no html/head/body wrappers). Semantic header/nav/main/section/footer.
+- STRIPPED: script, iframe, object, embed, form, on* attributes, javascript: URLs. There is NO JavaScript.
+- CSS scoped at render. No @import. @media, @keyframes, @font-face OK.
+- FIRST node of every page html: <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=...&display=swap">
+- Images: ONLY https URLs from context (services, intakePages, mediaLibrary). Never invent URLs.
+- Root-relative internal links matching page keys.
+
+ALLOWED CSS-only interactivity: :hover/:focus-within, sticky nav, scroll-behavior, transitions/keyframes, details/summary, :target or checkbox+sibling tabs/filters, static before/after image pairs when two real photo URLs exist. FORBIDDEN: script, on*, form, range sliders, JS painters, multi-step quote/booking wizards.`
+
 export function extractCssAccent(css: string): string | null {
   if (!css) return null
   const m = css.match(/--acc(?:ent)?\s*:\s*(#[0-9a-fA-F]{3,8})\b/)
@@ -2090,86 +2141,44 @@ async function runFullGenerate(opts: {
     directionKey: directionReservation?.directionKey,
   }
 
-  const systemPrompt = `You produce production-ready marketing sites as raw HTML + CSS for real local businesses on this platform. The complete design language below was created, independently reviewed, deterministically validated, and locked before this build began. Execute it precisely; do not fall back to a familiar house style.
-
-${FULL_REDESIGN_DESIGN_SYSTEM}
-
-# Core rule: nothing you produce may look AI-generated
-
-AI design clusters around recognizable defaults. Know the tells and design away from them unless the brief explicitly asks for one. The substitute for defaults is subject-derived design — the product's materials, tools, artifacts, vernacular, locality, and audience. Name the subject, audience, and the page's single job first; derive every choice from those.
+  // Layer C: everything true for this run but not for the next one. Sits
+  // behind its own cache breakpoint so the 6-8 calls of a single build share
+  // it, while layers A and B stay warm across every build on the platform.
+  const runContext = `# This build
 
 ${
   seedEmpty || enhanced.inventedFromIntake
     ? `The user message includes a SELF-AUTHORED DESIGN DIRECTION PROMPT invented from intake using our design system (admin left the seed empty). Treat that prompt as if the admin typed it — execute it literally for palette, type, signature element, layout, copy register, and process. Do not invent a competing direction.`
     : `The user message includes an OPTIMIZED CREATIVE BRIEF (expanded from the admin seed + intake) plus the raw ADMIN SEED. The raw ADMIN SEED is the highest-authority creative constraint: execute every explicit request about composition, palette, typography, imagery, features, services, tone, and content. Optimizer additions may fill unspecified axes but may not overwrite user choices. Only platform safety, supplied facts, accessibility, or a documented prior-design collision can require adaptation; preserve the user's underlying intent when adapting.`
 }
-
-Banned defaults (unless the brief explicitly requests them):
-- Purple-to-blue / indigo / teal SaaS gradients, or gradients used instead of a real palette decision
-- Cream/off-white + high-contrast serif display + terracotta/warm-clay accent as a habit skin
-- Near-black + single acid-green / neon lime / cyan / gold accent applied regardless of fit; carbon texture; skewed italic CTAs
-- Hero template: vague headline ("Build faster. Ship smarter."), gray subhead, two buttons, gradient blob / abstract 3D on the right
-- Standalone numeric counters (01 / 02 / 03, Step 01, figure labels) as visual decoration. This covers CSS too: no counter-reset / counter-increment paired with content:counter() or content:"0" counter(), and no ::before pseudo-element that renders a sequence number. Keeping the digits out of the HTML while drawing them from CSS is the same tell — a visitor sees the identical spec sheet. Do not display process numbers by default even for a real sequence; semantic order, titles, spacing, and connectors already communicate progression. Show a number only when visitors must refer to it or it communicates a supplied fact. Never zero-pad a decorative sequence, and never number ordinary service, feature, testimonial, or team lists.
-- Spec-sheet / technical document metadata: NEVER output artificial reference tags, spec sheet codes, or engineering document markers like "DOC. REF: ABT-01", "DOC: INQ-LOG", "REV: 2024", "REF: 01 / 02 / 03", "Case File", "System Spec //", "FIG 1", or programming comment syntax ("//") on public content. Never use document-style CTA labels such as "View Protocol", "Open Dossier", or "View Case File"; use audience-appropriate actions such as "View Services" or "Learn More". UI badges and labels must be natural, human, and industry-appropriate.
-- Emoji in headings, UI copy, or feature lists
-- Glassmorphism cards, floating blurred orbs, dot-grid as default texture
-- Outlining everything in 1px. A hairline is an accent for the two or three edges that must actually be read; a page where every band, card, cell and list row carries \`border:1px solid var(--line)\` reads as a wireframe, not a designed page. Separate sections with space, surface colour and type weight first. The deterministic guard counts border declarations and will send this back for repair.
-- Three identical icon-title-sentence cards with generic line icons that could describe any product
-- Copy tells: "Elevate your…", "Seamless", "Unleash", "Empower", "Supercharge", "Next-generation", "Revolutionize", "Unlock", "Look no further", "We've got you covered", "Your one-stop shop", em-dash-heavy marketing, rule-of-three filler
-- Inter / Poppins / Roboto / system-ui (or the same overused pairings on every site: Big Shoulders, Space Grotesk, Syne by habit)
-- Dual-lane / "pick your lane" gateways unless the business truly has two distinct disciplines (wraps + mechanical). Several related services (oil + brakes + tires) is ONE catalog, one accent
-- NEVER default to dark charcoal + neon "auto shop AI" skin or "premium dark local trade" unless the brief asks
-- Invented testimonials, ratings, stats, awards, years-in-business, lorem, TODOs — only facts from context
-- Stripe/Linear SaaS chrome pasted onto a local service business
-
-Final check: if any part could be find-and-replaced onto a different product, redo that part.
 ${opts.avoidList.promptBlock ? `\n${opts.avoidList.promptBlock}\n` : ''}
-# Workflow (internal only — never print the analysis)
-
-Pass 1 — Direction (before tokens or HTML):
-1. Understand the product: type, audience, business goal, the one action this site drives (always the engagement engine below — never invent HTML forms / multi-step estimators / booking wizards).
-2. Lock the OPTIMIZED CREATIVE BRIEF: signature concept, material world, palette hexes, type pairing, signature element. Reference images (if any) refine that direction — absorb mood/composition, do not copy trademarks.
-3. Self-check: would ten AI tools given this brief plausibly produce the same direction? If yes, revise before coding. State the winning signature concept in the JSON "reply".
-
-Pass 2 — System + site (then emit JSON only):
-4. Tokens in globalCss :root — implement the optimized palette (adjust only for AA contrast / brief overrides); --df/--bf from the brief's Google Fonts; optional mono only if it fits; one --acc (second accent ONLY for true dual-lane); spacing/radius/shadow consistent with direction (precision brands ≠ soft 24px radii).
-5. Shared chrome: header with real shop name + nav + phone + primary CTA; designed footer with real contact; reusable layout and button primitives. Header behavior, labels, dividers, spacing density, and geometry MUST follow the locked direction — do not add sticky chrome, eyebrow labels, hairlines, oversized whitespace, or rounded cards by habit. Use one atmospheric device only when it comes from the subject (paper grain, material texture, documentary photo bleed, painted rule, open air), never as generic decoration.
-5b. Layout shell: whatever the composition, the page must either fill its column or be centred in it. A fixed \`max-width\` with no \`margin-inline:auto\` pins everything to the left edge and leaves a dead gutter on wide screens — that is a bug, not a style. If the composition is deliberately asymmetric, write the asymmetry explicitly (a named offset, a fixed rail with a matching content margin), never as an omitted margin. Check the widest case: at 1920px nothing may strand in the left third.
-6. Home composition must be invented for this direction, not selected from a house template. Choose a fundamentally distinct spatial grammar (for example immersive image-led, typographic poster, dense catalog, asymmetric editorial, modular utility, horizontal narrative, restrained single-column, stacked full-width color-field bands, dark cinematic showcase, playful rounded-geometry, or utility dashboard with no marketing hero), then derive section order and proportions from it. Include services and the engagement engine, but do NOT default to hero → card grid → alternating image/text bands → centered CTA — and do NOT default to the light editorial register (hairline grids + uppercase eyebrow labels + wide letter-spacing on a pale ground) that AI site builders habitually produce.
-7. Build EVERY required path with the same header/footer. Services page: deep coverage of every service. Contact: tel:/mailto: + hours/address + optional second widget mount — never an HTML form. Use ALL intakePages + services copy; sharpen, don't invent.
-8. Motion: one deliberate CSS moment (load or signature reveal). Respect prefers-reduced-motion. Excess animation is an AI tell.
-9. Quality floor (do not announce): responsive ~768/~420, visible :focus, WCAG AA contrast, performance-conscious (no decorative assets that cost load without purpose).
-
 # Non-negotiables (brief cannot remove these)
 
 SERVICES — include every intake service from context.services${
     services.length
       ? `: ${services.join('; ')}`
       : ' (use titles in context.services)'
-  }. Feature on home + real coverage on services (or equivalent). You MUST also add every service listed under REQUIRED SERVICE ADDS / servicesToAdd in the optimized brief (e.g. Vehicle Wrapping when the admin seed mentions wrapping) — feature them on home + services pages AND list them in serviceUpdates.added. Do NOT drop intake services unless the brief explicitly removes/replaces them — then serviceUpdates.removed with a short reason citing the brief. Never invent unrelated services the brief did not mention. Meta seeds like "write a prompt for a wrapping shop…" still count as naming those services.
+  }. Feature on home + real coverage on services (or equivalent). You MUST also add every service listed under REQUIRED SERVICE ADDS / servicesToAdd in the optimized brief — feature them on home + services pages AND list them in serviceUpdates.added. Do NOT drop intake services unless the brief explicitly removes/replaces them — then serviceUpdates.removed with a short reason citing the brief. Never invent unrelated services the brief did not mention. A meta seed ("write a prompt for a shop that does X…") still counts as naming X.
 
 ENGAGEMENT ENGINE — this site uses "${engagementLabel}" (${engagementModel}). Embed EXACTLY this HTML comment on home (literal, no attributes):
   ${WIDGET_PLACEHOLDER}
 Place it in the conversion / estimate / book / order section; optional repeat on contact. Mount must be transparent/flush — never background, border, box-shadow, or heavy padding on the element holding the comment (widget paints its own card). Map any brief "quote estimator" / "book a bay" / multi-step form onto this band + tel CTA — do NOT emit HTML forms.
 
 INTAKE — ship EXACTLY these paths as page keys (no inventing /reviews or /areas): ${opts.pageHints}. Nav hrefs MUST use those exact paths (Reviews label → /testimonials, Areas → /service-areas). Preserve client facts from intakePages / about / seo.
-
-# Platform (violations are stripped and break the site)
-
-- Body HTML only (no html/head/body wrappers). Semantic header/nav/main/section/footer.
-- STRIPPED: script, iframe, object, embed, form, on* attributes, javascript: URLs. There is NO JavaScript.
-- CSS scoped at render. No @import. @media, @keyframes, @font-face OK.
-- FIRST node of every page html: <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=...&display=swap">
-- Images: ONLY https URLs from context (services, intakePages, mediaLibrary). Never invent URLs.
-- Root-relative internal links matching page keys.
-
-ALLOWED CSS-only interactivity: :hover/:focus-within, sticky nav, scroll-behavior, transitions/keyframes, details/summary, :target or checkbox+sibling tabs/filters, static before/after image pairs when two real photo URLs exist. FORBIDDEN: script, on*, form, range sliders, JS painters, multi-step quote/booking wizards.
-
 ${hasImages || attachmentsAreReferenceOnly
-  ? `REFERENCE-ONLY ATTACHMENTS — vision/context only. Use them to understand the request, visual problem, subject, or desired feel. Even if the admin explicitly asks to place an attachment, do not insert, embed, upload, publish, reproduce, or derive a site URL from it in page HTML/CSS, and do not choose a visually similar mediaLibrary URL as a substitute.`
+  ? `\nREFERENCE-ONLY ATTACHMENTS — vision/context only. Use them to understand the request, visual problem, subject, or desired feel. Even if the admin explicitly asks to place an attachment, do not insert, embed, upload, publish, reproduce, or derive a site URL from it in page HTML/CSS, and do not choose a visually similar mediaLibrary URL as a substitute.\n`
   : ''}
-
 MULTI-PASS: This run builds the site in multiple model calls (home first, then one page at a time). Match shared chrome/CSS across pages. Never invent paths outside: ${opts.pageHints}.`
+
+  /**
+   * The cached layers, most stable first. A per-call tail (the output
+   * contract for this specific call) is appended uncached by each caller.
+   */
+  const baseSystemBlocks: Array<{ text: string; cache?: boolean }> = [
+    { text: FULL_REDESIGN_DESIGN_SYSTEM, cache: true },
+    { text: FULL_REDESIGN_DOCTRINE, cache: true },
+    { text: runContext, cache: true },
+  ]
 
   const paletteLine = enhanced.palette
     .map((p) => `${p.role} ${p.hex}`)
@@ -2232,7 +2241,17 @@ DIRECTION LOCK:
   }
 
   async function modelJson(args: {
-    systemPrompt: string
+    /**
+     * Per-call tail appended uncached after the two cached layers. Use this
+     * for build calls, which all share the same doctrine and run context.
+     */
+    callContract?: string
+    /**
+     * A complete, standalone system prompt that replaces the layers entirely.
+     * The design-tell repair passes use this: their prompt is deliberately
+     * narrow and prefixing the full build doctrine would dilute it.
+     */
+    systemPrompt?: string
     userPrompt: string
     maxOutputTokens: number
     abortMs: number
@@ -2247,7 +2266,14 @@ DIRECTION LOCK:
   }): Promise<Record<string, unknown>> {
     return callModelJson({
       purpose: args.purpose ?? 'full_redesign_page',
-      systemPrompt: args.systemPrompt,
+      ...(args.systemPrompt
+        ? { systemPrompt: args.systemPrompt }
+        : {
+            systemBlocks: [
+              ...baseSystemBlocks,
+              ...(args.callContract ? [{ text: args.callContract }] : []),
+            ],
+          }),
       userPrompt: args.userPrompt,
       temperature: args.temperature ?? 0.7,
       maxOutputTokens: args.maxOutputTokens,
@@ -2421,9 +2447,7 @@ DIRECTION LOCK:
   // —— Pass: foundation (globalCss + home) ——————————————
   if (builtHomeThisRun) {
     await report('foundation:/', draft)
-    const foundationSystem = `${systemPrompt}
-
-# This call — FOUNDATION ONLY
+    const foundationContract = `# This call — FOUNDATION ONLY
 Output ONLY valid JSON:
 {
   "mode": "${opts.mode}",
@@ -2455,7 +2479,7 @@ Build globalCss + home "/" only. Output JSON.`
 
     const parsed = await modelJson({
       purpose: 'full_redesign_foundation',
-      systemPrompt: foundationSystem,
+      callContract: foundationContract,
       userPrompt: foundationUser,
       maxOutputTokens: 24576,
       abortMs: 420_000,
@@ -2708,9 +2732,7 @@ Build globalCss + home "/" only. Output JSON.`
         })
       : undefined
 
-    const pageSystem = `${systemPrompt}
-
-# This call — SINGLE PAGE ${path}
+    const pageContract = `# This call — SINGLE PAGE ${path}
 Reuse the locked design system. Match header/footer chrome from the sample.
 Output ONLY valid JSON:
 {
@@ -2752,7 +2774,7 @@ Output JSON for ${path} only.`
 
     const parsed = await modelJson({
       purpose: 'full_redesign_page',
-      systemPrompt: pageSystem,
+      callContract: pageContract,
       userPrompt: pageUser,
       maxOutputTokens: 16384,
       abortMs: 300_000,
@@ -3422,8 +3444,17 @@ function parseModelJson(text: string): Record<string, unknown> {
   }
 }
 
+/** Appended on the second attempt when the first returned unusable JSON. */
+const JSON_RETRY_NUDGE =
+  'IMPORTANT: Your previous attempt returned invalid/incomplete JSON. Respond with COMPLETE, strictly valid JSON only. Keep HTML/CSS compact so the response fits.'
+
 async function callModelJson(opts: {
-  systemPrompt: string
+  systemPrompt?: string
+  /**
+   * Layered system prompt, most stable layer first. Blocks flagged `cache` get
+   * a prompt-cache breakpoint. Wins over `systemPrompt` when both are set.
+   */
+  systemBlocks?: Array<{ text: string; cache?: boolean }>
   userPrompt: string
   temperature: number
   maxOutputTokens: number
@@ -3451,7 +3482,9 @@ async function callModelJson(opts: {
     // still does the same two-attempt JSON repair.
     const configured = opts.purpose ? await resolvePurposeChain(opts.purpose) : null
     if (!configured || configured.length === 0) {
-      return callSurgicalModelJson(opts)
+      // Surgical callers always pass a single flat system prompt; the layered
+      // form is a Full redesign build concern and never reaches here.
+      return callSurgicalModelJson({ ...opts, systemPrompt: opts.systemPrompt ?? '' })
     }
   }
 
@@ -3469,12 +3502,25 @@ async function callModelJson(opts: {
         : opts.useFullRedesignProviderChain
           ? generateTextFullRedesign
           : generateTextWithFallback
+      // The retry nudge goes in its own trailing block rather than being
+      // concatenated onto the last cached layer, which would change that
+      // layer's bytes and throw away the cache on exactly the call that can
+      // least afford another full-price prefix.
       const result = await generateText({
         prompt: opts.userPrompt,
-        systemPrompt:
-          attempt === 0
-            ? opts.systemPrompt
-            : `${opts.systemPrompt}\n\nIMPORTANT: Your previous attempt returned invalid/incomplete JSON. Respond with COMPLETE, strictly valid JSON only. Keep HTML/CSS compact so the response fits.`,
+        ...(opts.systemBlocks?.length
+          ? {
+              systemBlocks:
+                attempt === 0
+                  ? opts.systemBlocks
+                  : [...opts.systemBlocks, { text: JSON_RETRY_NUDGE }],
+            }
+          : {
+              systemPrompt:
+                attempt === 0
+                  ? opts.systemPrompt
+                  : `${opts.systemPrompt}\n\n${JSON_RETRY_NUDGE}`,
+            }),
         jsonMode: true,
         temperature: attempt === 0 ? opts.temperature : 0.2,
         maxOutputTokens: opts.maxOutputTokens,

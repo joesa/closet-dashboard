@@ -127,8 +127,12 @@ export function buildAvoidPromptBlock(taken: TakenDesign[]): string {
   const saturatedMotifs = saturatedFleetValues(taken)
   const saturatedFamilies = saturatedFamilyValues(taken)
 
-  const lines = [
-    '# ALREADY USED ON THIS PLATFORM — your direction must differ from every line below',
+  const header =
+    '# ALREADY USED ON THIS PLATFORM — your direction must differ from every line below'
+  const closingRule =
+    'Your complete visual system MUST differ from every design above. A build is rejected when section rhythm alone matches, when the weighted combination of composition, palette, typography, geometry, and motifs remains too similar, OR when it stacks motifs and a design family the fleet has already saturated. Recoloring or reordering the same template is not sufficient.'
+
+  const enumerated = [
     joinCapped('Home section rhythms in use', skeletons, budget),
     joinCapped('Palettes in use (hue-lightness-chroma buckets)', palettes, budget),
     joinCapped('Type pairings in use', fonts, budget),
@@ -143,10 +147,25 @@ export function buildAvoidPromptBlock(taken: TakenDesign[]): string {
       saturatedFamilies,
       budget
     ),
-    'Your complete visual system MUST differ from every design above. A build is rejected when section rhythm alone matches, when the weighted combination of composition, palette, typography, geometry, and motifs remains too similar, OR when it stacks motifs and a design family the fleet has already saturated. Recoloring or reordering the same template is not sufficient.',
   ].filter(Boolean)
 
-  return lines.join('\n').slice(0, AVOID_LIST_MAX_CHARS)
+  // Budget the enumerated fleet lines only. Capping the joined block instead
+  // guillotined the closing rule the moment the fleet grew — every prompt on
+  // the platform ended mid-sentence at "Your complete visual sys" and the rule
+  // it introduces never reached the model.
+  const listBudget = Math.max(
+    0,
+    AVOID_LIST_MAX_CHARS - header.length - closingRule.length - (enumerated.length + 1)
+  )
+  const kept: string[] = []
+  let used = 0
+  for (const line of enumerated) {
+    if (used + line.length + 1 > listBudget) break
+    kept.push(line)
+    used += line.length + 1
+  }
+
+  return [header, ...kept, closingRule].join('\n')
 }
 
 // ── fleet convergence ───────────────────────────────────────────────────────

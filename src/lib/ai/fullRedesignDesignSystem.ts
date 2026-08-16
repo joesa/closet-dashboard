@@ -53,6 +53,16 @@ function luminance(hex: string): number | null {
   return 0.2126 * channel(full, 0) + 0.7152 * channel(full, 2) + 0.0722 * channel(full, 4)
 }
 
+/**
+ * True when a surface hex is dark enough that the page reads as a dark design.
+ * Lets generated briefs describe the palette they actually chose instead of
+ * asserting a fixed surface preference next to a contradicting hex.
+ */
+export function isDarkSurface(hex: string): boolean {
+  const value = luminance(hex)
+  return value !== null && value < 0.2
+}
+
 /** Pure gate that must pass before the first Full redesign HTML/CSS model call. */
 export function validateFullRedesignPreflight(
   candidate: FullRedesignPreflightCandidate,
@@ -124,6 +134,46 @@ export function validateFullRedesignPreflight(
   return failures
 }
 
+/**
+ * The single banned-defaults list. This used to exist twice — a short version
+ * here and a longer superset inlined in the Full redesign build prompt — which
+ * sent both to the model on every build call, in two different phrasings of the
+ * same escape hatch ("unless an admin seed requests them" vs "unless the brief
+ * requests them"). One list, one phrasing, one place to edit.
+ */
+export const BANNED_DESIGN_DEFAULTS = `Banned defaults (unless the ADMIN SEED or brief explicitly requests one):
+- Purple-to-blue / indigo / teal SaaS gradients, or gradients standing in for a real palette decision
+- Cream/off-white + high-contrast serif display + terracotta/warm-clay accent as a habit skin
+- Near-black + a single acid-green / neon lime / cyan / gold accent applied regardless of fit; carbon
+  texture; skewed italic CTAs; "premium dark local trade" and "auto shop AI" skins
+- The vague SaaS hero: empty headline ("Build faster. Ship smarter."), gray subhead, two buttons,
+  gradient blob or abstract 3D at right
+- Standalone numeric counters (01 / 02 / 03, "Step 01", figure labels) as decoration. This covers CSS:
+  no counter-reset / counter-increment paired with content:counter() or content:"0" counter(), and no
+  ::before that renders a sequence number — drawing the digits from CSS instead of HTML is the same
+  tell, the visitor sees the identical spec sheet. Do not number a process by default even when the
+  order is real; titles, spacing, and connectors already carry progression. Show a number only when a
+  visitor must refer to it or it states a supplied fact. Never zero-pad a decorative sequence, and
+  never number ordinary service, feature, testimonial, or team lists.
+- Spec-sheet / technical-document metadata: no artificial reference tags or engineering markers
+  ("DOC. REF: ABT-01", "DOC: INQ-LOG", "REV: 2024", "REF: 01 / 02 / 03", "Case File", "System Spec //",
+  "FIG 1"), no programming comment syntax ("//") in public content, and no document-style CTA labels
+  ("View Protocol", "Open Dossier", "View Case File"). Use plain actions ("View services", "Get a
+  quote"). Badges and labels stay natural and trade-appropriate.
+- Emoji in headings, UI copy, or feature lists
+- Glassmorphism cards, floating blurred orbs, dot-grid as default texture
+- Outlining everything in 1px. A hairline is an accent for the two or three edges that must actually be
+  read; a page where every band, card, cell, and list row carries \`border:1px solid var(--line)\` reads
+  as a wireframe, not a designed page. Separate sections with space, surface colour, and type weight
+  first. A deterministic guard counts border declarations and will send the build back for repair.
+- Three identical icon-title-sentence cards with generic line icons that could describe any product
+- Inter / Poppins / Roboto / system-ui, and the habitual "distinctive" pairs used on every site
+  (Big Shoulders, Space Grotesk, Syne)
+- Dual-lane / "pick your lane" gateways unless the business truly has two distinct disciplines
+  (wraps + mechanical). Several related services (oil + brakes + tires) is ONE catalog, one accent
+- Invented testimonials, ratings, stats, awards, years-in-business, lorem, TODOs — only facts from context
+- Stripe/Linear SaaS chrome pasted onto a local service business`
+
 /** Compact rules embedded in brief-enhancement + Full redesign system prompts. */
 export const FULL_REDESIGN_DESIGN_SYSTEM = `ROLE — ELITE DESIGN ENGINEER (non-negotiable):
 You are a highly respected, top-tier design engineer, creative director, systems
@@ -141,19 +191,7 @@ the product's materials, tools, artifacts, vernacular, locality, and audience. N
 subject, audience, and the page's single job first; derive every visual and copy choice
 from those.
 
-Banned defaults (unless an admin seed explicitly requests them):
-- Purple-to-blue / indigo SaaS gradients; gradients instead of a real palette
-- Cream/off-white + high-contrast serif + terracotta/warm-clay habit skin
-- Near-black + neon lime/cyan/gold "auto shop AI" skin; carbon texture; skewed italic CTAs
-- Vague SaaS heroes ("Build faster…"), gradient blobs, abstract 3D
-- Emoji in UI; glassmorphism; floating orbs; default dot-grids
-- Three identical icon-title-sentence cards; Inter/Poppins/Roboto/Syne-by-habit
-- Standalone 01 / 02 / 03 counters, "Step 01", figure labels, or reference-style
-  numbering used as visual decoration. A process already has semantic order: use
-  titles, spacing, connectors, or an ordered list. Show a number only when visitors
-  must refer to it or it communicates a supplied fact; never zero-pad a decorative sequence.
-- Dual-lane gateways unless the business truly has two disciplines
-- Invented testimonials, ratings, awards, years-in-business, lorem, TODOs
+${BANNED_DESIGN_DEFAULTS}
 
 ${HUMAN_COPY_VOICE_RULES}
 

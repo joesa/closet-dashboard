@@ -182,6 +182,18 @@ describe('buildAvoidPromptBlock', () => {
     )
     expect(buildAvoidPromptBlock(many).length).toBeLessThanOrEqual(AVOID_LIST_MAX_CHARS)
   })
+
+  it('keeps the closing rule intact when the fleet overflows the budget', () => {
+    const many = Array.from({ length: 60 }, (_i, n) =>
+      taken(`t${n}`, [HERO, ...Array(n % 8).fill(PROSE), BAND], `concept number ${n}`)
+    )
+    const block = buildAvoidPromptBlock(many)
+    expect(block).toContain('ALREADY USED ON THIS PLATFORM')
+    expect(block.endsWith('Recoloring or reordering the same template is not sufficient.')).toBe(
+      true
+    )
+    expect(block).not.toMatch(/Your complete visual sys$/)
+  })
 })
 
 describe('findDesignCollisions', () => {

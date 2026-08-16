@@ -11,6 +11,11 @@ import {
   resolveHeroImageFit,
   wantsWholeHeroImageVisible,
 } from './generateCustomSite'
+import {
+  BANNED_DESIGN_DEFAULTS,
+  FULL_REDESIGN_DESIGN_SYSTEM,
+} from '@/lib/ai/fullRedesignDesignSystem'
+import { FULL_REDESIGN_DOCTRINE } from '@/lib/ai/generateCustomSite'
 import type { CustomSiteConfig } from '@/lib/customSite'
 
 const base: CustomSiteConfig = {
@@ -213,15 +218,89 @@ describe('full redesign anti-AI bias', () => {
   it('prompt bans AI default clusters and requires subject-derived design', () => {
     const src = readFileSync(join(__dirname, 'generateCustomSite.ts'), 'utf8')
     expect(src).toContain('subject-derived design')
-    expect(src).toContain('Banned defaults')
-    expect(src).toContain('Cream/off-white + high-contrast serif')
-    expect(src).toContain('NEVER default to dark charcoal + neon')
     expect(src).toContain('ENGAGEMENT ENGINE')
     expect(src).toContain('WIDGET_PLACEHOLDER')
     expect(src).not.toContain('cyan = how it looks / gold = how it runs')
     expect(src).not.toContain('carbon-ish overlay')
     expect(src).not.toContain('Builder prompt')
     expect(src).not.toContain('Next.js + Tailwind')
+  })
+
+  it('carries the banned defaults once, from the shared doctrine', () => {
+    const src = readFileSync(join(__dirname, 'generateCustomSite.ts'), 'utf8')
+    expect(BANNED_DESIGN_DEFAULTS).toContain('Cream/off-white + high-contrast serif')
+    expect(BANNED_DESIGN_DEFAULTS).toContain('"premium dark local trade"')
+    expect(FULL_REDESIGN_DESIGN_SYSTEM).toContain(BANNED_DESIGN_DEFAULTS)
+    // The build prompt embeds the doctrine rather than restating the list.
+    expect(src).toContain('FULL_REDESIGN_DESIGN_SYSTEM')
+    expect(src).not.toContain('Banned defaults')
+  })
+
+  it('keeps another client’s services out of the non-negotiables', () => {
+    const src = readFileSync(join(__dirname, 'generateCustomSite.ts'), 'utf8')
+    expect(src).not.toMatch(/Vehicle Wrapping/i)
+    expect(src).not.toMatch(/wrapping shop/i)
+  })
+})
+
+describe('full redesign prompt layering', () => {
+  const src = readFileSync(join(__dirname, 'generateCustomSite.ts'), 'utf8')
+
+  it('keeps the cached doctrine layer free of per-site interpolation', () => {
+    // A single `${...}` of site data here would make the cached prefix unique
+    // per business, which is exactly what the layering exists to prevent.
+    expect(FULL_REDESIGN_DOCTRINE).not.toMatch(/\$\{/)
+    expect(FULL_REDESIGN_DOCTRINE).toContain('Core rule')
+    expect(FULL_REDESIGN_DOCTRINE).toContain('# Platform')
+    expect(FULL_REDESIGN_DOCTRINE).toContain('# Workflow')
+  })
+
+  it('leaves per-site facts out of the doctrine layer entirely', () => {
+    for (const perSite of [
+      'CLOSET_WIDGET',
+      'Non-negotiables',
+      'ALREADY USED ON THIS PLATFORM',
+      'SERVICES —',
+      'ENGAGEMENT ENGINE',
+    ]) {
+      expect(FULL_REDESIGN_DOCTRINE).not.toContain(perSite)
+    }
+  })
+
+  it('sends doctrine and run context as cached layers plus an uncached tail', () => {
+    expect(src).toContain('{ text: FULL_REDESIGN_DESIGN_SYSTEM, cache: true }')
+    expect(src).toContain('{ text: FULL_REDESIGN_DOCTRINE, cache: true }')
+    expect(src).toContain('{ text: runContext, cache: true }')
+    expect(src).toContain('...baseSystemBlocks')
+  })
+
+  it('opens every call type with the same shared design-system block', () => {
+    // The cache only hits when the prefix is byte-identical, so brief,
+    // preflight, foundation, and page must all lead with this exact block.
+    const brief = readFileSync(join(__dirname, 'enhanceFullRedesignBrief.ts'), 'utf8')
+    const leadBlock = '{ text: FULL_REDESIGN_DESIGN_SYSTEM, cache: true }'
+    expect(brief.split(leadBlock).length - 1).toBe(2) // brief + preflight
+    expect(src.split(leadBlock).length - 1).toBe(1) // foundation + page share one
+    // …and nothing may precede it: every literal block array passed to a model
+    // call opens with the shared block, or spreads an array that already does.
+    for (const body of [src, brief]) {
+      for (const arr of body.matchAll(/systemBlocks:\s*\[\s*\n?\s*([^\n]*)/g)) {
+        const firstEntry = arr[1]
+        if (firstEntry.includes('...baseSystemBlocks')) continue
+        expect(firstEntry).toContain('FULL_REDESIGN_DESIGN_SYSTEM')
+      }
+    }
+  })
+
+  it('gives each call type its own output contract in the uncached tail', () => {
+    expect(src).toContain('const foundationContract = `# This call — FOUNDATION ONLY')
+    expect(src).toContain('const pageContract = `# This call — SINGLE PAGE ${path}')
+    expect(src).toContain('callContract: foundationContract,')
+    expect(src).toContain('callContract: pageContract,')
+  })
+
+  it('appends the JSON retry nudge without rewriting a cached layer', () => {
+    expect(src).toContain('[...opts.systemBlocks, { text: JSON_RETRY_NUDGE }]')
   })
 })
 

@@ -154,6 +154,22 @@ describe('estimateAiTextCostUsd', () => {
     process.env.AI_COST_ANTHROPIC_OUTPUT_PER_MILLION_USD = '15'
     expect(estimateAiTextCostUsd('anthropic', 1_000, 2_000)).toBeCloseTo(0.033)
   })
+
+  it('bills cache writes at 1.25x and cache reads at 0.1x the input rate', () => {
+    process.env.AI_COST_ANTHROPIC_INPUT_PER_MILLION_USD = '3'
+    process.env.AI_COST_ANTHROPIC_OUTPUT_PER_MILLION_USD = '15'
+    // 1k fresh input + 10k written + 10k read + 2k output.
+    const cost = estimateAiTextCostUsd('anthropic', 1_000, 2_000, 10_000, 10_000)
+    expect(cost).toBeCloseTo((1_000 * 3 + 10_000 * 3.75 + 10_000 * 0.3 + 2_000 * 15) / 1e6)
+  })
+
+  it('does not silently drop cached prompt tokens from the estimate', () => {
+    process.env.AI_COST_ANTHROPIC_INPUT_PER_MILLION_USD = '3'
+    process.env.AI_COST_ANTHROPIC_OUTPUT_PER_MILLION_USD = '15'
+    const withCache = estimateAiTextCostUsd('anthropic', 500, 1_000, 0, 20_000) ?? 0
+    const withoutCache = estimateAiTextCostUsd('anthropic', 500, 1_000) ?? 0
+    expect(withCache).toBeGreaterThan(withoutCache)
+  })
 })
 
 describe('retryableProviderDelayMs', () => {

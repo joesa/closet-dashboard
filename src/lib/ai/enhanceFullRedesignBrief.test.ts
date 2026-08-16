@@ -3,8 +3,9 @@ import {
   buildIntakeHintsForBrief,
   fallbackEnhancedBrief,
   lockAdminSeedInBrief,
+  normalizeEnhanced,
 } from './enhanceFullRedesignBrief'
-import { validateFullRedesignPreflight } from './fullRedesignDesignSystem'
+import { isDarkSurface, validateFullRedesignPreflight } from './fullRedesignDesignSystem'
 import { paletteFingerprintKey } from '@/lib/design/customDesignFingerprint'
 
 describe('fallbackEnhancedBrief', () => {
@@ -231,6 +232,137 @@ describe('fallbackEnhancedBrief', () => {
         expect.stringMatching(/unresolved failed check/),
       ])
     )
+  })
+})
+
+describe('normalizeEnhanced collision handling', () => {
+  const opts = {
+    brandName: "Alvarado's Tile Installations",
+    adminBrief: '',
+    hasImages: false,
+    engagementLabel: 'quote calculator',
+    services: ['Tile & Grout Cleaning', 'Grout Sealing'],
+    city: 'Clarksville',
+  }
+
+  const modelBrief = {
+    signatureConcept: 'A running-bond tile field grouted, not gridded',
+    materialWorld: 'Porcelain, travertine, sanded grout gone tan in traffic lanes',
+    palette: [
+      { role: 'bg', hex: '#edf2f0', use: 'page field' },
+      { role: 'ink', hex: '#14201e', use: 'type' },
+      { role: 'muted', hex: '#5a6b67', use: 'sub-labels' },
+      { role: 'line', hex: '#ccd6d2', use: 'grout joints' },
+      { role: 'acc', hex: '#0d6f5f', use: 'CTAs' },
+    ],
+    typography: { display: 'Bricolage Grotesque', body: 'Figtree', why: 'cut like tile' },
+    signatureElement: 'Grout joints as layout gutters',
+    copyRegister: 'A Clarksville tile-cleaning owner on the phone',
+    servicesToAdd: [],
+    avoidDefaults: ['cream + serif + terracotta'],
+    designSystem: {
+      composition: 'Tessellated running-bond mosaic on a 12px joint bed',
+      colorStrategy: 'Two-state logic: cleaned vs before',
+      typeSystem: 'Bricolage 600 display, Figtree 400 body',
+      spacingAndGrid: 'Grout joint constant of 12px is the only gutter',
+      shapeAndDepth: '3px cushion radius, inset shadow only',
+      imagery: 'Flat-lit floor photography shot down at the grout line',
+      components: 'Service tiles carry a surface chip row',
+      motion: 'A sealer-sheen sweep across one tile',
+      responsive: 'Offset preserved on alternating rows at tablet',
+      copyVocabulary: { use: ['grout joint', 'color-seal'], reject: ['elevate', 'seamless'] },
+      validation: {
+        antiAiPassed: true,
+        noveltyPassed: true,
+        coherencePassed: true,
+        accessibilityPassed: true,
+        factualPassed: true,
+        rationale: 'Every axis derives from tile and grout work rather than a house style.',
+      },
+    },
+    optimizedBrief: '1. DESIGN DIRECTION — Build the site as a grouted tile field, not a card grid.',
+  }
+
+  it('keeps the model direction when a palette bucket collides, replacing only colour', () => {
+    const takenPalette = paletteFingerprintKey(modelBrief.palette)
+    const out = normalizeEnhanced(
+      modelBrief,
+      {
+        ...opts,
+        avoid: {
+          taken: [],
+          takenSkeletonKeys: [],
+          takenPaletteKeys: [takenPalette],
+          takenFontKeys: [],
+          promptBlock: '',
+        },
+      },
+      'anthropic'
+    )
+    // Colour axis is replaced…
+    expect(paletteFingerprintKey(out.palette)).not.toBe(takenPalette)
+    // …and everything else the model authored survives.
+    expect(out.designSystem.composition).toBe(modelBrief.designSystem.composition)
+    expect(out.designSystem.imagery).toBe(modelBrief.designSystem.imagery)
+    expect(out.designSystem.motion).toBe(modelBrief.designSystem.motion)
+    expect(out.signatureElement).toBe(modelBrief.signatureElement)
+    expect(out.typography.display).toBe('Bricolage Grotesque')
+    expect(out.optimizedBrief).toMatch(/COLLISION OVERRIDE/)
+    expect(out.optimizedBrief).toMatch(/PALETTE \(replaces/)
+    expect(out.optimizedBrief).not.toMatch(/TYPE \(replaces/)
+  })
+
+  it('replaces only the type axis when the pairing collides', () => {
+    const out = normalizeEnhanced(
+      modelBrief,
+      {
+        ...opts,
+        avoid: {
+          taken: [],
+          takenSkeletonKeys: [],
+          takenPaletteKeys: [],
+          takenFontKeys: ['bricolage grotesque+figtree'],
+          promptBlock: '',
+        },
+      },
+      'anthropic'
+    )
+    expect(`${out.typography.display}+${out.typography.body}`.toLowerCase()).not.toBe(
+      'bricolage grotesque+figtree'
+    )
+    expect(out.palette.map((p) => p.hex)).toEqual(modelBrief.palette.map((p) => p.hex))
+    expect(out.designSystem.composition).toBe(modelBrief.designSystem.composition)
+    expect(out.optimizedBrief).toMatch(/TYPE \(replaces/)
+    expect(out.optimizedBrief).not.toMatch(/PALETTE \(replaces/)
+  })
+
+  it('leaves the brief untouched when nothing collides', () => {
+    const out = normalizeEnhanced(modelBrief, { ...opts, avoid: null }, 'anthropic')
+    expect(out.designSystem.composition).toBe(modelBrief.designSystem.composition)
+    expect(out.optimizedBrief).not.toMatch(/COLLISION OVERRIDE/)
+  })
+})
+
+describe('fallback brief surface note', () => {
+  it('never tells the builder to prefer light surfaces on a dark palette', () => {
+    // Every deterministic direction the seed can pick, across many businesses.
+    for (let n = 0; n < 40; n += 1) {
+      const out = fallbackEnhancedBrief({
+        brandName: `Business ${n}`,
+        adminBrief: '',
+        hasImages: false,
+        engagementLabel: 'quote calculator',
+        services: ['Cleaning'],
+        city: 'Clarksville',
+      })
+      const background = out.palette.find((p) => p.role === 'bg')?.hex ?? ''
+      if (isDarkSurface(background)) {
+        expect(out.optimizedBrief).not.toMatch(/Prefer light\/mid surfaces/)
+        expect(out.optimizedBrief).toMatch(/deliberate dark-surface direction/)
+      } else {
+        expect(out.optimizedBrief).toMatch(/Hold these light\/mid surfaces/)
+      }
+    }
   })
 })
 
