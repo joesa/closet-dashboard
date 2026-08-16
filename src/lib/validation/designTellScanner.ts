@@ -504,6 +504,35 @@ function scanGlobalCss(
     }
   }
 
+  /**
+   * Decorative counters rendered from CSS.
+   *
+   * The HTML check below only sees numbers that exist as text. A model told not
+   * to write "01" in the markup will happily produce the identical spec-sheet
+   * look with `content:"0" counter(x)`, which renders 01 / 02 / 03 on the page
+   * while leaving the HTML clean. Same tell, different mechanism — so it is the
+   * same finding code.
+   */
+  if (!briefMentions(briefText, /numbered|step numbers|counter|checklist/i)) {
+    const counterContent = blocks.filter((b) =>
+      /content\s*:[^;]*counters?\s*\(/i.test(b)
+    )
+    if (counterContent.length > 0) {
+      const padded = counterContent.some((b) =>
+        /content\s*:\s*["']0["']\s*counters?\s*\(/i.test(b)
+      )
+      out.push(
+        finding(
+          'decorative_numbered_list',
+          GLOBAL_CSS_UNIT_ID,
+          `Service and process items are numbered by CSS counters${padded ? ', zero-padded' : ''}, which puts 01 / 02 / 03 on the page and makes the site read as a spec sheet. Hiding the numbers from the HTML does not change what a visitor sees.`,
+          'Delete the counter-reset / counter-increment declarations and the content:counter() rule. Order, spacing and headings already carry the sequence; number something only when a visitor has to refer to it by number.',
+          counterContent.slice(0, 2).map((b) => b.slice(0, 120))
+        )
+      )
+    }
+  }
+
   // Dot-grid used as default texture.
   if (!briefMentions(briefText, /dot[- ]?grid|dotted|halftone/i)) {
     const dots = blocks.filter(
@@ -674,7 +703,7 @@ function scanPageHtml(
   // Contextual numbers such as measurements, prices, dates and quantities do not
   // match this deliberately narrow rule.
   const numberedMarkers = html.match(
-    /<(span|div|p|small|strong|b)\b[^>]*>\s*(?:step\s*)?0[1-9]\s*<\/\1>/gi
+    /<(span|div|p|small|strong|b|em|i|dt|td|figcaption)\b[^>]*>\s*(?:step\s*)?0[1-9]\s*<\/\1>/gi
   )
   if (numberedMarkers) {
     out.push(

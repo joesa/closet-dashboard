@@ -659,3 +659,44 @@ ${Array.from({ length: 12 }, (_, i) => `.z${i}{border:0;border-color:var(--acc)}
     })
   })
 })
+
+describe('decorative_numbered_list via CSS counters', () => {
+  const codes = (css: string, brief: string | null = null) =>
+    scanArtifactTells({ globalCss: css, pages: {}, briefText: brief }).map((f) => f.code)
+
+  it('catches the zero-padded counter that renders 01 / 02 / 03', () => {
+    const css = `${CLEAN_CSS}
+.svcs{counter-reset:service}
+.svc{counter-increment:service}
+.svc h3:before{content:"0" counter(service);color:var(--acc)}`
+    expect(codes(css)).toContain('decorative_numbered_list')
+  })
+
+  it('catches an unpadded counter too — the tell is the numbering, not the zero', () => {
+    const css = `${CLEAN_CSS}
+.steps li{counter-increment:step}
+.steps li:before{content:counter(step) ". "}`
+    expect(codes(css)).toContain('decorative_numbered_list')
+  })
+
+  it('leaves counter-reset alone when nothing renders it', () => {
+    const css = `${CLEAN_CSS}
+.svcs{counter-reset:service}`
+    expect(codes(css)).not.toContain('decorative_numbered_list')
+  })
+
+  it('leaves ordinary ::before content alone', () => {
+    const css = `${CLEAN_CSS}
+.rule:before{content:"";display:block;height:1px;background:var(--line)}`
+    expect(codes(css)).not.toContain('decorative_numbered_list')
+  })
+
+  it('stands down when the brief asked for numbered steps', () => {
+    const css = `${CLEAN_CSS}
+.steps li{counter-increment:step}
+.steps li:before{content:"0" counter(step)}`
+    expect(codes(css, 'A numbered checklist the crew reads out on site.')).not.toContain(
+      'decorative_numbered_list'
+    )
+  })
+})
