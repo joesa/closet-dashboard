@@ -50,6 +50,8 @@ export type ContractorSettings = {
   primary_color_hex: string
   /** Matched calculator appearance pack (see widgetThemes). */
   widget_theme_id?: string | null
+  widget_installed_at?: string | null
+  widget_last_seen_origin?: string | null
   contact_email: string
   // Personal cell phone number for the contractor. When a new lead submits
   // through the widget we text the lead details to this number via Twilio.
@@ -1724,6 +1726,30 @@ export default function DashboardPage() {
               <pre className="overflow-x-auto rounded-xl border border-white/[0.06] bg-black/40 p-5 font-mono text-sm leading-relaxed text-slate-300">
                 <code>{embedCode}</code>
               </pre>
+            </div>
+
+            {/* Whether the snippet is actually live, and where. Recorded from
+                the widget's own settings request — see widgetInstallSignal.ts. */}
+            <div className="mt-4 flex items-center gap-2 text-sm">
+              {form.widget_installed_at ? (
+                <>
+                  <span className="h-2 w-2 rounded-full bg-emerald-400" />
+                  <span className="text-zinc-300">
+                    Installed on{' '}
+                    <strong className="font-medium text-white">
+                      {form.widget_last_seen_origin?.replace(/^https?:\/\//, '') || 'your site'}
+                    </strong>
+                  </span>
+                </>
+              ) : (
+                <>
+                  <span className="h-2 w-2 rounded-full bg-zinc-600" />
+                  <span className="text-zinc-500">
+                    Not detected on your site yet. Paste the snippet above, then load
+                    that page once and this will turn green.
+                  </span>
+                </>
+              )}
             </div>
           </section>
         )}
