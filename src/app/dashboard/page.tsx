@@ -1,12 +1,12 @@
 'use client'
 
-import { useState, useCallback, useEffect, useMemo } from 'react'
+import React, { useState, useCallback, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import Script from 'next/script'
 import { supabaseBrowser, getBrowserUser, signOutBrowser } from '@/lib/supabase-browser'
 import { DEMO_CONTRACTOR_ID, DEMO_RESET_NOTICE } from '@/lib/demo'
-import { WIDGET_CDN_URL } from '@/lib/urls'
+import { WIDGET_CDN_URL, widgetEmbedSnippet, widgetTagName } from '@/lib/urls'
 import { resolveIndustrySlug } from '@/lib/catalog/serviceCatalog'
 import { getEngineProfile } from '@/lib/catalog/engineProfiles'
 import OrderEditor from './components/OrderEditor'
@@ -147,6 +147,27 @@ export default function DashboardPage() {
     const t = setTimeout(() => setSaved(false), 5000)
     return () => clearTimeout(t)
   }, [saved])
+
+  // Widget-only customers have their own website. Everything site-shaped on
+  // this page (Edit Website, the Content Studio, the domain manager) resolves
+  // to a 404 for them, so it is hidden rather than offered and then refused.
+  // Defaults to true so a slow/failed check never hides a real site owner's
+  // tools; the widget branch is the exception, not the fallback.
+  const [hasHostedSite, setHasHostedSite] = useState(true)
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/contractor/site-product')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((json) => {
+        if (!cancelled && json && typeof json.hasHostedSite === 'boolean') {
+          setHasHostedSite(json.hasHostedSite)
+        }
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   // ── Auth gate: check session, fetch settings ──
   useEffect(() => {
@@ -615,10 +636,18 @@ export default function DashboardPage() {
     router.replace('/login')
   }
 
-  const embedCode =
-    form && authChecked
-      ? `<closet-quote-widget data-contractor-id="${form.id}" data-api-url="${window.location.origin}"></closet-quote-widget>\n<script src="${WIDGET_CDN_URL}"></script>`
-      : ''
+  // The engagement model the contractor's own dashboard editor is showing —
+  // so a booking business is handed a booking widget rather than a quote one.
+  const dashboardEngagementModel = form
+    ? getEngineProfile(resolveIndustrySlug({ industry: form.industry })).engagementModel
+    : 'quote'
+
+  // Built by the canonical helper rather than by hand: it picks the element for
+  // the engagement model and takes the host from PUBLIC_API_URL. The old inline
+  // version always emitted closet-quote-widget and baked in
+  // window.location.origin, so opening the dashboard on a preview host put that
+  // host into the snippet the contractor pasted on their live site.
+  const embedCode = form && authChecked ? widgetEmbedSnippet(form.id, dashboardEngagementModel) : ''
 
   const handleCopy = async () => {
     try {
@@ -717,12 +746,14 @@ export default function DashboardPage() {
             <span className="rounded-full bg-white/5 px-3 py-1 text-xs text-zinc-400">
               Admin Dashboard
             </span>
-            <Link
-              href="/dashboard/website"
-              className="rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-black transition hover:bg-zinc-200"
-            >
-              Edit Website
-            </Link>
+            {hasHostedSite && (
+              <Link
+                href="/dashboard/website"
+                className="rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-black transition hover:bg-zinc-200"
+              >
+                Edit Website
+              </Link>
+            )}
             <button
               onClick={() => setGuideOpen(true)}
               className="rounded-lg border border-white/[0.06] bg-white/[0.04] px-3 py-1.5 text-xs font-medium text-zinc-400 transition hover:bg-white/[0.08] hover:text-white"
@@ -770,7 +801,9 @@ export default function DashboardPage() {
               <div>
                 <h2 className="text-lg font-semibold text-white">Getting started</h2>
                 <p className="mt-1 text-sm text-zinc-400">
-                  Your site already comes with real services, prices, and add-ons filled in for your trade — here&apos;s how to make it yours.
+                  {hasHostedSite
+                    ? 'Your site already comes with real services, prices, and add-ons filled in for your trade — here\u2019s how to make it yours.'
+                    : 'Your calculator already comes with real services, prices, and add-ons filled in for your trade — here\u2019s how to make it yours.'}
                 </p>
               </div>
               <button
@@ -794,14 +827,23 @@ export default function DashboardPage() {
                 <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-white/10 text-xs font-semibold">3</span>
                 <span><strong className="text-white">Basic / Standard / Premium</strong> — These are just names for your tiers. Rename them to whatever your customers understand, like &quot;Good / Better / Best&quot;.</span>
               </li>
-              <li className="flex gap-3">
-                <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-white/10 text-xs font-semibold">4</span>
-                <span><strong className="text-white">Edit your website</strong> — Use “Edit Website” above to change every page, section, image, and SEO field with live autosave.</span>
-              </li>
-              <li className="flex gap-3">
-                <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-white/10 text-xs font-semibold">5</span>
-                <span><strong className="text-white">Custom domain</strong> — Use the domain section further down the page to connect your own domain name.</span>
-              </li>
+              {hasHostedSite ? (
+                <>
+                  <li className="flex gap-3">
+                    <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-white/10 text-xs font-semibold">4</span>
+                    <span><strong className="text-white">Edit your website</strong> — Use “Edit Website” above to change every page, section, image, and SEO field with live autosave.</span>
+                  </li>
+                  <li className="flex gap-3">
+                    <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-white/10 text-xs font-semibold">5</span>
+                    <span><strong className="text-white">Custom domain</strong> — Use the domain section further down the page to connect your own domain name.</span>
+                  </li>
+                </>
+              ) : (
+                <li className="flex gap-3">
+                  <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-white/10 text-xs font-semibold">4</span>
+                  <span><strong className="text-white">Paste it on your site</strong> — Copy the embed snippet further down and drop it into the page where you want the calculator.</span>
+                </li>
+              )}
             </ol>
             <p className="mt-4 text-xs text-zinc-500">
               Don&apos;t forget to click <strong className="text-zinc-300">Save</strong> after making changes. Reopen this guide anytime from &quot;How this works&quot; at the top.
@@ -951,6 +993,80 @@ export default function DashboardPage() {
                 }
               }}
             />
+          </div>
+
+          {/* Divider */}
+          <div className="mb-8 border-t border-white/[0.04]" />
+
+          {/*
+            The calculator's vocabulary. These four fields decide whether a
+            visitor is asked for "Linear Feet" of a "Room" or "Square Feet" of a
+            "Surface", and what the three tiers are called — the most
+            trade-specific thing about the widget. Until now they were written
+            only by provisioning or by an operator running
+            scripts/backfill-widget-domain.mjs, and the getting-started guide
+            told contractors to rename their tiers with no control to do it.
+          */}
+          <div className="mb-8">
+            <h3 className="mb-1 text-sm font-semibold uppercase tracking-wider text-zinc-400">
+              Calculator wording
+            </h3>
+            <p className="mb-4 text-xs text-zinc-500">
+              What your customers are asked for. Leave blank to keep the default for your trade.
+            </p>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div>
+                <label className="mb-1 block text-xs text-zinc-400">What they pick</label>
+                <input
+                  className="w-full rounded-lg border border-white/[0.06] bg-white/[0.03] px-3 py-2 text-sm text-white placeholder-zinc-600"
+                  placeholder={categoryLabel}
+                  value={form.domain_config?.categoryLabel ?? ''}
+                  onChange={(e) => {
+                    setForm((prev) =>
+                      prev
+                        ? { ...prev, domain_config: { ...(prev.domain_config ?? {}), categoryLabel: e.target.value } }
+                        : prev
+                    )
+                    setSaved(false)
+                  }}
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-zinc-400">How it is measured</label>
+                <input
+                  className="w-full rounded-lg border border-white/[0.06] bg-white/[0.03] px-3 py-2 text-sm text-white placeholder-zinc-600"
+                  placeholder={form.domain_config?.unitLabel || 'Linear Feet'}
+                  value={form.domain_config?.unitLabel ?? ''}
+                  onChange={(e) => {
+                    setForm((prev) =>
+                      prev
+                        ? { ...prev, domain_config: { ...(prev.domain_config ?? {}), unitLabel: e.target.value } }
+                        : prev
+                    )
+                    setSaved(false)
+                  }}
+                />
+              </div>
+            </div>
+            <p className="mb-2 mt-5 text-xs text-zinc-400">Tier names</p>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              {PRICING_TIERS.map((tier) => (
+                <input
+                  key={tier}
+                  className="w-full rounded-lg border border-white/[0.06] bg-white/[0.03] px-3 py-2 text-sm text-white placeholder-zinc-600"
+                  placeholder={tier.charAt(0).toUpperCase() + tier.slice(1)}
+                  value={form.tier_names?.[tier] ?? ''}
+                  onChange={(e) => {
+                    setForm((prev) =>
+                      prev
+                        ? { ...prev, tier_names: { ...(prev.tier_names ?? {}), [tier]: e.target.value } }
+                        : prev
+                    )
+                    setSaved(false)
+                  }}
+                />
+              ))}
+            </div>
           </div>
 
           {/* Divider */}
@@ -1492,19 +1608,21 @@ export default function DashboardPage() {
           })()}
 
           {/* Website content now lives in the autosaving visual studio. */}
-          <Link
-            href="/dashboard/website"
-            className="mt-10 flex items-center justify-between rounded-2xl border border-indigo-400/20 bg-indigo-500/[0.08] p-6 transition hover:border-indigo-300/40 hover:bg-indigo-500/[0.12]"
-          >
-            <span>
-              <span className="block text-lg font-semibold text-white">Website Content Studio</span>
-              <span className="mt-1 block text-sm text-zinc-400">Edit pages, sections, copy, images, navigation, and SEO with live autosave.</span>
-            </span>
-            <span className="text-sm font-medium text-indigo-200">Open editor →</span>
-          </Link>
+          {hasHostedSite && (
+            <Link
+              href="/dashboard/website"
+              className="mt-10 flex items-center justify-between rounded-2xl border border-indigo-400/20 bg-indigo-500/[0.08] p-6 transition hover:border-indigo-300/40 hover:bg-indigo-500/[0.12]"
+            >
+              <span>
+                <span className="block text-lg font-semibold text-white">Website Content Studio</span>
+                <span className="mt-1 block text-sm text-zinc-400">Edit pages, sections, copy, images, navigation, and SEO with live autosave.</span>
+              </span>
+              <span className="text-sm font-medium text-indigo-200">Open editor →</span>
+            </Link>
+          )}
 
           {/* Custom / purchased domains for the hosted site */}
-          <DomainManager variant="dashboard" />
+          {hasHostedSite && <DomainManager variant="dashboard" />}
 
           {/* Save */}
           <div className="flex items-center gap-4">
@@ -1624,12 +1742,16 @@ export default function DashboardPage() {
               </div>
               <div className="p-6 bg-white min-h-[600px] flex items-center justify-center">
                 {authChecked && form && (
-                  <closet-quote-widget 
-                    key={previewKey} 
-                    data-contractor-id={form.id} 
-                    data-api-url={typeof window !== 'undefined' ? window.location.origin : ''}
-                    data-preview-color={form.primary_color_hex}
-                  />
+                  // Same element the embed snippet emits. It used to be
+                  // hardcoded to closet-quote-widget, which is why a booking
+                  // contractor could be handed a quote snippet and never see
+                  // the mismatch in their own preview.
+                  React.createElement(widgetTagName(dashboardEngagementModel), {
+                    key: previewKey,
+                    'data-contractor-id': form.id,
+                    'data-api-url': typeof window !== 'undefined' ? window.location.origin : '',
+                    'data-preview-color': form.primary_color_hex,
+                  })
                 )}
               </div>
             </div>

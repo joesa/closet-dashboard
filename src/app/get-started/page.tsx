@@ -17,6 +17,7 @@ function GetStartedForm() {
   const [businessName, setBusinessName] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [hasWebsite, setHasWebsite] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [resending, setResending] = useState(false);
   const [resendMessage, setResendMessage] = useState('');
@@ -81,7 +82,7 @@ function GetStartedForm() {
         body: JSON.stringify({
           email,
           businessName,
-          hasWebsite: false,
+          hasWebsite,
           tier: selectedTier,
           ...(turnstileToken ? { turnstileToken } : {}),
         }),
@@ -135,8 +136,9 @@ function GetStartedForm() {
           </p>
         )}
         <p className="mt-2 text-sm text-gray-500">
-          Enter your email and we will send you a link to complete setup for your quote calculator
-          and marketing site.
+          {hasWebsite
+            ? 'Enter your email and we will send you a short setup link for the quote widget that goes on the site you already have.'
+            : 'Enter your email and we will send you a link to complete setup for your quote calculator and marketing site.'}
         </p>
 
         <form onSubmit={submit} className="mt-6 space-y-4">
@@ -160,6 +162,20 @@ function GetStartedForm() {
               placeholder="Acme Service Co."
             />
           </div>
+          <label className="flex items-start gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2.5">
+            <input
+              type="checkbox"
+              checked={hasWebsite}
+              onChange={(e) => setHasWebsite(e.target.checked)}
+              className="mt-0.5"
+            />
+            <span className="text-xs text-gray-600">
+              <span className="font-medium text-gray-800">I already have a website.</span>{' '}
+              Set up the quote widget for it instead of building me a new site. The setup is
+              shorter and there is no site build fee.
+            </span>
+          </label>
+
           {siteKey && (
             <div
               className="cf-turnstile"
@@ -180,10 +196,8 @@ function GetStartedForm() {
         {error && <p className="mt-4 text-sm text-red-600">{error}</p>}
 
         <p className="mt-4 text-center text-xs text-gray-500">
-          Already have a website?{' '}
-          <Link href="/signup?from=get-started" className="font-medium text-indigo-600 hover:underline">
-            Leave this form and set up DitchTheForm Pro (widget only) →
-          </Link>
+          Already have a website? Tick the box above and we will send you the
+          short setup — the quote widget only, sized for the site you already have.
         </p>
 
         <p className="mt-6 text-center text-xs text-gray-400">

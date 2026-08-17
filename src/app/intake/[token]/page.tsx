@@ -37,6 +37,7 @@ export default async function IntakePage({
       alreadySubmitted={pub.alreadySubmitted}
       needsEmailVerify={pub.source === 'public' && !pub.emailVerified}
       manualBuildOnSubmit={healed.provisioning_mode === 'manual'}
+      requestedProduct={healed.requested_product === 'widget' ? 'widget' : 'full'}
       intakeTier={pub.intakeTier}
       depositStatus={pub.depositStatus}
       depositRequiredCents={pub.depositRequiredCents}

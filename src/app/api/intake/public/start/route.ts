@@ -20,16 +20,12 @@ export async function POST(req: Request) {
     const tier =
       body.tier === 'ai_premium' || body.tier === 'standard' ? body.tier : undefined
 
-    if (hasWebsite) {
-      return NextResponse.json(
-        {
-          error:
-            'Widget-only setup is self-serve. Go to /signup for a free trial or subscribe now.',
-          redirect: '/signup?from=get-started',
-        },
-        { status: 400 }
-      )
-    }
+    // A contractor who already has a website is a widget customer, not a
+    // rejected one. They used to be bounced to /signup, which writes no
+    // configuration at all — so every trade landed on the stock closet
+    // calculator. Same intake, marked as a widget build; the wizard shortens
+    // itself from `requested_product` and provisioning takes the widget branch.
+    const requestedProduct = hasWebsite ? 'widget' : 'full'
     const turnstileToken =
       typeof body.turnstileToken === 'string' ? body.turnstileToken : ''
 
@@ -68,7 +64,7 @@ export async function POST(req: Request) {
     const result = await createDraftIntake({
       source: 'public',
       businessName: businessName || null,
-      requestedProduct: 'full',
+      requestedProduct,
       verificationEmail: email,
       sendEmail: true,
       recipientEmail: email,

@@ -287,6 +287,12 @@ export type IntakeFormClientProps = {
   alreadySubmitted?: boolean;
   needsEmailVerify?: boolean;
   manualBuildOnSubmit?: boolean;
+  /**
+   * 'widget' when the contractor already has a website and only needs the
+   * quote widget. Same intake, shortened: no tier picker, no deposit, no
+   * pages, no gallery, no domain — none of which affects a widget build.
+   */
+  requestedProduct?: 'full' | 'widget';
   intakeTier?: string;
   depositStatus?: string;
   depositRequiredCents?: number;
@@ -453,6 +459,7 @@ export default function IntakeFormClient({
   needsEmailVerify = false,
   manualBuildOnSubmit = false,
   intakeTier: initialTier = 'standard',
+  requestedProduct = 'full',
   depositStatus: initialDepositStatus = 'not_required',
   depositRequiredCents = 0,
   tierTotalCents = 0,
@@ -2095,19 +2102,27 @@ export default function IntakeFormClient({
     }
   };
 
+  const isWidgetOnly = requestedProduct === 'widget';
+
   const steps = useMemo(() => {
     const arr: { key: string; title: string }[] = [
       { key: 'business', title: 'Business & contact' },
       { key: 'services', title: 'Services & pricing' },
       { key: 'craft', title: 'Craft & proof' },
     ];
-    if (form.pages.length > 0) arr.push({ key: 'pageContent', title: 'Page content' });
-    if (canUseImageStudio && studioServices.length > 0) {
-      arr.push({ key: 'imageStudio', title: 'AI image studio' });
+    // A widget customer already has a website. Pages, gallery, image studio and
+    // domain are all site-build concerns, so the flow is three steps and a
+    // review. Craft stays: it is what makes their calculator copy specific, and
+    // it is the same ledger a later site build would read if they upgrade.
+    if (!isWidgetOnly) {
+      if (form.pages.length > 0) arr.push({ key: 'pageContent', title: 'Page content' });
+      if (canUseImageStudio && studioServices.length > 0) {
+        arr.push({ key: 'imageStudio', title: 'AI image studio' });
+      }
     }
     arr.push({ key: 'review', title: 'Review & submit' });
     return arr;
-  }, [form.pages.length, canUseImageStudio, studioServices.length]);
+  }, [form.pages.length, canUseImageStudio, studioServices.length, isWidgetOnly]);
 
   const stepIdx = useMemo(() => {
     const map: Record<string, number> = {};
@@ -2427,7 +2442,7 @@ export default function IntakeFormClient({
       </nav>
 
       <div className="mx-auto max-w-3xl px-4 pb-16 pt-10 sm:pt-14">
-        {currentStepIndex === stepIdx.business && tierCatalog.length > 0 && !tierAlreadySelected && (
+        {currentStepIndex === stepIdx.business && !isWidgetOnly && tierCatalog.length > 0 && !tierAlreadySelected && (
           <div className="mb-8">
             <TierPicker
               token={token}
@@ -2443,7 +2458,7 @@ export default function IntakeFormClient({
           </div>
         )}
 
-        {currentStepIndex === stepIdx.business && intakeTier === 'ai_premium' && depositRequiredCents > 0 && (
+        {currentStepIndex === stepIdx.business && !isWidgetOnly && intakeTier === 'ai_premium' && depositRequiredCents > 0 && (
           <div id="intake-deposit" className="mb-8">
             <DepositCTA
               token={token}
@@ -3788,7 +3803,7 @@ export default function IntakeFormClient({
             </div>
           )}
 
-          {isLastStep && (
+          {isLastStep && !isWidgetOnly && (
             <section className={`${sectionClass} mb-4`}>
               <h2 className={sectionTitle}>
                 Domain{' '}

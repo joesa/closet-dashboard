@@ -67,17 +67,26 @@ export function widgetEmbedScriptTag(): string {
   return `<script src="${WIDGET_CDN_URL}"></script>`
 }
 
+/**
+ * The custom element for an engagement model. Exported so the dashboard's live
+ * preview mounts the same element the embed snippet tells the contractor to
+ * paste — when the preview was hardcoded to the quote widget, a booking
+ * business had no way to notice it had been handed the wrong snippet.
+ */
+export function widgetTagName(engagementModel: string = 'quote'): string {
+  return engagementModel === 'order'
+    ? 'closet-order-widget'
+    : engagementModel === 'booking'
+      ? 'closet-booking-widget'
+      : engagementModel === 'ticket'
+        ? 'closet-ticket-widget'
+        : 'closet-quote-widget'
+}
+
 export function widgetEmbedSnippet(
   contractorId: string,
   engagementModel: string = 'quote'
 ): string {
-  const tagName =
-    engagementModel === 'order'
-      ? 'closet-order-widget'
-      : engagementModel === 'booking'
-        ? 'closet-booking-widget'
-        : engagementModel === 'ticket'
-          ? 'closet-ticket-widget'
-          : 'closet-quote-widget'
+  const tagName = widgetTagName(engagementModel)
   return `<${tagName} data-contractor-id="${contractorId}" data-api-url="${PUBLIC_API_URL}"></${tagName}>\n${widgetEmbedScriptTag()}`
 }
