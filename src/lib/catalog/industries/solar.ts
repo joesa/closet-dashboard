@@ -84,6 +84,7 @@ export const SOLAR_SERVICES: ServiceDef[] = [
     { image: SOLAR_IMG, description: 'Full permit filing and utility interconnection handled so you don\'t have to.' },
     ['solar permit', 'interconnection', 'net metering', 'utility approval', 'pto']
   ),
+  sol('Solar Panel Removal & Reinstall for Roofing', 'Maintenance', ['eco-solar', 'modern-office', 'minimalist-zen', 'coastal-climate'], ['process-steps', 'trust-report', 'conversion-focus', 'storyteller'], { image: SOLAR_IMG, description: 'Arrays removed and reset around a roof replacement.' }, ['solar removal reinstall', 'panel removal for roof', 'solar detach reset']),
 ]
 
 export const SOLAR_INDUSTRY: IndustryDef = {

@@ -83,6 +83,7 @@ export const LOCKSMITH_SERVICES: ServiceDef[] = [
     { image: LOCK_IMG, description: 'Locked out of your safe? We open it without damage, or install a new one.' },
     ['safe open', 'safe lockout', 'safe cracking', 'safe install', 'safe service']
   ),
+  lock('Key Cutting & Duplication', 'Specialty', ['swift-mobile', 'functional-utility', 'modern-office', 'brutalist'], ['emergency-first', 'minimalist-lead', 'compact-quote', 'conversion-focus'], { image: LOCK_IMG, description: 'Standard, high-security, and transponder keys cut and programmed.' }, ['key cutting', 'key duplication', 'spare keys', 'transponder key', 'key copy']),
 ]
 
 export const LOCKSMITH_INDUSTRY: IndustryDef = {

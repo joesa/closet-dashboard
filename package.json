@@ -19,6 +19,7 @@
     "audit:design-capacity": "tsx scripts/audit-design-capacity.ts",
     "audit:template-quality": "node scripts/audit-template-quality.mjs",
     "audit:angi-coverage": "tsx scripts/audit-angi-coverage.ts",
+    "audit:industry-resolution": "tsx -r dotenv/config scripts/audit-industry-resolution.ts dotenv_config_path=.env.local",
     "remediate:ai-tells": "tsx scripts/remediate-fleet-ai-tells.ts",
     "stripe:verify": "node scripts/stripe-verify.mjs",
     "stripe:catalog": "node scripts/stripe-setup-catalog.mjs",

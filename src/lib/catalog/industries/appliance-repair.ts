@@ -83,6 +83,7 @@ export const APPLIANCE_REPAIR_SERVICES: ServiceDef[] = [
     { image: APPLIANCE_IMG, description: 'Vacuums, coffee makers, mixers, and more repaired or diagnosed.' },
     ['vacuum repair', 'coffee maker fix', 'small appliance', 'blender repair']
   ),
+  app('Ice Maker & Wine Cooler Repair', 'Kitchen', ['appliance-pro', 'functional-utility', 'modern-office', 'classic-warm'], ['emergency-first', 'compact-quote', 'trust-builder', 'conversion-focus'], { image: APPLIANCE_IMG, description: 'Built-in ice makers, beverage centers, and wine coolers diagnosed and repaired.' }, ['ice maker repair', 'wine cooler repair', 'beverage center repair', 'ice machine home']),
 ]
 
 export const APPLIANCE_REPAIR_INDUSTRY: IndustryDef = {

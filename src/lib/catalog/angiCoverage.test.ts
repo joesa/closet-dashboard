@@ -64,10 +64,10 @@ describe('Angi directory coverage', () => {
     expect(unresolved).toEqual([])
   })
 
-  it('fully matches at least 640 categories to an industry and a service', () => {
+  it('fully matches at least 655 categories to an industry and a service', () => {
     // Ratchet: raise this when coverage improves, never lower it to make a
-    // change pass. 646 at the time of writing.
-    expect(count('matched')).toBeGreaterThanOrEqual(640)
+    // change pass. 660 at the time of writing.
+    expect(count('matched')).toBeGreaterThanOrEqual(655)
   })
 
   it('never answers a real trade with the zero-signal fallback', () => {
@@ -76,19 +76,13 @@ describe('Angi directory coverage', () => {
   })
 
   it('keeps every industry deep enough to describe a business in it', () => {
-    // Two floors, because the depth work landed in two stages. Every industry
-    // is now at 4+ (the 23 that shipped 3 or fewer were rebuilt to 8), and the
-    // median has moved 4 → 8. The remaining industries between 4 and 7 are the
-    // next tranche; raise the hard floor to 8 when they are done rather than
-    // relaxing anything here.
+    // The depth floor from the coverage plan, now universal: the catalog went
+    // from a median of 4 services and 23 industries at three or fewer, to 8
+    // everywhere. A vertical with three services cannot carry a real site.
     const belowFloor = listIndustries()
-      .filter((i) => i.services.length < 4)
+      .filter((i) => i.services.length < 8)
       .map((i) => `${i.slug} (${i.services.length})`)
     expect(belowFloor).toEqual([])
-
-    const depths = listIndustries().map((i) => i.services.length).sort((a, b) => a - b)
-    const median = depths[Math.floor(depths.length / 2)]
-    expect(median).toBeGreaterThanOrEqual(8)
   })
 
   it('spreads coverage across the catalog rather than into a few buckets', () => {

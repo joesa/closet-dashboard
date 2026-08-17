@@ -17,6 +17,7 @@ export const IT_COMPUTER_REPAIR_SERVICES: ServiceDef[] = [
   it('Network & WiFi Setup', 'Network', [...T], ['process-steps', 'trust-builder', 'compact-quote', 'service-zones'], { image: IMG, description: 'Mesh WiFi, structured cabling, and network infrastructure for homes and offices.' }, ['network setup', 'wifi setup', 'mesh wifi', 'network installation', 'structured cabling']),
   it('Data Recovery', 'Recovery', [...T], ['emergency-first', 'trust-builder', 'compact-quote', 'trust-report'], { image: IMG, description: 'Drive recovery for failed hard drives, SSDs, and deleted files. No data, no charge.' }, ['data recovery', 'hard drive recovery', 'deleted files recovery', 'ssd recovery', 'file recovery']),
   it('Security Camera & Smart Home', 'Smart', ['modern-office', 'commercial-pro', 'sleek-entertainment', 'home-guardian'], ['trust-builder', 'process-steps', 'compact-quote', 'service-zones'], { image: IMG, description: 'Smart home setup, security camera installation, and network integration.' }, ['security camera', 'smart home', 'cctv install', 'camera install', 'smart home setup']),
+  it('Printer & Peripheral Setup', 'Support', ['modern-office', 'commercial-pro', 'minimalist-zen', 'brutalist'], ['emergency-first', 'trust-builder', 'compact-quote', 'local-expert'], { image: IMG, description: 'Printers, scanners, and peripherals installed and shared across the network.' }, ['printer setup', 'printer repair', 'peripheral setup', 'scanner install']),
 ]
 
 export const IT_COMPUTER_REPAIR_INDUSTRY: IndustryDef = {

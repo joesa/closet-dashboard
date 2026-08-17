@@ -83,6 +83,7 @@ export const IRRIGATION_SERVICES: ServiceDef[] = [
     { image: SPRINKLER_IMG, description: 'Annual backflow preventer testing and city certification.' },
     ['backflow test', 'backflow preventer', 'backflow certification', 'annual backflow']
   ),
+  irr('Sprinkler System Audit & Efficiency', 'Compliance', ['seasonal-outdoor', 'classic-warm', 'coastal-climate', 'functional-utility'], ['seasonal-cta', 'local-expert', 'conversion-focus', 'compact-quote'], { image: IRR_IMG, description: 'Head-to-head coverage testing and pressure audit to cut wasted water.' }, ['sprinkler audit', 'irrigation efficiency', 'water audit', 'coverage test']),
 ]
 
 export const IRRIGATION_INDUSTRY: IndustryDef = {

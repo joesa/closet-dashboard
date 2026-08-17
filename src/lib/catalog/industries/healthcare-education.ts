@@ -23,6 +23,10 @@ export const MEDICAL_CLINIC_SERVICES: ServiceDef[] = [
   he('Family Clinic Appointment', 'Family Medicine', 'medical-clinic', ['care-comfort', 'classic-warm', 'modern-office', 'wellness-calm'], ['trust-builder', 'storyteller', 'local-expert', 'standard'], { image: IMG, description: 'Primary care and family medicine for patients of all ages.' }, ['family clinic', 'family doctor', 'primary care', 'family medicine']),
   he('Dental Office Visit', 'Dental', 'medical-clinic', ['care-comfort', 'modern-office', 'minimalist-zen', 'classic-warm'], ['trust-builder', 'gallery-showcase', 'before-after', 'local-expert'], { image: IMG, description: 'General and cosmetic dental care from a comfortable, modern office.' }, ['dental office', 'dentist', 'dental clinic', 'family dentist']),
   he('Hospital & Specialty Care', 'Hospital', 'medical-clinic', ['commercial-pro', 'care-comfort', 'modern-office', 'office-executive'], ['trust-report', 'trust-builder', 'standard', 'local-expert'], { image: IMG, description: 'Specialty and hospital-based care with coordinated referrals.' }, ['hospital', 'specialty care', 'medical center', 'inpatient care']),
+  he('Walk-In & Same-Day Appointments', 'Urgent Care', 'medical-clinic', ['care-comfort', 'modern-office', 'commercial-pro', 'minimalist-zen'], ['trust-builder', 'trust-report', 'local-expert', 'compact-quote'], { image: IMG, description: 'Same-day slots held for acute illness and injury.' }, ['walk in clinic', 'same day appointment', 'acute care visit']),
+  he('Physicals & Preventive Screening', 'Family Medicine', 'medical-clinic', ['care-comfort', 'modern-office', 'commercial-pro', 'minimalist-zen'], ['trust-builder', 'trust-report', 'local-expert', 'compact-quote'], { image: IMG, description: 'Annual, sports, and employment physicals with lab work.' }, ['physical exam', 'sports physical', 'annual checkup', 'preventive screening']),
+  he('Vaccinations & Immunizations', 'Family Medicine', 'medical-clinic', ['care-comfort', 'modern-office', 'commercial-pro', 'minimalist-zen'], ['trust-builder', 'trust-report', 'local-expert', 'compact-quote'], { image: IMG, description: 'Routine, travel, and seasonal vaccines administered.' }, ['vaccinations', 'immunizations', 'flu shot', 'travel vaccines']),
+  he('Telehealth Visits', 'Urgent Care', 'medical-clinic', ['care-comfort', 'modern-office', 'commercial-pro', 'minimalist-zen'], ['trust-builder', 'trust-report', 'local-expert', 'compact-quote'], { image: IMG, description: 'Video visits for follow-ups and simple acute problems.' }, ['telehealth', 'virtual visit', 'video appointment', 'online doctor']),
 ]
 
 const THER_T = ['wellness-calm', 'care-comfort', 'minimalist-zen', 'classic-warm'] as const
@@ -47,6 +51,10 @@ export const SENIOR_CARE_SERVICES: ServiceDef[] = [
   he('Assisted Living', 'Assisted Living', 'senior-care', ['care-comfort', 'classic-warm', 'wellness-calm', 'luxury-minimal'], ['storyteller', 'gallery-showcase', 'trust-builder', 'local-expert'], { image: IMG, description: 'Assisted living residences with personalized care plans and amenities.' }, ['assisted living', 'senior living', 'retirement community', 'senior residence']),
   he('Adult & Child Daycare', 'Daycare', 'senior-care', ['care-comfort', 'playful-kids', 'classic-warm', 'wellness-calm'], ['trust-builder', 'storyteller', 'local-expert', 'standard'], { image: KIDS_IMG, description: 'Licensed adult and child daycare with structured daily activities.' }, ['daycare', 'adult day care', 'child daycare', 'day care center']),
   he('Foster Care Services', 'Foster Care', 'senior-care', ['care-comfort', 'classic-warm', 'mudroom-family', 'wellness-calm'], ['storyteller', 'trust-builder', 'standard', 'local-expert'], { image: KIDS_IMG, description: 'Foster care placement, support, and licensing services.' }, ['foster care', 'foster agency', 'foster placement', 'foster family services']),
+  he('In-Home Caregiving', 'Assisted Living', 'senior-care', ['care-comfort', 'classic-warm', 'wellness-calm', 'mudroom-family'], ['storyteller', 'trust-builder', 'trust-report', 'local-expert'], { image: IMG, description: 'Hourly and live-in caregivers for personal care and companionship.' }, ['in home care', 'caregiver', 'home health aide', 'companion care']),
+  he('Memory Care', 'Nursing Home', 'senior-care', ['care-comfort', 'classic-warm', 'wellness-calm', 'mudroom-family'], ['storyteller', 'trust-builder', 'trust-report', 'local-expert'], { image: IMG, description: 'Secured memory care for dementia and Alzheimer\'s residents.' }, ['memory care', 'dementia care', 'alzheimers care']),
+  he('Respite & Short-Term Care', 'Daycare', 'senior-care', ['care-comfort', 'classic-warm', 'wellness-calm', 'mudroom-family'], ['storyteller', 'trust-builder', 'trust-report', 'local-expert'], { image: IMG, description: 'Short stays and relief care that give family caregivers a break.' }, ['respite care', 'short term care', 'caregiver relief']),
+  he('Hospice & Palliative Support', 'Nursing Home', 'senior-care', ['care-comfort', 'classic-warm', 'wellness-calm', 'mudroom-family'], ['storyteller', 'trust-builder', 'trust-report', 'local-expert'], { image: IMG, description: 'Comfort-focused care coordinated with the family and physician.' }, ['hospice care', 'palliative care', 'end of life care']),
 ]
 
 const EDU_T = ['classic-warm', 'historic-classic', 'modern-office', 'playful-kids'] as const
@@ -80,7 +88,7 @@ export const ENRICHMENT_EDUCATION_SERVICES: ServiceDef[] = [
 export const MEDICAL_CLINIC_INDUSTRY: IndustryDef = {
   slug: 'medical-clinic', label: 'Medical Care',
   engagementModel: 'booking',
-  keywords: ['hospital', 'urgent care', 'family clinic', 'dental office', 'medical clinic'],
+  keywords: ['hospital', 'urgent care', 'family clinic', 'dental office', 'medical clinic', 'dental', 'dentist', 'dental practice', 'orthodontics', 'family dentistry', 'pediatric dentistry', 'medical care'],
   serviceGroups: ['Urgent Care', 'Family Medicine', 'Dental', 'Hospital'],
   defaultThemes: [...MED_T],
   defaultLayouts: [...MED_L],

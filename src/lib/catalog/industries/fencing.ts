@@ -17,6 +17,7 @@ export const FENCING_SERVICES: ServiceDef[] = [
   fen('Fence Repair', 'Repair', ['artisan-wood', 'warm-handyman', 'classic-warm', 'functional-utility'], ['before-after', 'compact-quote', 'trust-builder', 'local-expert'], { image: IMG, description: 'Leaning posts, broken boards, and damaged sections repaired or replaced.' }, ['fence repair', 'broken fence', 'fence post repair', 'fence fix']),
   fen('Gate Installation', 'Gates', ['artisan-wood', 'luxury-minimal', 'stone-masonry', 'classic-warm'], ['portfolio-first', 'gallery-showcase', 'visual-impact', 'conversion-focus'], { image: IMG, description: 'Driveway gates, pedestrian gates, and automatic openers installed.' }, ['gate install', 'driveway gate', 'automatic gate', 'gate opener', 'sliding gate']),
   fen('Agricultural & Farm Fencing', 'Farm', ['rustic-pantry', 'artisan-wood', 'functional-utility', 'classic-warm'], ['local-expert', 'trust-builder', 'conversion-focus', 'compact-quote'], { image: IMG, description: 'High-tensile wire, board-and-rail, and electric fencing for livestock.' }, ['farm fence', 'agricultural fence', 'horse fence', 'livestock fence', 'electric fence']),
+  fen('Fence Staining & Sealing', 'Repair', ['artisan-wood', 'classic-warm', 'rustic-pantry', 'stone-masonry'], ['portfolio-first', 'before-after', 'gallery-showcase', 'local-expert'], { image: IMG, description: 'Wood fences cleaned, stained, and sealed against weathering.' }, ['fence staining', 'fence sealing', 'fence painting', 'fence refinishing']),
 ]
 
 export const FENCING_INDUSTRY: IndustryDef = {

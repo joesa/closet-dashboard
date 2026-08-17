@@ -75,6 +75,8 @@ export const GUTTER_SERVICES: ServiceDef[] = [
     { image: GUTTER_IMG, description: 'Rotted fascia boards and soffit panels repaired before new gutter install.' },
     ['fascia repair', 'soffit repair', 'roofline repair', 'fascia board', 'wood rot repair']
   ),
+  gut('Seamless Gutter Fabrication', 'Installation', ['seasonal-outdoor', 'functional-utility', 'classic-warm', 'modern-office'], ['seasonal-cta', 'local-expert', 'conversion-focus', 'compact-quote'], { image: GUTTER_IMG, description: 'Seamless aluminum gutter rolled on site to the exact run length.' }, ['seamless gutters', 'gutter fabrication', 'aluminum gutters', 'custom gutters']),
+  gut('Rain Chain & Drainage Tie-In', 'Roofline', ['seasonal-outdoor', 'functional-utility', 'classic-warm', 'modern-office'], ['seasonal-cta', 'local-expert', 'conversion-focus', 'compact-quote'], { image: GUTTER_IMG, description: 'Downspouts tied into buried drain lines that carry water away from the slab.' }, ['downspout drainage', 'buried downspout', 'drain tie in', 'rain chain']),
 ]
 
 export const GUTTERS_INDUSTRY: IndustryDef = {

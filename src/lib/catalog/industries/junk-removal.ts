@@ -83,6 +83,7 @@ export const JUNK_REMOVAL_SERVICES: ServiceDef[] = [
     { image: JUNK_IMG, description: 'Office furniture, equipment, and filing cabinets hauled in one trip.' },
     ['office cleanout', 'commercial cleanout', 'store cleanout', 'retail haul']
   ),
+  junk('Hot Tub & Shed Removal', 'Removal', ['urban-reclaim', 'functional-utility', 'modern-office', 'brutalist'], ['conversion-focus', 'compact-quote', 'minimalist-lead', 'trust-builder'], { image: JUNK_IMG, description: 'Hot tubs, sheds, and playsets dismantled and hauled off the property.' }, ['hot tub removal', 'shed removal', 'playset removal', 'above ground pool removal']),
 ]
 
 export const JUNK_REMOVAL_INDUSTRY: IndustryDef = {
