@@ -49,7 +49,18 @@ export function canUseImageStudio(row: ProspectIntakeRow): boolean {
   return effectiveIntakeTier(row) === 'ai_premium' && depositSatisfied(row)
 }
 
-/** Gate for AI Premium features (image studio, page copy, suggest pages, etc.). */
+/**
+ * Gate for the features AI Premium actually pays for: generated imagery.
+ *
+ * It used to gate the text pipeline too, which meant a Standard prospect
+ * answered nine proprietary-fact questions and none of them ever reached a
+ * generator — `buildIntakeBrief` is only called from routes behind this gate.
+ * That is the wrong seam: assembling a brief is a text concatenation plus one
+ * enhancer call, while image generation is the real per-site cost. Tiers now
+ * differ on imagery, page count, and human review; both tiers get the facts
+ * they typed. See assertGeneratedImageryAccess below for the imagery gate and
+ * src/lib/intake/factLedger.ts for what Standard now keeps.
+ */
 export function assertPremiumAiAccess(row: ProspectIntakeRow): string | null {
   if (effectiveIntakeTier(row) !== 'ai_premium') {
     return 'AI features are only available on the AI Premium tier.'
@@ -63,6 +74,23 @@ export function assertPremiumAiAccess(row: ProspectIntakeRow): string | null {
 /** @deprecated Use assertPremiumAiAccess — kept as alias for existing imports. */
 export function assertDepositPaid(row: ProspectIntakeRow): string | null {
   return assertPremiumAiAccess(row)
+}
+
+/**
+ * The text pipeline: available on every tier, bounded instead of withheld.
+ *
+ * Standard still cannot run the image studio or exceed its page cap, and the
+ * caller is expected to pass `standardPassBudget()` so a Standard build cannot
+ * spend Premium-sized model time on copy.
+ */
+export function assertTextPipelineAccess(row: ProspectIntakeRow): string | null {
+  if (row.status === 'archived') return 'This intake link is no longer active.'
+  return null
+}
+
+/** Copy/enhancer passes a tier may spend. Cost ceiling in place of a paywall. */
+export function textPassBudget(row: ProspectIntakeRow): number {
+  return effectiveIntakeTier(row) === 'ai_premium' ? 10 : 5
 }
 
 export function assertDraftIntake(row: ProspectIntakeRow): string | null {

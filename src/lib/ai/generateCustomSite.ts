@@ -1008,6 +1008,19 @@ export async function restoreDraftCssFromPublished(tenantId: string): Promise<{
 export async function generateCustomSiteDraft(opts: {
   tenantId: string
   prompt: string
+  /**
+   * The owner's own facts, rendered from the intake fact ledger. Feeds the
+   * design enhancer and every copy pass, so the site can state things only
+   * this business knows.
+   *
+   * Deliberately NOT merged into `prompt`. That string is the admin's creative
+   * seed, and it also becomes `briefTextForScan`, which is what makes design
+   * tells brief-exempt — facts routed through it would let a business whose
+   * work involves a banned motif stand down the guard for that motif. A
+   * non-empty prompt would additionally switch off the self-authored design
+   * direction. Facts state what is true; the seed states what it looks like.
+   */
+  factsBrief?: string
   mode?: 'inline' | 'iframe'
   /**
    * `full` — rebuild the whole custom site.
@@ -1361,6 +1374,7 @@ export async function generateCustomSiteDraft(opts: {
         // most.
         await withPromptRecording(async () =>
           runFullGenerate({
+            factsBrief: opts.factsBrief,
           brandName,
           tenantId: opts.tenantId,
           jobKey: opts.jobKey,
@@ -1870,6 +1884,8 @@ async function runFullGenerate(opts: {
   /** Designs already on the platform — drives the avoid-list and the collision gate. */
   avoidList: DesignAvoidList
   prompt: string
+  /** Owner facts channel — never the creative seed. See generateCustomSiteDraft. */
+  factsBrief?: string
   mode: 'inline' | 'iframe'
   pageHints: string
   requiredPaths: string[]
@@ -1910,6 +1926,10 @@ async function runFullGenerate(opts: {
   const hasImages = !!(opts.images && opts.images.length > 0)
   const attachmentsAreReferenceOnly = opts.context.attachmentsAreReferenceOnly === true
   const adminBrief = (opts.prompt || '').trim()
+  // Capped so a very chatty intake cannot crowd the design system out of the
+  // context window; the ledger is ordered profile → services → facts → quotes,
+  // so a truncation loses the least load-bearing lines last.
+  const factsBrief = (opts.factsBrief || '').trim().slice(0, 6000)
   const seedEmpty = !adminBrief
   const hasBrief = adminBrief.length > 0 || hasImages
 
@@ -1998,6 +2018,7 @@ async function runFullGenerate(opts: {
           themeHint:
             typeof opts.context.themeHint === 'string' ? opts.context.themeHint : undefined,
           intakeHints: buildIntakeHintsForBrief(opts.context),
+          factsBrief,
           avoid: opts.avoidList,
         })
 
@@ -2052,6 +2073,7 @@ async function runFullGenerate(opts: {
         themeHint:
           typeof opts.context.themeHint === 'string' ? opts.context.themeHint : undefined,
         intakeHints: buildIntakeHintsForBrief(opts.context),
+        factsBrief,
         avoid: {
           ...opts.avoidList,
           takenFontKeys: [...opts.avoidList.takenFontKeys, ...rejectedFontKeys],
@@ -2144,6 +2166,7 @@ async function runFullGenerate(opts: {
       themeHint:
         typeof opts.context.themeHint === 'string' ? opts.context.themeHint : undefined,
       intakeHints: buildIntakeHintsForBrief(opts.context),
+      factsBrief,
       avoid: opts.avoidList,
       rejectedConcepts: [enhanced.signatureConcept].filter(Boolean),
     })
@@ -2256,6 +2279,17 @@ DIRECTION LOCK:
           ? enhanced.servicesToAdd.join(' | ')
           : '(none unless ADMIN SEED names them)'
       }${rhythmLock}`
+
+  // The owner's facts ride alongside the direction on every pass — foundation
+  // and each page — because that is where copy specificity is actually decided.
+  // Kept in its own labelled block so the model can tell a fact it must honour
+  // from a style instruction it must interpret.
+  const factsBlock = factsBrief
+    ? `\n\nOWNER-SUPPLIED FACTS (from the intake — the only sanctioned source of concrete claims;
+never invent siblings for these, and prefer a shorter section to an unsupported one):
+${factsBrief}`
+    : ''
+  const directionAndFacts = `${directionBlock}${factsBlock}`
 
   const extraWarnings: string[] = [
     resumeLocked
@@ -2416,7 +2450,7 @@ DIRECTION LOCK:
         units,
         findings,
         brandName: opts.brandName,
-        directionBlock,
+        directionBlock: directionAndFacts,
         pageHints: opts.pageHints,
         callModel: modelJson,
         scan,
@@ -2495,7 +2529,7 @@ Do NOT emit other page keys in this call — later passes build them.`
 
     const foundationUser = `Full redesign FOUNDATION for "${opts.brandName}".
 
-${directionBlock}
+${directionAndFacts}
 
 KEEP ALWAYS:
 - Engagement: ${engagementLabel} (${engagementModel}) — mount ${WIDGET_PLACEHOLDER} on home conversion section.
@@ -2717,7 +2751,7 @@ Build globalCss + home "/" only. Output JSON.`
         units,
         findings: uniquenessFindings(assessment),
         brandName: opts.brandName,
-        directionBlock,
+        directionBlock: directionAndFacts,
         pageHints: opts.pageHints,
         callModel: modelJson,
         scan: uniquenessScan,
@@ -2773,7 +2807,7 @@ Emit only "${path}" — no other pages, no globalCss.`
 
     const pageUser = `Build page "${path}" for "${opts.brandName}".
 
-${directionBlock}
+${directionAndFacts}
 
 LOCKED globalCss (do not redefine; pages link the same fonts via <link> as home):
 ${lockedGlobalCss.slice(0, 6000)}

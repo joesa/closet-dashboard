@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { buildIntakeBrief, stripUneditedCraftSuggestions } from '@/lib/intake/buildIntakeBrief'
 import { getIntakeByToken } from '@/lib/intake/getIntakeByToken'
-import { assertDraftIntake, assertDepositPaid } from '@/lib/intake/intakeTierGates'
+import { assertDraftIntake, assertTextPipelineAccess } from '@/lib/intake/intakeTierGates'
 import { checkRateLimit, hashRateKey } from '@/lib/rateLimit'
 import { clampPagesForTier, SITE_PAGE_SLUGS } from '@/lib/catalog/sitePages'
 import { OTHER_SERVICE_LABEL } from '@/lib/catalog/contractorServices'
@@ -28,9 +28,12 @@ export async function POST(
       return NextResponse.json({ error: draftErr }, { status: 410 })
     }
 
-    const depositErr = assertDepositPaid(row)
-    if (depositErr) {
-      return NextResponse.json({ error: depositErr }, { status: 403 })
+    // Text generation is available on every tier: the facts a prospect typed
+    // are theirs regardless of what they paid, and withholding the brief is
+    // what made Standard sites generic. Imagery stays behind the premium gate.
+    const accessErr = assertTextPipelineAccess(row)
+    if (accessErr) {
+      return NextResponse.json({ error: accessErr }, { status: 403 })
     }
 
     // Client used to auto-retry on failure and burn this quickly; keep a

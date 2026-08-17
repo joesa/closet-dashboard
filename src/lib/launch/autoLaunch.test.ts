@@ -47,6 +47,9 @@ vi.mock('@/lib/tenants/revalidateTenantSite', () => ({
   revalidateTenantSiteCache: vi.fn(async () => true),
 }))
 vi.mock('@/lib/admin', () => ({ logSystemAction: vi.fn(async () => undefined) }))
+vi.mock('@/lib/intake/factsBriefForTenant', () => ({
+  loadFactsBriefForTenant: vi.fn(async () => 'Business name: Test Co\n- Rule the shop never breaks: we test'),
+}))
 
 const TENANT = 'tenant-1'
 

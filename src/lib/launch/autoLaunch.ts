@@ -1,4 +1,5 @@
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { loadFactsBriefForTenant } from '@/lib/intake/factsBriefForTenant'
 import { logSystemAction } from '@/lib/admin'
 import {
   getCustomBuildJob,
@@ -125,13 +126,22 @@ export async function startAutoLaunchRedesign(tenantId: string): Promise<boolean
     .update({ custom_config_draft: null, custom_updated_at: startedAt })
     .eq('tenant_id', tenantId)
 
+  // The owner's facts, straight from the intake rather than from the lossy
+  // site_configs derivative the redesign used to design against. Loaded here
+  // (not inside the generator) because the intake→tenant link lives in the
+  // database and the generator has no business knowing about intakes.
+  const factsBrief = await loadFactsBriefForTenant(tenantId)
+
   const job: CustomBuildJob = {
     status: 'queued',
     intent: 'full',
     // Empty prompt is intentional: the pipeline self-authors a brief from the
     // intake (enhanceFullRedesignBrief), which is exactly what we want when
-    // there is no admin to write a creative seed.
+    // there is no admin to write a creative seed. The owner's facts travel in
+    // facts_brief instead — a separate channel, so they inform the copy without
+    // reading as a style instruction or granting design-guard exemptions.
     prompt: '',
+    facts_brief: factsBrief || null,
     error: null,
     reply: null,
     started_at: startedAt,

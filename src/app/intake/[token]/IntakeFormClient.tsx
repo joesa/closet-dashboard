@@ -1358,7 +1358,10 @@ export default function IntakeFormClient({
   // because the studio's own enqueue path remains the source of truth.
   const briefPrewarmKeyRef = useRef('');
   const prewarmSiteBrief = (pageContents: Record<string, string>) => {
-    if (!canUseImageStudio || studioServices.length === 0) return;
+    // Every tier, not just the ones with the image studio. The brief is the
+    // text artifact built from the facts this prospect typed; gating it behind
+    // a deposit is what left Standard sites writing from `notes` alone.
+    if (studioServices.length === 0) return;
     if (aiSiteConfig) return; // brief already generated
     const key = form.pages.join('|');
     if (!key || briefPrewarmKeyRef.current === key) return;

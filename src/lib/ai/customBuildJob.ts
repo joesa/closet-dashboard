@@ -77,6 +77,16 @@ export type CustomBuildJob = {
     added?: Array<{ title: string; description?: string; image?: string }>
     removed?: Array<{ title: string; reason?: string }>
   } | null
+  /**
+   * The owner's own facts, rendered from the intake fact ledger
+   * (src/lib/intake/factLedger.ts). A SEPARATE channel from `prompt`:
+   * `prompt` is the admin's creative seed and doubles as the design guard's
+   * brief-exemption text, so facts must never be poured into it — a business
+   * whose facts mention a banned motif would stand the guard down, and a
+   * non-empty prompt also stops the pipeline self-authoring a direction.
+   * Facts say what is true; the seed says what it should look like.
+   */
+  facts_brief?: string | null
   /** Locked brief so resume does not re-enhance and drift from home. */
   locked_brief?: CustomBuildLockedBrief | null
   foundation_reply?: string | null

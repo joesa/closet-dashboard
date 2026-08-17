@@ -99,6 +99,8 @@ export async function processCustomBuildJob(tenantId: string): Promise<void> {
     const result = await generateCustomSiteDraft({
       tenantId,
       prompt: current.prompt || '',
+      // Separate channel from prompt — see CustomBuildJob.facts_brief.
+      factsBrief: current.facts_brief || '',
       mode: current.mode,
       intent,
       jobKey: current.started_at,

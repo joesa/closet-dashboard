@@ -24,7 +24,7 @@ describe('multi-industry service catalog', () => {
   describe('the zero-signal fallback', () => {
     it('lands an unrecognised trade on generic-trade, not on closets', () => {
       expect(resolveIndustrySlug({ industry: 'Publishing house' })).toBe('generic-trade')
-      expect(resolveIndustrySlug({ industry: 'Dental practice' })).toBe('generic-trade')
+      expect(resolveIndustrySlug({ industry: 'Talent agency' })).toBe('generic-trade')
       expect(resolveIndustrySlug({})).toBe('generic-trade')
     })
 

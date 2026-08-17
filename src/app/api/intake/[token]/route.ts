@@ -4,6 +4,7 @@ import { checkRateLimit, hashRateKey } from '@/lib/rateLimit'
 import { enqueueProvisionJob } from '@/lib/provision/enqueueProvisionJob'
 import { getIntakeByToken } from '@/lib/intake/getIntakeByToken'
 import { stripUneditedCraftSuggestions } from '@/lib/intake/buildIntakeBrief'
+import { buildFactLedger, FACT_LEDGER_VERSION } from '@/lib/intake/factLedger'
 import { buildIntakePublicJson } from '@/lib/intake/intakePublicResponse'
 import { healIntakeTierFromPayments, effectiveIntakeTier } from '@/lib/intake/intakeTierGates'
 import { kickProvisionAfterSubmit } from '@/lib/provision/kickProvisionAfterSubmit'
@@ -264,6 +265,19 @@ export async function POST(
       gallery_images: galleryUrls,
       menu_items: menuItems,
     }
+
+    // The fact ledger is built BEFORE the strip below, from the submitted
+    // values plus the client's list of still-unedited AI suggestions, so the
+    // provenance of every fact survives for admin review. renderFactsBrief()
+    // is what enforces the policy downstream: unedited suggestions are never
+    // handed to a generator. See src/lib/intake/factLedger.ts.
+    const ledger = buildFactLedger(
+      { ...intakeRow, ...update } as typeof intakeRow,
+      { suggestedFields: body.craftSuggestedFields }
+    )
+    update.fact_ledger = ledger
+    update.fact_ledger_version = FACT_LEDGER_VERSION
+    update.fact_ledger_built_at = ledger.builtAt
 
     // Craft answers the prospect accepted verbatim from AI suggestions are
     // examples, not facts about this business. Drop them so invented

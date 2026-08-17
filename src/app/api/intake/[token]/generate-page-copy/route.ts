@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { generateTextForPurpose } from '@/lib/ai/aiTextProvider'
 import { getIntakeByToken } from '@/lib/intake/getIntakeByToken'
-import { assertDraftIntake, assertDepositPaid } from '@/lib/intake/intakeTierGates'
+import { assertDraftIntake, assertTextPipelineAccess } from '@/lib/intake/intakeTierGates'
 import { checkRateLimit, hashRateKey } from '@/lib/rateLimit'
 import { buildIntakeBrief, stripUneditedCraftSuggestions } from '@/lib/intake/buildIntakeBrief'
 import { SITE_PAGE_OPTIONS, clampPagesForTier } from '@/lib/catalog/sitePages'
@@ -166,9 +166,12 @@ async function executeIntakeGeneratePageCopy(
       return NextResponse.json({ error: draftErr }, { status: 410 })
     }
 
-    const depositErr = assertDepositPaid(row)
-    if (depositErr) {
-      return NextResponse.json({ error: depositErr }, { status: 403 })
+    // Text generation is available on every tier: the facts a prospect typed
+    // are theirs regardless of what they paid, and withholding the brief is
+    // what made Standard sites generic. Imagery stays behind the premium gate.
+    const accessErr = assertTextPipelineAccess(row)
+    if (accessErr) {
+      return NextResponse.json({ error: accessErr }, { status: 403 })
     }
 
     const limit = await checkRateLimit(

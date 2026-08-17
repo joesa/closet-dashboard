@@ -55,6 +55,16 @@ type EnhanceOpts = {
   /** Compact intake facts (about headline, differentiators, etc.). */
   intakeHints?: string
   /**
+   * The owner's own facts, rendered from the intake fact ledger
+   * (src/lib/intake/factLedger.ts). Distinct from `intakeHints`, which is a
+   * 900-character squeeze of the site config — a summary of a summary. This is
+   * the primary material a subject-derived direction should be built from:
+   * what they measure, what goes wrong locally, what the crew is, what the
+   * customer receives. Never a style instruction, and never an exemption from
+   * the design guards.
+   */
+  factsBrief?: string
+  /**
    * Designs already shipped on the platform. Steers the enhancer away from
    * taken directions up front — cheaper and better than rejecting the build
    * afterwards, and the only diversity lever available on the Claude path,
@@ -285,6 +295,7 @@ export function fallbackEnhancedBrief(opts: EnhanceOpts): EnhancedFullRedesignBr
           ? 'REFERENCE IMAGES: Absorb mood/palette/composition; do not copy trademarks.'
           : '',
         opts.intakeHints ? `INTAKE HINTS: ${opts.intakeHints}` : '',
+        opts.factsBrief ? `OWNER-SUPPLIED FACTS (derive the direction from these):\n${opts.factsBrief}` : '',
         'SELF-AUTHORED: Admin left seed empty — treat this entire brief as the admin prompt.',
       ]
         .filter(Boolean)
@@ -304,6 +315,7 @@ export function fallbackEnhancedBrief(opts: EnhanceOpts): EnhancedFullRedesignBr
           ? 'REFERENCE IMAGES: Absorb mood/palette/composition; do not copy trademarks.'
           : '',
         opts.intakeHints ? `INTAKE HINTS: ${opts.intakeHints}` : '',
+        opts.factsBrief ? `OWNER-SUPPLIED FACTS (the only sanctioned source of concrete claims):\n${opts.factsBrief}` : '',
       ]
         .filter(Boolean)
         .join('\n')
@@ -596,6 +608,11 @@ Intake services (must keep): ${opts.services.join(' | ') || '(none listed)'}
 Theme hint: ${opts.themeHint || '(none)'}
 Has reference images: ${opts.hasImages ? 'yes' : 'no'}
 Intake hints: ${opts.intakeHints || '(none)'}
+
+OWNER-SUPPLIED FACTS (from the intake — this is what makes the direction this
+business's and not a category's; derive the material world, palette and
+signature element from what they actually do, and never contradict a line here):
+${opts.factsBrief?.trim() || '(none supplied)'}
 Designs already shipped on this platform: ${
     opts.avoid?.taken.length
       ? `${opts.avoid.taken.length} — see the ALREADY USED block in the system message; your direction must differ from all of them`

@@ -10,8 +10,12 @@ export function hasRealCustomerQuotes(row: Pick<ProspectIntakeRow, 'customer_quo
   return !!row.customer_quotes?.trim()
 }
 
-/** Client craft-field key → prospect_intakes column, for the suggestion policy below. */
-const CRAFT_COLUMN_BY_FIELD: Record<string, string> = {
+/**
+ * Client craft-field key → prospect_intakes column, for the suggestion policy
+ * below. Exported because the fact ledger records the same provenance instead
+ * of dropping it (see intake/factLedger.ts).
+ */
+export const CRAFT_COLUMN_BY_FIELD: Record<string, string> = {
   craftSpec: 'craft_spec',
   clientArtifact: 'client_artifact',
   shopRule: 'shop_rule',
