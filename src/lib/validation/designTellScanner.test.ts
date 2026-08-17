@@ -660,6 +660,91 @@ ${Array.from({ length: 12 }, (_, i) => `.z${i}{border:0;border-color:var(--acc)}
   })
 })
 
+describe('design_gap_outlined_grid', () => {
+  const GROUT_CSS = `${CLEAN_CSS}
+:root{--gut:8px;--face:#ffffff}
+.mos{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:var(--gut);background:var(--line);padding:var(--gut)}
+.mod{background:var(--face);padding:44px}`
+
+  const band = (n: number) =>
+    Array.from(
+      { length: n },
+      () => `<section class="field"><div class="mos"><div class="mod"><p>${CONCRETE_COPY}</p></div><div class="mod"><p>${CONCRETE_COPY}</p></div></div></section>`
+    ).join('')
+
+  const codesFor = (css: string, html: string, brief: string | null = null) =>
+    codes(
+      scanArtifactTells({
+        globalCss: css,
+        pages: { '/': { html: `${FONTS_LINK}${html}` } },
+        briefText: brief,
+      })
+    )
+
+  it('flags the grout grid that draws boxes without a border declaration', () => {
+    const findings = scanArtifactTells({
+      globalCss: GROUT_CSS,
+      pages: { '/': { html: `${FONTS_LINK}${band(4)}` } },
+    })
+    const grout = findings.find((f) => f.code === 'design_gap_outlined_grid')
+    expect(grout).toBeDefined()
+    expect(grout!.unitId).toBe(GLOBAL_CSS_UNIT_ID)
+    expect(grout!.meta).toMatchObject({ instances: 4, framedInstances: 4, widestGap: 8 })
+    // The border counter never sees it — that is the hole this check closes.
+    expect(codes(findings)).not.toContain('design_hairline_box_grid')
+  })
+
+  it('leaves a single band built this way alone', () => {
+    expect(codesFor(GROUT_CSS, band(2))).not.toContain('design_gap_outlined_grid')
+  })
+
+  it('ignores a padded grid whose cells paint no surface of their own', () => {
+    const css = `${CLEAN_CSS}
+:root{--gut:8px}
+.mos{display:grid;gap:24px;background:var(--bg);padding:24px}
+.mod{padding:44px}`
+    expect(codesFor(css, band(6))).not.toContain('design_gap_outlined_grid')
+  })
+
+  it('ignores cells that match the container surface, where the gaps do not read', () => {
+    const css = `${CLEAN_CSS}
+.mos{display:grid;gap:20px;background:var(--bg);padding:20px}
+.mod{background:var(--bg);padding:44px}`
+    expect(codesFor(css, band(6))).not.toContain('design_gap_outlined_grid')
+  })
+
+  it('ignores a hairline seam too narrow to read as a drawn rule', () => {
+    const css = `${CLEAN_CSS}
+.mos{display:grid;gap:1px;background:var(--line)}
+.mod{background:#ffffff;padding:44px}`
+    expect(codesFor(css, band(6))).not.toContain('design_gap_outlined_grid')
+  })
+
+  it('still flags an unframed container, where only the cells are ruled', () => {
+    const css = `${CLEAN_CSS}
+.mos{display:flex;gap:12px;background:var(--line)}
+.mod{background:#ffffff;padding:44px}`
+    const findings = scanArtifactTells({
+      globalCss: css,
+      pages: { '/': { html: `${FONTS_LINK}${band(4)}` } },
+    })
+    const grout = findings.find((f) => f.code === 'design_gap_outlined_grid')
+    expect(grout?.meta).toMatchObject({ framedInstances: 0 })
+  })
+
+  it('stands down when the brief asked for a mortar-joint layout', () => {
+    expect(
+      codesFor(GROUT_CSS, band(6), 'Lay the page out as a mosaic grid: white modules set into grout-coloured joints.')
+    ).not.toContain('design_gap_outlined_grid')
+  })
+
+  it('does not stand down merely because the trade is grout work', () => {
+    expect(
+      codesFor(GROUT_CSS, band(6), 'Tile and grout cleaning in Clarksville. We reseal grout lines after the clean.')
+    ).toContain('design_gap_outlined_grid')
+  })
+})
+
 describe('decorative_numbered_list via CSS counters', () => {
   const codes = (css: string, brief: string | null = null) =>
     scanArtifactTells({ globalCss: css, pages: {}, briefText: brief }).map((f) => f.code)

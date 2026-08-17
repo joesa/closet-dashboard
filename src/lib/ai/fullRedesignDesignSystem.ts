@@ -166,6 +166,12 @@ export const BANNED_DESIGN_DEFAULTS = `Banned defaults (unless the ADMIN SEED or
   read; a page where every band, card, cell, and list row carries \`border:1px solid var(--line)\` reads
   as a wireframe, not a designed page. Separate sections with space, surface colour, and type weight
   first. A deterministic guard counts border declarations and will send the build back for repair.
+- Drawing those same boxes without the border property: a grid or flex container painted in the line
+  token with \`gap\` between cells and \`padding\` around them, while each cell paints the surface token.
+  The gaps are not space, they are the container showing through, so every module is ruled on four
+  sides and the band gets a thick frame — the wireframe again, in heavier lines. Same for box-shadow
+  or outline standing in for the border. A gap is empty page, not a drawn rule; if a band needs a
+  surface of its own, paint the section and let the cells sit on it with no second surface under them.
 - Three identical icon-title-sentence cards with generic line icons that could describe any product
 - Inter / Poppins / Roboto / system-ui, and the habitual "distinctive" pairs used on every site
   (Big Shoulders, Space Grotesk, Syne)

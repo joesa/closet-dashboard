@@ -129,6 +129,7 @@ import {
 } from '@/lib/validation/siteValidator'
 import {
   scanArtifactTells,
+  scanGlobalCssTells,
   scanUnitTells,
   toUnitQualityReport,
   type DesignTellFinding,
@@ -143,6 +144,7 @@ import {
 } from '@/lib/validation/designGuardPolicy'
 import {
   applyRepairedUnits,
+  pagesInCandidate,
   repairDesignTells,
   repairUnitIdForFinding,
   unitIdForGlobalCss,
@@ -2401,9 +2403,7 @@ DIRECTION LOCK:
           const path = unitId.startsWith('html:') ? unitId.slice('html:'.length) : null
           const scanned = path
             ? scanUnitTells(path, { html: content }, { briefText: briefTextForScan })
-            : scanArtifactTells({
-                globalCss: content,
-                pages: {},
+            : scanGlobalCssTells(content, pagesInCandidate(candidate), {
                 briefText: briefTextForScan,
               })
           // Re-key onto repair unit ids so failedUnitIds addresses real units.
@@ -2701,9 +2701,7 @@ Build globalCss + home "/" only. Output JSON.`
         const path = unitId.startsWith('html:') ? unitId.slice('html:'.length) : null
         const scanned = path
           ? scanUnitTells(path, { html: content }, { briefText: briefTextForScan })
-          : scanArtifactTells({
-              globalCss: content,
-              pages: {},
+          : scanGlobalCssTells(content, pagesInCandidate(candidate), {
               briefText: briefTextForScan,
             })
         return scanned.map((f) => ({ ...f, unitId: repairUnitIdForFinding(f.unitId) }))

@@ -237,6 +237,60 @@ function ruleEntries(css: string): { selector: string; body: string }[] {
   return out
 }
 
+/** `--gut:8px` style length tokens, so `gap:var(--gut)` can be measured. */
+function rootLengthTokens(css: string): Map<string, string> {
+  const tokens = new Map<string, string>()
+  for (const match of (css || '').matchAll(/(--[\w-]+)\s*:\s*([^;{}]+)/g)) {
+    tokens.set(match[1], match[2].trim())
+  }
+  return tokens
+}
+
+/** A single CSS length in px, resolving one var() hop. null when not a length. */
+function lengthPx(raw: string, tokens: Map<string, string>, depth = 0): number | null {
+  const value = raw.trim()
+  const varRef = value.match(/^var\(\s*(--[\w-]+)\s*(?:,\s*([^)]*))?\)$/i)
+  if (varRef) {
+    if (depth > 2) return null
+    const resolved = tokens.get(varRef[1]) ?? varRef[2]
+    return resolved ? lengthPx(resolved, tokens, depth + 1) : null
+  }
+  const num = value.match(/^(-?\d*\.?\d+)(px|rem|em)$/i)
+  if (!num) return null
+  const size = parseFloat(num[1])
+  return /px/i.test(num[2]) ? size : size * 16
+}
+
+/**
+ * The smallest px length in a shorthand, or null when any part is unmeasurable
+ * (calc, clamp, %). Smallest because it is the narrowest line the pattern draws
+ * — judging the thick axis of `gap:28px 4px` would overstate what is visible.
+ */
+function shorthandPx(body: string, prop: RegExp, tokens: Map<string, string>): number | null {
+  const decl = body.match(new RegExp(`(?:^|;)\\s*(?:${prop.source})\\s*:\\s*([^;]+)`, 'i'))
+  if (!decl) return null
+  const parts = decl[1].trim().split(/\s+(?![^(]*\))/)
+  const lengths = parts.map((part) => lengthPx(part, tokens))
+  if (lengths.some((length) => length === null)) return null
+  return Math.min(...(lengths as number[]))
+}
+
+/** The opaque paint a rule sets, or null for none/transparent/gradient. */
+function opaqueBackground(body: string): string | null {
+  const decl = body.match(/(?:^|;)\s*background(?:-color)?\s*:\s*([^;]+)/i)
+  if (!decl) return null
+  const value = decl[1].trim().toLowerCase()
+  if (!value || /^(?:none|transparent|inherit|initial|unset|revert)$/.test(value)) return null
+  if (/gradient\(/.test(value)) return null
+  return value
+}
+
+/** Trailing class names of a selector — what an element must carry to match it. */
+function selectorClasses(selector: string): string[] {
+  const last = selector.split(',')[0].trim().split(/\s+|>/).filter(Boolean).pop() || ''
+  return [...last.matchAll(/\.([\w-]+)/g)].map((m) => m[1])
+}
+
 function briefMentions(briefText: string | null | undefined, re: RegExp): boolean {
   return !!briefText && re.test(briefText)
 }
@@ -627,6 +681,127 @@ function scanGlobalCss(
   return out
 }
 
+/**
+ * Only a brief that asks for this *layout* stands the check down. A tile,
+ * masonry or terrazzo business mentions grout in every paragraph of its copy;
+ * that is the subject, not a request to draw the page as a mortar grid.
+ */
+const GROUT_LAYOUT_BRIEF_RE =
+  /grout[- ]?line (?:grid|layout)|mortar[- ]joint (?:grid|layout)|mosaic (?:grid|layout)|tile[- ]?grid layout|grid lines? between (?:cards|cells|modules)/i
+
+/**
+ * Outlining everything without writing a single border.
+ *
+ * `design_hairline_box_grid` counts `border:1px solid`, so a model that has been
+ * told not to box everything reaches for the construction that produces heavier
+ * boxes and never trips the counter: a grid container painted in the line token,
+ * `gap` between cells and `padding` around them, with each cell painted in the
+ * surface token. The gaps are not gaps — they are the container showing through,
+ * so every module ends up ruled on four sides and the whole band gets a thick
+ * frame. On screen it reads as a wireframe with fatter lines than the hairline
+ * version it replaced.
+ *
+ * Requires three things before firing, because each alone is ordinary: an
+ * opaque container background, a real gap, and children that paint their own
+ * different surface (without which the gaps are invisible). Needs the HTML to
+ * establish the third — the parent/child relationship is not in the CSS when
+ * container and cell are styled by unrelated class selectors.
+ */
+function scanGapOutlinedGrid(
+  css: string,
+  html: string,
+  briefText: string | null | undefined
+): DesignTellFinding[] {
+  const out: DesignTellFinding[] = []
+  if (!css?.trim() || !html?.trim()) return out
+  if (briefMentions(briefText, GROUT_LAYOUT_BRIEF_RE)) return out
+
+  const tokens = rootLengthTokens(css)
+  const entries = ruleEntries(css)
+
+  const classBackground = new Map<string, string>()
+  for (const { selector, body } of entries) {
+    const background = opaqueBackground(body)
+    if (!background) continue
+    for (const cls of selectorClasses(selector)) {
+      if (!classBackground.has(cls)) classBackground.set(cls, background)
+    }
+  }
+
+  type Candidate = {
+    cls: string
+    rule: string
+    gap: number
+    background: string
+    /** Padding at least as wide as the gap: the frame around the whole band. */
+    framed: boolean
+  }
+  const candidates = new Map<string, Candidate>()
+  for (const { selector, body } of entries) {
+    if (!/display\s*:\s*(?:inline-)?(?:grid|flex)/i.test(body)) continue
+    const background = opaqueBackground(body)
+    if (!background) continue
+    const gap = shorthandPx(body, /gap|grid-gap|row-gap|column-gap/, tokens)
+    // Under ~6px a gap reads as a hairline seam rather than a drawn rule.
+    if (gap === null || gap < 6) continue
+    const padding = shorthandPx(body, /padding/, tokens)
+    for (const cls of selectorClasses(selector)) {
+      if (candidates.has(cls)) continue
+      candidates.set(cls, {
+        cls,
+        rule: `${selector} { ${body} }`.slice(0, 140),
+        gap,
+        background,
+        framed: padding !== null && padding >= gap - 1,
+      })
+    }
+  }
+  if (candidates.size === 0) return out
+
+  const $ = cheerio.load(html)
+  const confirmed: Candidate[] = []
+  let instances = 0
+  let framedInstances = 0
+  let widestGap = 0
+  for (const candidate of candidates.values()) {
+    let matched = 0
+    $(`.${candidate.cls}`).each((_, el) => {
+      const cellPaintsOwnSurface = $(el)
+        .children()
+        .toArray()
+        .some((child) => {
+          const classes = ($(child).attr('class') || '').split(/\s+/).filter(Boolean)
+          const paint =
+            classes.map((cls) => classBackground.get(cls)).find(Boolean) ??
+            opaqueBackground($(child).attr('style') || '')
+          return !!paint && paint !== candidate.background
+        })
+      if (cellPaintsOwnSurface) matched += 1
+    })
+    if (matched === 0) continue
+    confirmed.push(candidate)
+    instances += matched
+    if (candidate.framed) framedInstances += matched
+    widestGap = Math.max(widestGap, candidate.gap)
+  }
+
+  // One band built this way is a device. Three is the page's structural
+  // language, which is the case the hairline guard exists to reject.
+  if (instances < 3) return out
+
+  out.push(
+    finding(
+      'design_gap_outlined_grid',
+      GLOBAL_CSS_UNIT_ID,
+      `Structure is carried by gap-as-rule grids: ${confirmed.length} container rule(s) paint an opaque background behind ${instances} band(s) whose cells paint their own surface, so every module ends up outlined on four sides in a ${widestGap}px line${framedInstances > 0 ? `, plus a matching frame around ${framedInstances} whole band(s)` : ''}. This is the wireframe look the border ban rejects, drawn without a border declaration.`,
+      'Mechanical fix: on each flagged container delete the background and the padding that pairs with the gap, and let the cells sit on the page surface. Keep the gap as space. If two surfaces genuinely need separating, change one surface colour or add one hairline on that edge only — do not reintroduce the ruled grid with box-shadow, outline, or a thinner gap.',
+      confirmed.slice(0, 3).map((candidate) => candidate.rule),
+      { instances, framedInstances, widestGap }
+    )
+  )
+  return out
+}
+
 const EMOJI_RE = /\p{Extended_Pictographic}/u
 const EMOJI_GLOBAL_RE = /\p{Extended_Pictographic}/gu
 
@@ -860,8 +1035,12 @@ function scanDualLane(
 export function scanDesignTells(input: DesignTellScanInput): DesignTellFinding[] {
   const entries = Object.entries(input.pages || {})
   const allHtml = entries.map(([, page]) => page?.html || '').join('\n')
+  const allCss = [input.globalCss || '', ...entries.map(([, page]) => page?.css || '')].join('\n')
   const out: DesignTellFinding[] = [
     ...scanGlobalCss(input.globalCss, input.briefText, allHtml),
+    // Needs CSS and HTML together, and page CSS as well as globalCss: the
+    // container and the cell are often styled in different stylesheets.
+    ...scanGapOutlinedGrid(allCss, allHtml, input.briefText),
   ]
 
   for (const [path, page] of entries) {
@@ -969,6 +1148,32 @@ export function scanUnitTells(
     (f) =>
       !GLOBAL_CSS_CODES.includes(f.code as DesignTellCode) &&
       !WHOLE_SITE_CODES.includes(f.code)
+  )
+}
+
+/**
+ * Scan the shared stylesheet with page markup as context, returning only what
+ * the stylesheet owns. The mirror of scanUnitTells for the other kind of repair
+ * unit: some CSS tells are invisible without the markup that uses the classes —
+ * a gap-outlined grid is only a grid of boxes once you can see that the cells
+ * inside it paint their own surface — so verifying a repaired stylesheet against
+ * `pages: {}` cannot tell a fixed one from an unfixed one. Whole-site checks
+ * stay out: a mid-repair candidate carries one page, not the site.
+ */
+export function scanGlobalCssTells(
+  globalCss: string,
+  pages: Record<string, CustomPageLike>,
+  ctx: Omit<DesignTellScanInput, 'pages' | 'globalCss'>
+): DesignTellFinding[] {
+  return scanArtifactTells({
+    globalCss,
+    pages,
+    briefText: ctx.briefText,
+    businessName: ctx.businessName,
+    locality: ctx.locality,
+    sourceText: ctx.sourceText,
+  }).filter(
+    (f) => f.unitId === GLOBAL_CSS_UNIT_ID && !WHOLE_SITE_CODES.includes(f.code)
   )
 }
 

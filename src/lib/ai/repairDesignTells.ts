@@ -78,6 +78,20 @@ export function repairUnitIdForFinding(unitId: string): string {
   return unitIdForPage(unitId)
 }
 
+/**
+ * The page units of a repair candidate, shaped for a scanner `pages` input.
+ * Lets a stylesheet be re-scanned against the markup that uses it, which some
+ * CSS tells need in order to be visible at all.
+ */
+export function pagesInCandidate(units: RepairUnits): Record<string, { html: string }> {
+  const pages: Record<string, { html: string }> = {}
+  for (const [unitId, content] of Object.entries(units)) {
+    const path = pathForUnitId(unitId)
+    if (path !== null) pages[path] = { html: content }
+  }
+  return pages
+}
+
 export function unitsFromDraft(draft: CustomSiteConfig, paths: string[]): RepairUnits {
   const units: RepairUnits = {}
   if (typeof draft.globalCss === 'string' && draft.globalCss.trim()) {
