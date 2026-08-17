@@ -1,4 +1,5 @@
 import type { IndustryDef } from '@/lib/catalog/types'
+import { GENERIC_TRADE_INDUSTRY } from '@/lib/catalog/industries/generic-trade'
 import { CUSTOM_CLOSETS_GROUPS, CUSTOM_CLOSETS_SERVICES } from '@/lib/catalog/industries/custom-closets'
 import { PLUMBING_INDUSTRY } from '@/lib/catalog/industries/plumbing'
 import { HVAC_INDUSTRY } from '@/lib/catalog/industries/hvac'
@@ -107,7 +108,7 @@ import {
 export const CUSTOM_CLOSETS_INDUSTRY: IndustryDef = {
   slug: 'custom-closets',
   label: 'Custom Closets & Storage',
-  keywords: ['closet', 'organization', 'custom closet', 'walk-in closet', 'walk in closet', 'reach-in closet', 'closet organization', 'home storage', 'storage solutions'],
+  keywords: ['closet', 'organization', 'custom closet', 'walk-in closet', 'walk in closet', 'reach-in closet', 'closet organization', 'home storage', 'storage solutions', 'mudroom', 'mudrooms', 'pantry', 'pantries', 'garage storage'],
   serviceGroups: [...CUSTOM_CLOSETS_GROUPS],
   defaultThemes: ['luxury-minimal', 'modern-office', 'functional-utility', 'classic-warm'],
   defaultLayouts: ['standard', 'portfolio-first', 'conversion-focus', 'gallery-showcase'],
@@ -228,6 +229,7 @@ export const INDUSTRIES: IndustryDef[] = [
   PASSENGER_TRANSPORT_INDUSTRY,
   FREIGHT_LOGISTICS_INDUSTRY,
   WASTE_MANAGEMENT_INDUSTRY,
+  GENERIC_TRADE_INDUSTRY,
 ]
 
 export const ALL_SERVICES = INDUSTRIES.flatMap((i) => i.services)

@@ -145,7 +145,7 @@ export const PLUMBING_GROUPS = [
 export const PLUMBING_INDUSTRY: IndustryDef = {
   slug: 'plumbing',
   label: 'Plumbing',
-  keywords: ['plumb', 'plumber', 'pipe', 'drain', 'water heater'],
+  keywords: ['plumb', 'plumber', 'pipe', 'drain', 'water heater', 'water line', 'water line repair', 'sink repair', 'shower repair', 'repipe'],
   serviceGroups: [...PLUMBING_GROUPS],
   defaultThemes: ['modern-office', 'classic-warm', 'functional-utility', 'minimalist-zen'],
   defaultLayouts: ['trust-builder', 'conversion-focus', 'local-expert', 'minimalist-lead'],

@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest'
 import { INDUSTRIES } from '@/lib/catalog/industries/index'
 import {
   collectThemeLayoutPools,
+  INDUSTRY_CONFIGS,
+  isLowConfidenceResolution,
+  listIndustries,
   matchServiceDef,
   resolveIndustrySlug,
 } from '@/lib/catalog/serviceCatalog'
@@ -9,11 +12,36 @@ import {
 describe('multi-industry service catalog', () => {
   it('registers 11 industries with services', () => {
     expect(INDUSTRIES.length).toBeGreaterThanOrEqual(10)
-    for (const ind of INDUSTRIES) {
+    // listIndustries() is the pickable set — it excludes 'generic-trade', which
+    // is deliberately serviceless (see industries/generic-trade.ts).
+    for (const ind of listIndustries()) {
       expect(ind.services.length).toBeGreaterThanOrEqual(1)
       expect(ind.defaultThemes.length).toBeGreaterThanOrEqual(3)
       expect(ind.defaultLayouts.length).toBeGreaterThanOrEqual(3)
     }
+  })
+
+  describe('the zero-signal fallback', () => {
+    it('lands an unrecognised trade on generic-trade, not on closets', () => {
+      expect(resolveIndustrySlug({ industry: 'Publishing house' })).toBe('generic-trade')
+      expect(resolveIndustrySlug({ industry: 'Dental practice' })).toBe('generic-trade')
+      expect(resolveIndustrySlug({})).toBe('generic-trade')
+    })
+
+    it('quotes that trade in neutral units rather than linear feet of closet', () => {
+      const config = INDUSTRY_CONFIGS[resolveIndustrySlug({ industry: 'Publishing house' })]
+      expect(config.unitLabel).toBe('Project Scope')
+      expect(config.tierLabel).toBe('Package')
+    })
+
+    it('keeps generic-trade unpickable and unmatchable by text', () => {
+      expect(listIndustries().some((i) => i.slug === 'generic-trade')).toBe(false)
+      // Reached only as the default, never scored into: even text that reads
+      // like its own label stays low-confidence, so the callers that branch on
+      // that signal (theme synthesis, the custom-industry lookup) still fire.
+      expect(isLowConfidenceResolution({ industry: 'general trade' })).toBe(true)
+      expect(resolveIndustrySlug({ industry: 'General Trade' })).toBe('generic-trade')
+    })
   })
 
   it('fuzzy-matches plumbing services from free text', () => {

@@ -96,7 +96,7 @@ export const CHIMNEY_FIREPLACE_SERVICES: ServiceDef[] = [
 export const CHIMNEY_FIREPLACE_INDUSTRY: IndustryDef = {
   slug: 'chimney-fireplace',
   label: 'Chimney & Fireplace',
-  keywords: ['chimney', 'fireplace', 'chimney sweep', 'chimney cleaning', 'firebox', 'hearth', 'flue'],
+  keywords: ['chimney', 'fireplace', 'chimney sweep', 'chimney cleaning', 'firebox', 'hearth', 'flue', 'gas logs', 'gas log', 'wood stove', 'pellet stove', 'stove insert', 'wood stove inspection'],
   serviceGroups: ['Cleaning', 'Inspection', 'Repair', 'Installation', 'Fireplace'],
   defaultThemes: ['hearth-warm', 'classic-warm', 'rustic-pantry', 'historic-classic'],
   defaultLayouts: ['trust-builder', 'portfolio-first', 'seasonal-cta', 'conversion-focus'],

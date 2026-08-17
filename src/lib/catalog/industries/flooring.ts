@@ -98,7 +98,7 @@ export const FLOORING_SERVICES: ServiceDef[] = [
 export const FLOORING_INDUSTRY: IndustryDef = {
   slug: 'flooring',
   label: 'Flooring',
-  keywords: ['flooring', 'hardwood', 'tile', 'carpet', 'vinyl', 'floor install', 'floor refinish', 'lvp'],
+  keywords: ['flooring', 'hardwood', 'tile', 'carpet', 'vinyl', 'floor install', 'floor refinish', 'lvp', 'floor sanding', 'floor refinishing', 'wood floor sanding', 'carpet stretching'],
   serviceGroups: ['Hardwood', 'Tile', 'Carpet', 'Vinyl', 'Repairs'],
   defaultThemes: ['rich-flooring', 'luxury-minimal', 'classic-warm', 'artisan-wood'],
   defaultLayouts: ['gallery-showcase', 'portfolio-first', 'before-after', 'conversion-focus'],

@@ -88,7 +88,7 @@ export const APPLIANCE_REPAIR_SERVICES: ServiceDef[] = [
 export const APPLIANCE_REPAIR_INDUSTRY: IndustryDef = {
   slug: 'appliance-repair',
   label: 'Appliance Repair',
-  keywords: ['appliance repair', 'appliance fix', 'refrigerator repair', 'washer repair', 'dryer repair', 'appliance tech'],
+  keywords: ['appliance repair', 'appliance fix', 'refrigerator repair', 'washer repair', 'dryer repair', 'appliance tech', 'appliance sales', 'appliance installation', 'trash compactor', 'kitchenaid', 'ice maker', 'sub zero', 'bosch appliance', 'samsung appliance', 'lg appliance', 'whirlpool'],
   serviceGroups: ['Kitchen', 'Laundry', 'Climate', 'Small Appliances'],
   defaultThemes: ['appliance-pro', 'functional-utility', 'modern-office', 'classic-warm'],
   defaultLayouts: ['emergency-first', 'compact-quote', 'trust-builder', 'conversion-focus'],

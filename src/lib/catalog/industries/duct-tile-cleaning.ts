@@ -34,7 +34,7 @@ export const DUCT_CLEANING_INDUSTRY: IndustryDef = {
 
 export const TILE_GROUT_CLEANING_INDUSTRY: IndustryDef = {
   slug: 'tile-grout-cleaning', label: 'Tile & Grout Cleaning',
-  keywords: ['tile', 'tile cleaning', 'grout cleaning', 'grout sealing', 'tile restoration', 'grout color', 'tile grout'],
+  keywords: ['tile', 'tile cleaning', 'grout cleaning', 'grout sealing', 'tile restoration', 'grout color', 'tile grout', 'grout repair', 'regrouting'],
   serviceGroups: ['Cleaning', 'Sealing', 'Restoration', 'Commercial'],
   defaultThemes: ['fresh-clean', 'functional-utility', 'minimalist-zen', 'modern-office'],
   defaultLayouts: ['before-after', 'trust-builder', 'compact-quote', 'local-expert'],

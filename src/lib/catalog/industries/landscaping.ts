@@ -125,7 +125,7 @@ export const LANDSCAPING_GROUPS = [
 export const LANDSCAPING_INDUSTRY: IndustryDef = {
   slug: 'landscaping',
   label: 'Landscaping',
-  keywords: ['landscap', 'lawn', 'yard', 'garden', 'hardscape', 'mowing'],
+  keywords: ['landscap', 'lawn', 'yard', 'garden', 'hardscape', 'mowing', 'weed control', 'weeding', 'plant watering', 'garden maintenance', 'nursery', 'artificial grass'],
   serviceGroups: [...LANDSCAPING_GROUPS],
   defaultThemes: ['coastal-climate', 'rustic-pantry', 'classic-warm', 'modern-office'],
   defaultLayouts: ['portfolio-first', 'local-expert', 'conversion-focus', 'gallery-showcase'],

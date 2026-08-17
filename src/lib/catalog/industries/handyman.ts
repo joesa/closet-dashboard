@@ -105,7 +105,7 @@ export const HANDYMAN_SERVICES: ServiceDef[] = [
 export const HANDYMAN_INDUSTRY: IndustryDef = {
   slug: 'handyman',
   label: 'Handyman Services',
-  keywords: ['handyman', 'home repair', 'odd jobs', 'fix it', 'general contractor', 'maintenance'],
+  keywords: ['handyman', 'home repair', 'odd jobs', 'fix it', 'general contractor', 'maintenance', 'mailbox repair', 'picture hanging', 'furniture assembly', 'honey do list'],
   serviceGroups: ['General', 'Assembly', 'Repairs', 'Weatherproofing', 'Safety', 'Technology'],
   defaultThemes: ['warm-handyman', 'classic-warm', 'functional-utility', 'modern-office'],
   defaultLayouts: ['process-steps', 'trust-builder', 'local-expert', 'conversion-focus'],

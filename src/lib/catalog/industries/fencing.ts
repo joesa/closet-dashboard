@@ -21,7 +21,7 @@ export const FENCING_SERVICES: ServiceDef[] = [
 
 export const FENCING_INDUSTRY: IndustryDef = {
   slug: 'fencing', label: 'Fencing Installation & Repair',
-  keywords: ['fencing', 'fence install', 'fence repair', 'privacy fence', 'chain link', 'wrought iron fence', 'fence contractor'],
+  keywords: ['fencing', 'fence install', 'fence repair', 'privacy fence', 'chain link', 'wrought iron fence', 'fence contractor', 'aluminum fence', 'gate repair', 'gate installation', 'invisible fence', 'pet fence', 'electric fence'],
   serviceGroups: ['Wood', 'Vinyl', 'Chain Link', 'Ornamental', 'Repair', 'Gates', 'Farm'],
   defaultThemes: ['artisan-wood', 'classic-warm', 'rustic-pantry', 'stone-masonry'],
   defaultLayouts: ['portfolio-first', 'before-after', 'gallery-showcase', 'local-expert'],

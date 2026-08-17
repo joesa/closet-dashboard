@@ -97,7 +97,7 @@ export const POOL_SPA_SERVICES: ServiceDef[] = [
 export const POOL_SPA_INDUSTRY: IndustryDef = {
   slug: 'pool-spa',
   label: 'Pool & Spa Services',
-  keywords: ['pool', 'spa', 'pool service', 'pool cleaning', 'hot tub', 'pool maintenance', 'pool repair'],
+  keywords: ['pool', 'spa', 'pool service', 'pool cleaning', 'hot tub', 'pool maintenance', 'pool repair', 'jacuzzi', 'hot tub repair', 'above ground pool'],
   serviceGroups: ['Maintenance', 'Seasonal', 'Repair', 'Renovation', 'Construction', 'Spa', 'Deck'],
   defaultThemes: ['pool-resort', 'coastal-climate', 'luxury-minimal', 'classic-warm'],
   defaultLayouts: ['gallery-showcase', 'visual-impact', 'seasonal-cta', 'conversion-focus'],

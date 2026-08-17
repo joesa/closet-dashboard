@@ -35,7 +35,7 @@ export const SEPTIC_SERVICES_INDUSTRY: IndustryDef = {
 
 export const WELL_SERVICES_INDUSTRY: IndustryDef = {
   slug: 'well-services', label: 'Water Well Services',
-  keywords: ['well services', 'well pump', 'water well', 'well drilling', 'well repair', 'well inspection'],
+  keywords: ['well services', 'well pump', 'water well', 'well drilling', 'well repair', 'well inspection', 'wells and pumps', 'well pump repair', 'pump repair'],
   serviceGroups: ['Pump', 'Drilling', 'Inspection', 'Treatment'],
   defaultThemes: ['functional-utility', 'classic-warm', 'commercial-pro', 'modern-office'],
   defaultLayouts: ['trust-builder', 'compact-quote', 'local-expert', 'conversion-focus'],

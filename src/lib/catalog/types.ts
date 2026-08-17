@@ -119,6 +119,9 @@ export type IndustrySlug =
   | 'passenger-transport'
   | 'freight-logistics'
   | 'waste-management'
+  // The zero-signal fallback — see industries/generic-trade.ts. Never matched
+  // by text, only returned when nothing else scored.
+  | 'generic-trade'
 
 export type ServiceDef = {
   label: string

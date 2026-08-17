@@ -20,7 +20,7 @@ export const OUTDOOR_LIGHTING_SERVICES: ServiceDef[] = [
 
 export const OUTDOOR_LIGHTING_INDUSTRY: IndustryDef = {
   slug: 'outdoor-lighting', label: 'Outdoor Lighting',
-  keywords: ['outdoor lighting', 'landscape lighting', 'holiday lights', 'security lighting', 'pool lighting', 'exterior lights'],
+  keywords: ['outdoor lighting', 'landscape lighting', 'holiday lights', 'security lighting', 'pool lighting', 'exterior lights', 'outdoor light repair', 'landscape light repair', 'holiday light repair'],
   serviceGroups: ['Landscape', 'Seasonal', 'Security', 'Smart', 'Entertainment', 'Commercial'],
   defaultThemes: ['luxury-minimal', 'pool-resort', 'classic-warm', 'coastal-climate'],
   defaultLayouts: ['gallery-showcase', 'visual-impact', 'portfolio-first', 'seasonal-cta'],

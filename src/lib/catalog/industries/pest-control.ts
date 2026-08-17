@@ -123,7 +123,7 @@ export const PEST_CONTROL_GROUPS = [
 export const PEST_CONTROL_INDUSTRY: IndustryDef = {
   slug: 'pest-control',
   label: 'Pest Control',
-  keywords: ['pest', 'exterminator', 'termite', 'rodent', 'bug'],
+  keywords: ['pest', 'exterminator', 'termite', 'rodent', 'bug', 'flea', 'flea control', 'cockroach', 'roach control', 'spider control', 'wasp', 'hornet', 'silverfish'],
   serviceGroups: [...PEST_CONTROL_GROUPS],
   defaultThemes: ['modern-office', 'laundry-clean', 'classic-warm', 'minimalist-zen'],
   defaultLayouts: ['trust-builder', 'local-expert', 'conversion-focus', 'compact-quote'],

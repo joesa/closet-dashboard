@@ -21,7 +21,7 @@ export const COUNTERTOPS_SERVICES: ServiceDef[] = [
 
 export const COUNTERTOPS_INDUSTRY: IndustryDef = {
   slug: 'countertops', label: 'Countertop Installation',
-  keywords: ['countertops', 'granite countertop', 'quartz countertop', 'countertop install', 'countertop replacement', 'kitchen countertop'],
+  keywords: ['countertops', 'granite countertop', 'quartz countertop', 'countertop install', 'countertop replacement', 'kitchen countertop', 'marble', 'granite', 'countertop fabrication', 'marble and granite'],
   serviceGroups: ['Stone', 'Wood', 'Budget', 'Specialty', 'Repair'],
   defaultThemes: ['bold-remodel', 'luxury-minimal', 'artisan-wood', 'classic-warm'],
   defaultLayouts: ['gallery-showcase', 'before-after', 'portfolio-first', 'conversion-focus'],

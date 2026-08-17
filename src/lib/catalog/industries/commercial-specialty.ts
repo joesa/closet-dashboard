@@ -20,12 +20,22 @@ export const SIGNAGE_WRAPS_SERVICES: ServiceDef[] = [
   mk('Vehicle Wrap', 'Wraps', 'signage-wraps', ['commercial-pro', 'swift-mobile', 'modern-office', 'brutalist'], ['portfolio-first', 'gallery-showcase', 'visual-impact', 'before-after'], { image: IMG, description: 'Full and partial vinyl vehicle wraps for cars, vans, and fleet trucks.' }, ['vehicle wrap', 'car wrap', 'fleet wrap', 'truck wrap', 'van wrap']),
   mk('Business Signage', 'Signs', 'signage-wraps', ['commercial-pro', 'modern-office', 'classic-warm', 'brutalist'], ['portfolio-first', 'gallery-showcase', 'visual-impact', 'conversion-focus'], { image: IMG, description: 'Channel letters, monument signs, window graphics, and LED signage.' }, ['business sign', 'channel letters', 'monument sign', 'storefront sign', 'led sign']),
   mk('Window & Wall Graphics', 'Graphics', 'signage-wraps', ['commercial-pro', 'modern-office', 'bold-remodel', 'brutalist'], ['before-after', 'portfolio-first', 'gallery-showcase', 'conversion-focus'], { image: IMG, description: 'Vinyl window graphics, frosted privacy film, and large-format wall murals.' }, ['window graphics', 'wall mural', 'vinyl wrap wall', 'privacy film', 'wall decal']),
+  mk('Channel Letter & Lit Signs', 'Signs', 'signage-wraps', ['commercial-pro', 'brutalist', 'functional-utility', 'modern-office'], ['trust-builder', 'conversion-focus', 'compact-quote', 'standard'], { image: IMG, description: 'Illuminated channel letters and lightbox signs, fabricated and permitted.' }, ['channel letters', 'lighted sign', 'led sign', 'illuminated sign', 'sign maker']),
+  mk('Monument & Pylon Signs', 'Signs', 'signage-wraps', ['commercial-pro', 'brutalist', 'functional-utility', 'modern-office'], ['trust-builder', 'conversion-focus', 'compact-quote', 'standard'], { image: IMG, description: 'Freestanding monument and pylon signage from footing to face.' }, ['monument sign', 'pylon sign', 'freestanding sign', 'sign makers']),
+  mk('Banners & Trade Show Displays', 'Graphics', 'signage-wraps', ['commercial-pro', 'brutalist', 'functional-utility', 'modern-office'], ['trust-builder', 'conversion-focus', 'compact-quote', 'standard'], { image: IMG, description: 'Vinyl banners, retractable stands, and booth graphics on short lead times.' }, ['banners', 'trade show display', 'custom banner', 'event signage']),
+  mk('ADA & Wayfinding Signage', 'Signs', 'signage-wraps', ['commercial-pro', 'brutalist', 'functional-utility', 'modern-office'], ['trust-builder', 'conversion-focus', 'compact-quote', 'standard'], { image: IMG, description: 'Braille room signs, directories, and code-compliant wayfinding sets.' }, ['ada signs', 'wayfinding', 'braille signage', 'directory sign']),
+  mk('Sign Repair & Maintenance', 'Signs', 'signage-wraps', ['commercial-pro', 'brutalist', 'functional-utility', 'modern-office'], ['trust-builder', 'conversion-focus', 'compact-quote', 'standard'], { image: IMG, description: 'Lamp and LED replacement, face swaps, and storm damage sign repair.' }, ['sign repair', 'sign maintenance', 'sign service', 'fix sign']),
 ]
 
 export const WELDING_FABRICATION_SERVICES: ServiceDef[] = [
   mk('Custom Gates & Railings', 'Ornamental', 'welding-fabrication', ['artisan-wood', 'brutalist', 'stone-masonry', 'garage-industrial'], ['portfolio-first', 'gallery-showcase', 'visual-impact', 'before-after'], { image: IMG, description: 'Custom steel gates, handrails, and ornamental ironwork fabricated on-site.' }, ['custom gates', 'steel gate', 'custom railing', 'ornamental iron', 'wrought iron gate']),
   mk('Structural Welding', 'Structural', 'welding-fabrication', ['functional-utility', 'commercial-pro', 'brutalist', 'stone-masonry'], ['trust-builder', 'process-steps', 'compact-quote', 'conversion-focus'], { image: IMG, description: 'AWS-certified structural welding for steel construction and repair projects.' }, ['structural welding', 'steel welding', 'metal fabrication', 'certified welder']),
   mk('Mobile Welding Service', 'Mobile', 'welding-fabrication', ['swift-mobile', 'brutalist', 'garage-industrial', 'functional-utility'], ['emergency-first', 'compact-quote', 'trust-builder', 'local-expert'], { image: IMG, description: 'Field welding service. We come to your job site or farm.' }, ['mobile welding', 'on-site welding', 'field welding', 'mobile welder']),
+  mk('Ornamental Iron & Wrought Iron', 'Ornamental', 'welding-fabrication', ['commercial-pro', 'brutalist', 'functional-utility', 'modern-office'], ['trust-builder', 'conversion-focus', 'compact-quote', 'standard'], { image: IMG, description: 'Wrought iron gates, window guards, and decorative ironwork, built to measure.' }, ['wrought iron', 'ornamental iron', 'iron work', 'iron gates', 'blacksmith']),
+  mk('Metal Fabrication', 'Structural', 'welding-fabrication', ['commercial-pro', 'brutalist', 'functional-utility', 'modern-office'], ['trust-builder', 'conversion-focus', 'compact-quote', 'standard'], { image: IMG, description: 'Custom metal fabrication from your shop drawings: brackets, frames, and assemblies.' }, ['metal fabrication', 'metal fabricator', 'custom metal', 'fabrication shop']),
+  mk('Aluminum & Stainless Welding', 'Structural', 'welding-fabrication', ['commercial-pro', 'brutalist', 'functional-utility', 'modern-office'], ['trust-builder', 'conversion-focus', 'compact-quote', 'standard'], { image: IMG, description: 'TIG and MIG welding in aluminum and stainless for food, marine, and industrial work.' }, ['aluminum welding', 'stainless welding', 'tig welding', 'mig welding']),
+  mk('Trailer & Equipment Repair Welding', 'Mobile', 'welding-fabrication', ['commercial-pro', 'brutalist', 'functional-utility', 'modern-office'], ['trust-builder', 'conversion-focus', 'compact-quote', 'standard'], { image: IMG, description: 'Cracked frames, hitches, buckets, and equipment repaired on site or in the shop.' }, ['trailer repair', 'equipment welding', 'frame repair', 'welding repair']),
+  mk('Handrail & Stair Fabrication', 'Ornamental', 'welding-fabrication', ['commercial-pro', 'brutalist', 'functional-utility', 'modern-office'], ['trust-builder', 'conversion-focus', 'compact-quote', 'standard'], { image: IMG, description: 'Code-height handrails, guardrails, and steel stair stringers fabricated and set.' }, ['handrail fabrication', 'steel railing', 'metal handrail', 'stair railing']),
 ]
 
 export const ELEVATOR_SERVICES_SERVICES: ServiceDef[] = [
@@ -46,7 +56,7 @@ export const PARKING_LOT_INDUSTRY: IndustryDef = {
 
 export const SIGNAGE_WRAPS_INDUSTRY: IndustryDef = {
   slug: 'signage-wraps', label: 'Signage & Vehicle Wraps',
-  keywords: ['vehicle wrap', 'business sign', 'signage', 'car wrap', 'channel letters', 'window graphics'],
+  keywords: ['vehicle wrap', 'business sign', 'signage', 'car wrap', 'channel letters', 'window graphics', 'sign maker', 'sign makers', 'custom signs', 'sign installation'],
   serviceGroups: ['Wraps', 'Signs', 'Graphics'],
   defaultThemes: ['commercial-pro', 'modern-office', 'brutalist', 'swift-mobile'],
   defaultLayouts: ['portfolio-first', 'gallery-showcase', 'visual-impact', 'before-after'],
@@ -55,7 +65,7 @@ export const SIGNAGE_WRAPS_INDUSTRY: IndustryDef = {
 
 export const WELDING_FABRICATION_INDUSTRY: IndustryDef = {
   slug: 'welding-fabrication', label: 'Welding & Metal Fabrication',
-  keywords: ['welding', 'metal fabrication', 'custom gates', 'structural welding', 'mobile welding', 'ironwork'],
+  keywords: ['welding', 'metal fabrication', 'custom gates', 'structural welding', 'mobile welding', 'ironwork', 'welder', 'welders', 'metal fabricator', 'wrought iron', 'ornamental iron', 'blacksmith'],
   serviceGroups: ['Ornamental', 'Structural', 'Mobile'],
   defaultThemes: ['artisan-wood', 'brutalist', 'garage-industrial', 'stone-masonry'],
   defaultLayouts: ['portfolio-first', 'gallery-showcase', 'visual-impact', 'trust-builder'],

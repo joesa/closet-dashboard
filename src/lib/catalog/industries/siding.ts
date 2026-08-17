@@ -20,7 +20,7 @@ export const SIDING_SERVICES: ServiceDef[] = [
 
 export const SIDING_INDUSTRY: IndustryDef = {
   slug: 'siding', label: 'Siding Installation & Repair',
-  keywords: ['siding', 'vinyl siding', 'fiber cement', 'hardie board', 'siding repair', 'siding install', 'exterior siding'],
+  keywords: ['siding', 'vinyl siding', 'fiber cement', 'hardie board', 'siding repair', 'siding install', 'exterior siding', 'eifs', 'stucco', 'synthetic stucco', 'stucco repair'],
   serviceGroups: ['Installation', 'Repair', 'Trim', 'Maintenance'],
   defaultThemes: ['window-light', 'classic-warm', 'historic-classic', 'artisan-wood'],
   defaultLayouts: ['before-after', 'portfolio-first', 'gallery-showcase', 'conversion-focus'],

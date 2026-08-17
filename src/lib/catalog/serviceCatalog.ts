@@ -66,8 +66,13 @@ export function getEngagementModel(slug: IndustrySlug): EngagementModel {
   return INDUSTRY_BY_SLUG[slug]?.engagementModel ?? 'quote'
 }
 
+/**
+ * The industries a human or a model may choose from. Excludes 'generic-trade',
+ * which is where an unrecognised trade lands, never something to pick — offered
+ * in a list it becomes the lazy answer for anything slightly unfamiliar.
+ */
 export function listIndustries(): IndustryDef[] {
-  return INDUSTRIES
+  return INDUSTRIES.filter((i) => i.slug !== 'generic-trade')
 }
 
 export function resolveIndustrySlug(input: {
@@ -78,7 +83,10 @@ export function resolveIndustrySlug(input: {
   const industryText = normalizeCatalogText(input.industry || '')
   if (industryText) {
     let best: { slug: IndustrySlug; score: number } | undefined
-    for (const ind of INDUSTRIES) {
+    // listIndustries(), not INDUSTRIES: 'generic-trade' must not be reachable
+    // by text at all. Its label would otherwise win an exact-label match on
+    // "general trade" and pull a real trade into the fallback.
+    for (const ind of listIndustries()) {
       let score = 0
       const normalizedSlug = normalizeCatalogText(ind.slug)
       if (normalizeCatalogText(ind.label) === industryText) score += 20
@@ -121,7 +129,12 @@ export function resolveIndustrySlug(input: {
       top = slug
     }
   }
-  return top ?? 'custom-closets'
+  // Nothing scored anywhere. The old default here was 'custom-closets', which
+  // silently handed every unrecognised trade the closet vertical's units —
+  // "Linear Feet", per "Room", with a "Finish" tier — because provisioning
+  // reads INDUSTRY_CONFIGS off this slug. 'generic-trade' is the same shape of
+  // answer without the wrong vocabulary. See industries/generic-trade.ts.
+  return top ?? 'generic-trade'
 }
 
 /**
@@ -139,7 +152,7 @@ export function isLowConfidenceResolution(input: {
 }): boolean {
   const industryText = normalizeCatalogText(input.industry || '')
   if (industryText) {
-    for (const ind of INDUSTRIES) {
+    for (const ind of listIndustries()) {
       let score = 0
       if (normalizeCatalogText(ind.label) === industryText) score += 20
       if (industryText.includes(normalizeCatalogText(ind.slug))) score += 8
@@ -512,4 +525,7 @@ export const INDUSTRY_CONFIGS: Record<IndustrySlug, IndustryConfig> = {
   'passenger-transport': { categoryLabel: 'Service', unitLabel: 'Distance', unitAbbrev: 'mi', tierLabel: 'Level' },
   'freight-logistics': { categoryLabel: 'Service', unitLabel: 'Weight', unitAbbrev: 'lbs', tierLabel: 'Package' },
   'waste-management': { categoryLabel: 'Service', unitLabel: 'Volume', unitAbbrev: 'yds', tierLabel: 'Frequency' },
+  // Trade-neutral wording for the zero-signal fallback: true of any business,
+  // wrong for none. See industries/generic-trade.ts.
+  'generic-trade': { categoryLabel: 'Service', unitLabel: 'Project Scope', unitAbbrev: 'job', tierLabel: 'Package', pricingModel: 'flat_tiered', unitMin: 1, unitMax: 1 },
 }

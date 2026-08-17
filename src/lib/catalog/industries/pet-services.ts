@@ -97,7 +97,7 @@ export const PET_SERVICES_SERVICES: ServiceDef[] = [
 export const PET_SERVICES_INDUSTRY: IndustryDef = {
   slug: 'pet-services',
   label: 'Pet Services',
-  keywords: ['dog', 'grooming', 'dog walking', 'pet sitting', 'dog boarding', 'pet care', 'doggy daycare', 'pet grooming', 'cat sitting', 'cat grooming', 'cat boarding'],
+  keywords: ['dog', 'grooming', 'dog walking', 'pet sitting', 'dog boarding', 'pet care', 'doggy daycare', 'pet grooming', 'cat sitting', 'cat grooming', 'cat boarding', 'kennel', 'pet sitter', 'dog walker', 'pet boarding'],
   serviceGroups: ['Walking', 'Sitting', 'Boarding', 'Grooming', 'Training', 'Daycare', 'Transport'],
   defaultThemes: ['pastoral-pet', 'playful-kids', 'classic-warm', 'care-comfort'],
   defaultLayouts: ['storyteller', 'trust-builder', 'local-expert', 'gallery-showcase'],

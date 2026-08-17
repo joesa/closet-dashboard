@@ -88,7 +88,7 @@ export const JUNK_REMOVAL_SERVICES: ServiceDef[] = [
 export const JUNK_REMOVAL_INDUSTRY: IndustryDef = {
   slug: 'junk-removal',
   label: 'Junk Removal & Hauling',
-  keywords: ['junk removal', 'haul away', 'junk hauling', 'cleanout', 'debris removal', 'dumpster'],
+  keywords: ['junk removal', 'haul away', 'junk hauling', 'cleanout', 'debris removal', 'dumpster', 'hauling', 'hauler', 'junk hauler', 'trash hauling', 'trash hauler', 'garbage removal', 'waste removal', 'appliance removal', 'furniture removal', 'couch removal'],
   serviceGroups: ['Removal', 'Cleanouts', 'Debris', 'Rentals', 'Outdoor', 'Commercial'],
   defaultThemes: ['urban-reclaim', 'functional-utility', 'modern-office', 'brutalist'],
   defaultLayouts: ['conversion-focus', 'compact-quote', 'minimalist-lead', 'trust-builder'],

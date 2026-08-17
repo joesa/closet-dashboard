@@ -132,7 +132,7 @@ export const HVAC_GROUPS = [
 export const HVAC_INDUSTRY: IndustryDef = {
   slug: 'hvac',
   label: 'HVAC',
-  keywords: ['hvac', 'heating', 'cooling', 'air condition', 'furnace', 'ac repair'],
+  keywords: ['hvac', 'heating', 'cooling', 'air condition', 'furnace', 'ac repair', 'thermostat', 'wall heater', 'window ac', 'window air conditioner', 'swamp cooler', 'evaporative cooler', 'geothermal', 'duct installation', 'ductwork', 'range hood', 'mini split', 'attic fan'],
   serviceGroups: [...HVAC_GROUPS],
   defaultThemes: ['modern-office', 'commercial-pro', 'classic-warm', 'functional-utility'],
   defaultLayouts: ['trust-builder', 'conversion-focus', 'local-expert', 'minimalist-lead'],

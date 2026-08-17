@@ -21,7 +21,7 @@ export const DRYWALL_SERVICES: ServiceDef[] = [
 
 export const DRYWALL_INDUSTRY: IndustryDef = {
   slug: 'drywall', label: 'Drywall Services',
-  keywords: ['drywall', 'sheetrock', 'drywall repair', 'drywall installation', 'taping and mudding', 'popcorn ceiling'],
+  keywords: ['drywall', 'sheetrock', 'drywall repair', 'drywall installation', 'taping and mudding', 'popcorn ceiling', 'ceiling repair', 'ceilings', 'suspended ceiling', 'drop ceiling', 'acoustic ceiling', 'wall repair'],
   serviceGroups: ['Installation', 'Repair', 'Finishing', 'Texture', 'Commercial', 'Specialty'],
   defaultThemes: ['warm-handyman', 'functional-utility', 'bold-remodel', 'classic-warm'],
   defaultLayouts: ['before-after', 'trust-builder', 'process-steps', 'conversion-focus'],

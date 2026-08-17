@@ -214,6 +214,9 @@ const INDUSTRY_BEFORE_AFTER_CATEGORY: Record<IndustrySlug, BeforeAfterCategory> 
   'passenger-transport': 'vehicle',
   'freight-logistics': 'vehicle',
   'waste-management': 'exterior',
+  // Zero-signal fallback: with no idea what the business transforms, a
+  // before/after slider can only invent one. Skip it.
+  'generic-trade': 'not-applicable',
 }
 
 /**
