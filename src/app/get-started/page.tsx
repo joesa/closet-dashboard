@@ -1,9 +1,32 @@
 'use client';
 
-import React, { useState, Suspense } from 'react';
-import Script from 'next/script';
+import React, { useState, useRef, useCallback, Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
+
+const TURNSTILE_SRC = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
+
+type TurnstileApi = {
+  render: (
+    container: HTMLElement,
+    options: {
+      sitekey: string;
+      action?: string;
+      callback?: (token: string) => void;
+      'expired-callback'?: () => void;
+      'error-callback'?: () => void;
+      'timeout-callback'?: () => void;
+    }
+  ) => string | undefined;
+  reset: (widgetId?: string) => void;
+  remove: (widgetId?: string) => void;
+};
+
+declare global {
+  interface Window {
+    turnstile?: TurnstileApi;
+  }
+}
 
 function GetStartedForm() {
   const searchParams = useSearchParams();
@@ -22,6 +45,10 @@ function GetStartedForm() {
   const [resending, setResending] = useState(false);
   const [resendMessage, setResendMessage] = useState('');
   const [resendCooldown, setResendCooldown] = useState(0);
+  const [turnstileToken, setTurnstileToken] = useState('');
+  const [turnstileFailed, setTurnstileFailed] = useState(false);
+  const turnstileRef = useRef<HTMLDivElement | null>(null);
+  const widgetIdRef = useRef<string | undefined>(undefined);
   const siteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
 
   const tierHint =
@@ -30,6 +57,86 @@ function GetStartedForm() {
       : selectedTier === 'standard'
         ? 'Standard site build'
         : null;
+
+  // Turnstile is rendered explicitly rather than by its implicit `.cf-turnstile`
+  // scan. This page renders behind a Suspense boundary (useSearchParams), so the
+  // container does not exist in the server HTML — the implicit scan ran against a
+  // DOM without it, left no widget behind, and every submit logged
+  // "[Cloudflare Turnstile] Could not find widget." from getResponse(). Rendering
+  // from an effect means the container is guaranteed to be mounted first, and the
+  // token arrives through the callback instead of being read back out of the widget.
+  React.useEffect(() => {
+    if (!siteKey) return;
+
+    let cancelled = false;
+
+    const renderWidget = () => {
+      if (cancelled) return;
+      const turnstile = window.turnstile;
+      const container = turnstileRef.current;
+      if (!turnstile || !container) {
+        setTurnstileFailed(true);
+        return;
+      }
+      if (widgetIdRef.current !== undefined) return;
+      widgetIdRef.current = turnstile.render(container, {
+        sitekey: siteKey,
+        action: 'turnstile-spin-v2',
+        callback: (token: string) => {
+          setTurnstileToken(token);
+          setTurnstileFailed(false);
+        },
+        'expired-callback': () => setTurnstileToken(''),
+        'timeout-callback': () => setTurnstileToken(''),
+        'error-callback': () => {
+          setTurnstileToken('');
+          setTurnstileFailed(true);
+        },
+      });
+    };
+
+    const onScriptError = () => {
+      if (!cancelled) setTurnstileFailed(true);
+    };
+
+    let script = document.querySelector<HTMLScriptElement>(
+      `script[src="${TURNSTILE_SRC}"]`
+    );
+    if (window.turnstile) {
+      renderWidget();
+    } else {
+      if (!script) {
+        script = document.createElement('script');
+        script.src = TURNSTILE_SRC;
+        script.async = true;
+        script.defer = true;
+        document.head.appendChild(script);
+      }
+      script.addEventListener('load', renderWidget);
+      script.addEventListener('error', onScriptError);
+    }
+
+    return () => {
+      cancelled = true;
+      script?.removeEventListener('load', renderWidget);
+      script?.removeEventListener('error', onScriptError);
+      const turnstile = window.turnstile;
+      if (turnstile && widgetIdRef.current !== undefined) {
+        turnstile.remove(widgetIdRef.current);
+      }
+      widgetIdRef.current = undefined;
+    };
+  }, [siteKey]);
+
+  // A Turnstile token is single-use: once the server has spent it, a retry needs
+  // a fresh one or it fails verification a second time.
+  const resetTurnstile = useCallback(() => {
+    setTurnstileToken('');
+    const turnstile = window.turnstile;
+    if (turnstile && widgetIdRef.current !== undefined) {
+      turnstile.reset(widgetIdRef.current);
+    }
+  }, []);
 
   React.useEffect(() => {
     if (resendCooldown <= 0) return;
@@ -63,17 +170,15 @@ function GetStartedForm() {
     setLoading(true);
     setError('');
 
+    const token = siteKey ? turnstileToken : '';
+
     try {
-      let turnstileToken = '';
-      if (siteKey) {
-        turnstileToken =
-          typeof window !== 'undefined' &&
-          (window as unknown as { turnstile?: { getResponse: () => string } }).turnstile
-            ? (window as unknown as { turnstile: { getResponse: () => string } }).turnstile.getResponse()
-            : '';
-        if (!turnstileToken) {
-          throw new Error('Please complete the captcha and try again.');
-        }
+      if (siteKey && !token) {
+        throw new Error(
+          turnstileFailed
+            ? 'The captcha could not load. Refresh the page and try again.'
+            : 'Please complete the captcha and try again.'
+        );
       }
 
       const res = await fetch('/api/intake/public/start', {
@@ -84,13 +189,14 @@ function GetStartedForm() {
           businessName,
           hasWebsite,
           tier: selectedTier,
-          ...(turnstileToken ? { turnstileToken } : {}),
+          ...(token ? { turnstileToken: token } : {}),
         }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Request failed');
       setSubmitted(true);
     } catch (err) {
+      if (token) resetTurnstile();
       setError(err instanceof Error ? err.message : 'Something went wrong');
     } finally {
       setLoading(false);
@@ -99,9 +205,6 @@ function GetStartedForm() {
 
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4 py-12">
-      {siteKey && (
-        <Script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer />
-      )}
       {submitted ? (
         <div className="w-full max-w-md rounded-xl border border-gray-200 bg-white p-8 shadow-sm text-center">
           <div className="mx-auto mb-4 grid h-12 w-12 place-items-center rounded-full bg-indigo-100 text-indigo-600 text-2xl">✉</div>
@@ -118,7 +221,7 @@ function GetStartedForm() {
             className="mt-4 text-sm font-medium text-indigo-600 hover:text-indigo-700 disabled:cursor-not-allowed disabled:text-gray-400"
           >
             {resending
-              ? 'Resending\u2026'
+              ? 'Resending…'
               : resendCooldown > 0
                 ? `Resend confirmation email (${resendCooldown}s)`
                 : 'Resend confirmation email'}
@@ -177,11 +280,14 @@ function GetStartedForm() {
           </label>
 
           {siteKey && (
-            <div
-              className="cf-turnstile"
-              data-sitekey={siteKey}
-              data-action="turnstile-spin-v2"
-            />
+            <div>
+              <div ref={turnstileRef} />
+              {turnstileFailed && (
+                <p className="mt-2 text-xs text-red-600">
+                  The captcha could not load. Refresh the page and try again.
+                </p>
+              )}
+            </div>
           )}
 
           <button
