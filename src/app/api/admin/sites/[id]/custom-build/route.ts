@@ -93,8 +93,15 @@ async function loadCustomBuildStatus(tenantId: string) {
     /** True when draft HTML differs from what visitors see (or nothing published yet). */
     draftAhead: !!(draft && (!published || draftDiffPages.length > 0)),
     draftDiffPages,
-    /** Draft globalCss looks gutted vs published (surgical wipe). */
-    draftCssBroken: draftCssLooksBroken(draft?.globalCss, published?.globalCss),
+    /**
+     * Draft globalCss looks gutted vs published (surgical wipe).
+     *
+     * Only meaningful when a draft exists. Passing `undefined` for "no draft"
+     * reads as "draft with empty CSS", which made the banner fire on every
+     * site that simply had no draft yet — advising the admin to repair a wipe
+     * that never happened, with a button that writes CSS into nothing.
+     */
+    draftCssBroken: !!draft && draftCssLooksBroken(draft.globalCss, published?.globalCss),
     job: job ? { ...job, images: undefined } : null,
     jobActive: isCustomBuildJobActive(job),
     fullRedesignEver: hasEverFullRedesign(job),

@@ -87,6 +87,23 @@ describe('surgical CSS integrity', () => {
     expect(draftCssLooksBroken(additiveCss, designCss)).toBe(true)
     expect(draftCssLooksBroken(designCss + additiveCss, designCss)).toBe(false)
   })
+
+  it('treats absent draft CSS as broken — callers must gate on a draft existing', () => {
+    // The helper cannot tell "no draft" from "draft whose CSS was wiped", so
+    // this stays true; the custom-build status route is what must check that a
+    // draft exists before asking. Documented here so the pairing is not lost.
+    expect(draftCssLooksBroken(undefined, designCss)).toBe(true)
+    expect(draftCssLooksBroken('', designCss)).toBe(true)
+    // With nothing published there is no baseline, so nothing to call broken.
+    expect(draftCssLooksBroken(undefined, undefined)).toBe(false)
+  })
+
+  it('does not flag a full redesign that swaps one token system for another', () => {
+    const oldSystem = ':root{--bg:#e4eae6;--ink:#13232a;--acc:#0f6c85}\n.wrap{max-width:1200px}'
+    const newSystem =
+      ':root{--bg:#EFF2F0;--face:#FFF;--ink:#14201F;--acc:#0E6FA8;--gut:8px}\n.wrap{width:min(1200px,100%)}\n.tile{background:var(--face)}'
+    expect(draftCssLooksBroken(newSystem, oldSystem)).toBe(false)
+  })
 })
 
 describe('clickable cards shortcut helpers', () => {
