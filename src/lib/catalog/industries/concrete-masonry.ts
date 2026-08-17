@@ -94,7 +94,7 @@ export const CONCRETE_MASONRY_SERVICES: ServiceDef[] = [
 export const CONCRETE_MASONRY_INDUSTRY: IndustryDef = {
   slug: 'concrete-masonry',
   label: 'Concrete & Masonry',
-  keywords: ['concrete', 'masonry', 'concrete work', 'paving', 'retaining wall', 'hardscaping', 'brickwork', 'stonework', 'asphalt', 'asphalt paving', 'blacktop', 'cement', 'cement contractor', 'paver', 'pavers', 'paver patio', 'tuck pointing', 'tuckpointing', 'stone veneer', 'asphalt sealcoating', 'asphalt resurfacing'],
+  keywords: ['concrete', 'masonry', 'concrete work', 'paving', 'retaining wall', 'hardscaping', 'brickwork', 'stonework', 'asphalt', 'asphalt paving', 'blacktop', 'cement', 'cement contractor', 'paver', 'pavers', 'paver patio', 'tuck pointing', 'tuckpointing', 'stone veneer', 'asphalt sealcoating', 'asphalt resurfacing', 'tuck pointer', 'tuck pointers', 'brick pointing'],
   serviceGroups: ['Concrete', 'Masonry', 'Hardscaping'],
   defaultThemes: ['stone-masonry', 'functional-utility', 'classic-warm', 'brutalist'],
   defaultLayouts: ['portfolio-first', 'gallery-showcase', 'before-after', 'conversion-focus'],

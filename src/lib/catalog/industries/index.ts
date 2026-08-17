@@ -1,5 +1,22 @@
 import type { IndustryDef } from '@/lib/catalog/types'
 import { GENERIC_TRADE_INDUSTRY } from '@/lib/catalog/industries/generic-trade'
+// Fifth wave — Angi coverage gap
+import { GENERAL_CONTRACTING_INDUSTRY } from '@/lib/catalog/industries/general-contracting'
+import { OUTDOOR_STRUCTURES_INDUSTRY } from '@/lib/catalog/industries/outdoor-structures'
+import { FURNITURE_REPAIR_INDUSTRY } from '@/lib/catalog/industries/furniture-repair-upholstery'
+import { WILDLIFE_REMOVAL_INDUSTRY } from '@/lib/catalog/industries/wildlife-removal'
+import { AWNINGS_SUNROOMS_INDUSTRY } from '@/lib/catalog/industries/awnings-sunrooms-patio'
+import { RECREATION_INSTALLS_INDUSTRY } from '@/lib/catalog/industries/recreation-play-installs'
+import { WATER_FEATURES_INDUSTRY } from '@/lib/catalog/industries/water-features-ponds'
+import { EXCAVATION_GRADING_INDUSTRY } from '@/lib/catalog/industries/excavation-grading-materials'
+import { HOME_AV_NETWORKING_INDUSTRY } from '@/lib/catalog/industries/home-av-networking'
+import { ACCESSIBILITY_MOBILITY_INDUSTRY } from '@/lib/catalog/industries/accessibility-mobility'
+import { HAZMAT_ABATEMENT_INDUSTRY } from '@/lib/catalog/industries/hazmat-abatement'
+import { SURFACE_REFINISHING_INDUSTRY } from '@/lib/catalog/industries/surface-refinishing'
+import { ELECTRONICS_REPAIR_INDUSTRY } from '@/lib/catalog/industries/electronics-device-repair'
+import { WATER_DAMAGE_RESTORATION_INDUSTRY } from '@/lib/catalog/industries/water-damage-restoration'
+import { HOME_ORGANIZING_INDUSTRY } from '@/lib/catalog/industries/home-organizing-design'
+import { HOLIDAY_DECORATING_INDUSTRY } from '@/lib/catalog/industries/holiday-decorating'
 import { CUSTOM_CLOSETS_GROUPS, CUSTOM_CLOSETS_SERVICES } from '@/lib/catalog/industries/custom-closets'
 import { PLUMBING_INDUSTRY } from '@/lib/catalog/industries/plumbing'
 import { HVAC_INDUSTRY } from '@/lib/catalog/industries/hvac'
@@ -229,6 +246,22 @@ export const INDUSTRIES: IndustryDef[] = [
   PASSENGER_TRANSPORT_INDUSTRY,
   FREIGHT_LOGISTICS_INDUSTRY,
   WASTE_MANAGEMENT_INDUSTRY,
+  GENERAL_CONTRACTING_INDUSTRY,
+  OUTDOOR_STRUCTURES_INDUSTRY,
+  FURNITURE_REPAIR_INDUSTRY,
+  WILDLIFE_REMOVAL_INDUSTRY,
+  AWNINGS_SUNROOMS_INDUSTRY,
+  RECREATION_INSTALLS_INDUSTRY,
+  WATER_FEATURES_INDUSTRY,
+  EXCAVATION_GRADING_INDUSTRY,
+  HOME_AV_NETWORKING_INDUSTRY,
+  ACCESSIBILITY_MOBILITY_INDUSTRY,
+  HAZMAT_ABATEMENT_INDUSTRY,
+  SURFACE_REFINISHING_INDUSTRY,
+  ELECTRONICS_REPAIR_INDUSTRY,
+  WATER_DAMAGE_RESTORATION_INDUSTRY,
+  HOME_ORGANIZING_INDUSTRY,
+  HOLIDAY_DECORATING_INDUSTRY,
   GENERIC_TRADE_INDUSTRY,
 ]
 

@@ -106,7 +106,7 @@ export const CLEANING_SERVICES: ServiceDef[] = [
 export const CLEANING_INDUSTRY: IndustryDef = {
   slug: 'cleaning',
   label: 'Cleaning Services',
-  keywords: ['cleaning', 'maid', 'janitorial', 'housekeeping', 'sanitation', 'apartment cleaning', 'housekeeper', 'housekeeping agency', 'floor cleaning', 'floor polishing', 'floor waxing', 'buffing and polishing', 'upholstery cleaning', 'mattress cleaning', 'couch cleaning'],
+  keywords: ['cleaning', 'maid', 'janitorial', 'housekeeping', 'sanitation', 'apartment cleaning', 'housekeeper', 'housekeeping agency', 'floor cleaning', 'floor polishing', 'floor waxing', 'buffing and polishing', 'upholstery cleaning', 'mattress cleaning', 'couch cleaning', 'apartment cleaners', 'floor cleaner', 'floor cleaners', 'floor polisher', 'floor polishers', 'mattress cleaner', 'mattress cleaners', 'maid service'],
   serviceGroups: ['Residential', 'Specialty', 'Commercial'],
   defaultThemes: ['fresh-clean', 'minimalist-zen', 'classic-warm', 'laundry-clean'],
   defaultLayouts: ['before-after', 'trust-builder', 'local-expert', 'conversion-focus'],

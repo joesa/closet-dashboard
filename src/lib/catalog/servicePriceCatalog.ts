@@ -121,6 +121,22 @@ const BY_LABEL: Record<string, ServicePriceEntry> = {
   'Fleet & Commercial Towing': { basic: 125, standard: 225, premium: 385, pricingModelHint: 'base_plus_distance' },
   'Impound & Private Property Towing': { basic: 95, standard: 145, premium: 225, pricingModelHint: 'flat_tiered' },
   'Long-Distance Towing': { basic: 1.85, standard: 2.85, premium: 4.25, unitLabel: 'per mile', pricingModelHint: 'base_plus_distance' },
+  // Fifth wave (Angi coverage gap). Per the coverage plan, new industries ship
+  // WITHOUT researched prices and inherit the engine profile's generic tiers —
+  // except these four, whose price shape is not "tiered per job" and would read
+  // as nonsense at a generic number: material by the load, a trip fee plus
+  // exclusion work, flat per device, and per linear foot of roofline.
+  'Topsoil & Fill Dirt Delivery': { basic: 165, standard: 385, premium: 720, unitLabel: 'per load', pricingModelHint: 'per_unit' },
+  'Gravel, Sand & Stone Delivery': { basic: 185, standard: 420, premium: 850, unitLabel: 'per load', pricingModelHint: 'per_unit' },
+  'Site Excavation': { basic: 850, standard: 3200, premium: 9500, pricingModelHint: 'flat_tiered' },
+  'Raccoon & Opossum Removal': { basic: 185, standard: 385, premium: 750, unitLabel: 'per trip', pricingModelHint: 'flat_tiered' },
+  'Bat Removal & Exclusion': { basic: 450, standard: 1450, premium: 3800, pricingModelHint: 'flat_tiered' },
+  'Attic Cleanup & Damage Repair': { basic: 650, standard: 1850, premium: 4500, pricingModelHint: 'flat_tiered' },
+  'Phone Screen Replacement': { basic: 79, standard: 149, premium: 289, unitLabel: 'per device', pricingModelHint: 'per_unit' },
+  'Phone Battery & Port Repair': { basic: 59, standard: 95, premium: 165, unitLabel: 'per device', pricingModelHint: 'per_unit' },
+  'TV Repair': { basic: 95, standard: 225, premium: 485, unitLabel: 'per device', pricingModelHint: 'per_unit' },
+  'Christmas Light Installation': { basic: 385, standard: 950, premium: 2400, unitLabel: 'per linear foot of roofline', pricingModelHint: 'per_unit' },
+  'Commercial Holiday Lighting': { basic: 1250, standard: 3800, premium: 9500, pricingModelHint: 'flat_tiered' },
 }
 
 const GENERIC_TRADE: TierDefaults = { basic: 89, standard: 175, premium: 385 }

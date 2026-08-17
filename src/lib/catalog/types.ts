@@ -119,6 +119,24 @@ export type IndustrySlug =
   | 'passenger-transport'
   | 'freight-logistics'
   | 'waste-management'
+  // Fifth wave — the Angi coverage gap: home-service trades the directory
+  // lists that the catalog had no home for at all.
+  | 'general-contracting'
+  | 'outdoor-structures'
+  | 'furniture-repair-upholstery'
+  | 'wildlife-removal'
+  | 'awnings-sunrooms-patio'
+  | 'recreation-play-installs'
+  | 'water-features-ponds'
+  | 'excavation-grading-materials'
+  | 'home-av-networking'
+  | 'accessibility-mobility'
+  | 'hazmat-abatement'
+  | 'surface-refinishing'
+  | 'electronics-device-repair'
+  | 'water-damage-restoration'
+  | 'home-organizing-design'
+  | 'holiday-decorating'
   // The zero-signal fallback — see industries/generic-trade.ts. Never matched
   // by text, only returned when nothing else scored.
   | 'generic-trade'

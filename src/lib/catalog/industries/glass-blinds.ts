@@ -27,7 +27,7 @@ export const BLINDS_SHUTTERS_SERVICES: ServiceDef[] = [
 
 export const GLASS_MIRROR_INDUSTRY: IndustryDef = {
   slug: 'glass-mirror', label: 'Glass & Mirror Installation',
-  keywords: ['glass', 'mirror', 'shower door', 'glass installation', 'custom mirror', 'glass railing', 'glazier', 'glaziers', 'commercial glass', 'storefront glass', 'glass replacement'],
+  keywords: ['glass', 'mirror', 'shower door', 'glass installation', 'custom mirror', 'glass railing', 'glazier', 'glaziers', 'commercial glass', 'storefront glass', 'glass replacement', 'commercial window', 'window company'],
   serviceGroups: ['Shower', 'Mirrors', 'Architectural', 'Repair'],
   defaultThemes: ['luxury-minimal', 'window-light', 'minimalist-zen', 'modern-office'],
   defaultLayouts: ['gallery-showcase', 'portfolio-first', 'before-after', 'visual-impact'],
@@ -36,7 +36,7 @@ export const GLASS_MIRROR_INDUSTRY: IndustryDef = {
 
 export const BLINDS_SHUTTERS_INDUSTRY: IndustryDef = {
   slug: 'blinds-shutters', label: 'Blinds & Window Treatments',
-  keywords: ['blinds', 'shutters', 'window treatments', 'window coverings', 'shades', 'plantation shutters', 'motorized blinds', 'blind repair', 'window shades', 'shade repair', 'curtains', 'drapery', 'draperies', 'window screen', 'screen repair', 'shutter repair', 'hurricane shutters'],
+  keywords: ['blinds', 'shutters', 'window treatments', 'window coverings', 'shades', 'plantation shutters', 'motorized blinds', 'blind repair', 'window shades', 'shade repair', 'curtains', 'drapery', 'draperies', 'window screen', 'screen repair', 'shutter repair', 'hurricane shutters', 'window shutter', 'shutter companies'],
   serviceGroups: ['Blinds', 'Shutters', 'Shades', 'Smart'],
   defaultThemes: ['window-light', 'luxury-minimal', 'classic-warm', 'minimalist-zen'],
   defaultLayouts: ['gallery-showcase', 'portfolio-first', 'before-after', 'conversion-focus'],
