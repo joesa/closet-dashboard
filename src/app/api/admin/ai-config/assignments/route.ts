@@ -42,6 +42,12 @@ export async function PUT(req: Request) {
     return NextResponse.json({ assignments: await listAssignments() })
   } catch (err) {
     if (err instanceof AiConfigError) {
+      // A 400 here previously left nothing in the logs, so "it just returns
+      // 400" could not be diagnosed after the fact — the reason existed only
+      // in a response body the admin may never have seen.
+      console.warn(
+        JSON.stringify({ event: 'ai_config_assignment_rejected', reason: err.message })
+      )
       return NextResponse.json({ error: err.message }, { status: 400 })
     }
     throw err

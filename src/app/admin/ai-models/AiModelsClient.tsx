@@ -37,6 +37,8 @@ export default function AiModelsClient({
   const [providers, setProviders] = useState(initialProviders)
   const [assignments, setAssignments] = useState(initialAssignments)
   const [error, setError] = useState<string | null>(null)
+  /** Save failures keyed by purpose, so the reason lands on the failing row. */
+  const [rowErrors, setRowErrors] = useState<Record<string, string>>({})
   const [busy, setBusy] = useState<string | null>(null)
   const [tests, setTests] = useState<Record<string, TestState>>({})
   const [editing, setEditing] = useState<Partial<AdminProvider> & { apiKey?: string } | null>(
@@ -51,7 +53,11 @@ export default function AiModelsClient({
     [assignments]
   )
 
-  async function call<T>(url: string, init: RequestInit): Promise<T | null> {
+  async function call<T>(
+    url: string,
+    init: RequestInit,
+    onError?: (message: string) => void
+  ): Promise<T | null> {
     setError(null)
     try {
       const res = await fetch(url, {
@@ -60,7 +66,9 @@ export default function AiModelsClient({
       })
       const payload = await res.json()
       if (!res.ok) {
-        setError(payload.error ?? `Request failed (${res.status})`)
+        const message = payload.error ?? `Request failed (${res.status})`
+        setError(message)
+        onError?.(message)
         return null
       }
       return payload as T
@@ -119,9 +127,19 @@ export default function AiModelsClient({
 
   async function saveAssignment(purpose: string, chain: { providerSlug: string; model: string }[]) {
     setBusy(purpose)
+    setRowErrors((prev) => {
+      if (!prev[purpose]) return prev
+      const next = { ...prev }
+      delete next[purpose]
+      return next
+    })
     const payload = await call<{ assignments: AdminAssignment[] }>(
       '/api/admin/ai-config/assignments',
-      { method: 'PUT', body: JSON.stringify({ purpose, chain }) }
+      { method: 'PUT', body: JSON.stringify({ purpose, chain }) },
+      // Also shown on the row itself. The page-level banner is above a long
+      // list of purposes, so a rejected save near the bottom looked like
+      // nothing happened at all.
+      (message) => setRowErrors((prev) => ({ ...prev, [purpose]: message }))
     )
     setBusy(null)
     if (payload) setAssignments(payload.assignments)
@@ -351,6 +369,7 @@ export default function AiModelsClient({
                 assignment={a}
                 providers={providers}
                 busy={busy === a.purpose}
+                saveError={rowErrors[a.purpose]}
                 onSave={(chain) => saveAssignment(a.purpose, chain)}
               />
             ))}
@@ -366,14 +385,22 @@ function AssignmentRow({
   providers,
   busy,
   onSave,
+  saveError,
 }: {
   assignment: AdminAssignment
   providers: AdminProvider[]
   busy: boolean
   onSave: (chain: { providerSlug: string; model: string }[]) => void
+  /** Why the last save was rejected, shown where the admin is looking. */
+  saveError?: string
 }) {
   const [chain, setChain] = useState(assignment.chain)
   const dirty = JSON.stringify(chain) !== JSON.stringify(assignment.chain)
+  // "Add step" seeds a row with an empty model id, and saving that was a
+  // guaranteed 400 ('Pick a model for …') whose only visible trace was a red
+  // banner at the top of a page these rows sit far below. Catch it here, where
+  // the admin is actually looking.
+  const incomplete = chain.some((entry) => !entry.model.trim() || !entry.providerSlug)
 
   return (
     <div className="rounded border border-gray-200 p-3">
@@ -447,8 +474,9 @@ function AssignmentRow({
           <>
             <button
               type="button"
-              disabled={busy}
+              disabled={busy || incomplete}
               onClick={() => onSave(chain)}
+              title={incomplete ? 'Every step needs a model id before this can save' : undefined}
               className="rounded bg-blue-600 px-2 py-1 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50"
             >
               {busy ? 'Saving…' : 'Save'}
@@ -461,6 +489,9 @@ function AssignmentRow({
               Reset
             </button>
           </>
+        )}
+        {saveError && (
+          <span className="text-xs text-red-700">{saveError}</span>
         )}
         {!dirty && assignment.chain.length > 0 && (
           <button
