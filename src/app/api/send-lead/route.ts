@@ -249,6 +249,26 @@ export async function POST(request: Request) {
       )
     }
 
+    // A lead must name the contractor it belongs to.
+    //
+    // Everything that makes this endpoint safe and accountable — the
+    // entitlement gate, the per-contractor rate limit, and the `leads` insert
+    // — lives inside the `if (body.contractorId)` branch below, while the
+    // Resend call does not. So a request carrying only `contractorEmail` used
+    // to send mail from our domain to an arbitrary address, with attacker-
+    // controlled content, unauthenticated, unmetered, and unrecorded: an open
+    // relay, and a way to run the product for free forever.
+    //
+    // The email-only shape was a legacy widget contract. Verified before
+    // removal: zero of the 28 rows in `leads` have a null contractor_id, so
+    // nothing in production has used it.
+    if (!body.contractorId) {
+      return json(
+        { error: 'contractorId is required.' },
+        400
+      )
+    }
+
     // ── Normalize the price range ──
     // Widget sends range.low / range.high; legacy sends calculatedLow / calculatedHigh
     const calculatedLow = body.calculatedLow ?? body.range?.low ?? 0

@@ -56,3 +56,9 @@ my_oci
 .oci/
 oci_api_key*
 *.oci.config
+
+# Debug dumps of real intake rows — these carry live intake tokens and
+# contact PII. scripts/save-intake.mjs writes one on demand; it must never
+# be committed again.
+scripts/*-dump.json
+scripts/db-dump.json

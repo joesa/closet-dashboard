@@ -1,11 +1,18 @@
-import { publicAppOrigin } from '@/lib/urls'
 
 /**
  * Build a tenant site preview URL with the admin bypass query param.
  * Uses the same ADMIN_BYPASS_SECRET as custom-closets-websites/src/proxy.ts.
+ *
+ * Returns null when the secret is unconfigured. It used to fall back to the
+ * literal 'admin_bypass_default_secret', which meant an environment missing the
+ * variable published a *known* key that unlocks every gated tenant site — the
+ * renderer accepted that same literal as its own default. Better for an admin
+ * to see no preview button than for the fleet to be unlocked by a string that
+ * is in the source.
  */
 export function buildTenantPreviewUrl(siteUrl: string): string | null {
-  const secret = process.env.ADMIN_BYPASS_SECRET?.trim() || 'admin_bypass_default_secret'
+  const secret = process.env.ADMIN_BYPASS_SECRET?.trim()
+  if (!secret) return null
   if (!siteUrl || siteUrl === '#') return null
 
   try {
@@ -15,18 +22,6 @@ export function buildTenantPreviewUrl(siteUrl: string): string | null {
   } catch {
     return null
   }
-}
-
-/**
- * Direct platform path-based preview URL (e.g. https://www.ditchtheform.com/wikidos-pediatrics.ditchtheform.com?admin_bypass=SECRET).
- * Guaranteed to open on the main platform domain even when subdomain DNS is propagating or pending Vercel attachment.
- */
-export function buildPlatformFallbackPreviewUrl(hostname: string): string | null {
-  const host = (hostname || '').trim()
-  if (!host || isDevHostname(host)) return null
-  const secret = process.env.ADMIN_BYPASS_SECRET?.trim() || 'admin_bypass_default_secret'
-  const origin = publicAppOrigin()
-  return `${origin}/site-preview/${encodeURIComponent(host)}?admin_bypass=${secret}`
 }
 
 /** Dev-only fixture hostnames that resolve solely on a developer's machine. */

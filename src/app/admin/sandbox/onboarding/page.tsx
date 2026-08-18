@@ -1443,7 +1443,7 @@ export default function SandboxOnboarding() {
               <div className="flex flex-wrap items-center justify-center gap-3 mb-4">
                 {(resultBypassUrl || resultUrl) && (
                   <a 
-                    href={resultBypassUrl || `${resultUrl}?admin_bypass=admin_bypass_default_secret`} 
+                    href={resultBypassUrl || resultUrl} 
                     target="_blank" 
                     rel="noopener noreferrer"
                     className="inline-block bg-purple-600 text-white font-bold px-6 py-3 rounded-lg hover:bg-purple-500 transition-colors shadow-md"

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { getSupabaseServer } from '@/lib/supabase-server'
 import { applyProWidgetConfig } from '@/lib/provision/applyProWidgetConfig'
 import type { WidgetConfigHints } from '@/lib/ai/buildWidgetConfig'
 import { randomUUID } from 'crypto'
@@ -16,12 +17,33 @@ export const runtime = 'nodejs'
  * Applies widget_config_hints to the contractor's existing trial row immediately
  * (signup already created contractor_settings). A provision job is recorded for
  * audit/retry but the calculator is ready before redirect to /dashboard.
+ *
+ * REQUIRES A SESSION, and the target contractor is derived from it.
+ *
+ * This route used to be unauthenticated while calling applyProWidgetConfig,
+ * which DELETEs the target contractor's rooms, add-ons and finishes and
+ * rewrites their settings (applyProWidgetConfig.ts:248-250). It took the
+ * contractor from `body.contractorId` — an id that is public by design, since
+ * it ships inside the embed snippet on every customer's website — and fell back
+ * to a lookup by `body.email`. Either shape let an anonymous caller wipe any
+ * contractor's pricing. The wizard calls this immediately after signing the
+ * user in, so the session is always present on the legitimate path.
  */
 export async function POST(req: Request) {
   try {
+    const session = await getSupabaseServer()
+    const {
+      data: { user },
+    } = await session.auth.getUser()
+    if (!user) {
+      return NextResponse.json({ error: 'Sign in to finish setup.' }, { status: 401 })
+    }
+
     const body = await req.json().catch(() => ({}))
 
-    const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : ''
+    // The session owns the identity. A body-supplied email is accepted only as
+    // a display value when it matches; it can never select a different account.
+    const email = (user.email ?? '').trim().toLowerCase()
     const businessName = typeof body.businessName === 'string' ? body.businessName.trim() : ''
     const phone = typeof body.phone === 'string' ? body.phone.trim() : null
     const brandColor =
@@ -70,18 +92,28 @@ export async function POST(req: Request) {
     }
 
     let configured = false
-    let targetContractorId = body.contractorId
 
-    // Fallback if client doesn't send contractorId (older client versions)
-    if (!targetContractorId) {
-      const { data: contractorList } = await supabase
+    // Resolved from the session, never from the request body. Prefer the
+    // user_id link written by /api/contractor/bootstrap; fall back to the
+    // session's own email for rows created before that link existed.
+    const { data: ownRow } = await supabase
+      .from('contractor_settings')
+      .select('id')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    let targetContractorId: string | undefined = ownRow?.id
+    if (!targetContractorId && email) {
+      const { data: byEmail } = await supabase
         .from('contractor_settings')
         .select('id')
         .eq('contact_email', email)
         .order('created_at', { ascending: false })
         .limit(1)
-      
-      targetContractorId = contractorList?.[0]?.id
+        .maybeSingle()
+      targetContractorId = byEmail?.id
     }
 
     if (targetContractorId && widgetConfigHints) {

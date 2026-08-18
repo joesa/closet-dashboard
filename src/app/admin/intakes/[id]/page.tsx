@@ -2,7 +2,6 @@ import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import {
-  buildPlatformFallbackPreviewUrl,
   buildTenantPreviewUrl,
   buildTenantPreviewUrlFromDomains,
   getTenantLaunchSiteUrl,
@@ -137,9 +136,6 @@ export default async function IntakeDetailPage({
     ? buildTenantPreviewUrl(tenantSiteUrl)
     : (data.provisioned_contractor_id ? buildTenantPreviewUrlFromDomains(domainRows) : null)
 
-  const platformFallbackUrl = domainRows.length > 0 && domainRows[0].hostname
-    ? buildPlatformFallbackPreviewUrl(domainRows[0].hostname)
-    : null
 
   const tempPreviewActive = isTempPreviewActive(tempPreviewExpiresAt)
 
@@ -251,17 +247,6 @@ export default async function IntakeDetailPage({
               className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-indigo-500 shadow-sm"
             >
               <span>🔍 Preview Site (Subdomain Bypass)</span>
-            </a>
-          )}
-
-          {platformFallbackUrl && (
-            <a
-              href={platformFallbackUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-purple-700 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-purple-600 shadow-sm"
-            >
-              <span>🌐 Preview via Platform Host</span>
             </a>
           )}
 

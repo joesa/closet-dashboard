@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { generateStrongPassword } from '@/lib/generateStrongPassword'
 
 /**
  * Create (or reset) the login for a tenant owner, and wire it to their
@@ -17,8 +18,17 @@ export type EnsureAuthUserResult = {
   created: boolean
 }
 
+/**
+ * The real initial dashboard password for a provisioned contractor.
+ *
+ * This used to be built from `Math.random()`, which is a seeded xorshift128+
+ * whose internal state is recoverable from a few observed outputs — and a
+ * single serverless instance provisions several tenants in a row, so one
+ * emailed password could be used to predict its neighbours. `crypto`-backed
+ * generation already existed one directory away and simply was not wired in.
+ */
 export function generateTempPassword(): string {
-  return `Dtf-${Math.random().toString(36).slice(2, 10)}${Math.floor(Math.random() * 90 + 10)}!`
+  return `Dtf-${generateStrongPassword(16)}`
 }
 
 export async function ensureTenantAuthUser(

@@ -1,7 +1,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
-import { buildPlatformFallbackPreviewUrl, buildTenantPreviewUrlFromDomains, getTenantLaunchSiteUrl } from '@/lib/admin-preview';
+import { buildTenantPreviewUrlFromDomains, getTenantLaunchSiteUrl } from '@/lib/admin-preview';
 import { notFound } from 'next/navigation';
 import DeleteTenantDialog from '@/components/DeleteTenantDialog';
 import SiteValidationPanel from '@/components/SiteValidationPanel';
@@ -130,9 +130,6 @@ export default async function TenantDetailsPage({
   );
   const liveUrl =
     launchUrlRaw !== '#' && !launchUrlRaw.includes('.localhost') ? launchUrlRaw : null;
-  const platformFallbackUrl = primaryDomain
-    ? buildPlatformFallbackPreviewUrl(primaryDomain)
-    : null;
 
   const config = (Array.isArray(tenant.site_configs) && tenant.site_configs.length > 0 
     ? tenant.site_configs[0]
@@ -229,19 +226,6 @@ export default async function TenantDetailsPage({
               </svg>
             </a>
           ) : null}
-          {platformFallbackUrl && (
-            <a
-              href={platformFallbackUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="px-5 py-2.5 bg-purple-700 hover:bg-purple-600 text-white font-semibold rounded-lg transition-colors flex items-center gap-2 shadow-lg shadow-purple-500/20 text-sm"
-            >
-              <span>🌐 Preview via Platform Host</span>
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-              </svg>
-            </a>
-          )}
           
           {tenant.site_status === 'pending_approval' && readyForApproval && (
             <ApproveSiteButton tenantId={tenant.id} editInPlace={editInPlace} />
