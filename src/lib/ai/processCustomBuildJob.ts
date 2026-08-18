@@ -187,8 +187,18 @@ export async function processCustomBuildJob(tenantId: string): Promise<void> {
         passes: passTimings.map((t) => ({ pass: t.pass, ms: t.ms, ok: t.ok })),
       }))
     }
+    // `claimed` is the row as it looked when this run started, so spreading it
+    // alone silently discards everything the run accumulated: pass_timings,
+    // required_paths, locked_brief. That is why pass_timings read null on every
+    // completed job and the admin panel could not say where a 12-minute build
+    // spent its time. Carry the live values forward; the status fields below
+    // still win, so cancel/failure semantics are unchanged.
+    const finished = await getCustomBuildJob(tenantId)
     await setCustomBuildJob(tenantId, {
       ...claimed,
+      pass_timings:
+        finished?.pass_timings ?? (passTimings.length > 0 ? passTimings : undefined),
+      required_paths: finished?.required_paths ?? claimed.required_paths,
       status: 'succeeded',
       images: undefined,
       reply: result.reply,

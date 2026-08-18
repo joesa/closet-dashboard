@@ -23,6 +23,8 @@ type CustomBuildJob = {
   pass?: string | null;
   passes_done?: string[];
   required_paths?: string[];
+  /** Wall clock per finished phase — see aiCallContext.PassTiming. */
+  pass_timings?: Array<{ pass: string; ms: number; ok: boolean }>;
   dead_lettered?: boolean;
   /** Automatic first redesign — publishes and goes live on its own. */
   auto_launch?: boolean;
@@ -338,6 +340,20 @@ export default function AdminCustomBuild({
           : job?.pass === 'design-system:validating'
             ? 'validating new design system'
             : job?.pass || '…';
+      // Phases already finished, with what each cost. Before this the panel sat
+      // on "0/9 pages" for eight minutes with no way to tell a slow direction
+      // pass from a stuck worker — the three calls that run before any page
+      // exists (direction, review, foundation) take the bulk of the wall clock
+      // on a big site, and none of it was visible.
+      const phaseLabel: Record<string, string> = {
+        'design-system': 'direction',
+        foundation: 'foundation',
+      };
+      const phasesDone = (job?.pass_timings || [])
+        .filter((t) => phaseLabel[t.pass])
+        .map((t) => `${phaseLabel[t.pass]} ${Math.round(t.ms / 60000) || 1}m`)
+        .join(' · ');
+      const phaseSuffix = phasesDone ? ` · done: ${phasesDone}` : '';
       // The automatic first redesign runs itself and publishes itself — say so,
       // so nobody waits to click Publish or thinks a colleague started this.
       const autoPrefix = job?.auto_launch ? 'Automatic first redesign · ' : '';
@@ -347,7 +363,7 @@ export default function AdminCustomBuild({
             ? `Surgical edit processing · heartbeat ${hb} · ~${ageMin}m wall`
             : `Surgical edit queued on background worker · heartbeat ${hb}`
           : job?.status === 'processing'
-            ? `${autoPrefix}Processing · ${fullPassLabel} · ${done}/${need} pages · heartbeat ${hb} · ~${ageMin}m wall`
+            ? `${autoPrefix}Processing · ${fullPassLabel} · ${done}/${need} pages${phaseSuffix} · heartbeat ${hb} · ~${ageMin}m wall`
             : `${autoPrefix}Queued on background worker · heartbeat ${hb} · ~${ageMin}m waiting`
       );
       // Client watchdog mirrors server stale window (~45m). Do not cancel early —

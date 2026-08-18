@@ -546,6 +546,26 @@ const JSON_SHAPE = `{
  * Every model-backed phase uses the Full redesign provider chain. The
  * deterministic fallback remains available when no provider succeeds.
  */
+/**
+ * How many independent-reviewer passes the preflight may spend.
+ *
+ * Each one is a full model call — measured at ~135s on claude-opus-5 — and they
+ * run before a single page exists, so on a large site they are most of the
+ * "12 minutes and still 0/9 pages" a builder sees. The loop already exits the
+ * moment a candidate validates, so this only bounds the bad case: when the
+ * reviewer keeps rejecting, the run drops to the deterministic fallback brief
+ * sooner instead of paying for another audit.
+ *
+ * Default 3 preserves the original behaviour exactly. Lower it to trade
+ * design-direction quality for time to first page; it is an env var so that
+ * trade can be made without a deploy.
+ */
+export function preflightReviewBudget(): number {
+  const raw = Number(process.env.FULL_REDESIGN_PREFLIGHT_REVIEWS)
+  if (!Number.isFinite(raw)) return 3
+  return Math.max(1, Math.min(5, Math.round(raw)))
+}
+
 export async function enhanceFullRedesignBrief(
   opts: EnhanceOpts
 ): Promise<EnhancedFullRedesignBrief> {
@@ -648,7 +668,7 @@ Produce the optimized brief JSON.`
       .filter(Boolean)
     let candidate = firstDraft
     let failures: string[] = []
-    for (let reviewAttempt = 1; reviewAttempt <= 3; reviewAttempt += 1) {
+    for (let reviewAttempt = 1; reviewAttempt <= preflightReviewBudget(); reviewAttempt += 1) {
       const reviewPrompt = `Independently audit and, where necessary, REGENERATE this proposed Full redesign preflight. Do not preserve a weak choice for consistency. Check every design axis, every AI tell, factual grounding, accessibility, responsive feasibility, and novelty against the supplied prior-design block. Return the complete corrected JSON in the required shape. Set validation booleans true only after the corrected system actually passes.
 
     USER AUTHORITY: The verbatim ADMIN SEED is a first-class, non-optional constraint. Preserve every explicit request about composition, palette, typography, imagery, features, services, tone, and content. Never replace a user choice merely because you prefer another. Change one only when it conflicts with platform safety, supplied facts, accessibility, or a documented prior-design collision; in that case preserve the underlying intent and explain the resolution in validation.rationale.

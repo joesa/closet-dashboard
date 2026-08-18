@@ -1956,6 +1956,14 @@ async function runFullGenerate(opts: {
       ? (opts.context.seo as Record<string, unknown>)
       : {}
 
+  // The three phases before any page exists — direction, review, foundation —
+  // are where a "12 minutes and still 0/9 pages" build actually spends its
+  // time, and none of them were timed: timePass only wrapped page passes, so
+  // the panel could show which page was building but never why the first one
+  // took eight minutes to appear.
+  const designSystemStartedAt = new Date().toISOString()
+  const designSystemStart = Date.now()
+
   const resumeLocked = opts.resumeState?.lockedBrief
   if (!resumeLocked) {
     await opts.onProgress?.({
@@ -2509,8 +2517,17 @@ ${factsBrief}`
   const builtHomeThisRun = remaining().includes('/')
 
   // —— Pass: foundation (globalCss + home) ——————————————
+  const foundationStartedAt = new Date().toISOString()
+  const foundationStart = Date.now()
   if (builtHomeThisRun) {
-    await report('foundation:/', draft)
+    await report('foundation:/', draft, undefined, {
+      passTiming: {
+        pass: 'design-system',
+        ms: Date.now() - designSystemStart,
+        startedAt: designSystemStartedAt,
+        ok: true,
+      },
+    })
     const foundationContract = `# This call — FOUNDATION ONLY
 Output ONLY valid JSON:
 {
@@ -2592,6 +2609,12 @@ Build globalCss + home "/" only. Output JSON.`
     await report('foundation:/', draft, foundationReply, {
       serviceUpdates,
       foundationReply,
+      passTiming: {
+        pass: 'foundation',
+        ms: Date.now() - foundationStart,
+        startedAt: foundationStartedAt,
+        ok: true,
+      },
     })
     console.info('[runFullGenerate] checkpoint home')
 
