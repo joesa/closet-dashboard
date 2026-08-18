@@ -88,9 +88,23 @@ export function assertTextPipelineAccess(row: ProspectIntakeRow): string | null 
   return null
 }
 
-/** Copy/enhancer passes a tier may spend. Cost ceiling in place of a paywall. */
-export function textPassBudget(row: ProspectIntakeRow): number {
-  return effectiveIntakeTier(row) === 'ai_premium' ? 10 : 5
+/**
+ * Daily generation budget per tier — the cost ceiling that replaced the paywall.
+ *
+ * Ungating the text pipeline for Standard was the right call (the facts a
+ * prospect typed are theirs), but "not withheld" is not "unlimited": without a
+ * ceiling a Standard intake could spend Premium-sized model time on copy. The
+ * caps are sized to real use rather than punishment — a Standard intake builds
+ * at most 5 pages, so 12 page-copy calls covers every page plus retries and
+ * edits, and Premium's 10 pages get double.
+ */
+export function textPassBudget(row: ProspectIntakeRow): {
+  briefGenerations: number
+  pageCopyGenerations: number
+} {
+  return effectiveIntakeTier(row) === 'ai_premium'
+    ? { briefGenerations: 12, pageCopyGenerations: 24 }
+    : { briefGenerations: 6, pageCopyGenerations: 12 }
 }
 
 export function assertDraftIntake(row: ProspectIntakeRow): string | null {

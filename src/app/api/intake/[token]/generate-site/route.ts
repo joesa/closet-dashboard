@@ -2,7 +2,11 @@ import { NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { buildIntakeBrief, stripUneditedCraftSuggestions } from '@/lib/intake/buildIntakeBrief'
 import { getIntakeByToken } from '@/lib/intake/getIntakeByToken'
-import { assertDraftIntake, assertTextPipelineAccess } from '@/lib/intake/intakeTierGates'
+import {
+  assertDraftIntake,
+  assertTextPipelineAccess,
+  textPassBudget,
+} from '@/lib/intake/intakeTierGates'
 import { checkRateLimit, hashRateKey } from '@/lib/rateLimit'
 import { clampPagesForTier, SITE_PAGE_SLUGS } from '@/lib/catalog/sitePages'
 import { OTHER_SERVICE_LABEL } from '@/lib/catalog/contractorServices'
@@ -37,8 +41,15 @@ export async function POST(
     }
 
     // Client used to auto-retry on failure and burn this quickly; keep a
-    // generous daily cap for legitimate regenerations after edits.
-    const limit = await checkRateLimit(hashRateKey('intake_ai_site', token), 12, 24 * 60 * 60 * 1000)
+    // generous daily cap for legitimate regenerations after edits. The cap is
+    // the tier's budget: Standard is bounded here rather than at the gate, so
+    // it keeps its facts and we keep the cost predictable.
+    const budget = textPassBudget(row)
+    const limit = await checkRateLimit(
+      hashRateKey('intake_ai_site', token),
+      budget.briefGenerations,
+      24 * 60 * 60 * 1000
+    )
     if (!limit.allowed) {
       return NextResponse.json({ error: 'Too many AI brief generations today.' }, { status: 429 })
     }

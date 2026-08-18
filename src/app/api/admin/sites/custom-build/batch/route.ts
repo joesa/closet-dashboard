@@ -8,6 +8,7 @@ import {
   type CustomBuildJob,
 } from '@/lib/ai/customBuildJob'
 import { enqueueFullRedesign } from '@/lib/jobs/enqueueFullRedesign'
+import { loadFactsBriefForTenant } from '@/lib/intake/factsBriefForTenant'
 import { canEnqueueBackgroundJobs } from '@/lib/jobs/enqueueJob'
 import {
   MAX_FULL_REDESIGN_BATCH_SIZE,
@@ -60,10 +61,15 @@ export async function POST(req: Request) {
     }
 
     const startedAt = new Date().toISOString()
+    // Same as auto-launch and the single-site admin route: the owner's facts
+    // ride with the job, so a fleet rebuild does not quietly strip every site
+    // back to what site_configs could summarise in 900 characters.
+    const factsBrief = await loadFactsBriefForTenant(tenantId)
     const job: CustomBuildJob = {
       status: 'queued',
       intent: 'full',
       prompt: '',
+      facts_brief: factsBrief || null,
       error: null,
       reply: null,
       started_at: startedAt,

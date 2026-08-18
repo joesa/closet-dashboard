@@ -1,7 +1,11 @@
 import { NextResponse } from 'next/server'
 import { generateTextForPurpose } from '@/lib/ai/aiTextProvider'
 import { getIntakeByToken } from '@/lib/intake/getIntakeByToken'
-import { assertDraftIntake, assertTextPipelineAccess } from '@/lib/intake/intakeTierGates'
+import {
+  assertDraftIntake,
+  assertTextPipelineAccess,
+  textPassBudget,
+} from '@/lib/intake/intakeTierGates'
 import { checkRateLimit, hashRateKey } from '@/lib/rateLimit'
 import { buildIntakeBrief, stripUneditedCraftSuggestions } from '@/lib/intake/buildIntakeBrief'
 import { SITE_PAGE_OPTIONS, clampPagesForTier } from '@/lib/catalog/sitePages'
@@ -174,9 +178,11 @@ async function executeIntakeGeneratePageCopy(
       return NextResponse.json({ error: accessErr }, { status: 403 })
     }
 
+    // Tier budget rather than a flat cap — see textPassBudget.
+    const budget = textPassBudget(row)
     const limit = await checkRateLimit(
       hashRateKey('intake_page_copy', token),
-      20,
+      budget.pageCopyGenerations,
       24 * 60 * 60 * 1000
     )
     if (!limit.allowed) {

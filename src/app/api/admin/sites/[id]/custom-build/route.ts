@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { isPublishBlockedError } from '@/lib/ai/publishBlocked'
 import { getCurrentAdmin, logAdminAction } from '@/lib/admin'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { loadFactsBriefForTenant } from '@/lib/intake/factsBriefForTenant'
 import {
   discardCustomDraft,
   publishCustomSiteDraft,
@@ -227,10 +228,18 @@ export async function POST(
             .eq('tenant_id', tenantId)
         }
 
+        // The owner's facts travel with every redesign, not just the first one.
+        // Auto-launch loads them at provisioning; an admin re-run is the common
+        // fix-it path, and without this the rebuild silently reverts to the
+        // 900-character site_configs summary and drops everything the intake
+        // collected. Separate channel from `prompt` — see CustomBuildJob.
+        const factsBrief = await loadFactsBriefForTenant(tenantId)
+
         const job = {
           status: 'queued' as const,
           intent: intent as 'full' | 'surgical',
           prompt,
+          facts_brief: factsBrief || null,
           mode,
           images: images.length ? images : undefined,
           error: null,
