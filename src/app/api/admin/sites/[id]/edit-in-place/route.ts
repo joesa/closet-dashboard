@@ -114,6 +114,8 @@ export async function POST(
       .from('site_configs')
       .update({
         edit_in_place: enabled,
+        // Stamped so the renderer can expire an edit session nobody closed.
+        edit_in_place_started_at: enabled ? new Date().toISOString() : null,
         custom_updated_at: new Date().toISOString(),
       })
       .eq('tenant_id', tenantId)
