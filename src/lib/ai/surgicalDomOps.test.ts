@@ -6,6 +6,7 @@ import {
   applyOpsToPages,
   parseSurgicalOps,
 } from './surgicalDomOps'
+import type { CustomSiteConfig } from '@/lib/customSite'
 
 describe('parseSurgicalOps', () => {
   it('accepts a closed allowlist of ops', () => {
@@ -97,10 +98,14 @@ describe('applyOpsToPages', () => {
 })
 
 describe('editCss — changing css that already exists', () => {
+  // A partial fixture: these tests only exercise globalCss and one page, so the
+  // cast narrows to the real type once rather than at each call site. `as never`
+  // used to be the cast here, which made spreading it a type error and was the
+  // one thing keeping `tsc --noEmit` out of CI.
   const base = {
     globalCss: '.idx{counter-reset:service}\n.idx li{counter-increment:service;margin-bottom:.55rem}\n.step::before{content:"0" counter(step)}',
     pages: { '/': { html: '<main><p>Hello</p></main>' } },
-  } as never
+  } as unknown as CustomSiteConfig
 
   it('deletes a declaration with an empty replace', () => {
     const { ops, errors } = parseSurgicalOps([
@@ -118,7 +123,7 @@ describe('editCss — changing css that already exists', () => {
   it('replaces every occurrence, since a declaration usually repeats', () => {
     const css = '.a{color:red}.b{color:red}.c{color:red}'
     const { ops } = parseSurgicalOps([{ op: 'editCss', find: 'color:red', replace: 'color:blue' }])
-    const result = applyOpsToConfig({ ...base, globalCss: css } as never, ops)
+    const result = applyOpsToConfig({ ...base, globalCss: css }, ops)
     expect(result.config.globalCss).toBe('.a{color:blue}.b{color:blue}.c{color:blue}')
     expect(result.hits).toBe(3)
   })

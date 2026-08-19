@@ -26,7 +26,17 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run lint
+      # A type error used to reach production because nothing typechecked in
+      # CI — the build on Vercel was the first thing to notice.
+      - run: npx tsc --noEmit
       - run: npm test
       - run: npm run check:worker-env
       - name: shared lib sync (customSite + widgetCdn)
         run: npm run test:custom-site-sync -- --websites-root .ci-siblings/custom-closets-websites
+      # Catches what only appears at build time: bad route exports, server/client
+      # boundary violations, and modules that fail to resolve in the bundle.
+      - name: production build
+        run: npm run build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-placeholder-anon-key

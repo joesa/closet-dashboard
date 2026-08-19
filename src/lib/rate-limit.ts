@@ -8,6 +8,16 @@ export type RateLimitResult =
  * Fixed-window rate limit keyed by caller (e.g. contractor + IP hash).
  * Uses service role; safe for Edge routes that have SUPABASE_SERVICE_ROLE_KEY.
  */
+/**
+ * Fixed-window rate limit for the public widget endpoints.
+ *
+ * Kept as a separate module because its callers need `retryAfterSeconds` for a
+ * 429 response, but the counting itself is now the same atomic primitive the
+ * rest of the app uses — this was previously a second read-then-write
+ * implementation against a second table, with the same race and the same
+ * fail-open behaviour on a database error. Both are fixed here: one statement,
+ * and a refusal rather than a free pass when the limiter itself fails.
+ */
 export async function checkRateLimit(
   key: string,
   limit: number,
@@ -19,54 +29,26 @@ export async function checkRateLimit(
   const now = Date.now()
   const windowMs = windowSeconds * 1000
   const windowStartMs = Math.floor(now / windowMs) * windowMs
-  const windowStart = new Date(windowStartMs).toISOString()
+  const retryAfterSeconds = Math.max(1, Math.ceil((windowStartMs + windowMs - now) / 1000))
 
-  const { data: existing, error: readError } = await admin
-    .from('api_rate_limits')
-    .select('count, window_start')
-    .eq('key', key)
-    .maybeSingle()
+  const { data, error } = await admin.rpc('rate_limit_hit', {
+    p_key: key,
+    p_window_start: new Date(windowStartMs).toISOString(),
+    p_limit: limit,
+  })
 
-  if (readError) {
-    console.error('rate-limit read failed:', readError.message)
-    return { allowed: true }
+  if (error) {
+    console.error('[rate-limit] failing closed:', error.message)
+    return { allowed: false, retryAfterSeconds }
   }
 
-  const existingStart = existing?.window_start
-    ? new Date(existing.window_start).getTime()
-    : 0
-
-  if (!existing || existingStart < windowStartMs) {
-    const { error: upsertError } = await admin.from('api_rate_limits').upsert({
-      key,
-      window_start: windowStart,
-      count: 1,
-    })
-    if (upsertError) {
-      console.error('rate-limit upsert failed:', upsertError.message)
-      return { allowed: true }
-    }
-    return { allowed: true }
+  const row = Array.isArray(data) ? data[0] : (data as { allowed?: boolean })
+  if (!row || typeof row.allowed !== 'boolean') {
+    console.error('[rate-limit] unexpected response, failing closed')
+    return { allowed: false, retryAfterSeconds }
   }
 
-  if ((existing.count ?? 0) >= limit) {
-    const retryAfterSeconds = Math.ceil(
-      (windowStartMs + windowMs - now) / 1000
-    )
-    return { allowed: false, retryAfterSeconds: Math.max(1, retryAfterSeconds) }
-  }
-
-  const { error: updateError } = await admin
-    .from('api_rate_limits')
-    .update({ count: (existing.count ?? 0) + 1 })
-    .eq('key', key)
-
-  if (updateError) {
-    console.error('rate-limit update failed:', updateError.message)
-    return { allowed: true }
-  }
-
-  return { allowed: true }
+  return row.allowed ? { allowed: true } : { allowed: false, retryAfterSeconds }
 }
 
 export async function hashIpForRateLimit(ip: string): Promise<string> {

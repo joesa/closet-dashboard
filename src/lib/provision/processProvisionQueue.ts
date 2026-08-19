@@ -39,11 +39,25 @@ export async function processProvisionQueue(
 
   for (const job of pending ?? []) {
     const started = new Date().toISOString()
-    await admin
+    // The claim IS the lock, so its result has to be read. This update was
+    // fire-and-forget: two claimants — the worker runs at concurrency 3, and a
+    // Vercel cron and kickProvisionAfterSubmit can both fire — would each read
+    // the row as pending, each "claim" it, and each run provisioning for the
+    // same intake. Given provisionTenant tears down an existing tenant before
+    // rebuilding, the second run would demolish what the first had just built.
+    // `.select()` makes the update return the rows it actually changed; an
+    // empty result means somebody else claimed it first.
+    const { data: claimed } = await admin
       .from('provision_jobs')
       .update({ status: 'processing', started_at: started, attempts: job.attempts + 1 })
       .eq('id', job.id)
       .eq('status', 'pending')
+      .select('id')
+
+    if (!claimed || claimed.length === 0) {
+      results.push({ jobId: job.id, status: 'skipped', error: 'claimed by another worker' })
+      continue
+    }
 
     try {
       await provisionFromIntakeJob(job as ProvisionJobRow, loginOrigin)

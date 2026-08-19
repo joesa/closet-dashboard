@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from 'uuid'
 import { Resend } from 'resend'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { mergeCustomAddOnsWithDefaults } from '@/lib/provision/mergeCustomAddOns'
 // Re-exported for the existing importers of this module.
@@ -67,7 +68,6 @@ import {
 } from '@/lib/catalog/servicePriceCatalog'
 import { getServiceUxDefaults } from '@/lib/catalog/serviceUxDefaults'
 import { assertOfferedServicesPriced, roomIsUnpriced } from '@/lib/pricingGuard'
-import { inferQuoteCalculatorGuidance } from '@/lib/quoteCalculatorGuidance'
 import {
   DEFAULT_DOMAIN_CONFIG,
   ROOM_TYPES,
@@ -235,6 +235,49 @@ function isMissingDesignVariantColumn(error: unknown): boolean {
   return e.code === 'PGRST204' || msg.includes('design_variant')
 }
 
+/**
+ * Refuse to destroy a tenant that has live customer data.
+ *
+ * `teardownTenantData` is called on redeploy, and provisioning retries up to
+ * three times at the queue level and again under Graphile. Without this, a job
+ * that fails late enough to have written tenant rows will, on its next attempt,
+ * delete a tenant that may by then be serving real customers — including their
+ * captured leads. A build that needs replacing is a five-minute admin action; a
+ * deleted lead history is not recoverable.
+ */
+export async function assertTenantIsSafeToReplace(
+  supabase: SupabaseClient,
+  tenantId: string,
+  ownerEmail: string
+): Promise<void> {
+  const [leads, orders, bookings, settings] = await Promise.all([
+    supabase.from('leads').select('id', { count: 'exact', head: true }).eq('contractor_id', tenantId),
+    supabase.from('orders').select('id', { count: 'exact', head: true }).eq('contractor_id', tenantId),
+    supabase.from('bookings').select('id', { count: 'exact', head: true }).eq('contractor_id', tenantId),
+    supabase
+      .from('contractor_settings')
+      .select('subscription_status')
+      .eq('id', tenantId)
+      .maybeSingle(),
+  ])
+
+  const reasons: string[] = []
+  if ((leads.count ?? 0) > 0) reasons.push(`${leads.count} captured lead(s)`)
+  if ((orders.count ?? 0) > 0) reasons.push(`${orders.count} order(s)`)
+  if ((bookings.count ?? 0) > 0) reasons.push(`${bookings.count} booking(s)`)
+  const status = (settings.data as { subscription_status?: string } | null)?.subscription_status
+  if (status === 'active' || status === 'past_due') {
+    reasons.push(`an ${status} subscription`)
+  }
+
+  if (reasons.length > 0) {
+    throw new ProvisionReviewError(
+      `Refusing to replace the existing site for ${ownerEmail}: it has ${reasons.join(', ')}. ` +
+        'Delete it deliberately in Admin → Sites if that is really what you want.'
+    )
+  }
+}
+
 export async function provisionTenant(
   body: ProvisionTenantInput
 ): Promise<ProvisionTenantResult> {
@@ -373,6 +416,16 @@ export async function provisionTenant(
     // Cleans up all child tables (service_catalog, service_ux_defaults, contractor_rooms, etc.)
     // in reverse dependency order to prevent foreign key constraint violations.
     const oldId = existingTenant.id
+
+    // …unless that tenant is a live business. This function runs on every
+    // provisioning retry, and a transient failure after the tenant rows were
+    // written means the retry arrives here and deletes what the previous
+    // attempt built. That is survivable for a fresh build and not survivable
+    // for a tenant that has customer leads, real orders, or a paid
+    // subscription — so those stop here and ask for a human, rather than
+    // being demolished by a background job.
+    await assertTenantIsSafeToReplace(supabase, oldId, ownerEmail)
+
     await teardownTenantData(supabase, oldId, ownerEmail)
 
     const { data: stillThere } = await supabase

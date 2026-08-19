@@ -4,7 +4,11 @@ import { defineConfig } from 'vitest/config'
 export default defineConfig({
   test: {
     environment: 'node',
-    include: ['src/**/*.test.ts'],
+    // Component tests (.tsx) and worker tests were silently excluded by the
+    // old `src/**/*.test.ts` glob — nothing warned, they simply never ran.
+    // There happen to be none of either today, which is exactly why this is
+    // worth fixing now: the first one written would have been quietly ignored.
+    include: ['src/**/*.test.{ts,tsx}', 'worker/**/*.test.ts'],
   },
   resolve: {
     alias: {
