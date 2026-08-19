@@ -25,7 +25,7 @@ function siteverify(success: boolean) {
 describe('checkWidgetCaptcha', () => {
   it('allows a request with no token while the requirement is off', async () => {
     // Every widget bundle in the wild today is in exactly this state.
-    await expect(checkWidgetCaptcha(undefined)).resolves.toEqual({ ok: true })
+    await expect(checkWidgetCaptcha(undefined)).resolves.toEqual({ ok: true, verified: false })
   })
 
   it('rejects a request with no token once the requirement is on', async () => {
@@ -38,20 +38,20 @@ describe('checkWidgetCaptcha', () => {
     await expect(checkWidgetCaptcha('forged')).resolves.toMatchObject({ ok: false, status: 403 })
   })
 
-  it('accepts a token Cloudflare confirms', async () => {
+  it('reports verified:true only when a token actually passed', async () => {
     siteverify(true)
-    await expect(checkWidgetCaptcha('good')).resolves.toEqual({ ok: true })
+    await expect(checkWidgetCaptcha('good')).resolves.toEqual({ ok: true, verified: true })
   })
 
   it('treats a blank string as no token at all', async () => {
     const fetchMock = vi.fn()
     vi.stubGlobal('fetch', fetchMock)
-    await expect(checkWidgetCaptcha('   ')).resolves.toEqual({ ok: true })
+    await expect(checkWidgetCaptcha('   ')).resolves.toEqual({ ok: true, verified: false })
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
   it('ignores a non-string token rather than throwing', async () => {
-    await expect(checkWidgetCaptcha({ nope: true })).resolves.toEqual({ ok: true })
+    await expect(checkWidgetCaptcha({ nope: true })).resolves.toEqual({ ok: true, verified: false })
   })
 
   it('reads the requirement flag strictly', () => {

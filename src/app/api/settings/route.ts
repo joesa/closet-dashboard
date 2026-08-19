@@ -183,6 +183,13 @@ export async function GET(req: Request) {
       // Generic vertical config: drives widget labels (category/unit/tier) and
       // the pricing model. Defaults reproduce closet behaviour for legacy rows.
       domainConfig: normalizeDomainConfig(data.domain_config),
+      // Turnstile site key, so the widget can obtain a token before it submits.
+      // A site key is public by design — it identifies the challenge widget and
+      // is worthless without the secret, which never leaves the server. Read
+      // from env rather than a column, so no anon column grant is involved.
+      // Null when unset: the widget then submits without a token, which the
+      // server still accepts until TURNSTILE_REQUIRE_WIDGET is turned on.
+      turnstileSiteKey: process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY?.trim() || null,
     }
 
     return NextResponse.json(responsePayload, {

@@ -17,7 +17,10 @@ import { verifyTurnstileToken } from '@/lib/turnstile'
  * atomic fail-closed rate limiter and the entitlement gate in front of them.
  */
 
-export type CaptchaResult = { ok: true } | { ok: false; status: number; error: string }
+export type CaptchaResult =
+  /** `verified` records whether a token was actually presented and passed. */
+  | { ok: true; verified: boolean }
+  | { ok: false; status: number; error: string }
 
 export function widgetCaptchaRequired(): boolean {
   return process.env.TURNSTILE_REQUIRE_WIDGET?.trim() === '1'
@@ -33,12 +36,12 @@ export async function checkWidgetCaptcha(
     if (widgetCaptchaRequired()) {
       return { ok: false, status: 400, error: 'Captcha verification is required.' }
     }
-    return { ok: true }
+    return { ok: true, verified: false }
   }
 
   const passed = await verifyTurnstileToken(supplied, remoteIp)
   if (!passed) {
     return { ok: false, status: 403, error: 'Captcha verification failed.' }
   }
-  return { ok: true }
+  return { ok: true, verified: true }
 }

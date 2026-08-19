@@ -302,6 +302,10 @@ export async function POST(request: Request) {
     let addOnLines: string[] = []
 
     // If we have a contractorId, look up their settings and addons from the database
+    // Recorded on the lead below; declared out here because the guard runs in
+    // an earlier block than the insert.
+    let captchaVerified = false
+
     if (body.contractorId) {
       // Entitlement gate — refuse to deliver leads for expired contractors.
       // This is the actual conversion lever: an expired account can no longer
@@ -323,6 +327,7 @@ export async function POST(request: Request) {
       if (!captcha.ok) {
         return json({ error: captcha.error }, captcha.status)
       }
+      captchaVerified = captcha.verified
 
       const rateLimit = await checkRateLimit(
         `send-lead:${body.contractorId}:${ipHashLimit}`,
@@ -468,6 +473,9 @@ export async function POST(request: Request) {
         range_high: enquiryOnly ? null : calculatedHigh,
         add_ons: body.selectedAddOns ?? body.addOns ?? [],
         source_origin: origin,
+        // Rollout gate for TURNSTILE_REQUIRE_WIDGET: the flag is only safe to
+        // turn on once this stops being false for real submissions.
+        captcha_verified: captchaVerified,
         user_agent: ua,
         ip_hash: ipHash,
       })
