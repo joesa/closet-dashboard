@@ -237,6 +237,8 @@ Kept in sync with `worker/worker.env.example` via CI (`npm run check:worker-env`
 - TENANT_BASE_DOMAIN
 - REVALIDATE_SECRET
 - RESEND_API_KEY
+- PUBLIC_APP_URL
+- CRON_SECRET
 ```
 
 The last three were absent from this list until the first real deploy, and all
@@ -248,6 +250,8 @@ but the result is wrong:
 | `TENANT_BASE_DOMAIN` | `resolveSubdomain()` falls back to `localhost`; tenants provision onto subdomains that resolve nowhere |
 | `REVALIDATE_SECRET` | published tenant sites can keep serving stale content |
 | `RESEND_API_KEY` | `sendIntakeLaunchEmail()` returns early; auto-launch finishes and nobody is told |
+| `PUBLIC_APP_URL` | Interval jobs disabled: stuck provision jobs are only reaped by the daily Vercel cron |
+| `CRON_SECRET` | Same as above; the endpoints answer 401 and the scheduler declines to start |
 
 Everything else the task path reads has a working default:
 `AUTO_LAUNCH_REDESIGN` (enabled unless `'false'`), `CUSTOM_SITE_GEMINI_MODEL`,

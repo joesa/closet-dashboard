@@ -29,6 +29,11 @@ const REQUIRED_KEYS = [
   'TENANT_BASE_DOMAIN',
   'REVALIDATE_SECRET',
   'RESEND_API_KEY',
+  // The worker drives the sub-daily jobs Vercel's plan will not schedule
+  // (see worker/src/scheduler.ts). Without these two it logs one line and
+  // runs nothing, which is invisible until a provision job sits stuck.
+  'PUBLIC_APP_URL',
+  'CRON_SECRET',
 ]
 
 /**
