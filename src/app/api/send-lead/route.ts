@@ -1,8 +1,7 @@
-import { Resend } from 'resend'
 import { corsHeaders, handleOptions } from '@/lib/cors'
 import { assertEntitled } from '@/lib/gate'
+import { sendEmail } from '@/lib/email/send'
 import { DEMO_CONTRACTOR_ID, isAllowedDemoOrigin } from '@/lib/demo'
-import { platformFromEmail } from '@/lib/fromEmail'
 import { checkRateLimit, hashIpForRateLimit } from '@/lib/rate-limit'
 import { checkWidgetCaptcha } from '@/lib/turnstileWidgetGuard'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
@@ -486,32 +485,34 @@ export async function POST(request: Request) {
     // A repeat submission is stored but not announced: the contractor already
     // has this person's details from the first one, and a second alert reads
     // as a second customer.
-    const resend = new Resend(process.env.RESEND_API_KEY)
+    // Through sendEmail rather than Resend directly, so the notification lands
+    // in email_sends and the delivery webhook can mark it delivered or bounced.
+    // Without that, a customer's lead alerts could start bouncing and both they
+    // and we would go on believing the leads were being delivered.
+    const emailResult = isDuplicateSubmission
+      ? ({ sent: false, reason: 'duplicate' } as const)
+      : await sendEmail({
+          kind: 'lead.notification',
+          to: toEmail,
+          contractorId: body.contractorId ?? null,
+          replyTo: body.customerEmail,
+          subject: `🏠 New Quote Lead: ${body.customerName} — ${fmt(calculatedLow)}–${fmt(calculatedHigh)}`,
+          html: buildEmailHtml(
+            {
+              customerName: body.customerName,
+              customerEmail: body.customerEmail,
+              customerPhone: body.customerPhone,
+              calculatedLow,
+              calculatedHigh,
+              spaceDetails,
+            },
+            companyName,
+            categoryLabel
+          ),
+        })
 
-    const { data, error } = isDuplicateSubmission
-      ? { data: null, error: null }
-      : await resend.emails.send({
-      from: platformFromEmail(),
-      to: [toEmail],
-      replyTo: body.customerEmail,
-      subject: `🏠 New Quote Lead: ${body.customerName} — ${fmt(calculatedLow)}–${fmt(calculatedHigh)}`,
-      html: buildEmailHtml(
-        {
-          customerName: body.customerName,
-          customerEmail: body.customerEmail,
-          customerPhone: body.customerPhone,
-          calculatedLow,
-          calculatedHigh,
-          spaceDetails,
-        },
-        companyName,
-        categoryLabel
-      ),
-    })
-
-    if (error) {
-      console.error('Resend error:', error)
-      return json({ error: 'Failed to send email.', details: error }, 500)
+    if (!emailResult.sent && emailResult.reason === 'error') {
+      return json({ error: 'Failed to send email.', details: emailResult.error }, 500)
     }
 
     // ── Send SMS LEAD ALERT to the contractor via Twilio (non-blocking) ──
@@ -591,7 +592,7 @@ export async function POST(request: Request) {
 
     return json({
       success: true,
-      emailId: data?.id,
+      emailId: emailResult.sent ? emailResult.id : undefined,
       smsSent,
       isDemo: isDemoSubmission,
       // Only echo the SMS body back to the client on demo submissions so the

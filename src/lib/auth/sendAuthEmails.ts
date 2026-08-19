@@ -1,27 +1,17 @@
-import { Resend } from 'resend'
-import { platformFromEmail } from '@/lib/fromEmail'
+import { sendEmail } from '@/lib/email/send'
 import { publicAppOrigin } from '@/lib/urls'
 
 function appOrigin(): string {
   return publicAppOrigin()
 }
 
-async function send(opts: {
-  to: string
-  subject: string
-  html: string
-}): Promise<void> {
-  if (!process.env.RESEND_API_KEY) {
-    console.warn('[sendAuthEmails] RESEND_API_KEY missing — skipping send')
-    return
-  }
-  const resend = new Resend(process.env.RESEND_API_KEY)
-  await resend.emails.send({
-    from: platformFromEmail(),
-    to: [opts.to],
-    subject: opts.subject,
-    html: opts.html,
-  })
+/**
+ * Auth mail goes through the shared sender so a password reset that never
+ * arrives leaves a record. These are the messages a locked-out customer is
+ * waiting on, so "did it bounce?" has to be answerable.
+ */
+async function send(opts: { to: string; subject: string; html: string; kind: string }): Promise<void> {
+  await sendEmail({ kind: opts.kind, to: opts.to, subject: opts.subject, html: opts.html })
 }
 
 export async function sendPasswordVerifyEmail(opts: {
@@ -32,6 +22,7 @@ export async function sendPasswordVerifyEmail(opts: {
   await send({
     to: opts.to,
     subject: 'Verify your identity to reset your password',
+    kind: 'auth.password_verify',
     html: `
       <h1>Password reset — step 1 of 2</h1>
       <p>We received a request to reset your DitchTheForm dashboard password.</p>
@@ -51,6 +42,7 @@ export async function sendPasswordResetEmail(opts: {
   await send({
     to: opts.to,
     subject: 'Choose a new password',
+    kind: 'auth.password_reset',
     html: `
       <h1>Password reset — step 2 of 2</h1>
       <p>Your identity was verified. Use the link below to set a new password. You will not need your old password.</p>
@@ -69,6 +61,7 @@ export async function sendEmailChangeConfirmOldEmail(opts: {
   await send({
     to: opts.to,
     subject: 'Confirm your email change request',
+    kind: 'auth.email_change',
     html: `
       <h1>Confirm email change</h1>
       <p>Someone requested to change the login email for your DitchTheForm dashboard.</p>
@@ -88,6 +81,7 @@ export async function sendEmailChangeAckOldEmail(opts: {
   await send({
     to: opts.to,
     subject: 'Confirm login with your new email',
+    kind: 'auth.email_confirm',
     html: `
       <h1>Confirm your new login email</h1>
       <p>An admin approved changing your dashboard login to <strong>${opts.newEmail}</strong>.</p>

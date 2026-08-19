@@ -1,8 +1,5 @@
-import { Resend } from 'resend'
+import { sendEmail } from '@/lib/email/send'
 import { formatUsd } from '@/lib/intake/tiers'
-import { platformFromEmail } from '@/lib/fromEmail'
-
-const FROM = platformFromEmail()
 
 export async function sendIntakeLaunchPaymentEmail(opts: {
   to: string
@@ -12,13 +9,11 @@ export async function sendIntakeLaunchPaymentEmail(opts: {
   amountCents: number
 }) {
   if (!process.env.RESEND_API_KEY) return
-
-  const resend = new Resend(process.env.RESEND_API_KEY)
   const who = opts.businessName?.trim() || 'your business'
 
-  await resend.emails.send({
-    from: FROM,
-    to: [opts.to],
+  await sendEmail({
+    kind: 'intake.launch_payment',
+    to: opts.to,
     subject: `${who} — your site is ready to launch`,
     html: `
       <h1>Ready to launch</h1>

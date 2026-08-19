@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server'
-import { Resend } from 'resend'
 import { corsHeaders, handleOptions } from '@/lib/cors'
 import { assertEntitled } from '@/lib/gate'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { checkRateLimit, hashIpForRateLimit } from '@/lib/rate-limit'
 import { checkWidgetCaptcha } from '@/lib/turnstileWidgetGuard'
+import { sendEmail } from '@/lib/email/send'
+import { renderEmail } from '@/lib/email/layout'
 
-import { platformFromEmail } from '@/lib/fromEmail'
 import { sendSms } from '@/lib/twilio-sms'
 import { splitName } from '@/lib/nameUtils'
 
@@ -111,32 +111,39 @@ export async function POST(request: Request) {
 
     // Send email via Resend
     if (process.env.RESEND_API_KEY) {
-      const resend = new Resend(process.env.RESEND_API_KEY)
       const fmtPrice = (c: number) => `$${(c / 100).toFixed(2)}`
-      
-      const emailHtml = `
-      <!DOCTYPE html>
-      <html>
-      <body style="font-family:sans-serif;padding:20px;">
-        <h2>📅 New Booking Request</h2>
-        <p>A new appointment has been requested.</p>
-        <p><strong>Customer:</strong> ${name}<br/>
-        <strong>Email:</strong> ${email}<br/>
-        <strong>Phone:</strong> ${phone || 'N/A'}</p>
-        <hr/>
-        <p><strong>Service:</strong> ${service.name} (${fmtPrice(service.price_cents || 0)})<br/>
-        <strong>Date:</strong> ${date}<br/>
-        <strong>Time:</strong> ${time}<br/>
-        <strong>Notes:</strong> ${notes || 'None'}</p>
-      </body>
-      </html>`
-      
-      const { error: emailError } = await resend.emails.send({
-        from: platformFromEmail(),
-        to: [toEmail],
+
+      // renderEmail escapes every value. The previous version interpolated the
+      // customer's name and notes straight into an HTML string, so anything a
+      // visitor typed was markup in the contractor's inbox.
+      const emailHtml = renderEmail({
+        heading: 'New booking request',
+        blocks: [
+          { type: 'text', text: 'A new appointment has been requested.' },
+          {
+            type: 'facts',
+            rows: [
+              ['Customer', name],
+              ['Email', email],
+              ['Phone', phone || 'Not given'],
+              ['Service', `${service.name} (${fmtPrice(service.price_cents || 0)})`],
+              ['Date', date],
+              ['Time', time],
+              ['Notes', notes || 'None'],
+            ],
+          },
+        ],
+      })
+
+      const emailResult = await sendEmail({
+        kind: 'booking.request',
+        to: toEmail,
+        contractorId,
+        replyTo: email,
         subject: `New booking request from ${name} on ${date}`,
         html: emailHtml,
       })
+      const emailError = emailResult.sent ? null : emailResult.error ?? emailResult.reason
       if (emailError) console.error('send-booking email failed:', emailError)
     }
 

@@ -1,5 +1,5 @@
+import { sendEmail } from '@/lib/email/send'
 import { v4 as uuidv4 } from 'uuid'
-import { Resend } from 'resend'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { mergeCustomAddOnsWithDefaults } from '@/lib/provision/mergeCustomAddOns'
@@ -50,7 +50,6 @@ import {
   buildProvisionSignature,
   biasLayoutForEngagement,
 } from '@/lib/provision/siteSignature'
-import { platformFromEmail } from '@/lib/fromEmail'
 import { attachVercelDomain } from '@/lib/vercel-domains'
 import {
   buildDefaultAbout,
@@ -1437,7 +1436,6 @@ export async function provisionTenant(
   const embedSnippet = widgetEmbedSnippet(widgetId, engagementModel)
 
   if (sendWelcomeEmail && process.env.RESEND_API_KEY) {
-    const resend = new Resend(process.env.RESEND_API_KEY)
     const pendingSite = !isWidgetOnly && siteStatus === 'pending_approval'
     const productLine = isWidgetOnly
       ? `<p>Your Quote Calculator widget is ready to embed on your existing website. Paste this snippet where you want the calculator to appear:</p>
@@ -1446,9 +1444,10 @@ export async function provisionTenant(
         ? `<p>Your custom site has been provisioned and is pending admin approval. We will notify you when it is live.</p>`
         : `<p>Your custom site is live.</p>`
 
-    await resend.emails.send({
-      from: platformFromEmail(),
-      to: [ownerEmail],
+    await sendEmail({
+      kind: 'tenant.welcome',
+      to: ownerEmail,
+      contractorId: tenantId,
       subject: isWidgetOnly
         ? 'Your DitchTheForm Calculator is ready to embed'
         : pendingSite

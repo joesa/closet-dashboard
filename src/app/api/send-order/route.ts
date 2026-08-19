@@ -1,9 +1,8 @@
-import { Resend } from 'resend'
 import { corsHeaders, handleOptions } from '@/lib/cors'
 import { assertEntitled } from '@/lib/gate'
-import { platformFromEmail } from '@/lib/fromEmail'
 import { checkRateLimit, hashIpForRateLimit } from '@/lib/rate-limit'
 import { checkWidgetCaptcha } from '@/lib/turnstileWidgetGuard'
+import { sendEmail } from '@/lib/email/send'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { sendSms } from '@/lib/twilio-sms'
 
@@ -233,10 +232,11 @@ export async function POST(request: Request) {
     }
 
     // ── Send email via Resend ──
-    const resend = new Resend(process.env.RESEND_API_KEY)
-    const { error: emailError } = await resend.emails.send({
-      from: platformFromEmail(),
-      to: [toEmail],
+    const emailResult = await sendEmail({
+      kind: 'order.notification',
+      to: toEmail,
+      contractorId: body.contractorId ?? null,
+      replyTo: body.customerEmail,
       subject: `New order from ${body.customerName} — ${fmt(total)}`,
       html: buildOrderEmailHtml(
         {
@@ -251,7 +251,9 @@ export async function POST(request: Request) {
         companyName
       ),
     })
-    if (emailError) console.error('send-order email failed:', emailError)
+    if (!emailResult.sent && emailResult.reason === 'error') {
+      console.error('send-order email failed:', emailResult.error)
+    }
 
     // ── Optional SMS notify (best-effort, mirrors send-lead) ──
     if (contractorPhone) {

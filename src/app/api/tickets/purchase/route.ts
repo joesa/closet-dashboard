@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server'
-import { Resend } from 'resend'
 import { corsHeaders, handleOptions } from '@/lib/cors'
 import { assertEntitled } from '@/lib/gate'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { checkRateLimit, hashIpForRateLimit } from '@/lib/rate-limit'
 import { checkWidgetCaptcha } from '@/lib/turnstileWidgetGuard'
+import { sendEmail } from '@/lib/email/send'
+import { renderEmail } from '@/lib/email/layout'
 
-import { platformFromEmail } from '@/lib/fromEmail'
 import { sendSms } from '@/lib/twilio-sms'
 import { splitName } from '@/lib/nameUtils'
 
@@ -107,31 +107,37 @@ export async function POST(request: Request) {
     }
 
     if (process.env.RESEND_API_KEY) {
-      const resend = new Resend(process.env.RESEND_API_KEY)
       const fmtPrice = (c: number) => `$${(c / 100).toFixed(2)}`
-      
-      const emailHtml = `
-      <!DOCTYPE html>
-      <html>
-      <body style="font-family:sans-serif;padding:20px;">
-        <h2>🎟️ New Ticket Request</h2>
-        <p>A customer has requested tickets for an event.</p>
-        <p><strong>Customer:</strong> ${name}<br/>
-        <strong>Email:</strong> ${email}<br/>
-        <strong>Phone:</strong> ${phone || 'N/A'}</p>
-        <hr/>
-        <p><strong>Event:</strong> ${event.name}<br/>
-        <strong>Tickets:</strong> ${safeQuantity}<br/>
-        <strong>Total:</strong> ${fmtPrice(totalCents || 0)}</p>
-      </body>
-      </html>`
-      
-      const { error: emailError } = await resend.emails.send({
-        from: platformFromEmail(),
-        to: [toEmail],
+
+      // Escaped by renderEmail — this used to splice the customer's name
+      // directly into an HTML template.
+      const emailHtml = renderEmail({
+        heading: 'New ticket request',
+        blocks: [
+          { type: 'text', text: 'A customer has requested tickets for an event.' },
+          {
+            type: 'facts',
+            rows: [
+              ['Customer', name],
+              ['Email', email],
+              ['Phone', phone || 'Not given'],
+              ['Event', event.name],
+              ['Tickets', String(safeQuantity)],
+              ['Total', fmtPrice(totalCents || 0)],
+            ],
+          },
+        ],
+      })
+
+      const emailResult = await sendEmail({
+        kind: 'ticket.request',
+        to: toEmail,
+        contractorId,
+        replyTo: email,
         subject: `New ticket request from ${name} for ${event.name}`,
         html: emailHtml,
       })
+      const emailError = emailResult.sent ? null : emailResult.error ?? emailResult.reason
       if (emailError) console.error('send-ticket email failed:', emailError)
     }
 

@@ -1,7 +1,4 @@
-import { Resend } from 'resend'
-import { platformFromEmail } from '@/lib/fromEmail'
-
-const FROM = platformFromEmail()
+import { sendEmail } from '@/lib/email/send'
 
 export async function sendIntakeLinkEmail(opts: {
   to: string
@@ -18,8 +15,6 @@ export async function sendIntakeLinkEmail(opts: {
   premiumRemainderLabel?: string
 }) {
   if (!process.env.RESEND_API_KEY) return
-
-  const resend = new Resend(process.env.RESEND_API_KEY)
   const who = opts.businessName?.trim() || 'your business'
 
   const hasTierChoice = !!(opts.verifyStandardUrl && opts.verifyPremiumUrl)
@@ -56,9 +51,9 @@ export async function sendIntakeLinkEmail(opts: {
          <p>Or open the intake form directly: <a href="${opts.intakeUrl}">${opts.intakeUrl}</a></p>`
       : `<p><a href="${opts.intakeUrl}">Complete your setup form</a></p>`
 
-  await resend.emails.send({
-    from: FROM,
-    to: [opts.to],
+  await sendEmail({
+    kind: 'intake.link',
+    to: opts.to,
     subject: `Complete your DitchTheForm setup for ${who}`,
     html: `
       <h1>DitchTheForm setup</h1>

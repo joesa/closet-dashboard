@@ -1,6 +1,5 @@
+import { sendEmail } from '@/lib/email/send'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
-import { Resend } from 'resend'
-import { platformFromEmail } from '@/lib/fromEmail'
 import { logSystemAction } from '@/lib/admin'
 import { ensureTenantAuthUser } from '@/lib/provision/ensureTenantAuthUser'
 import { syncTenantLaunchAccess } from '@/lib/intake/syncTenantLaunchAccess'
@@ -195,10 +194,9 @@ async function sendAdoptionEmail(opts: {
   const loginUrl = `${publicAppOrigin().replace(/\/$/, '')}/login`
 
   try {
-    const resend = new Resend(process.env.RESEND_API_KEY)
-    await resend.emails.send({
-      from: platformFromEmail(),
-      to: [opts.to],
+    await sendEmail({
+      kind: 'spec.adopt_offer',
+      to: opts.to,
       subject: `${opts.businessName} — your website`,
       html: `
         <h1>Good news, ${opts.businessName}</h1>
