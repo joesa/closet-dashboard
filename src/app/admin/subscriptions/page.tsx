@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { getStripe } from '@/lib/stripe'
+import { loadMrrFromStripe } from '@/lib/billing/mrr'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -12,6 +13,7 @@ type Row = {
   subscription_status: string | null
   subscription_plan: string | null
   current_period_end: string | null
+  trial_ends_at: string | null
 }
 
 type PriceInfo = { id: string; monthlyEquivalent: number; currency: string } | null
@@ -32,14 +34,17 @@ async function loadPrice(priceId: string | undefined, interval: 'month' | 'year'
 export default async function SubscriptionsPage() {
   const admin = getSupabaseAdmin()
 
-  const [{ data, error }, monthlyPrice, yearlyPrice] = await Promise.all([
+  const [{ data, error }, monthlyPrice, yearlyPrice, revenue] = await Promise.all([
     admin
       .from('contractor_settings')
-      .select('id, company_name, contact_email, subscription_status, subscription_plan, current_period_end')
+      .select(
+        'id, company_name, contact_email, subscription_status, subscription_plan, current_period_end, trial_ends_at'
+      )
       .order('current_period_end', { ascending: true, nullsFirst: false })
       .limit(500),
     loadPrice(process.env.STRIPE_PRICE_MONTHLY, 'month'),
     loadPrice(process.env.STRIPE_PRICE_YEARLY, 'year'),
+    loadMrrFromStripe(),
   ])
 
   const rows = (data ?? []) as Row[]
@@ -66,18 +71,22 @@ export default async function SubscriptionsPage() {
       if (r.subscription_plan === 'monthly') activeMonthly++
       else if (r.subscription_plan === 'yearly') activeYearly++
     }
-    if (s === 'trialing' && r.current_period_end) {
-      const t = new Date(r.current_period_end).getTime()
+    // A trial's end date lives in trial_ends_at. This used to read
+    // current_period_end, which is null on every one of the 251 trialing rows,
+    // so the section was permanently empty and looked like "no trials ending".
+    const trialEnd = r.trial_ends_at ?? r.current_period_end
+    if (s === 'trialing' && trialEnd) {
+      const t = new Date(trialEnd).getTime()
       if (t < soonCutoff && t > nowMs) trialingSoon.push(r)
     }
     if (s === 'past_due') pastDue.push(r)
     if (s === 'canceled') recentCanceled.push(r)
   }
 
-  const mrr =
-    (monthlyPrice?.monthlyEquivalent ?? 0) * activeMonthly +
-    (yearlyPrice?.monthlyEquivalent ?? 0) * activeYearly
-  const arr = mrr * 12
+  // Revenue comes from Stripe, not from multiplying a plan count by list price.
+  const revenueError = 'error' in revenue ? revenue.error : null
+  const mrr = 'error' in revenue ? null : revenue.mrr
+  const arr = 'error' in revenue ? null : revenue.arr
 
   return (
     <div className="space-y-8">
@@ -87,6 +96,13 @@ export default async function SubscriptionsPage() {
           Roll-up across all contractor accounts.
         </p>
       </header>
+
+      {revenueError && (
+        <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+          Revenue could not be read from Stripe ({revenueError}). MRR and ARR are hidden rather than
+          estimated.
+        </div>
+      )}
 
       {error && (
         <div className="rounded-md border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
@@ -99,16 +115,18 @@ export default async function SubscriptionsPage() {
         <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
           <div className="text-xs uppercase tracking-wide text-gray-500">MRR</div>
           <div className="mt-2 text-2xl font-semibold text-gray-900">
-            ${mrr.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+            {mrr === null ? '—' : `$${mrr.toLocaleString(undefined, { maximumFractionDigits: 0 })}`}
           </div>
           <div className="mt-1 text-xs text-gray-400">
-            {activeMonthly} monthly + {activeYearly} yearly
+            {revenueError
+              ? 'Stripe unavailable'
+              : `${'subscriptionCount' in revenue ? revenue.subscriptionCount : 0} billed subscription(s)`}
           </div>
         </div>
         <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
           <div className="text-xs uppercase tracking-wide text-gray-500">ARR (est)</div>
           <div className="mt-2 text-2xl font-semibold text-gray-900">
-            ${arr.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+            {arr === null ? '—' : `$${arr.toLocaleString(undefined, { maximumFractionDigits: 0 })}`}
           </div>
           <div className="mt-1 text-xs text-gray-400">MRR × 12</div>
         </div>
