@@ -4,6 +4,7 @@ import { assertEntitled } from '@/lib/gate'
 import { DEMO_CONTRACTOR_ID, isAllowedDemoOrigin } from '@/lib/demo'
 import { platformFromEmail } from '@/lib/fromEmail'
 import { checkRateLimit, hashIpForRateLimit } from '@/lib/rate-limit'
+import { checkWidgetCaptcha } from '@/lib/turnstileWidgetGuard'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { sendSms } from '@/lib/twilio-sms'
 import { DEDUP_WINDOW_MS, findRecentDuplicate } from '@/lib/leads/findRecentDuplicate'
@@ -314,6 +315,16 @@ export async function POST(request: Request) {
         request.headers.get('cf-connecting-ip') ||
         ''
       const ipHashLimit = await hashIpForRateLimit(ipForLimit)
+      // Verified when the widget sends one; not yet demanded of the
+      // bundles already embedded on customer sites. See turnstileWidgetGuard.
+      const captcha = await checkWidgetCaptcha(
+        (body as { turnstileToken?: unknown }).turnstileToken,
+        request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || undefined
+      )
+      if (!captcha.ok) {
+        return json({ error: captcha.error }, captcha.status)
+      }
+
       const rateLimit = await checkRateLimit(
         `send-lead:${body.contractorId}:${ipHashLimit}`,
         10,

@@ -4,6 +4,7 @@ import { corsHeaders, handleOptions } from '@/lib/cors'
 import { assertEntitled } from '@/lib/gate'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { checkRateLimit, hashIpForRateLimit } from '@/lib/rate-limit'
+import { checkWidgetCaptcha } from '@/lib/turnstileWidgetGuard'
 
 import { platformFromEmail } from '@/lib/fromEmail'
 import { sendSms } from '@/lib/twilio-sms'
@@ -47,6 +48,16 @@ export async function POST(request: Request) {
 
     const ipForLimit = request.headers.get('x-forwarded-for') || request.headers.get('cf-connecting-ip') || ''
     const ipHashLimit = await hashIpForRateLimit(ipForLimit)
+    // Verified when the widget sends one; not yet demanded of the
+    // bundles already embedded on customer sites. See turnstileWidgetGuard.
+    const captcha = await checkWidgetCaptcha(
+      (body as { turnstileToken?: unknown }).turnstileToken,
+      request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || undefined
+    )
+    if (!captcha.ok) {
+      return json({ error: captcha.error }, captcha.status)
+    }
+
     const rateLimit = await checkRateLimit(`send-booking:${contractorId}:${ipHashLimit}`, 10, 60)
     if (!rateLimit.allowed) {
       return json({ error: 'rate_limited', retryAfterSeconds: rateLimit.retryAfterSeconds }, 429)
