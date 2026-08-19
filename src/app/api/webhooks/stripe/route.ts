@@ -2,6 +2,12 @@ import { NextResponse } from 'next/server'
 import type Stripe from 'stripe'
 import { getStripe, priceIdToPlan } from '@/lib/stripe'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import {
+  sendPaymentFailedEmail,
+  sendTrialEndingEmail,
+  sendSubscriptionEndedEmail,
+} from '@/lib/email/billingEmails'
+import { PAST_DUE_GRACE_DAYS } from '@/lib/entitlement'
 import { applyIntakeCheckoutSession } from '@/lib/intake/applyIntakeCheckoutSession'
 
 export const runtime = 'nodejs'
@@ -113,10 +119,57 @@ export async function POST(req: Request) {
         const subscriptionId =
           typeof subId === 'string' ? subId : subId?.id ?? null
         if (subscriptionId) {
-          await admin
+          const { data: affected } = await admin
             .from('contractor_settings')
             .update({ subscription_status: 'past_due' })
             .eq('stripe_subscription_id', subscriptionId)
+            .select('id, contact_email, company_name, current_period_end')
+
+          // Tell them. Previously this branch flipped the flag and stopped,
+          // which meant the customer's first notice was their own quote form
+          // failing on their website. The grace window in entitlement.ts keeps
+          // the widget alive while this lands.
+          for (const row of affected ?? []) {
+            const email = (row as { contact_email?: string | null }).contact_email
+            if (!email) continue
+            await sendPaymentFailedEmail({
+              to: email,
+              contractorId: (row as { id: string }).id,
+              companyName: (row as { company_name?: string | null }).company_name,
+              attempt: 1,
+              daysLeft: PAST_DUE_GRACE_DAYS,
+              periodKey: String(
+                (row as { current_period_end?: string | null }).current_period_end ?? 'unknown'
+              ),
+            })
+          }
+        }
+        break
+      }
+
+      case 'customer.subscription.trial_will_end': {
+        const sub = event.data.object as Stripe.Subscription
+        const { data: rows } = await admin
+          .from('contractor_settings')
+          .select('id, contact_email, company_name, trial_ends_at')
+          .eq('stripe_subscription_id', sub.id)
+        for (const row of rows ?? []) {
+          const email = (row as { contact_email?: string | null }).contact_email
+          if (!email) continue
+          const endsAt =
+            (row as { trial_ends_at?: string | null }).trial_ends_at ??
+            new Date((sub.trial_end ?? 0) * 1000).toISOString()
+          const daysLeft = Math.max(
+            1,
+            Math.ceil((new Date(endsAt).getTime() - Date.now()) / 86_400_000)
+          )
+          await sendTrialEndingEmail({
+            to: email,
+            contractorId: (row as { id: string }).id,
+            companyName: (row as { company_name?: string | null }).company_name,
+            daysLeft,
+            trialEndsAt: endsAt,
+          })
         }
         break
       }
@@ -183,12 +236,32 @@ async function syncSubscription(sub: Stripe.Subscription) {
     .from('contractor_settings')
     .update(update)
     .eq('stripe_subscription_id', sub.id)
-    .select('id')
+    .select('id, contact_email, company_name')
 
-  if (!bySub || bySub.length === 0) {
-    await admin
+  let affected = bySub ?? []
+  if (affected.length === 0) {
+    const { data: byCustomer } = await admin
       .from('contractor_settings')
       .update(update)
       .eq('stripe_customer_id', customerId)
+      .select('id, contact_email, company_name')
+    affected = byCustomer ?? []
+  }
+
+  // Access has actually stopped — say so, and say how to undo it. This used to
+  // write 'canceled' and go quiet, so the customer discovered it from their own
+  // website. Idempotency-keyed per day, so a burst of subscription events
+  // cannot produce a burst of mail.
+  if (status === 'canceled') {
+    for (const row of affected) {
+      const email = (row as { contact_email?: string | null }).contact_email
+      if (!email) continue
+      await sendSubscriptionEndedEmail({
+        to: email,
+        contractorId: (row as { id: string }).id,
+        companyName: (row as { company_name?: string | null }).company_name,
+        reason: sub.status === 'unpaid' ? 'unpaid' : 'canceled',
+      })
+    }
   }
 }

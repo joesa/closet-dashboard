@@ -64,6 +64,13 @@ export default async function BillingPage({
   const isActive = ent.status === 'active'
   const inTrial = ent.isEntitled && ent.status === 'trialing'
   const needsSetup = !ent.contractorId
+  // A declined card is not an expired trial. This page told a two-year paying
+  // customer whose Amex expired that their "30-Day Free Trial has concluded"
+  // and invited them to upgrade — while their live quote calculator was the
+  // thing that had actually broken.
+  const pastDue = ent.status === 'past_due'
+  const graceDaysLeft = ent.graceDaysLeft
+  const canceled = ent.status === 'canceled'
 
   // Is this the shared demo contractor? The demo never expires and can't be
   // upgraded — show an explanatory notice instead of the Stripe checkout UI.
@@ -131,20 +138,30 @@ export default async function BillingPage({
                 <h1 className="text-4xl font-bold tracking-tighter text-white sm:text-5xl">
                   {isActive
                     ? 'You’re on DitchTheForm Pro.'
-                    : inTrial
-                      ? 'Your free trial is active.'
-                      : needsSetup
-                        ? 'Finish setting up your account.'
-                        : 'Your 30-Day Free Trial has concluded.'}
+                    : pastDue
+                      ? 'We couldn’t process your payment.'
+                      : inTrial
+                        ? 'Your free trial is active.'
+                        : needsSetup
+                          ? 'Finish setting up your account.'
+                          : canceled
+                            ? 'Your subscription has ended.'
+                            : 'Your 30-Day Free Trial has concluded.'}
                 </h1>
                 <p className="mx-auto mt-4 max-w-md text-base text-slate-400">
                   {isActive
                     ? 'Manage your subscription, update your card, or switch your billing cadence below.'
-                    : inTrial
-                      ? `You have ${ent.daysLeftInTrial} day${ent.daysLeftInTrial === 1 ? '' : 's'} left. Subscribe anytime, or continue to your dashboard.`
-                      : needsSetup
-                        ? 'We could not find your contractor profile. Return to signup or contact support.'
-                        : 'To keep generating interactive quotes and capturing SMS leads, upgrade to DitchTheForm Pro.'}
+                    : pastDue
+                      ? graceDaysLeft > 0
+                        ? `Your card was declined. Your calculator is still live and still capturing leads — update your card within ${graceDaysLeft} day${graceDaysLeft === 1 ? '' : 's'} to keep it that way.`
+                        : 'Your card was declined and your calculator has stopped accepting new quotes. Updating your card brings it straight back — your settings, pricing and leads are all still here.'
+                      : inTrial
+                        ? `You have ${ent.daysLeftInTrial} day${ent.daysLeftInTrial === 1 ? '' : 's'} left. Subscribe anytime, or continue to your dashboard.`
+                        : needsSetup
+                          ? 'We could not find your contractor profile. Return to signup or contact support.'
+                          : canceled
+                            ? 'Your settings, pricing and past leads are all still here. Restarting brings your calculator straight back.'
+                            : 'To keep generating interactive quotes and capturing SMS leads, upgrade to DitchTheForm Pro.'}
                 </p>
                 {justCanceled && !isActive && (
                   <p className="mt-3 text-sm text-amber-300">
