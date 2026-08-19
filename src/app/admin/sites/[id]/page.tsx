@@ -24,6 +24,7 @@ type SiteConfigShape = {
   default_room?: string;
   design_variant?: string | null;
   engagement_model?: string | null;
+  analytics_config?: { ga4?: string | null; plausible?: string | null } | null;
   edit_in_place?: boolean | null;
   hero_config?: { headline?: string; backgroundImage?: string } & Record<string, unknown>;
   about_config?: { description?: string } & Record<string, unknown>;
@@ -79,6 +80,7 @@ export default async function TenantDetailsPage({
         default_room,
         design_variant,
         engagement_model,
+        analytics_config,
         edit_in_place,
         hero_config,
         about_config,
@@ -325,6 +327,37 @@ export default async function TenantDetailsPage({
                     </form>
                     <p className="text-neutral-500 text-xs mt-2">
                       &ldquo;Auto&rdquo; gives every site a unique seeded layout. Pick a preset to force a specific look, then use Preview to review.
+                    </p>
+                  </div>
+                  <div>
+                    <span className="text-neutral-400 text-sm block mb-1">Analytics</span>
+                    <form action="/api/admin/sites/analytics" method="POST" className="flex flex-wrap items-center gap-2">
+                      <input type="hidden" name="tenantId" value={tenant.id} />
+                      <input
+                        name="ga4"
+                        defaultValue={config.analytics_config?.ga4 ?? ''}
+                        placeholder="G-XXXXXXXXXX"
+                        aria-label="GA4 measurement ID"
+                        className="bg-black/50 border border-neutral-700 text-white text-sm rounded px-3 py-2 font-mono"
+                      />
+                      <input
+                        name="plausible"
+                        defaultValue={config.analytics_config?.plausible ?? ''}
+                        placeholder="example.com"
+                        aria-label="Plausible domain"
+                        className="bg-black/50 border border-neutral-700 text-white text-sm rounded px-3 py-2 font-mono"
+                      />
+                      <button
+                        type="submit"
+                        className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded transition-colors"
+                      >
+                        Save
+                      </button>
+                    </form>
+                    <p className="text-neutral-500 text-xs mt-2">
+                      Identifiers only — a GA4 measurement ID and/or a Plausible domain. Pasting a
+                      script tag is rejected: it would run on the customer&rsquo;s own domain. Leave
+                      both blank to turn analytics off.
                     </p>
                   </div>
                 </div>
