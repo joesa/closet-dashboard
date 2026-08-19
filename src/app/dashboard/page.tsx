@@ -156,6 +156,28 @@ export default function DashboardPage() {
   // Defaults to true so a slow/failed check never hides a real site owner's
   // tools; the widget branch is the exception, not the fallback.
   const [hasHostedSite, setHasHostedSite] = useState(true)
+  // What the subscription actually bought them. The same conversion number has
+  // existed on the admin page all along; the person paying for it could not see
+  // it, which made "why am I paying this" a question with no answer in-product.
+  const [stats, setStats] = useState<{
+    quotesStarted: number
+    leadsCaptured: number
+    conversionRate: number | null
+    pipelineValue: number
+    leadsLast30: number
+  } | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/dashboard/stats')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((json) => {
+        if (!cancelled && json && typeof json.leadsCaptured === 'number') setStats(json)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [])
   useEffect(() => {
     let cancelled = false
     fetch('/api/contractor/site-product')
@@ -796,6 +818,40 @@ export default function DashboardPage() {
           trialEndsAt={form.trial_ends_at}
           isDemo={form.id === DEMO_CONTRACTOR_ID}
         />
+
+        {/* What the calculator has actually done for them, and a way into the
+            leads themselves. Before this, leads existed only as an email and a
+            text — the customer's own results were the one thing the dashboard
+            would not show. */}
+        <div className="mb-8 grid grid-cols-1 gap-px overflow-hidden rounded-2xl bg-white/[0.06] sm:grid-cols-4">
+          <Link
+            href="/dashboard/leads"
+            className="bg-[#0f0f0f] p-5 transition hover:bg-[#141414]"
+          >
+            <div className="text-2xl font-semibold text-white">
+              {stats ? stats.leadsCaptured : '—'}
+            </div>
+            <div className="mt-1 text-xs text-zinc-500">Leads captured · view all →</div>
+          </Link>
+          <div className="bg-[#0f0f0f] p-5">
+            <div className="text-2xl font-semibold text-white">
+              {stats ? stats.leadsLast30 : '—'}
+            </div>
+            <div className="mt-1 text-xs text-zinc-500">In the last 30 days</div>
+          </div>
+          <div className="bg-[#0f0f0f] p-5">
+            <div className="text-2xl font-semibold text-white">
+              {stats ? stats.quotesStarted : '—'}
+            </div>
+            <div className="mt-1 text-xs text-zinc-500">Quotes started</div>
+          </div>
+          <div className="bg-[#0f0f0f] p-5">
+            <div className="text-2xl font-semibold text-white">
+              {stats?.conversionRate != null ? `${stats.conversionRate.toFixed(0)}%` : '—'}
+            </div>
+            <div className="mt-1 text-xs text-zinc-500">Quote → lead</div>
+          </div>
+        </div>
 
         {guideOpen && (
           <div className="mb-6 rounded-2xl border border-white/[0.06] bg-[#12151C] p-6">

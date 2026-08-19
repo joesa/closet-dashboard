@@ -42,6 +42,8 @@ const GUARDS = [
   'assertDraftIntake',
   // Wraps resolveDomainActor and refuses anything but the owning contractor.
   'loadOwnedSiteContent',
+  // Reads through the caller's own session so RLS scopes the rows.
+  'loadOwnLeads',
   // Single-use emailed tokens: password reset and email change.
   'findValidAuthEmailToken',
   // Shared-secret headers for the scraper control plane and inbound webhooks.
