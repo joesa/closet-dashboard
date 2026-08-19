@@ -18,7 +18,9 @@ import { resolveServiceTiers } from '@/lib/catalog/servicePriceCatalog'
 import { getServiceUxDefaults } from '@/lib/catalog/serviceUxDefaults'
 import { assertOfferedServicesPriced, roomIsUnpriced } from '@/lib/pricingGuard'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
-import { mergeCustomAddOnsWithDefaults } from './provisionTenant'
+// Direct import: pulling this from provisionTenant dragged the image stack
+// (and the native `sharp` module) into every route that configures a widget.
+import { mergeCustomAddOnsWithDefaults } from '@/lib/provision/mergeCustomAddOns'
 
 function defaultTierNames(hints: WidgetConfigHints, generated?: GeneratedWidgetConfig) {
   return {

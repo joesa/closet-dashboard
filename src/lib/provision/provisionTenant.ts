@@ -1,6 +1,9 @@
 import { v4 as uuidv4 } from 'uuid'
 import { Resend } from 'resend'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { mergeCustomAddOnsWithDefaults } from '@/lib/provision/mergeCustomAddOns'
+// Re-exported for the existing importers of this module.
+export { mergeCustomAddOnsWithDefaults }
 import { teardownTenantData } from '@/lib/provision/teardownTenantData'
 import { widgetEmbedSnippet } from '@/lib/urls'
 import { generateTempPassword } from '@/lib/clientLoginCredentials'
@@ -210,29 +213,6 @@ function mergeCustomRoomsWithServices(
 // overrides add-ons the AI/admin already supplied — only backfills a missing
 // price on those, and only invents industry-typical add-ons when the AI gave
 // us nothing to work with at all.
-export function mergeCustomAddOnsWithDefaults(
-  customAddOns: Array<{ name: string; roomType?: string; price?: number }>,
-  industrySlug: IndustrySlug,
-  services: string[] | null | undefined
-): Array<{ name: string; roomType?: string; price: number }> {
-  if (customAddOns.length > 0) {
-    return customAddOns.map((a) => ({
-      ...a,
-      price:
-        typeof a.price === 'number' && a.price > 0
-          ? a.price
-          : resolveServiceTiers(a.name, industrySlug).basic,
-    }))
-  }
-  const guidance = inferQuoteCalculatorGuidance({
-    industry: getIndustry(industrySlug).label,
-    services: services || undefined,
-  })
-  return guidance.addOnExamples.slice(0, 4).map((name) => ({
-    name,
-    price: resolveServiceTiers(name, industrySlug).basic,
-  }))
-}
 
 export function shouldIncludeBeforeAfter({
   beforeAfterApplicable,
