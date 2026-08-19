@@ -40,6 +40,7 @@ export default async function LeadsPage() {
   const leads = result.ok ? result.leads : []
   const totalValue = result.ok ? result.totalValue : 0
   const last30Count = result.ok ? result.last30 : 0
+  const duplicateCount = result.ok ? result.duplicates : 0
   // Supplied by the loader; a server component may not read the clock while
   // rendering, and "how long ago" is a property of the fetched data anyway.
   const nowMs = result.ok ? result.asOf : 0
@@ -70,8 +71,12 @@ export default async function LeadsPage() {
 
         <div className="mb-8 grid grid-cols-1 gap-px overflow-hidden rounded-xl bg-white/[0.06] sm:grid-cols-3">
           <div className="bg-[#0f0f0f] p-5">
-            <div className="text-2xl font-semibold">{leads.length}</div>
-            <div className="mt-1 text-xs text-zinc-500">Leads captured</div>
+            <div className="text-2xl font-semibold">{leads.length - duplicateCount}</div>
+            <div className="mt-1 text-xs text-zinc-500">
+              {duplicateCount > 0
+                ? `People who enquired · ${duplicateCount} follow-up${duplicateCount === 1 ? '' : 's'}`
+                : 'People who enquired'}
+            </div>
           </div>
           <div className="bg-[#0f0f0f] p-5">
             <div className="text-2xl font-semibold">{last30Count}</div>
@@ -113,7 +118,17 @@ export default async function LeadsPage() {
                 {leads.map((lead) => (
                   <tr key={lead.id} className="border-t border-white/[0.06] align-top">
                     <td className="px-4 py-3">
-                      <div className="font-medium text-white">{leadName(lead)}</div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-white">{leadName(lead)}</span>
+                        {lead.duplicate_of && (
+                          <span
+                            className="rounded-full bg-white/[0.08] px-2 py-0.5 text-[10px] uppercase tracking-wide text-zinc-400"
+                            title="This person had already enquired within the last 24 hours"
+                          >
+                            Follow-up
+                          </span>
+                        )}
+                      </div>
                       {lead.message && (
                         <div className="mt-1 max-w-xs text-xs text-zinc-500">{lead.message}</div>
                       )}

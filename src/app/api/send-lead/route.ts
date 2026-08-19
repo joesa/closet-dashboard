@@ -6,6 +6,7 @@ import { platformFromEmail } from '@/lib/fromEmail'
 import { checkRateLimit, hashIpForRateLimit } from '@/lib/rate-limit'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { sendSms } from '@/lib/twilio-sms'
+import { DEDUP_WINDOW_MS, findRecentDuplicate } from '@/lib/leads/findRecentDuplicate'
 
 export const runtime = 'edge'
 
@@ -399,6 +400,9 @@ export async function POST(request: Request) {
     }
 
     // ── Persist widget lead before outbound email/SMS ──
+    // Set when this submission repeats a recent one; suppresses the duplicate
+    // notification without discarding the lead itself.
+    let isDuplicateSubmission = false
     if (body.contractorId) {
       const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
       if (!serviceKey) {
@@ -419,8 +423,28 @@ export async function POST(request: Request) {
           ''
       )
 
+      // Has this person already submitted today? A repeat is kept — a later
+      // submission usually carries better information than the first, and
+      // discarding a customer's enquiry is worse than showing a duplicate —
+      // but it is linked to the original so the inbox can collapse it and the
+      // contractor is not paged a second time for the same person.
+      let duplicateOf: string | null = null
+      if (body.customerEmail) {
+        const { data: priorLeads } = await adminSupa
+          .from('leads')
+          .select('id, created_at, duplicate_of')
+          .eq('contractor_id', body.contractorId)
+          .ilike('email', body.customerEmail)
+          .gte('created_at', new Date(Date.now() - DEDUP_WINDOW_MS).toISOString())
+          .order('created_at', { ascending: false })
+          .limit(10)
+        duplicateOf = findRecentDuplicate(priorLeads ?? [], Date.now())
+      }
+      isDuplicateSubmission = duplicateOf !== null
+
       const { error: leadInsertError } = await adminSupa.from('leads').insert({
         contractor_id: body.contractorId,
+        duplicate_of: duplicateOf,
         first_name: first,
         last_name: last,
         email: body.customerEmail,
@@ -448,9 +472,14 @@ export async function POST(request: Request) {
     }
 
     // ── Send email via Resend ──
+    // A repeat submission is stored but not announced: the contractor already
+    // has this person's details from the first one, and a second alert reads
+    // as a second customer.
     const resend = new Resend(process.env.RESEND_API_KEY)
 
-    const { data, error } = await resend.emails.send({
+    const { data, error } = isDuplicateSubmission
+      ? { data: null, error: null }
+      : await resend.emails.send({
       from: platformFromEmail(),
       to: [toEmail],
       replyTo: body.customerEmail,
@@ -535,7 +564,9 @@ export async function POST(request: Request) {
     const smsBody = smsLines.join('\n')
 
     let smsSent = false
-    if (isDemoSubmission) {
+    if (isDuplicateSubmission) {
+      console.log('Duplicate submission: notification suppressed for', body.contractorId)
+    } else if (isDemoSubmission) {
       console.log('Demo mode: SMS bypassed for contractorId', body.contractorId)
     } else if (contractorPhone) {
       try {
@@ -556,6 +587,7 @@ export async function POST(request: Request) {
       // widget can render the "what your phone would have buzzed with"
       // preview. Real submissions don't need (and shouldn't leak) it.
       smsPreview: isDemoSubmission ? smsBody : undefined,
+      duplicate: isDuplicateSubmission,
     })
   } catch (err) {
     console.error('Send lead error:', err)

@@ -24,6 +24,10 @@ export async function GET() {
   const header = [
     'captured_at', 'name', 'email', 'phone', 'room_type', 'finish_type',
     'linear_feet', 'estimated_total', 'range_low', 'range_high', 'message', 'source',
+    // Exported rather than filtered out: a follow-up often carries better
+    // details than the first submission, and the spreadsheet should show why
+    // the same person appears twice.
+    'is_follow_up',
   ]
   const rows = result.leads.map((lead) =>
     [
@@ -39,6 +43,7 @@ export async function GET() {
       lead.range_high,
       lead.message,
       lead.source_origin,
+      lead.duplicate_of ? 'yes' : 'no',
     ]
       .map(csvCell)
       .join(',')

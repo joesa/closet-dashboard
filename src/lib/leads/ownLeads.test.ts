@@ -5,7 +5,7 @@ import { leadName, type LeadRow } from '@/lib/leads/ownLeads'
  * The lead inbox is the first screen to show one contractor's customer data,
  * scoped by a row-level policy that had never been exercised — it was written
  * for a screen nobody built. The isolation itself is enforced by Postgres and
- * verified against the live database (see the RLS check in the deploy notes);
+ * verified against the live database by src/lib/db/rlsTenantIsolation.test.ts;
  * these cover the presentation decisions that would otherwise misattribute a
  * lead in the list.
  */
@@ -25,6 +25,7 @@ function lead(overrides: Partial<LeadRow> = {}): LeadRow {
     range_high: null,
     add_ons: [],
     source_origin: null,
+    duplicate_of: null,
     created_at: new Date().toISOString(),
     ...overrides,
   }

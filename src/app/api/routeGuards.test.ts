@@ -50,6 +50,8 @@ const GUARDS = [
   'assertControlPlaneToken',
   'assertWebhookToken',
   'validateTwilioSignature',
+  // Resend delivery receipts, verified as an HMAC over the raw body.
+  'verifyResendSignature',
 ]
 
 /**

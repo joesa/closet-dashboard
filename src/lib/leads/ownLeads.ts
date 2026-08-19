@@ -28,11 +28,20 @@ export type LeadRow = {
   range_high: number | null
   add_ons: unknown
   source_origin: string | null
+  duplicate_of: string | null
   created_at: string
 }
 
 export type OwnLeadsResult =
-  | { ok: true; leads: LeadRow[]; totalValue: number; last30: number; asOf: number }
+  | {
+      ok: true
+      leads: LeadRow[]
+      totalValue: number
+      last30: number
+      /** Repeat submissions within the dedup window; not distinct customers. */
+      duplicates: number
+      asOf: number
+    }
   | { ok: false; error: string }
 
 export async function loadOwnLeads(limit = 200): Promise<OwnLeadsResult> {
@@ -45,7 +54,7 @@ export async function loadOwnLeads(limit = 200): Promise<OwnLeadsResult> {
   const { data, error } = await supabase
     .from('leads')
     .select(
-      'id, first_name, last_name, email, phone, message, room_type, finish_type, linear_feet, estimated_total, range_low, range_high, add_ons, source_origin, created_at'
+      'id, first_name, last_name, email, phone, message, room_type, finish_type, linear_feet, estimated_total, range_low, range_high, add_ons, source_origin, duplicate_of, created_at'
     )
     .order('created_at', { ascending: false })
     .limit(limit)
@@ -53,14 +62,18 @@ export async function loadOwnLeads(limit = 200): Promise<OwnLeadsResult> {
   if (error) return { ok: false, error: error.message }
 
   const leads = (data ?? []) as LeadRow[]
-  const totalValue = leads.reduce((sum, lead) => sum + (Number(lead.estimated_total) || 0), 0)
+  // A follow-up submission from someone who already enquired is not a second
+  // customer, so it must not inflate pipeline value or the 30-day count.
+  const distinct = leads.filter((lead) => !lead.duplicate_of)
+  const duplicates = leads.length - distinct.length
+  const totalValue = distinct.reduce((sum, lead) => sum + (Number(lead.estimated_total) || 0), 0)
   // Counted here rather than in the page: a server component may not call
   // Date.now() during render, and this is data, not presentation.
   const cutoff = Date.now() - 30 * 86_400_000
-  const last30 = leads.filter((lead) => new Date(lead.created_at).getTime() >= cutoff).length
+  const last30 = distinct.filter((lead) => new Date(lead.created_at).getTime() >= cutoff).length
   // The render is a pure function of this result, so the clock reading belongs
   // here — in async server code — not in the component.
-  return { ok: true, leads, totalValue, last30, asOf: Date.now() }
+  return { ok: true, leads, totalValue, last30, duplicates, asOf: Date.now() }
 }
 
 /** Display name for a lead, falling back to the email local-part. */
