@@ -1,4 +1,3 @@
-import sharp from 'sharp'
 
 export type ImageUploadKind = 'logo' | 'gallery' | 'hero' | 'product' | 'general'
 
@@ -44,6 +43,21 @@ export type OptimizedImage = {
  * Resize (only when needed), auto-orient, strip metadata, and re-encode user
  * uploads for fast delivery while preserving a bespoke, high-end look.
  */
+/**
+ * sharp is loaded on demand, never at module scope.
+ *
+ * A static `import sharp from 'sharp'` links libvips the moment anything in
+ * this module's import graph is pulled in, and on Vercel that dlopen fails
+ * (`libvips-cpp.so.8.18.3: cannot open shared object file`). The failure is not
+ * confined to image work: it takes down every route that transitively imports
+ * this file. /api/intake/pro/start died that way, and so did the provisioning
+ * fallback cron — which meant the only automatic recovery for a stuck
+ * provision job had been returning 500 to every call.
+ */
+async function loadSharp() {
+  return (await import('sharp')).default
+}
+
 export async function optimizeUserImage(
   input: Buffer,
   kind: ImageUploadKind,
@@ -54,6 +68,7 @@ export async function optimizeUserImage(
   }
 
   const profile = PROFILES[kind]
+  const sharp = await loadSharp()
   const image = sharp(input, { failOn: 'error', limitInputPixels: MAX_INPUT_PIXELS }).rotate()
   const meta = await image.metadata()
 

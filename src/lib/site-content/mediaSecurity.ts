@@ -1,4 +1,18 @@
-import sharp from 'sharp'
+
+/**
+ * sharp is loaded on demand, never at module scope.
+ *
+ * A static `import sharp from 'sharp'` links libvips the moment anything in
+ * this module's import graph is pulled in, and on Vercel that dlopen fails
+ * (`libvips-cpp.so.8.18.3: cannot open shared object file`). The failure is not
+ * confined to image work: it takes down every route that transitively imports
+ * this file. /api/intake/pro/start died that way, and so did the provisioning
+ * fallback cron — which meant the only automatic recovery for a stuck
+ * provision job had been returning 500 to every call.
+ */
+async function loadSharp() {
+  return (await import('sharp')).default
+}
 
 const MAX_PIXELS = 40_000_000
 const MAX_DIMENSION = 12_000
@@ -30,6 +44,7 @@ async function rasterizeSvg(buffer: Buffer, fileName: string): Promise<PreparedC
     throw new Error('SVG contains event handlers or external references')
   }
   try {
+    const sharp = await loadSharp()
     const image = sharp(Buffer.from(source), {
       failOn: 'error',
       limitInputPixels: MAX_PIXELS,
@@ -64,6 +79,7 @@ export async function prepareContentImageUpload(opts: {
     throw new Error('Use JPEG, PNG, or WebP images')
   }
   try {
+    const sharp = await loadSharp()
     const image = sharp(opts.buffer, { failOn: 'error', limitInputPixels: MAX_PIXELS })
     const metadata = await image.metadata()
     const detectedMime = metadata.format ? FORMAT_MIME[metadata.format] : undefined
