@@ -11,6 +11,11 @@ import {
 } from '@/lib/jobs/workerInstance'
 import { loadWorkerEnv } from './loadEnv'
 import {
+  captureJobError,
+  flushWorkerObservability,
+  initWorkerObservability,
+} from './observability'
+import {
   TASK_ADMIN_GENERATE_BEFORE,
   TASK_SPEC_BUILD_ADVANCE,
   TASK_ADMIN_GENERATE_IMAGES,
@@ -60,7 +65,28 @@ function getWorkerConcurrency(): number {
   return parsed
 }
 
-const taskList: TaskList = {
+/**
+ * Report, then rethrow. Graphile's retry semantics are unchanged — this only
+ * ensures the failure leaves the machine before the logs rotate.
+ */
+function reported(name: string, task: TaskList[string]): TaskList[string] {
+  return async (payload, helpers) => {
+    try {
+      return await (task as (p: unknown, h: unknown) => Promise<void>)(payload, helpers)
+    } catch (err) {
+      const p = (payload ?? {}) as { tenantId?: string }
+      captureJobError(err, {
+        task: name,
+        jobId: helpers.job?.id,
+        tenantId: p.tenantId,
+        attempt: helpers.job?.attempts,
+      })
+      throw err
+    }
+  }
+}
+
+const rawTaskList: TaskList = {
   [TASK_FULL_REDESIGN]: fullRedesignTask,
   [TASK_PROVISION_TENANT]: provisionTenantTask,
   [TASK_INTAKE_GENERATE_SITE]: intakeGenerateSiteTask,
@@ -71,6 +97,11 @@ const taskList: TaskList = {
   [TASK_SPEC_BUILD_ADVANCE]: specBuildAdvanceTask,
   [TASK_TEMP_PREVIEW_REVERT]: tempPreviewRevertTask,
 }
+
+/** Same tasks, each reporting its own failures before Graphile retries them. */
+const taskList: TaskList = Object.fromEntries(
+  Object.entries(rawTaskList).map(([name, task]) => [name, reported(name, task)])
+) as TaskList
 
 async function main() {
   const concurrency = getWorkerConcurrency()
@@ -84,6 +115,8 @@ async function main() {
     `[worker] starting Graphile Worker (concurrency=${concurrency}, build=${identity.gitSha ?? 'unknown'}, instance=${identity.id}). Tasks:`,
     Object.keys(taskList).join(', ')
   )
+
+  initWorkerObservability(identity.gitSha ?? '')
 
   // One dedicated LISTEN client + one per concurrent job.
   const pgPool = createGraphilePool(connectionString, { max: concurrency + 2 })
@@ -151,6 +184,8 @@ async function main() {
       console.warn('[worker] error during drain:', err)
     }
 
+    // Reports queued during the drain would otherwise die with the process.
+    await flushWorkerObservability()
     await pgPool.end().catch(() => undefined)
     process.exit(0)
   }

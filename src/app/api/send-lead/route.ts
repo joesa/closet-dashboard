@@ -29,6 +29,9 @@ interface SendLeadRequest {
   // Legacy shape
   calculatedLow?: number
   calculatedHigh?: number
+  /** Widget could not load pricing — capture the enquiry without a quote. */
+  quoteUnavailable?: boolean
+  message?: string
   spaceDetails?: string
   quizAnswers?: {
     frustration?: string
@@ -274,7 +277,16 @@ export async function POST(request: Request) {
     const calculatedLow = body.calculatedLow ?? body.range?.low ?? 0
     const calculatedHigh = body.calculatedHigh ?? body.range?.high ?? 0
 
-    if (!Number.isFinite(calculatedHigh) || calculatedHigh <= 0) {
+    // An enquiry with no instant estimate is still a lead.
+    //
+    // The widget sends this when it could not load the contractor's pricing —
+    // a lapsed subscription, or a settings call that failed. Its old behaviour
+    // was to quote the built-in CLOSET defaults to whoever the business
+    // actually was and then error on Calculate; it now skips to "tell us about
+    // your project" instead. Refusing that lead here would throw away the one
+    // thing still worth capturing.
+    const enquiryOnly = body.quoteUnavailable === true
+    if (!enquiryOnly && (!Number.isFinite(calculatedHigh) || calculatedHigh <= 0)) {
       return json({ error: 'Price range is required (range or calculatedLow/calculatedHigh).' }, 400)
     }
 
@@ -417,9 +429,9 @@ export async function POST(request: Request) {
         room_type: body.roomType ?? null,
         finish_type: body.finishType ?? null,
         linear_feet: body.linearFeet ?? null,
-        estimated_total: body.estimatedTotal ?? null,
-        range_low: calculatedLow,
-        range_high: calculatedHigh,
+        estimated_total: enquiryOnly ? null : body.estimatedTotal ?? null,
+        range_low: enquiryOnly ? null : calculatedLow,
+        range_high: enquiryOnly ? null : calculatedHigh,
         add_ons: body.selectedAddOns ?? body.addOns ?? [],
         source_origin: origin,
         user_agent: ua,

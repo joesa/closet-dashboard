@@ -15,5 +15,9 @@
     },
     "baseUrl": "."
   },
-  "include": ["./**/*.ts", "../src/**/*.ts"]
+  // Only the worker's own files. `../src` still resolves through `paths` — it
+  // was *included* here as well, which pulled the entire Next app into a config
+  // with no `jsx` and no Next types and produced 279 phantom errors, which is
+  // why nothing ever typechecked the worker at all.
+  "include": ["./**/*.ts"]
 }
