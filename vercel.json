@@ -6,7 +6,7 @@
     },
     {
       "path": "/api/cron/process-provision-jobs",
-      "schedule": "*/15 * * * *"
+      "schedule": "0 5 * * *"
     },
     {
       "path": "/api/cron/process-custom-build-jobs",
@@ -30,11 +30,11 @@
     },
     {
       "path": "/api/cron/dunning",
-      "schedule": "0 */6 * * *"
+      "schedule": "30 13 * * *"
     },
     {
       "path": "/api/cron/reap-provision-jobs",
-      "schedule": "*/20 * * * *"
+      "schedule": "10 5 * * *"
     }
   ]
 }

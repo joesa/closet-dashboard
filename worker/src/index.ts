@@ -10,6 +10,7 @@ import {
   WORKER_HEARTBEAT_MS,
 } from '@/lib/jobs/workerInstance'
 import { loadWorkerEnv } from './loadEnv'
+import { startScheduler } from './scheduler'
 import {
   captureJobError,
   flushWorkerObservability,
@@ -117,6 +118,7 @@ async function main() {
   )
 
   initWorkerObservability(identity.gitSha ?? '')
+  const stopScheduler = startScheduler()
 
   // One dedicated LISTEN client + one per concurrent job.
   const pgPool = createGraphilePool(connectionString, { max: concurrency + 2 })
@@ -184,6 +186,7 @@ async function main() {
       console.warn('[worker] error during drain:', err)
     }
 
+    stopScheduler()
     // Reports queued during the drain would otherwise die with the process.
     await flushWorkerObservability()
     await pgPool.end().catch(() => undefined)
