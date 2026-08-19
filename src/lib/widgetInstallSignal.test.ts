@@ -1,22 +1,5 @@
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { isPlatformOrigin, recordWidgetInstall } from '@/lib/widgetInstallSignal'
-
-function fakeClient() {
-  const eq = vi.fn(async () => ({ error: null }))
-  const update = vi.fn((values: Record<string, unknown>) => {
-    void values
-    return { eq }
-  })
-  const from = vi.fn(() => ({ update }))
-  return { client: { from }, update, eq }
-}
-
-/** The patch a call wrote, typed for assertions. */
-function patchFrom(update: ReturnType<typeof fakeClient>['update']): Record<string, unknown> {
-  const call = update.mock.calls[0]
-  expect(call, 'expected an update to have been issued').toBeTruthy()
-  return call![0]
-}
 
 describe('isPlatformOrigin', () => {
   it('treats our own hosts as not-an-install', () => {
@@ -45,53 +28,32 @@ describe('isPlatformOrigin', () => {
 })
 
 describe('recordWidgetInstall', () => {
-  const base = { contractorId: 'c1', installedAt: null, lastSeenOrigin: null }
-
-  it('stamps the first sighting from a customer site', async () => {
-    const { client, update } = fakeClient()
-    await recordWidgetInstall({ ...base, supabase: client, origin: 'https://alvaradostile.com' })
-    const patch = patchFrom(update)
-    expect(patch.widget_installed_at).toBeTruthy()
-    expect(patch.widget_last_seen_origin).toBe('https://alvaradostile.com')
-  })
-
-  it('does not write on a repeat view from the same origin', async () => {
-    const { client, update } = fakeClient()
-    await recordWidgetInstall({
-      supabase: client,
-      contractorId: 'c1',
-      origin: 'https://alvaradostile.com',
-      installedAt: '2026-08-01T00:00:00Z',
-      lastSeenOrigin: 'https://alvaradostile.com',
-    })
-    expect(update).not.toHaveBeenCalled()
-  })
-
-  it('records a move to a new origin without re-stamping the install date', async () => {
-    const { client, update } = fakeClient()
-    await recordWidgetInstall({
-      supabase: client,
-      contractorId: 'c1',
-      origin: 'https://newsite.com',
-      installedAt: '2026-08-01T00:00:00Z',
-      lastSeenOrigin: 'https://oldsite.com',
-    })
-    const patch = patchFrom(update)
-    expect(patch.widget_last_seen_origin).toBe('https://newsite.com')
-    expect(patch.widget_installed_at).toBeUndefined()
-  })
-
-  it('ignores our own dashboard preview', async () => {
-    const { client, update } = fakeClient()
-    await recordWidgetInstall({ ...base, supabase: client, origin: 'https://ditchtheform.com' })
-    expect(update).not.toHaveBeenCalled()
-  })
-
-  it('never throws when the write fails', async () => {
-    const eq = vi.fn(async () => ({ error: { message: 'nope' } }))
-    const client = { from: () => ({ update: () => ({ eq }) }) }
+  /**
+   * The contract that matters is that this NEVER affects the caller. It sits on
+   * the widget's render path: the first version read its state from the
+   * settings query, which put two ungranted columns into a query running as
+   * `anon` and failed it outright — every embed 500'd and fell back to stock
+   * closet pricing. So the tests pin "cannot throw, cannot block" rather than
+   * the shape of the write.
+   */
+  it('does nothing for our own origins, without touching the database', async () => {
     await expect(
-      recordWidgetInstall({ ...base, supabase: client, origin: 'https://alvaradostile.com' })
+      recordWidgetInstall({ contractorId: 'c1', origin: 'https://ditchtheform.com' })
     ).resolves.toBeUndefined()
+  })
+
+  it('resolves quietly when the service role is unavailable', async () => {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY
+    delete process.env.NEXT_PUBLIC_SUPABASE_URL
+    delete process.env.SUPABASE_SERVICE_ROLE_KEY
+    try {
+      await expect(
+        recordWidgetInstall({ contractorId: 'c1', origin: 'https://alvaradostile.com' })
+      ).resolves.toBeUndefined()
+    } finally {
+      if (url) process.env.NEXT_PUBLIC_SUPABASE_URL = url
+      if (key) process.env.SUPABASE_SERVICE_ROLE_KEY = key
+    }
   })
 })

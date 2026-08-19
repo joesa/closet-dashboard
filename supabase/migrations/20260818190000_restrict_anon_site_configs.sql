@@ -1,34 +1,31 @@
--- NOT YET APPLIED. Rename to `20260818xxxxxx_restrict_anon_site_configs.sql`
--- and run db-migrate.sh ONLY after both steps below are done, in this order.
+-- Restrict the anon SELECT grant on site_configs and domains.
 --
 -- The problem
 -- -----------
--- `20260601150000_tenant_rls_and_config_extras.sql:35` grants anon SELECT on
+-- 20260601150000_tenant_rls_and_config_extras.sql:35 granted anon SELECT on
 -- site_configs with no column restriction, unlike tenants and
--- contractor_settings which are properly narrowed in the same file. The anon
--- key is public — it ships inside the widget bundle on every customer's site.
--- Verified against production: that key lists all 79 site_configs rows and
--- reads 22 unpublished `custom_config_draft` values, plus the whole domains
--- table.
+-- contractor_settings which are narrowed in the same file. The anon key is
+-- public by design — it ships inside the widget bundle on every customer's
+-- site. Verified against production before this change: that key listed all 79
+-- site_configs rows and read 22 unpublished `custom_config_draft` values, plus
+-- the whole domains table including registrar order ids.
 --
--- Why it is not applied yet
--- -------------------------
--- The renderer (custom-closets-websites/src/lib/getConfig.ts) selects
--- `custom_config_draft` and `spec_preview_password_hash` as anon. Applying this
--- before it reads as the service role takes EVERY tenant site down.
+-- Prerequisite (done before applying)
+-- -----------------------------------
+-- The renderer selects custom_config_draft and spec_preview_password_hash. It
+-- now reads with SUPABASE_SERVICE_ROLE_KEY (custom-closets-websites/src/lib/
+-- getConfig.ts prefers it when present); that variable was set on the websites
+-- Vercel project and deployed, and four live tenant sites plus two gated
+-- admin-bypass previews were confirmed rendering before this ran.
 --
--- Cutover
--- -------
---   1. Set SUPABASE_SERVICE_ROLE_KEY on the custom-closets-websites Vercel
---      project (server-only; getConfig.ts already prefers it when present).
---   2. Deploy and confirm a live tenant site still renders, and that an admin
---      bypass preview of an unpublished draft still works.
---   3. Rename this file and apply.
---
--- Verify afterwards, with the anon key:
+-- Verify after applying, with the anon key:
 --   curl "$URL/rest/v1/site_configs?select=custom_config_draft&limit=1" \
 --     -H "apikey: $ANON" -H "Authorization: Bearer $ANON"
 --   -> must return an error, not rows.
+--
+-- Rollback, if a render path is found to still need anon:
+--   grant select on public.site_configs to anon;
+--   grant select on public.domains to anon;
 
 revoke select on public.site_configs from anon;
 

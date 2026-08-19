@@ -47,7 +47,7 @@ export async function GET(req: Request) {
           // Selecting brand fields + pricing fields so the widget has everything it needs.
           // price_per_ft_* are DEPRECATED; kept in the response during the room_pricing
           // rollout for older widget builds and will be removed in a follow-up.
-          .select('company_name, primary_color_hex, price_per_ft_basic, price_per_ft_standard, price_per_ft_premium, price_drawer, price_shoe_rack, room_pricing, disabled_default_rooms, disabled_default_finishes, domain_config, tier_names, tier_colors, widget_theme_id, widget_installed_at, widget_last_seen_origin')
+          .select('company_name, primary_color_hex, price_per_ft_basic, price_per_ft_standard, price_per_ft_premium, price_drawer, price_shoe_rack, room_pricing, disabled_default_rooms, disabled_default_finishes, domain_config, tier_names, tier_colors, widget_theme_id')
           .eq('id', contractorId)
           .maybeSingle(),
         supabase
@@ -89,14 +89,19 @@ export async function GET(req: Request) {
 
     // This request IS the install signal — the widget cannot render without it,
     // so an Origin that is not ours means the snippet is live on their site.
-    // Fire-and-forget: telemetry never delays or breaks the widget.
+    //
+    // The telemetry columns are deliberately NOT in the select above. This
+    // query runs as `anon`, whose grant on contractor_settings is column-scoped
+    // (20260601150000), and asking for a column outside that grant fails the
+    // WHOLE query with 42501 — which is exactly what took the widget down: every
+    // embed got a 500 from this route and fell back to stock closet pricing.
+    // Telemetry must never sit on the widget's critical path again.
+    //
+    // Fire-and-forget, and self-contained: recordWidgetInstall now does its own
+    // idempotent write with the service role.
     void recordWidgetInstall({
-      supabase,
       contractorId,
       origin: req.headers.get('origin'),
-      installedAt: (data as { widget_installed_at?: string | null }).widget_installed_at ?? null,
-      lastSeenOrigin:
-        (data as { widget_last_seen_origin?: string | null }).widget_last_seen_origin ?? null,
     })
 
     const addonsData = addonsResult.data
