@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "predev": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -Command \"if (Test-Path '../closet-widget/dist/widget.js') { Copy-Item '../closet-widget/dist/widget.js' 'public/widget.js' }\"",
+  "predev": "node -e \"const fs=require('fs'),s='../closet-widget/dist/widget.js';if(fs.existsSync(s))fs.copyFileSync(s,'public/widget.js')\"",
     "dev": "next dev --webpack",
     "build": "next build",
     "start": "next start",
