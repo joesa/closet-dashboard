@@ -629,6 +629,11 @@ export default function IntakeFormClient({
     previewUrl?: string;
   };
   const GALLERY_SLOTS = 12;
+  // Undecided until they answer. Asking first keeps trades with no photos of
+  // their own from staring at five empty upload slots they cannot fill.
+  const [wantsGallery, setWantsGallery] = useState<boolean | null>(
+    initialGalleryImages?.length ? true : null
+  );
   const [galleryCount, setGalleryCount] = useState(initialGalleryImages?.length ? Math.max(5, initialGalleryImages.length) : 5);
   const [galleryImages, setGalleryImages] = useState<GalleryEntry[]>(() => {
     const defaultEntries: GalleryEntry[] = Array.from({ length: GALLERY_SLOTS }, () => ({ url: '' }));
@@ -816,7 +821,8 @@ export default function IntakeFormClient({
         if (typeof saved.logoImageUrl === 'string' && saved.logoImageUrl) {
           setLogoImageUrl(saved.logoImageUrl);
         }
-        if (Array.isArray(saved.galleryUrls) && saved.galleryUrls.length > 0) {
+        if (Array.isArray(saved.galleryUrls) && saved.galleryUrls.some(Boolean)) {
+          setWantsGallery(true);
           setGalleryImages((prev) =>
             prev.map((entry, i) => {
               const savedUrl = saved.galleryUrls?.[i];
@@ -3155,6 +3161,38 @@ export default function IntakeFormClient({
               </p>
 
               <div className="mb-4 sm:mb-5">
+                <label className={label}>Do you have photos of your own work to include?</label>
+                <div className="grid grid-cols-2 gap-2.5 sm:max-w-md sm:gap-3">
+                  {[
+                    { label: 'Yes, I have project photos', value: true },
+                    { label: 'No, not right now', value: false },
+                  ].map((opt) => (
+                    <button
+                      key={String(opt.value)}
+                      type="button"
+                      onClick={() => {
+                        setWantsGallery(opt.value);
+                        // Keep the count in step so submit never sends slots
+                        // they just told us they cannot fill.
+                        setGalleryCount(opt.value ? (galleryCount || 5) : 0);
+                      }}
+                      className={`rounded-xl border p-3 text-left text-sm transition-all ${wantsGallery === opt.value ? 'border-[#2438C9] bg-[#EDEFFB] text-[#10141A]' : 'border-[#D8DADB] bg-white text-[#4E5761] hover:border-[#8B939C]'}`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {wantsGallery === false && (
+                <p className="rounded-md border border-[#E7E8E8] bg-[#F4F5F4] px-3 py-2 text-sm text-[#4E5761]">
+                  No problem — we&apos;ll leave the Portfolio page off your site. You can add photos
+                  later and we&apos;ll turn it on then.
+                </p>
+              )}
+
+              {wantsGallery === true && (
+              <div className="mb-4 sm:mb-5">
                 <label className={label}>How many gallery images would you like to include?</label>
                 <select
                   className={`${selectInput} w-40`}
@@ -3169,8 +3207,9 @@ export default function IntakeFormClient({
                   ))}
                 </select>
               </div>
+              )}
 
-              {galleryCount > 0 && (
+              {wantsGallery === true && galleryCount > 0 && (
                 <div className="mb-4 sm:mb-5">
                   <input
                     ref={bulkGalleryInputRef}
@@ -3195,7 +3234,7 @@ export default function IntakeFormClient({
                 </div>
               )}
 
-              {galleryCount > 0 ? (
+              {wantsGallery === true && (galleryCount > 0 ? (
               <div className="space-y-4">
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3">
                   {Array.from({ length: galleryCount }).map((_, i) => {
@@ -3268,9 +3307,9 @@ export default function IntakeFormClient({
                 <p className="rounded-md border border-[#E7E8E8] bg-[#F4F5F4] px-3 py-2 text-sm text-[#4E5761]">
                   No gallery images will be included.
                 </p>
-              )}
+              ))}
 
-              {galleryCount > 0 && galleryImages.slice(0, galleryCount).every((e) => !e.url.trim() && !e.uploading) && (
+              {wantsGallery === true && galleryCount > 0 && galleryImages.slice(0, galleryCount).every((e) => !e.url.trim() && !e.uploading) && (
                 <p className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
                   No gallery images added yet. If you don&apos;t upload any photos we won&apos;t be
                   able to configure your Portfolio page — it will be excluded from your site.
