@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   GLOBAL_CSS_UNIT_ID,
+  classCoverage,
   describeDesignTellsForPrompt,
   extractFontFamilies,
   extractRootColorTokens,
@@ -9,6 +10,7 @@ import {
   scanDesignTells,
   scanUnitTells,
   toUnitQualityReport,
+  unstyledClassShare,
   type ArtifactTellCode,
 } from './designTellScanner'
 
@@ -783,5 +785,110 @@ describe('decorative_numbered_list via CSS counters', () => {
     expect(codes(css, 'A numbered checklist the crew reads out on site.')).not.toContain(
       'decorative_numbered_list'
     )
+  })
+})
+
+describe('design_unstyled_markup', () => {
+  /** 16 class-bearing elements across 6 class names — a page, not a fragment. */
+  const MARKUP = `<section class="wrap"><div class="section"><h2 class="h">Drain cleaning</h2>
+<span class="h-bar"></span><ul class="acts">
+<li class="svc-card"><span class="svc-title">Cable or hydro-jet</span><a class="svc-link" href="/services">Get a quote</a></li>
+<li class="svc-card"><span class="svc-title">Camera the lateral</span><a class="svc-link" href="/services">Get a quote</a></li>
+<li class="svc-card"><span class="svc-title">Slope correction</span><a class="svc-link" href="/services">Get a quote</a></li>
+<li class="svc-card"><span class="svc-title">Repipe in PEX</span><a class="svc-link" href="/services">Get a quote</a></li>
+</ul></div></section>`
+
+  /** Same design tokens, but the vocabulary of a different foundation pass. */
+  const STALE_CSS = `${CLEAN_CSS}
+.frame{max-width:1200px;margin-inline:auto}
+.sec{padding:64px 0}
+.h-sec{font-size:34px}
+.svc-row{display:grid;gap:24px}
+.svc-content{padding:20px}
+.h-stripe{width:72px;height:3px;background:var(--acc)}`
+
+  const MATCHING_CSS = `${CLEAN_CSS}
+.wrap{max-width:1200px;margin-inline:auto}
+.section{padding:64px 0}
+.h{font-size:34px}
+.h-bar{width:72px;height:3px;background:var(--acc)}
+.acts{display:grid;gap:24px}
+.svc-card{padding:20px;border:1px solid var(--line)}
+.svc-title{font-weight:700}
+.svc-link{color:var(--acc)}`
+
+  it('measures how much markup the stylesheet reaches', () => {
+    const stale = classCoverage(MARKUP, STALE_CSS)
+    expect(stale.classed).toBe(17)
+    expect(stale.unstyled).toBe(17)
+    expect(stale.orphans.slice(0, 3)).toEqual(['svc-card', 'svc-link', 'svc-title'])
+    expect(stale.samples[0]).toBe('<section class="wrap">')
+
+    expect(classCoverage(MARKUP, MATCHING_CSS).unstyled).toBe(0)
+    expect(unstyledClassShare(MARKUP, MATCHING_CSS)).toBe(0)
+  })
+
+  it('flags markup whose class vocabulary the stylesheet never defines', () => {
+    const findings = scanDesignTells({
+      globalCss: STALE_CSS,
+      pages: { '/': { html: `${FONTS_LINK}${MARKUP}` } },
+    })
+    const hit = findings.find((f) => f.code === 'design_unstyled_markup')
+    expect(hit).toBeDefined()
+    // The stylesheet owns the fix — the markup is the half carrying the content.
+    expect(hit!.unitId).toBe(GLOBAL_CSS_UNIT_ID)
+    expect(hit!.severity).toBe('error')
+    expect(hit!.fix).toContain('.svc-card')
+    expect(hit!.meta).toMatchObject({ path: '/', unstyledElements: 17 })
+  })
+
+  it('stays quiet when the stylesheet matches the markup', () => {
+    expect(
+      codes(
+        scanDesignTells({
+          globalCss: MATCHING_CSS,
+          pages: { '/': { html: `${FONTS_LINK}${MARKUP}` } },
+        })
+      )
+    ).not.toContain('design_unstyled_markup')
+  })
+
+  it('counts a page stylesheet, not just globalCss', () => {
+    expect(
+      codes(
+        scanDesignTells({
+          globalCss: CLEAN_CSS,
+          pages: { '/': { html: `${FONTS_LINK}${MARKUP}`, css: MATCHING_CSS } },
+        })
+      )
+    ).not.toContain('design_unstyled_markup')
+  })
+
+  it('ignores a handful of stray orphans on an otherwise styled page', () => {
+    const html = `${FONTS_LINK}${MARKUP.replace('class="h"', 'class="h fh"')}`
+    expect(
+      codes(scanDesignTells({ globalCss: MATCHING_CSS, pages: { '/': { html } } }))
+    ).not.toContain('design_unstyled_markup')
+  })
+
+  it('does not blame the mount classes the platform stylesheet supplies', () => {
+    const mounts = Array.from(
+      { length: 14 },
+      () => '<div class="closet-widget-mount"><span class="quote-slot"></span></div>'
+    ).join('')
+    expect(
+      codes(
+        scanDesignTells({
+          globalCss: CLEAN_CSS,
+          pages: { '/': { html: `${FONTS_LINK}${mounts}` } },
+        })
+      )
+    ).not.toContain('design_unstyled_markup')
+  })
+
+  it('never blames a page for it — a unit scan sees no stylesheet at all', () => {
+    expect(
+      codes(scanUnitTells('/', { html: `${FONTS_LINK}${MARKUP}` }, {}))
+    ).not.toContain('design_unstyled_markup')
   })
 })

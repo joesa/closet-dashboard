@@ -193,3 +193,115 @@ describe('repairDesignTells', () => {
     expect(result.warnings.join(' ')).toMatch(/model timed out/)
   })
 })
+
+describe('half-applied foundation repairs', () => {
+  /** A styled pair: every class in the markup has a rule in the stylesheet. */
+  const PAIRED_CSS = `${CSS}
+.frame{max-width:1200px}.sec{padding:64px 0}.h-sec{font-size:34px}
+.svc-row{display:grid}.svc-content{padding:20px}.card{border:1px solid var(--line)}`
+  const PAIRED_HOME = `${FONTS}<header><nav><a href="/">Home</a></nav></header>
+<main class="frame"><section class="sec"><h1 class="h-sec">Walk-in closets in Green Hills</h1>
+<img src="https://cdn.example/a.jpg">
+<p class="svc-content">We hang 3/4 inch birch ply carcasses on Blum hinges, and a typical walk-in takes 6 to 8 weeks.</p>
+<ul class="svc-row"><li class="card"><span class="svc-content">Birch ply</span></li>
+<li class="card"><span class="svc-content">Blum hinges</span></li>
+<li class="card"><span class="svc-content">Soft-close drawers</span></li>
+<li class="card"><span class="svc-content">Template to install</span></li>
+<li class="card"><span class="svc-content">Green Hills</span></li></ul></section></main>
+<!-- CLOSET_WIDGET --><footer>Call 615-555-0188</footer>`
+  /** The same page rebuilt on a different vocabulary — nothing below matches. */
+  const REVOICED_HOME = PAIRED_HOME.replace(/frame|sec\b|h-sec|svc-row|svc-content|card/g, (m) =>
+    ({ frame: 'wrap', sec: 'section', 'h-sec': 'h', 'svc-row': 'acts', 'svc-content': 'lede', card: 'svc-card' })[m] as string
+  )
+
+  const glassy = (css: string) => `${css}\n.panel{backdrop-filter:blur(12px)}`
+
+  function findings(): DesignTellFinding[] {
+    return [GLASS_FINDING, { ...GLASS_FINDING, unitId: '/' }]
+  }
+
+  /**
+   * The uniqueness repair fails the stylesheet and the home markup together —
+   * palette and geometry live in one, composition in the other — so both are in
+   * failedUnitIds and both are the model's to return. That pairing is the case
+   * a half-applied repair breaks, so it is the case the tests below set up.
+   */
+  function scanPair(units: RepairUnits): UnitQualityReport {
+    const glassy = Object.values(units).some((v) => /backdrop-filter/i.test(v))
+    const ids = Object.keys(units)
+    return {
+      status: glassy ? 'failed' : 'passed',
+      findings: glassy
+        ? ids.map((unitId) => ({
+            unitId,
+            code: 'design_glassmorphism',
+            message: 'Glassmorphism cards are banned.',
+            samples: [],
+          }))
+        : [],
+      failedUnitIds: glassy ? ids : [],
+    }
+  }
+
+  it('takes the whole pair back when only the markup half lands', async () => {
+    // The model rebuilds home on a new vocabulary and never returns the
+    // stylesheet — exactly the shape that shipped an unstyled Full redesign.
+    const callModel = vi.fn(async () => ({ [HOME_UNIT]: REVOICED_HOME }))
+    const before = { [CSS_UNIT]: glassy(PAIRED_CSS), [HOME_UNIT]: PAIRED_HOME }
+    const result = await repairDesignTells({
+      ...baseOpts(before, callModel),
+      scan: scanPair,
+      maxRetries: 1,
+    })
+
+    expect(result.units[HOME_UNIT]).toBe(PAIRED_HOME)
+    expect(result.units[CSS_UNIT]).toBe(before[CSS_UNIT])
+    expect(result.repairedUnitIds).toEqual([])
+    expect(result.rolledBackUnitIds).toContain(HOME_UNIT)
+    expect(result.warnings.join(' ')).toMatch(/renders unstyled/)
+  })
+
+  it('keeps a repair that rewrites both halves together', async () => {
+    const callModel = vi.fn(async () => ({
+      [CSS_UNIT]: PAIRED_CSS.replace(
+        '.frame{max-width:1200px}',
+        '.wrap{max-width:1200px}.section{padding:64px 0}.h{font-size:34px}.acts{display:grid}.lede{padding:20px}.svc-card{border:1px solid var(--line)}'
+      ),
+      [HOME_UNIT]: REVOICED_HOME,
+    }))
+    const before = { [CSS_UNIT]: glassy(PAIRED_CSS), [HOME_UNIT]: PAIRED_HOME }
+    const result = await repairDesignTells({
+      ...baseOpts(before, callModel),
+      scan: scanPair,
+      maxRetries: 1,
+    })
+
+    expect(result.units[HOME_UNIT]).toBe(REVOICED_HOME)
+    expect(result.rolledBackUnitIds).toEqual([])
+    expect(result.repairedUnitIds.sort()).toEqual([CSS_UNIT, HOME_UNIT].sort())
+  })
+
+  it('leaves a page-only repair alone — it carries no stylesheet to judge', async () => {
+    const callModel = vi.fn(async () => ({ [HOME_UNIT]: REVOICED_HOME }))
+    const before = { [HOME_UNIT]: `${PAIRED_HOME}<div class="panel" style="backdrop-filter:blur(12px)"></div>` }
+    const result = await repairDesignTells({
+      ...baseOpts(before, callModel),
+      findings: findings(),
+      maxRetries: 1,
+    })
+
+    expect(result.units[HOME_UNIT]).toBe(REVOICED_HOME)
+    expect(result.rolledBackUnitIds).toEqual([])
+  })
+
+  it('hands the stylesheet repair the markup it has to match', async () => {
+    const callModel = vi.fn(async () => ({ [CSS_UNIT]: PAIRED_CSS }))
+    await repairDesignTells({
+      ...baseOpts({ [CSS_UNIT]: glassy(PAIRED_CSS), [HOME_UNIT]: PAIRED_HOME }, callModel),
+      maxRetries: 1,
+    })
+    const prompt = callModel.mock.calls[0][0].userPrompt as string
+    expect(prompt).toContain('CONTEXT')
+    expect(prompt).toContain('svc-row')
+  })
+})

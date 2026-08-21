@@ -38,6 +38,8 @@ import { WIDGET_PLACEHOLDER, type CustomSiteConfig } from '@/lib/customSite'
 import {
   describeDesignTellsForPrompt,
   GLOBAL_CSS_UNIT_ID as GLOBAL_CSS_SCANNER_ID,
+  UNSTYLED_SHARE_LIMIT,
+  unstyledClassShare,
   type DesignTellFinding,
 } from '@/lib/validation/designTellScanner'
 import { MAX_REPAIR_ATTEMPTS_PER_UNIT } from '@/lib/validation/designGuardPolicy'
@@ -169,6 +171,60 @@ export function rejectRepairedUnit(
   return null
 }
 
+/**
+ * The stylesheet and the markup it styles are one artifact, and this loop
+ * rewrites them as two units. A repair set carrying both can come back half
+ * applied — the model returns one key and omits the other, or an invariant
+ * above reverts one of them — and the surviving half is not a partial success:
+ * markup whose classes the surviving stylesheet never defines renders as
+ * unstyled text while every other check on the artifact still passes. That is
+ * how a Full redesign shipped with its entire layout missing.
+ *
+ * So the pair is judged on the property that actually broke: how much of the
+ * markup the stylesheet reaches. If a repair leaves more of it unreachable than
+ * it found, the whole pair goes back — a design tell left unrepaired is a worse
+ * page, but an unstyled one is not a page at all.
+ */
+function revertCssCoverageRegressions(
+  original: RepairUnits,
+  units: RepairUnits,
+  rolledBackUnitIds: string[],
+  warnings: string[]
+): RepairUnits {
+  const cssBefore = original[GLOBAL_CSS_UNIT]
+  const cssAfter = units[GLOBAL_CSS_UNIT]
+  // Only a set that carries the stylesheet can be judged this way. A page-only
+  // repair is scanned against no CSS at all, where every class looks orphaned.
+  if (typeof cssBefore !== 'string' || typeof cssAfter !== 'string') return units
+
+  const regressed: string[] = []
+  for (const unitId of Object.keys(units)) {
+    if (isGlobalCssUnit(unitId)) continue
+    const before = original[unitId]
+    if (typeof before !== 'string') continue
+    const after = unstyledClassShare(units[unitId], cssAfter)
+    if (after < UNSTYLED_SHARE_LIMIT) continue
+    if (after <= unstyledClassShare(before, cssBefore) + 0.1) continue
+    regressed.push(unitId)
+  }
+  if (regressed.length === 0) return units
+
+  const out = { ...units }
+  const reverted: string[] = []
+  for (const unitId of Object.keys(out)) {
+    if (typeof original[unitId] !== 'string' || out[unitId] === original[unitId]) continue
+    out[unitId] = original[unitId]
+    reverted.push(unitId)
+    if (!rolledBackUnitIds.includes(unitId)) rolledBackUnitIds.push(unitId)
+  }
+  warnings.push(
+    `Design repair was reverted as a whole (${reverted.join(', ')}) — it left ${regressed.join(
+      ', '
+    )} carrying class names the repaired stylesheet does not define, which renders unstyled.`
+  )
+  return out
+}
+
 // ── the repair call ─────────────────────────────────────────────────────────
 
 const REPAIR_SYSTEM = `You repair specific defects in an already-built page of a bespoke local-business website. You are NOT redesigning anything.
@@ -181,6 +237,8 @@ NEVER remove or alter:
 - <header>, <nav> or <footer>, or the class names on existing elements
 - any https:// image URL already present
 - the :root design tokens, unless a violation is specifically about them
+
+When you are given both a stylesheet unit and a markup unit, they are one artifact: every class name left in the returned markup must have a rule in the returned stylesheet, and every rule the markup still relies on must survive. Returning new markup against the old stylesheet renders the page unstyled, and that result is rejected wholesale.
 
 Platform rules still apply: body HTML only, no <script>, no <iframe>, no <form>, no on* attributes, no javascript: URLs. CSS may use @media, @keyframes and @font-face but not @import.
 
@@ -243,6 +301,15 @@ export async function repairDesignTells(opts: {
         })
       )
 
+      // Units the model is not returning, as read-only context. A stylesheet
+      // repair is the case that needs this: the violation names the classes the
+      // markup uses, but only the markup says what they wrap and in what order,
+      // and rules written blind against a class list are a guess.
+      const contextUnits = Object.entries(current)
+        .filter(([unitId]) => !failedUnitIds.includes(unitId))
+        .map(([unitId, content]) => `--- ${unitId} ---\n${content.slice(0, 12000)}`)
+        .join('\n\n')
+
       const userPrompt = `Repair units for "${opts.brandName}".
 
 LOCKED DESIGN DIRECTION (do not depart from it — the repair must stay on-brief):
@@ -253,7 +320,7 @@ SITE PATHS (any internal href must use one of these exactly): ${opts.pageHints}
 VIOLATIONS TO FIX:
 ${violations}
 
-UNITS TO RETURN (repair each one; keys must match exactly):
+${contextUnits ? `CONTEXT — the rest of the artifact, for reference only. Do NOT return these keys:\n${contextUnits}\n\n` : ''}UNITS TO RETURN (repair each one; keys must match exactly):
 ${JSON.stringify(
   Object.fromEntries(failedUnitIds.map((id) => [id, current[id] ?? ''])),
   null,
@@ -316,6 +383,8 @@ Return JSON keyed by those unit ids only.`
     }
     warnings.push(...integrity.warnings)
   }
+
+  units = revertCssCoverageRegressions(original, units, rolledBackUnitIds, warnings)
 
   const repairedUnitIds = Object.keys(units).filter(
     (id) => units[id] !== original[id] && !rolledBackUnitIds.includes(id)

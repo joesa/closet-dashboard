@@ -40,6 +40,12 @@ export type DesignTellCode =
   | 'design_hairline_box_grid'
   | 'design_gap_outlined_grid'
   | 'design_uncentered_shell'
+  /**
+   * The markup and the stylesheet disagree about class names, so most of the
+   * page has no rules at all and renders as unstyled HTML. Not a taste call:
+   * a page in this state is broken, whatever the brief asked for.
+   */
+  | 'design_unstyled_markup'
   // chrome / copy-adjacent
   | 'design_emoji_in_ui'
   | 'design_em_dash_stack'

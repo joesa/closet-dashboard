@@ -94,6 +94,10 @@ const GLOBAL_CSS_CODES: readonly DesignTellCode[] = [
   'design_missing_responsive_contract',
   'design_missing_interaction_contract',
   'design_direction_incoherent',
+  // Owned by the stylesheet even though only the markup makes it visible: the
+  // fix is rules the stylesheet is missing, and a page scanned on its own is
+  // scanned against no CSS at all, where every class looks orphaned.
+  'design_unstyled_markup',
 ]
 
 /** Codes that need the whole site to judge — skipped on single-unit scans. */
@@ -1029,6 +1033,149 @@ function scanDualLane(
   ]
 }
 
+/**
+ * Classes the platform styles for the artifact, so markup carrying only these
+ * is styled even though the artifact's own stylesheet never names them.
+ * WIDGET_MOUNT_RESET_CSS neutralises the AI's mount chrome; the ds- classes are
+ * added by the renderer's image decoration.
+ */
+const PLATFORM_CLASSES = new Set([
+  'widget-container',
+  'closet-widget-slot',
+  'closet-widget-mount',
+  'quote-embed',
+  'quote-slot',
+  'widget-wrap',
+  'quote-box',
+  'calculator-wrap',
+  'ds-image-frame',
+  'ds-art-image',
+])
+
+/** Every class name a selector in this stylesheet can match. */
+function classesDefinedIn(css: string): Set<string> {
+  const out = new Set<string>()
+  for (const { selector } of ruleEntries(css)) {
+    for (const match of selector.matchAll(/\.(-?[A-Za-z_][\w-]*)/g)) out.add(match[1])
+  }
+  return out
+}
+
+export type ClassCoverage = {
+  /** Elements carrying at least one class. */
+  classed: number
+  /** Of those, the ones whose every class is undefined in the stylesheet. */
+  unstyled: number
+  /** Undefined class names, most-used first. */
+  orphans: string[]
+  /** Opening tags of unstyled elements — what a repair needs to write rules for. */
+  samples: string[]
+}
+
+/**
+ * How much of a page's markup the stylesheet actually reaches.
+ *
+ * "Unstyled" counts elements, not class names: an element whose classes are all
+ * undefined can still inherit and can still be hit by a tag or descendant
+ * selector, but nothing about it was *designed*. One stray orphan class on an
+ * otherwise-styled element is noise; a page where most elements are in that
+ * state is a page whose stylesheet was written for different markup.
+ */
+export function classCoverage(html: string, css: string): ClassCoverage {
+  const defined = classesDefinedIn(css)
+  const counts = new Map<string, number>()
+  const samples: string[] = []
+  let classed = 0
+  let unstyled = 0
+  if (!html?.trim()) return { classed, unstyled, orphans: [], samples }
+
+  const $ = cheerio.load(html)
+  $('[class]').each((_i, el) => {
+    const tokens = ($(el).attr('class') || '').split(/\s+/).filter(Boolean)
+    if (tokens.length === 0) return
+    classed += 1
+    const missing = tokens.filter(
+      (cls) => !defined.has(cls) && !PLATFORM_CLASSES.has(cls)
+    )
+    if (missing.length < tokens.length) return
+    unstyled += 1
+    for (const cls of missing) counts.set(cls, (counts.get(cls) || 0) + 1)
+    if (samples.length < 4) {
+      const tag = (el as { tagName?: string }).tagName || 'div'
+      samples.push(`<${tag} class="${tokens.join(' ')}">`)
+    }
+  })
+
+  const orphans = [...counts.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .map(([cls]) => cls)
+  return { classed, unstyled, orphans, samples }
+}
+
+/** Share of class-bearing elements the stylesheet does not reach, 0 when empty. */
+export function unstyledClassShare(html: string, css: string): number {
+  const coverage = classCoverage(html, css)
+  return coverage.classed === 0 ? 0 : coverage.unstyled / coverage.classed
+}
+
+/**
+ * Below this share the orphans are stray leftovers — a renamed helper, a class
+ * the model wrote and never used. Above it the stylesheet was written against
+ * different markup. Healthy pages in the fleet sit under 0.1; the page that
+ * prompted this check sat at 0.83.
+ */
+export const UNSTYLED_SHARE_LIMIT = 0.25
+/** Small pages can hit the ratio by accident; these floors keep them out. */
+const MIN_CLASSED_ELEMENTS = 12
+const MIN_ORPHAN_CLASSES = 5
+
+/**
+ * The markup/stylesheet divergence check.
+ *
+ * A Full redesign is built as a pair — the global stylesheet and the home
+ * markup come out of one foundation pass — and the repair loops rewrite the two
+ * halves as separate units. When one half lands and the other reverts, the
+ * artifact is still valid HTML with a valid stylesheet and every other check
+ * passes: the palette is bespoke, the tokens are there, the fonts are linked.
+ * It just renders as unstyled text, because the surviving markup names classes
+ * the surviving stylesheet never defines. Nothing measured that until this.
+ *
+ * Attributed to globalCss: the markup is the newer half and carries the content,
+ * so the repair is to write the missing rules, not to rename the elements.
+ */
+function scanUnstyledMarkup(
+  path: string,
+  html: string,
+  css: string
+): DesignTellFinding[] {
+  const coverage = classCoverage(html, css)
+  if (coverage.classed < MIN_CLASSED_ELEMENTS) return []
+  if (coverage.orphans.length < MIN_ORPHAN_CLASSES) return []
+  const share = coverage.unstyled / coverage.classed
+  if (share < UNSTYLED_SHARE_LIMIT) return []
+
+  const named = coverage.orphans.slice(0, 20).map((cls) => `.${cls}`).join(', ')
+  return [
+    finding(
+      'design_unstyled_markup',
+      GLOBAL_CSS_UNIT_ID,
+      `${path}: ${coverage.unstyled} of ${coverage.classed} class-bearing elements (${Math.round(
+        share * 100
+      )}%) carry only class names the stylesheet never defines, so that markup renders with no layout, spacing or colour at all. The markup and the stylesheet were written against different class vocabularies.`,
+      `Add rules for the class names the markup actually uses (${named}${
+        coverage.orphans.length > 20 ? ', …' : ''
+      }), built from the :root tokens and consistent with the components already styled. Keep every existing rule, and do not rename classes in the markup to match the stylesheet.`,
+      coverage.samples,
+      {
+        path,
+        classedElements: coverage.classed,
+        unstyledElements: coverage.unstyled,
+        orphanClasses: coverage.orphans.slice(0, 40),
+      }
+    ),
+  ]
+}
+
 // ── entry points ────────────────────────────────────────────────────────────
 
 /** Visual + structural tells only. No copy checks. */
@@ -1048,6 +1195,11 @@ export function scanDesignTells(input: DesignTellScanInput): DesignTellFinding[]
     out.push(...scanPageHtml(path, html, input.briefText))
     out.push(...scanHero(path, html, `${input.globalCss}\n${page?.css || ''}`, input.briefText))
     out.push(...scanDualLane(path, html, input.briefText))
+    // Per page, against the CSS that page actually loads: a page may carry
+    // its own rules, and a divergence on home says nothing about /about.
+    out.push(
+      ...scanUnstyledMarkup(path, html, [input.globalCss || '', page?.css || ''].join('\n'))
+    )
   }
 
   const hasFontsLink = entries.some(([, page]) =>
