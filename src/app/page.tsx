@@ -471,6 +471,134 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* ─── Why quoting beats forms ─── */}
+      <section className="mx-auto max-w-6xl px-6 py-24" aria-labelledby="forms-vs-quoting-heading">
+        <div className="mb-3 flex items-center gap-3 text-[12px] font-semibold uppercase tracking-[0.12em]" style={{ color: ACCENT }}>
+          <span className="h-px w-9" style={{ background: ACCENT }} aria-hidden="true" />
+          Why quoting beats forms
+        </div>
+        <h2 id="forms-vs-quoting-heading" className="max-w-[22ch] text-3xl font-medium tracking-[-0.03em] sm:text-[40px] sm:leading-[1.1]">
+          Forms get you names. Quoting gets you jobs.
+        </h2>
+        <p className="mt-5 max-w-[56ch] text-[16px] leading-relaxed" style={{ color: INK_2 }}>
+          A form asks for information. A quote gives a number. The difference sounds small. It is not.
+        </p>
+
+        <div className="mt-14 grid gap-0 overflow-hidden border md:grid-cols-2" style={{ borderColor: HAIRLINE }}>
+          {/* Form side */}
+          <div className="border-b md:border-b-0 md:border-r" style={{ borderColor: HAIRLINE }}>
+            <div className="border-b px-6 py-4" style={{ borderColor: HAIRLINE }}>
+              <h3 className="font-mono text-[10px] font-semibold tracking-[0.12em]" style={{ color: INK_3 }}>THE FORM APPROACH</h3>
+            </div>
+            <div className="divide-y px-6 py-5" style={{ color: INK_2 }}>
+              <div className="py-4">
+                <div className="flex items-start gap-3">
+                  <span className="mt-1 flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold" style={{ background: '#FEE2E2', color: '#991B1B' }}>✗</span>
+                  <div>
+                    <p className="font-medium" style={{ color: INK }}>Customer waits for a callback</p>
+                    <p className="mt-1 text-sm">Form submitted, 24-48 hours later, someone calls with a price. They&apos;ve already called three other contractors.</p>
+                  </div>
+                </div>
+              </div>
+              <div className="py-4">
+                <div className="flex items-start gap-3">
+                  <span className="mt-1 flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold" style={{ background: '#FEE2E2', color: '#991B1B' }}>✗</span>
+                  <div>
+                    <p className="font-medium" style={{ color: INK }}>You find out later what they needed</p>
+                    <p className="mt-1 text-sm">Closet dimensions, room type, finish preference — all missing from a generic &quot;I&apos;m interested in custom closets.&quot;</p>
+                  </div>
+                </div>
+              </div>
+              <div className="py-4">
+                <div className="flex items-start gap-3">
+                  <span className="mt-1 flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold" style={{ background: '#FEE2E2', color: '#991B1B' }}>✗</span>
+                  <div>
+                    <p className="font-medium" style={{ color: INK }}>High volume, low commitment</p>
+                    <p className="mt-1 text-sm">People submit forms without pricing. They quote-shop. By the time you call, they&apos;ve already signed with whoever picked up first.</p>
+                  </div>
+                </div>
+              </div>
+              <div className="py-4">
+                <div className="flex items-start gap-3">
+                  <span className="mt-1 flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold" style={{ background: '#FEE2E2', color: '#991B1B' }}>✗</span>
+                  <div>
+                    <p className="font-medium" style={{ color: INK }}>Price is a negotiation</p>
+                    <p className="mt-1 text-sm">Customer has no anchor. Every number you give them feels negotiable. Every callback turns into back-and-forth.</p>
+                  </div>
+                </div>
+              </div>
+              <div className="py-4">
+                <div className="flex items-start gap-3">
+                  <span className="mt-1 flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold" style={{ background: '#FEE2E2', color: '#991B1B' }}>✗</span>
+                  <div>
+                    <p className="font-medium" style={{ color: INK }}>You&apos;re answering their questions after they&apos;ve moved on</p>
+                    <p className="mt-1 text-sm">By the time you return a form inquiry, the customer is already working with someone who got back to them faster.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Quoting side */}
+          <div style={{ background: 'rgba(0,0,0,0.02)' }}>
+            <div className="border-b px-6 py-4" style={{ borderColor: HAIRLINE }}>
+              <h3 className="font-mono text-[10px] font-semibold tracking-[0.12em]" style={{ color: ACCENT }}>THE QUOTING APPROACH</h3>
+            </div>
+            <div className="divide-y px-6 py-5" style={{ color: INK_2 }}>
+              <div className="py-4">
+                <div className="flex items-start gap-3">
+                  <span className="mt-1 flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold" style={{ background: '#DCFCE7', color: '#166534' }}>✓</span>
+                  <div>
+                    <p className="font-medium" style={{ color: INK }}>They get the number in under 60 seconds</p>
+                    <p className="mt-1 text-sm">While they&apos;re on your site. Before they&apos;ve closed the tab. Before they&apos;ve started shopping competitors.</p>
+                  </div>
+                </div>
+              </div>
+              <div className="py-4">
+                <div className="flex items-start gap-3">
+                  <span className="mt-1 flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold" style={{ background: '#DCFCE7', color: '#166534' }}>✓</span>
+                  <div>
+                    <p className="font-medium" style={{ color: INK }}>You get complete job details</p>
+                    <p className="mt-1 text-sm">Room type, dimensions, tier preference, add-ons. Everything you need to write the job is attached to the lead.</p>
+                  </div>
+                </div>
+              </div>
+              <div className="py-4">
+                <div className="flex items-start gap-3">
+                  <span className="mt-1 flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold" style={{ background: '#DCFCE7', color: '#166534' }}>✓</span>
+                  <div>
+                    <p className="font-medium" style={{ color: INK }}>Only serious buyers finish the quote</p>
+                    <p className="mt-1 text-sm">Someone who goes through 3 rooms and hits submit on an $8,000 estimate is not browsing. They&apos;re buying.</p>
+                  </div>
+                </div>
+              </div>
+              <div className="py-4">
+                <div className="flex items-start gap-3">
+                  <span className="mt-1 flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold" style={{ background: '#DCFCE7', color: '#166534' }}>✓</span>
+                  <div>
+                    <p className="font-medium" style={{ color: INK }}>Price is pre-accepted</p>
+                    <p className="mt-1 text-sm">Customer chose the options and saw the total. When you follow up, they&apos;re confirming — not negotiating from scratch.</p>
+                  </div>
+                </div>
+              </div>
+              <div className="py-4">
+                <div className="flex items-start gap-3">
+                  <span className="mt-1 flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold" style={{ background: '#DCFCE7', color: '#166534' }}>✓</span>
+                  <div>
+                    <p className="font-medium" style={{ color: INK }}>You reach them while they&apos;re still warm</p>
+                    <p className="mt-1 text-sm">SMS arrives within seconds. Email copies everything for your records. You&apos;re first, not last.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <p className="mt-8 max-w-[52ch] text-[15px] leading-relaxed" style={{ color: INK_2 }}>
+          Forms work fine when you have nothing else. If you want to know who&apos;s serious and who&apos;s just curious, the quote is the filter. A form can&apos;t tell you that.
+        </p>
+      </section>
+
       {/* ─── What the live demo proves (product facts, not simulated logos) ─── */}
       <section className="border-y" style={{ borderColor: HAIRLINE }} aria-labelledby="demo-proves-heading">
         <div className="mx-auto grid max-w-6xl px-6 sm:grid-cols-[180px_1fr] sm:gap-10">
