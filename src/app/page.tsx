@@ -496,7 +496,7 @@ export default function LandingPage() {
                   <span className="mt-1 flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold" style={{ background: '#FEE2E2', color: '#991B1B' }}>✗</span>
                   <div>
                     <p className="font-medium" style={{ color: INK }}>Customer waits for a callback</p>
-                    <p className="mt-1 text-sm">Form submitted, 24-48 hours later, someone calls with a price. They've already called three other contractors.</p>
+                    <p className="mt-1 text-sm">Form submitted, 24-48 hours later, someone calls with a price. They&apos;ve already called three other contractors.</p>
                   </div>
                 </div>
               </div>
@@ -505,7 +505,7 @@ export default function LandingPage() {
                   <span className="mt-1 flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold" style={{ background: '#FEE2E2', color: '#991B1B' }}>✗</span>
                   <div>
                     <p className="font-medium" style={{ color: INK }}>You find out later what they needed</p>
-                    <p className="mt-1 text-sm">Closet dimensions, room type, finish preference — all missing from a generic "I'm interested in custom closets."</p>
+                    <p className="mt-1 text-sm">Closet dimensions, room type, finish preference — all missing from a generic &quot;I&apos;m interested in custom closets.&quot;</p>
                   </div>
                 </div>
               </div>
@@ -514,7 +514,7 @@ export default function LandingPage() {
                   <span className="mt-1 flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold" style={{ background: '#FEE2E2', color: '#991B1B' }}>✗</span>
                   <div>
                     <p className="font-medium" style={{ color: INK }}>High volume, low commitment</p>
-                    <p className="mt-1 text-sm">People submit forms without pricing. They quote-shop. By the time you call, they've already signed with whoever picked up first.</p>
+                    <p className="mt-1 text-sm">People submit forms without pricing. They quote-shop. By the time you call, they&apos;ve already signed with whoever picked up first.</p>
                   </div>
                 </div>
               </div>
@@ -531,7 +531,7 @@ export default function LandingPage() {
                 <div className="flex items-start gap-3">
                   <span className="mt-1 flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold" style={{ background: '#FEE2E2', color: '#991B1B' }}>✗</span>
                   <div>
-                    <p className="font-medium" style={{ color: INK }}>You're answering their questions after they've moved on</p>
+                    <p className="font-medium" style={{ color: INK }}>You&apos;re answering their questions after they&apos;ve moved on</p>
                     <p className="mt-1 text-sm">By the time you return a form inquiry, the customer is already working with someone who got back to them faster.</p>
                   </div>
                 </div>
@@ -550,7 +550,7 @@ export default function LandingPage() {
                   <span className="mt-1 flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold" style={{ background: '#DCFCE7', color: '#166534' }}>✓</span>
                   <div>
                     <p className="font-medium" style={{ color: INK }}>They get the number in under 60 seconds</p>
-                    <p className="mt-1 text-sm">While they're on your site. Before they've closed the tab. Before they've started shopping competitors.</p>
+                    <p className="mt-1 text-sm">While they&apos;re on your site. Before they&apos;ve closed the tab. Before they&apos;ve started shopping competitors.</p>
                   </div>
                 </div>
               </div>
@@ -568,7 +568,7 @@ export default function LandingPage() {
                   <span className="mt-1 flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold" style={{ background: '#DCFCE7', color: '#166534' }}>✓</span>
                   <div>
                     <p className="font-medium" style={{ color: INK }}>Only serious buyers finish the quote</p>
-                    <p className="mt-1 text-sm">Someone who goes through 3 rooms and hits submit on an $8,000 estimate is not browsing. They're buying.</p>
+                    <p className="mt-1 text-sm">Someone who goes through 3 rooms and hits submit on an $8,000 estimate is not browsing. They&apos;re buying.</p>
                   </div>
                 </div>
               </div>
@@ -577,7 +577,7 @@ export default function LandingPage() {
                   <span className="mt-1 flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold" style={{ background: '#DCFCE7', color: '#166534' }}>✓</span>
                   <div>
                     <p className="font-medium" style={{ color: INK }}>Price is pre-accepted</p>
-                    <p className="mt-1 text-sm">Customer chose the options and saw the total. When you follow up, they're confirming — not negotiating from scratch.</p>
+                    <p className="mt-1 text-sm">Customer chose the options and saw the total. When you follow up, they&apos;re confirming — not negotiating from scratch.</p>
                   </div>
                 </div>
               </div>
@@ -585,8 +585,8 @@ export default function LandingPage() {
                 <div className="flex items-start gap-3">
                   <span className="mt-1 flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold" style={{ background: '#DCFCE7', color: '#166534' }}>✓</span>
                   <div>
-                    <p className="font-medium" style={{ color: INK }}>You reach them while they're still warm</p>
-                    <p className="mt-1 text-sm">SMS arrives within seconds. Email copies everything for your records. You're first, not last.</p>
+                    <p className="font-medium" style={{ color: INK }}>You reach them while they&apos;re still warm</p>
+                    <p className="mt-1 text-sm">SMS arrives within seconds. Email copies everything for your records. You&apos;re first, not last.</p>
                   </div>
                 </div>
               </div>
@@ -595,7 +595,7 @@ export default function LandingPage() {
         </div>
 
         <p className="mt-8 max-w-[52ch] text-[15px] leading-relaxed" style={{ color: INK_2 }}>
-          Forms work fine when you have nothing else. If you want to know who's serious and who's just curious, the quote is the filter. A form can't tell you that.
+          Forms work fine when you have nothing else. If you want to know who&apos;s serious and who&apos;s just curious, the quote is the filter. A form can&apos;t tell you that.
         </p>
       </section>
 
